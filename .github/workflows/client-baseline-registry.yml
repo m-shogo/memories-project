@@ -52,26 +52,111 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reviewed-client-baseline-registry-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact clean PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Reconcile and validate client baseline authority read-only
+        id: authority
+        run: |
+          set +e
+          log=/tmp/client-baseline-authority.log
+          : > "$log"
+          code=0
+          echo "STAGE: py_compile" >> "$log"
+          python -m py_compile \
+            scripts/register-memory-os-client-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
+            scripts/validate-memory-os-client-baseline-registry.py \
+            scripts/validate-memory-os-client-baseline-lineage-negative.py \
+            scripts/validate-memory-os-client-baseline-evidence-binding-negative.py \
+            scripts/reconcile-memory-os-client-baseline-registry.py \
+            scripts/validate-memory-os-client-server-support-window.py \
+            scripts/update-memory-os-compatibility-admission-gaps.py \
+            scripts/validate-memory-os-operability.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: source-lineage-negative" >> "$log"
+            python scripts/validate-memory-os-client-baseline-lineage-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: source-bound-evidence-negative" >> "$log"
+            python scripts/validate-memory-os-client-baseline-evidence-binding-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: authority-reconcile" >> "$log"
+            python scripts/reconcile-memory-os-client-baseline-registry.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: client-registry-validator" >> "$log"
+            python scripts/validate-memory-os-client-baseline-registry.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: support-window-validator" >> "$log"
+            python scripts/validate-memory-os-client-server-support-window.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: compatibility-gaps" >> "$log"
+            python scripts/update-memory-os-compatibility-admission-gaps.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: operability-validator" >> "$log"
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Require successful client authority validation
+        run: test "${{ steps.authority.outputs.exit_code }}" = "0"
+      - name: Require deterministic client authority
+        run: |
+          set -euo pipefail
+          git diff --check
+          if ! git diff --exit-code; then
+            echo "Client baseline derived authority is stale on the pull-request head; commit the deterministic reconcile output."
+            exit 1
+          fi
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Capture exact client baseline authority source
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -129,17 +214,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Require deterministic client authority on pull requests
-        if: github.event_name == 'pull_request' && steps.authority.outputs.exit_code == '0'
-        run: |
-          set -euo pipefail
-          git diff --check
-          if ! git diff --exit-code; then
-            echo "Client baseline derived authority is stale on the pull-request head; commit the deterministic reconcile output."
-            exit 1
-          fi
       - name: Commit bounded client authority
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so' && steps.authority.outputs.exit_code == '0'
+        if: github.ref == 'refs/heads/so' && steps.authority.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -167,7 +243,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so' && steps.authority.outputs.exit_code != '0'
+        if: github.ref == 'refs/heads/so' && steps.authority.outputs.exit_code != '0'
         env:
           AUTHORITY_EXIT_CODE: ${{ steps.authority.outputs.exit_code }}
         run: |
