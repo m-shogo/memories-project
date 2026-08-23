@@ -26,6 +26,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-migration-evidence-registry.py"
       - "scripts/validate-memory-os-migration-evidence-registry-append-negative.py"
+      - "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-migration-evidence-registry.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-operability.py"
@@ -56,6 +57,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-migration-evidence-registry.py"
       - "scripts/validate-memory-os-migration-evidence-registry-append-negative.py"
+      - "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-migration-evidence-registry.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-operability.py"
@@ -100,6 +102,7 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/validate-memory-os-migration-evidence-registry.py \
             scripts/validate-memory-os-migration-evidence-registry-append-negative.py \
+            scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py \
             scripts/reconcile-memory-os-migration-evidence-registry.py \
             scripts/validate-memory-os-migration-lifecycle.py \
             scripts/validate-memory-os-operability.py \
@@ -157,6 +160,10 @@ jobs:
           if [[ "$code" == "0" ]]; then
             echo "STAGE: ledger-corruption-negatives" >> "$log"
             python scripts/validate-memory-os-migration-evidence-registry-append-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: reconcile-authority-negatives" >> "$log"
+            python scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: local-artifact-static-validation" >> "$log"
