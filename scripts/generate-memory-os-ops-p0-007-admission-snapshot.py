@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +68,36 @@ def enforce_runtime_authorities() -> None:
         (TYPED_WRITER, TYPED_WRITER_REL, "typed non-resurrection writer"),
     ):
         require_exact_repo_file(path, expected_relative, label)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    relative = path.relative_to(ROOT)
+    if not path.parent.is_dir():
+        raise SystemExit(f"strict snapshot authority parent missing: {relative.parent}")
+    temp_name: str | None = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            text=True,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
+    except OSError as exc:
+        raise SystemExit(f"cannot atomically write {relative}: {exc}") from exc
+    finally:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -259,11 +291,12 @@ def main() -> int:
     }
     enforce_runtime_authorities()
     previous = OUTPUT.read_bytes()
+    output_text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
     try:
-        OUTPUT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_text(OUTPUT, output_text)
         validate_generated_snapshot()
     except (Exception, SystemExit):
-        OUTPUT.write_bytes(previous)
+        atomic_write_text(OUTPUT, previous.decode("utf-8"))
         raise
     print("Memory OS OPS-P0-007 strict admission snapshot generated")
     print(f"stage: {stage}")
