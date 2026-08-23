@@ -9,6 +9,7 @@ on:
       - "scripts/register-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
+      - "scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py"
       - "scripts/validate-memory-os-sustained-local-soak-result.py"
   push:
@@ -21,6 +22,7 @@ on:
       - "scripts/register-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
+      - "scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py"
       - "scripts/validate-memory-os-sustained-local-soak-result.py"
   workflow_dispatch:
@@ -67,10 +69,12 @@ jobs:
             scripts/register-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
+            scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py \
             scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py \
             scripts/validate-memory-os-sustained-local-soak-result.py
           python scripts/validate-memory-os-sustained-soak-independent-review.py
           python scripts/validate-memory-os-sustained-soak-independent-review-negative.py
+          python scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py
           python scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py
           git diff --check
           test -z "$(git status --porcelain)"
