@@ -38,21 +38,165 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-baseline-registry-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean PR source and compile tools
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/validate-memory-os-release-baseline-registry.py \
+            scripts/validate-memory-os-release-baseline-registry-negative.py \
+            scripts/validate-memory-os-release-baseline-evidence-binding.py \
+            scripts/validate-memory-os-release-baseline-evidence-binding-negative.py \
+            scripts/validate-memory-os-release-baseline-reconcile-authority-negative.py \
+            scripts/reconcile-memory-os-release-baseline-registry.py \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-operability.py
+
+      - name: Prove invalid registration cannot mutate authority
+        run: |
+          registry="contracts/operations/release-baseline-registry.v1.json"
+          lock="contracts/operations/.release-baseline-registry.lock"
+          before="$(sha256sum "$registry" | awk '{print $1}')"
+          incomplete="$RUNNER_TEMP/incomplete-release-record.json"
+          unbound="$RUNNER_TEMP/unbound-release-record.json"
+          printf '{}\n' > "$incomplete"
+
+          if python scripts/register-memory-os-release-baseline.py \
+              --record "$incomplete" --confirm "WRONG CONFIRMATION"; then
+            echo "writer accepted an incorrect confirmation" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          if python scripts/register-memory-os-release-baseline.py \
+              --record "$incomplete" --confirm "REGISTER APPROVED RELEASE BASELINE"; then
+            echo "writer accepted an incomplete record" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          HEAD_SHA="$(git rev-parse HEAD)" OUT="$unbound" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          digest = "0" * 64
+          record = {
+              "schemaVersion": "memory-os-release-baseline-record.v1",
+              "releaseId": "rel_20991231_unbound-ci-tag",
+              "releaseTag": "v9999.0.0-unregistered-ci",
+              "commitSha": os.environ["HEAD_SHA"],
+              "approvedAt": "2099-12-31T00:00:00Z",
+              "approvalClass": "PRODUCTION_RELEASE_BASELINE",
+              "approvers": [
+                  {"role": "SECURITY_REVIEWER", "approverRef": "apr_security_ci1"},
+                  {"role": "OPERABILITY_REVIEWER", "approverRef": "apr_operability_ci2"},
+                  {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci3"},
+              ],
+              "apiContractSha256": digest,
+              "migrationSequenceSha256": digest,
+              "parserArtifactSetSha256": digest,
+              "runtimeConfigurationSchemaSha256": digest,
+              "compatibilityEvidenceRefs": [
+                  "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+              ],
+              "restoreEvidenceRefs": [
+                  "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
+              ],
+              "securityEvidenceRefs": [
+                  "contracts/operations/production-operability-status.json"
+              ],
+              "rollbackEligibility": {
+                  "status": "NOT_ELIGIBLE",
+                  "verified": False,
+                  "conditions": [],
+              },
+              "openRisks": [],
+              "evidenceComplete": True,
+              "productionReady": True,
+          }
+          Path(os.environ["OUT"]).write_text(
+              json.dumps(record, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+          if python scripts/register-memory-os-release-baseline.py \
+              --record "$unbound" --confirm "REGISTER APPROVED RELEASE BASELINE"; then
+            echo "writer accepted a release tag that is not bound to HEAD" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+          test -z "$(git status --porcelain)"
+
+      - name: Validate append-only registry corruption negatives
+        run: python scripts/validate-memory-os-release-baseline-registry-negative.py
+
+      - name: Validate release reconcile authority negatives
+        run: python scripts/validate-memory-os-release-baseline-reconcile-authority-negative.py
+
+      - name: Validate immutable release evidence source binding
+        run: |
+          python scripts/validate-memory-os-release-baseline-evidence-binding.py
+          python scripts/validate-memory-os-release-baseline-evidence-binding-negative.py
+
+      - name: Reconcile then validate release registry authority
+        run: |
+          python scripts/reconcile-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-release-baseline-evidence-binding.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Require reconciled authority
+        run: |
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/release-baseline-registry-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -61,7 +205,6 @@ jobs:
           python-version: "3.12"
 
       - name: Capture exact release authority source
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -182,15 +325,7 @@ jobs:
           python scripts/validate-memory-os-version-compatibility.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Require reconciled authority in pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          git diff --exit-code -- \
-            contracts/operations/release-baseline-registry-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit release-specific authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -217,7 +352,6 @@ jobs:
           fi
 
       - name: Re-read committed authority and run aggregate checks
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
