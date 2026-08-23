@@ -21,9 +21,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
-REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-LOCK_PATH = ROOT / "contracts/operations/.release-baseline-registry.lock"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
+CANONICAL_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+CANONICAL_LOCK_PATH = ROOT / "contracts/operations/.release-baseline-registry.lock"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+REGISTRY_PATH = CANONICAL_REGISTRY_PATH
+LOCK_PATH = CANONICAL_LOCK_PATH
 CONFIRMATION = "REGISTER APPROVED RELEASE BASELINE"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -62,6 +65,22 @@ class RegistrationFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise RegistrationFailure(message)
+
+
+def require_actual_cli_authorities() -> None:
+    for label, actual, canonical in (
+        ("contract", CONTRACT_PATH, CANONICAL_CONTRACT_PATH),
+        ("registry", REGISTRY_PATH, CANONICAL_REGISTRY_PATH),
+    ):
+        require(actual == canonical, f"release baseline CLI {label} authority substitution rejected")
+        require(not actual.is_symlink(), f"release baseline CLI {label} authority must be symlink-free")
+        require(actual.resolve(strict=True) == canonical.resolve(strict=True), f"release baseline CLI {label} authority drift")
+    require(LOCK_PATH == CANONICAL_LOCK_PATH, "release baseline CLI lock authority substitution rejected")
+    require(not LOCK_PATH.is_symlink(), "release baseline CLI lock authority must be symlink-free")
+    require(
+        LOCK_PATH.parent.resolve(strict=True) == CANONICAL_LOCK_PATH.parent.resolve(strict=True),
+        "release baseline CLI lock parent authority drift",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -390,6 +409,7 @@ def append_registry_transactionally(
 
 
 def main() -> int:
+    require_actual_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True,
                         help="JSON record outside the repository working tree")
