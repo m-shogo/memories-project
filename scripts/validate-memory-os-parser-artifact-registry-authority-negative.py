@@ -48,9 +48,41 @@ def load_writer() -> Any:
             "parser writer registry authority drift")
     require(Path(module.LOCK_PATH).resolve() == LOCK_PATH.resolve(),
             "parser writer append lock authority drift")
+    require(callable(getattr(module, "require_actual_cli_authorities", None)),
+            "parser writer actual CLI authority guard missing")
     require(callable(getattr(module, "append_registry_transactionally", None)),
             "parser writer transactional append authority missing")
     return module
+
+
+def expect_writer_cli_authority_rejection(writer: Any) -> None:
+    writer.require_actual_cli_authorities()
+    contract_before = writer.CANONICAL_CONTRACT_PATH.read_bytes()
+    registry_before = writer.CANONICAL_REGISTRY_PATH.read_bytes()
+    substitutions = (
+        ("CONTRACT_PATH", writer.CANONICAL_REGISTRY_PATH),
+        ("REGISTRY_PATH", writer.CANONICAL_CONTRACT_PATH),
+        ("RELEASE_REGISTRY_PATH", writer.CANONICAL_REGISTRY_PATH),
+        ("RELEASE_WRITER_PATH", ROOT / "scripts/register-memory-os-client-baseline.py"),
+        ("LOCK_PATH", ROOT / "contracts/operations/.parser-artifact-registry-alternate.lock"),
+    )
+    for field, substitute in substitutions:
+        original = getattr(writer, field)
+        try:
+            setattr(writer, field, substitute)
+            try:
+                writer.require_actual_cli_authorities()
+            except writer.RegistrationFailure:
+                pass
+            else:
+                raise NegativeFailure(f"parser writer accepted {field} actual CLI authority substitution")
+        finally:
+            setattr(writer, field, original)
+    writer.require_actual_cli_authorities()
+    require(writer.CANONICAL_CONTRACT_PATH.read_bytes() == contract_before,
+            "parser CLI authority rejection mutated canonical contract")
+    require(writer.CANONICAL_REGISTRY_PATH.read_bytes() == registry_before,
+            "parser CLI authority rejection mutated canonical registry")
 
 
 def load_reconciler() -> Any:
@@ -327,6 +359,7 @@ def prove_default_validator_chain(reconciler: Any) -> None:
 
 def main() -> int:
     writer = load_writer()
+    expect_writer_cli_authority_rejection(writer)
     reconciler = load_reconciler()
     contract_bytes = CONTRACT_PATH.read_bytes()
     contract = json.loads(contract_bytes.decode("utf-8"))
@@ -423,7 +456,7 @@ def main() -> int:
     require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
             json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
             "parser registry was not restored after reconcile negatives")
-    print("Parser artifact authority rejects corruption/historical drift, enforces transactional append rollback, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, validates aggregate authority transactionally, and rolls back post-write failure")
+    print("Parser artifact authority rejects CLI substitution, corruption/historical drift, enforces transactional append rollback, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, validates aggregate authority transactionally, and rolls back post-write failure")
     return 0
 
 
