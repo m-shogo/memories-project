@@ -123,8 +123,10 @@ def main() -> int:
             expect_domain_fail("objective authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
     original_run_validator = reconciler.run_validator
+    validator_calls: list[tuple[Path, str]] = []
 
     def fail_aggregate_validator(path: Path, label: str) -> None:
+        validator_calls.append((path, label))
         if path == reconciler.OPERABILITY_VALIDATOR:
             raise reconciler.Fail("post-reconcile aggregate operability validator failed: forced negative")
         return None
@@ -140,8 +142,17 @@ def main() -> int:
     finally:
         reconciler.run_validator = original_run_validator
 
+    require(
+        validator_calls
+        == [
+            (reconciler.VALIDATOR, "recovery objective validator"),
+            (reconciler.OPERABILITY_VALIDATOR, "aggregate operability validator"),
+        ],
+        f"recovery objective post-write validator order drift: {validator_calls}",
+    )
     assert_canonical_unchanged(canonical_contract, canonical_status, "aggregate rollback")
     print("PASS rollback: aggregate operability rejection restores recovery objective contract/status byte-for-byte")
+    print("PASS boundary: post-write validator order is recovery objective then aggregate Operability")
     print("paired recovery objective fixture substitution accepted: false")
     print("recovery objective data/executable substitution accepted: false")
     print("recovery objective evidence reordering accepted: false")
