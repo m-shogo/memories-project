@@ -1,0 +1,83 @@
+name: OPS P0 007 Admission Snapshot PR
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-p0-007-admission-snapshot.yml"
+      - ".github/workflows/ops-p0-007-admission-snapshot-pr.yml"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-p0-007-admission-snapshot-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact pull request source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Generate and validate strict snapshot read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/memory_os_backup_restore_blockers.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py
+          python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py
+          python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py
+          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py
+      - name: Reject deterministic snapshot drift
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- contracts/operations/ops-p0-007-admission-snapshot.v1.json
+          test -z "$(git status --porcelain)"
