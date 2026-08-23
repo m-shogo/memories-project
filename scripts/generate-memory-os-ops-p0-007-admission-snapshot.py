@@ -9,21 +9,63 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
-ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
-BLOCKER_HELPER = ROOT / "scripts/memory_os_backup_restore_blockers.py"
-SNAPSHOT_VALIDATOR = ROOT / "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
-OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-GEN_EVIDENCE = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-TYPED = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-OBJECTIVE_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
-DRILL_REQUEST_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
-GEN_EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
-TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+OUTPUT_REL = Path("contracts/operations/ops-p0-007-admission-snapshot.v1.json")
+ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+BLOCKER_HELPER_REL = Path("scripts/memory_os_backup_restore_blockers.py")
+SNAPSHOT_VALIDATOR_REL = Path("scripts/validate-memory-os-ops-p0-007-admission-snapshot.py")
+OBJECTIVES_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+DRILL_REQUESTS_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+GEN_EVIDENCE_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+TYPED_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+OBJECTIVE_WRITER_REL = Path("scripts/register-memory-os-recovery-objectives.py")
+DRILL_REQUEST_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+GEN_EVIDENCE_WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+TYPED_WRITER_REL = Path("scripts/register-memory-os-backup-restore-non-resurrection-evidence.py")
+OUTPUT = ROOT / OUTPUT_REL
+ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
+BLOCKER_HELPER = ROOT / BLOCKER_HELPER_REL
+SNAPSHOT_VALIDATOR = ROOT / SNAPSHOT_VALIDATOR_REL
+OBJECTIVES = ROOT / OBJECTIVES_REL
+DRILL_REQUESTS = ROOT / DRILL_REQUESTS_REL
+GEN_EVIDENCE = ROOT / GEN_EVIDENCE_REL
+TYPED = ROOT / TYPED_REL
+STATUS = ROOT / STATUS_REL
+OBJECTIVE_WRITER = ROOT / OBJECTIVE_WRITER_REL
+DRILL_REQUEST_WRITER = ROOT / DRILL_REQUEST_WRITER_REL
+GEN_EVIDENCE_WRITER = ROOT / GEN_EVIDENCE_WRITER_REL
+TYPED_WRITER = ROOT / TYPED_WRITER_REL
 GEN_BLOCKER = "TWO_DISTINCT_SEMANTICALLY_ELIGIBLE_ENVIRONMENTS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, label: str) -> None:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"strict snapshot authority missing or escapes repository: {label}") from exc
+    if lexical != expected_relative or resolved != expected_relative or not path.is_file() or path.is_symlink():
+        raise SystemExit(f"strict snapshot authority drift: {label}")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected_relative, label in (
+        (OUTPUT, OUTPUT_REL, "snapshot output"),
+        (ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "environment generation eligibility helper"),
+        (BLOCKER_HELPER, BLOCKER_HELPER_REL, "backup/restore blocker helper"),
+        (SNAPSHOT_VALIDATOR, SNAPSHOT_VALIDATOR_REL, "snapshot validator"),
+        (OBJECTIVES, OBJECTIVES_REL, "recovery objective registry"),
+        (DRILL_REQUESTS, DRILL_REQUESTS_REL, "restore drill request registry"),
+        (GEN_EVIDENCE, GEN_EVIDENCE_REL, "generation recovery evidence registry"),
+        (TYPED, TYPED_REL, "typed non-resurrection registry"),
+        (STATUS, STATUS_REL, "production operability status"),
+        (OBJECTIVE_WRITER, OBJECTIVE_WRITER_REL, "recovery objective writer"),
+        (DRILL_REQUEST_WRITER, DRILL_REQUEST_WRITER_REL, "restore drill request writer"),
+        (GEN_EVIDENCE_WRITER, GEN_EVIDENCE_WRITER_REL, "generation recovery evidence writer"),
+        (TYPED_WRITER, TYPED_WRITER_REL, "typed non-resurrection writer"),
+    ):
+        require_exact_repo_file(path, expected_relative, label)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -32,7 +74,7 @@ def load(path: Path) -> dict[str, Any]:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise SystemExit(f"generated strict snapshot invalid: cannot resolve canonical authority: {path}") from exc
-    if relative != resolved or not path.is_file():
+    if relative != resolved or not path.is_file() or path.is_symlink():
         raise SystemExit(f"generated strict snapshot invalid: authority escapes canonical repository path: {relative}")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -44,12 +86,13 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_module(path: Path, name: str):
+    enforce_runtime_authorities()
     try:
         relative = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise SystemExit(f"cannot resolve canonical authority module: {path}") from exc
-    if relative != resolved or not path.is_file():
+    if relative != resolved or not path.is_file() or path.is_symlink():
         raise SystemExit(f"authority module escapes canonical repository path: {relative}")
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
@@ -74,6 +117,7 @@ def validate_registry(module, registry: dict[str, Any], label: str) -> list[dict
 
 
 def validate_generated_snapshot() -> None:
+    enforce_runtime_authorities()
     module = load_module(SNAPSHOT_VALIDATOR, "memory_os_ops_p0_007_snapshot_post_write_validator")
     validator = getattr(module, "main", None)
     failure_type = getattr(module, "Fail", RuntimeError)
@@ -92,6 +136,7 @@ def load_helper():
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     helper = load_helper()
     blocker_helper = load_module(BLOCKER_HELPER, "memory_os_backup_restore_blockers_ops_p0_007_snapshot")
     eligibility = helper.derive()
@@ -212,15 +257,13 @@ def main() -> int:
         "productionReady": False,
         "productionDecision": "NO_GO",
     }
-    previous = OUTPUT.read_bytes() if OUTPUT.exists() else None
+    enforce_runtime_authorities()
+    previous = OUTPUT.read_bytes()
     try:
         OUTPUT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         validate_generated_snapshot()
     except (Exception, SystemExit):
-        if previous is None:
-            OUTPUT.unlink(missing_ok=True)
-        else:
-            OUTPUT.write_bytes(previous)
+        OUTPUT.write_bytes(previous)
         raise
     print("Memory OS OPS-P0-007 strict admission snapshot generated")
     print(f"stage: {stage}")
