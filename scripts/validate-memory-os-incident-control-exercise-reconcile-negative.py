@@ -91,6 +91,30 @@ def verify_source_validator_delegation(module, original_contract: bytes, origina
         module.load_exercise_validator = original_loader
 
 
+def verify_noop_aggregate_validation(module, original_contract: bytes, original_status: bytes) -> None:
+    calls: list[Path] = []
+    original_runner = module.run_validator
+    module.run_validator = lambda path: calls.append(path)
+    try:
+        require(module.main() == 0, "already-current incident authority did not reconcile cleanly")
+    finally:
+        module.run_validator = original_runner
+
+    require(
+        calls == [
+            module.EXERCISE_VALIDATOR,
+            module.INCIDENT_RESPONSE_VALIDATOR,
+            module.TABLETOP_VALIDATOR,
+            module.OPERABILITY_VALIDATOR,
+        ],
+        f"already-current incident authority skipped canonical validators: {calls}",
+    )
+    require(CONTRACT.read_bytes() == original_contract,
+            "incident contract changed during no-op aggregate validation")
+    require(STATUS.read_bytes() == original_status,
+            "production status changed during no-op aggregate validation")
+
+
 def verify_post_write_rollback(module, original_contract: bytes, original_status: bytes) -> None:
     contract = json.loads(original_contract.decode("utf-8"))
     status = json.loads(original_status.decode("utf-8"))
@@ -143,9 +167,11 @@ def main() -> int:
 
     verify_runtime_authority_identity(module)
     verify_source_validator_delegation(module, original_contract, original_status)
+    verify_noop_aggregate_validation(module, original_contract, original_status)
     verify_post_write_rollback(module, original_contract, original_status)
 
     print("PASS: incident control exercise reconcile executable authorities reject substitution")
+    print("PASS: incident control exercise no-op path runs the full canonical validator chain")
     print("PASS: incident control exercise source delegation and reconcile rollback are fail-closed")
     return 0
 
