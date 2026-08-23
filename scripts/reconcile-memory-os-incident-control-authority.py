@@ -92,6 +92,15 @@ def enforce_runtime_authorities() -> None:
         (WORKFLOW_PATH, WORKFLOW_REL, "incident control authority workflow"),
     ):
         require_exact_repo_file(path, relative, field)
+    require(
+        POST_WRITE_VALIDATORS == (
+            VALIDATOR_PATH,
+            INCIDENT_RESPONSE_VALIDATOR,
+            TABLETOP_VALIDATOR,
+            OPERABILITY_VALIDATOR,
+        ),
+        "incident control validator chain authority drift",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
