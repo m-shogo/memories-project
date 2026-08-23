@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+WORKFLOW = ROOT / ".github/workflows/reconcile-sustained-local-soak-authority.yml"
 
 
 def load_reconciler():
@@ -33,8 +34,28 @@ def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
+def validate_atomic_authority_diagnostic() -> None:
+    if not WORKFLOW.is_file():
+        raise AssertionError("sustained soak authority workflow missing")
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in text]
+    if missing:
+        raise AssertionError(f"sustained soak authority diagnostic is not crash-safe: missing {missing}")
+    if "path.write_text(json.dumps(value" in text:
+        raise AssertionError("sustained soak authority diagnostic regressed to direct write_text")
+
+
 def main() -> int:
     module = load_reconciler()
+    validate_atomic_authority_diagnostic()
     paths = (module.CONTRACT_PATH, module.LOAD_PATH, module.STATUS_PATH)
     original = {path: path.read_bytes() for path in paths}
 
@@ -85,7 +106,10 @@ def main() -> int:
             if path.read_bytes() != original[path]:
                 path.write_bytes(original[path])
 
+    print("PASS: sustained local soak authority diagnostic is atomic and crash-safe")
     print("PASS: sustained local soak authority identity and reconcile rollback are fail-closed")
+    print("production evidence generated: false")
+    print("production decision changed: false")
     return 0
 
 
