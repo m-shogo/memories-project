@@ -9,6 +9,8 @@ on:
       - "contracts/operations/backup-restore-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/local-logical-restore-contract.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -25,6 +27,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
       - "scripts/reconcile-memory-os-backup-authority.py"
       - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
@@ -39,6 +43,8 @@ on:
       - "contracts/operations/backup-restore-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/local-logical-restore-contract.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -55,6 +61,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
       - "scripts/reconcile-memory-os-backup-authority.py"
       - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
@@ -104,6 +112,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py \
             scripts/reconcile-memory-os-backup-restore.py \
             scripts/reconcile-memory-os-backup-authority.py \
             scripts/reconcile-memory-os-backup-semantic-overlay.py \
@@ -115,6 +125,9 @@ jobs:
 
       - name: Validate canonical blocker negatives
         run: python scripts/validate-memory-os-backup-restore-blockers-negative.py
+
+      - name: Validate typed non-resurrection writer CLI authority
+        run: python scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py
 
       - name: Validate generation recovery independent reviews
         run: python scripts/validate-memory-os-backup-restore-generation-independent-review.py
