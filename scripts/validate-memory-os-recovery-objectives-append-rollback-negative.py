@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove recovery-objective registry append rollback is fail-closed."""
+"""Prove recovery-objective registry append rollback and CLI authority are fail-closed."""
 
 from __future__ import annotations
 
@@ -30,6 +30,17 @@ def load_writer():
     return module
 
 
+def expect_rejected(name: str, action, failure_type: type[BaseException]) -> None:
+    try:
+        action()
+    except failure_type:
+        print(f"PASS reject: {name}")
+        return
+    except Exception as exc:
+        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+    raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
 def main() -> int:
     require(WRITER.is_file() and CONTRACT.is_file(), "recovery-objective append authority missing")
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
@@ -40,9 +51,12 @@ def main() -> int:
 
     writer = load_writer()
     require(callable(getattr(writer, "write_registry_transactionally", None)), "transactional registry writer missing")
+    require(callable(getattr(writer, "require_actual_cli_authorities", None)), "recovery-objective CLI authority guard missing")
+    writer.require_actual_cli_authorities()
 
     with tempfile.TemporaryDirectory(prefix="memory-os-objective-append-rollback-") as tmp:
-        registry = Path(tmp) / "recovery-objectives-registry.v1.json"
+        root = Path(tmp)
+        registry = root / "recovery-objectives-registry.v1.json"
         original = b'{"sentinel":"before"}\n'
         registry.write_bytes(original)
 
@@ -66,9 +80,37 @@ def main() -> int:
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validate
 
+        outside_file = root / "outside-authority.json"
+        outside_file.write_text("{}\n", encoding="utf-8")
+        outside_dir = root / "outside-approvals"
+        outside_dir.mkdir()
+        for attribute in ("CONTRACT", "REGISTRY", "LOCK"):
+            original_authority = getattr(writer, attribute)
+            try:
+                setattr(writer, attribute, outside_file)
+                expect_rejected(
+                    f"recovery objective CLI {attribute} substitution",
+                    writer.require_actual_cli_authorities,
+                    writer.Fail,
+                )
+            finally:
+                setattr(writer, attribute, original_authority)
+        original_approval_dir = writer.APPROVAL_DIR
+        try:
+            writer.APPROVAL_DIR = outside_dir
+            expect_rejected(
+                "recovery objective CLI APPROVAL_DIR substitution",
+                writer.require_actual_cli_authorities,
+                writer.Fail,
+            )
+        finally:
+            writer.APPROVAL_DIR = original_approval_dir
+        writer.require_actual_cli_authorities()
+
     print("Memory OS recovery objectives append rollback negative PASS")
     print("post-append canonical registry revalidation: enforced")
     print("failed append registry rollback: byte-for-byte")
+    print("CLI contract/registry/approval-directory/lock substitution accepted: false")
     print("objective created: false")
     print("objective value chosen/defaulted: false")
     print("production evidence: false")
