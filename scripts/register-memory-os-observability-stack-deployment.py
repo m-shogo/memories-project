@@ -16,11 +16,17 @@ from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-LOCK = ROOT / "contracts/operations/.observability-stack-deployment.lock"
+CANONICAL_ROOT = ROOT
+CANONICAL_CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+CANONICAL_LOCK = ROOT / "contracts/operations/.observability-stack-deployment.lock"
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+GEN_WRITER = CANONICAL_GEN_WRITER
+LOCK = CANONICAL_LOCK
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 STACK_ID = re.compile(r"^obsstack_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -45,6 +51,41 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
+def require_actual_cli_authorities() -> None:
+    """Pin the real append path while preserving helper-level fixture tests."""
+    require(ROOT == CANONICAL_ROOT, "observability stack writer root authority must remain canonical")
+    authorities = (
+        (CONTRACT, CANONICAL_CONTRACT, "observability stack contract"),
+        (REGISTRY, CANONICAL_REGISTRY, "observability stack registry"),
+        (GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry"),
+        (GEN_WRITER, CANONICAL_GEN_WRITER, "environment generation writer"),
+    )
+    for path, canonical, field in authorities:
+        require(path == canonical, f"{field} must remain canonical for CLI registration")
+        canonical_repo_file(path, field)
+    require(LOCK == CANONICAL_LOCK, "observability stack lock authority must remain canonical for CLI registration")
+    try:
+        relative_parent = LOCK.parent.relative_to(ROOT)
+        resolved_parent = LOCK.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("observability stack lock parent missing or escapes repository") from exc
+    require(
+        relative_parent == resolved_parent and LOCK.parent.is_dir(),
+        "observability stack lock parent must resolve to the canonical repository directory",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -314,6 +355,7 @@ def main() -> int:
     else:
         raise Fail("input record must be outside repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
+    require_actual_cli_authorities()
     record = load(record_path)
     validate_record(record, args.confirm)
 
