@@ -5,11 +5,13 @@ on:
     branches:
       - so
     paths:
+      - ".github/workflows/operability-evidence-ownership.yml"
       - "contracts/operations/requests/operability-evidence-ownership.v1.json"
       - "contracts/operations/operability-evidence-ownership-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-operability-evidence-ownership.py"
       - "scripts/reconcile-memory-os-operability-evidence-ownership.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -26,11 +28,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact ownership authority source
+        run: |
+          set -euo pipefail
+          test -n "${{ github.sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Validate ownership and reconcile readiness
         id: ownership
         run: |
@@ -41,6 +50,7 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-operability-evidence-ownership.py \
             scripts/reconcile-memory-os-operability-evidence-ownership.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-operability-evidence-ownership.py >> "$log" 2>&1 || code=$?
@@ -55,6 +65,11 @@ jobs:
         if: steps.ownership.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Ownership authority source advanced after validation; refusing stale derived authority." >&2
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/operability-evidence-ownership-diagnostic.last.json 2>/dev/null || true
           git add contracts/operations/operability-evidence-ownership-contract.v1.json
           git add -u docs/fixtures/memory-os-operability/operability-evidence-ownership-diagnostic.last.json 2>/dev/null || true
@@ -63,12 +78,12 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(ops): register evidence ownership validator"
-            for attempt in 1 2 3 4; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Ownership authority source advanced after derived authority capture; refusing stale write." >&2
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Record ownership diagnostic
         if: steps.ownership.outputs.exit_code != '0'
@@ -77,7 +92,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Ownership authority source advanced after failed validation; refusing stale diagnostic." >&2
+            exit 75
+          fi
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -85,6 +103,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'operability-evidence-ownership',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['OWNERSHIP_EXIT_CODE']),
               'output': text[-12000:],
@@ -100,12 +119,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
+            git diff --cached --check
             git commit -m "test(ops): record evidence ownership diagnostic"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Ownership authority source advanced after diagnostic capture; refusing stale diagnostic." >&2
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Enforce ownership validation
         run: test "${{ steps.ownership.outputs.exit_code }}" = "0"
