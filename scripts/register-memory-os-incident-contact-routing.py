@@ -16,12 +16,19 @@ from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
-OBS_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
-OBS_WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-LOCK = ROOT / "contracts/operations/.incident-contact-routing.lock"
+CANONICAL_ROOT = ROOT
+CANONICAL_CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
+CANONICAL_OBS_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
+CANONICAL_OBS_WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_LOCK = ROOT / "contracts/operations/.incident-contact-routing.lock"
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+OBS_REGISTRY = CANONICAL_OBS_REGISTRY
+OBS_WRITER = CANONICAL_OBS_WRITER
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+LOCK = CANONICAL_LOCK
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 ROUTING_ID = re.compile(r"^icr_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -42,6 +49,42 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
+def require_actual_cli_authorities() -> None:
+    """Pin the real append path while preserving helper-level fixture tests."""
+    require(ROOT == CANONICAL_ROOT, "incident contact routing writer root authority must remain canonical")
+    authorities = (
+        (CONTRACT, CANONICAL_CONTRACT, "incident contact routing contract"),
+        (REGISTRY, CANONICAL_REGISTRY, "incident contact routing registry"),
+        (OBS_REGISTRY, CANONICAL_OBS_REGISTRY, "observability stack registry"),
+        (OBS_WRITER, CANONICAL_OBS_WRITER, "observability stack writer"),
+        (GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry"),
+    )
+    for path, canonical, field in authorities:
+        require(path == canonical, f"{field} must remain canonical for CLI registration")
+        canonical_repo_file(path, field)
+    require(LOCK == CANONICAL_LOCK, "incident contact routing lock authority must remain canonical for CLI registration")
+    try:
+        relative_parent = LOCK.parent.relative_to(ROOT)
+        resolved_parent = LOCK.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("incident contact routing lock parent missing or escapes repository") from exc
+    require(
+        relative_parent == resolved_parent and LOCK.parent.is_dir(),
+        "incident contact routing lock parent must resolve to the canonical repository directory",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -359,6 +402,7 @@ def main() -> int:
     else:
         raise Fail("input record must be outside repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
+    require_actual_cli_authorities()
     record = load(record_path)
     validate_record(record, args.confirm)
 
