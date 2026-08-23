@@ -1,0 +1,69 @@
+name: Sustained Soak Independent Review Writer Authority
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/sustained-soak-independent-review-writer-authority.yml"
+      - "contracts/operations/sustained-soak-independent-review-contract.v1.json"
+      - "contracts/operations/sustained-soak-independent-review-registry.v1.json"
+      - "scripts/register-memory-os-sustained-soak-independent-review.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/sustained-soak-independent-review-writer-authority.yml"
+      - "contracts/operations/sustained-soak-independent-review-contract.v1.json"
+      - "contracts/operations/sustained-soak-independent-review-registry.v1.json"
+      - "scripts/register-memory-os-sustained-soak-independent-review.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sustained-soak-independent-review-writer-authority-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Require exact clean source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          fi
+
+      - name: Validate writer authority boundary
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-sustained-soak-independent-review.py \
+            scripts/validate-memory-os-sustained-soak-independent-review.py \
+            scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py
+          python scripts/validate-memory-os-sustained-soak-independent-review.py
+          python scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py
+          git diff --check
+          test -z "$(git status --porcelain)"
