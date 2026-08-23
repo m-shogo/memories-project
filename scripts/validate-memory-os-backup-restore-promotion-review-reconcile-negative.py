@@ -9,6 +9,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
+WORKFLOW = ROOT / ".github/workflows/backup-restore-promotion-review.yml"
 CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract.v1.json"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
 
@@ -65,6 +66,25 @@ def expect_authority_substitution_rejected(
         setattr(reconciler, attribute, original)
 
 
+def validate_atomic_diagnostic_publication() -> None:
+    require(WORKFLOW.is_file(), "promotion review workflow missing")
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in text]
+    require(not missing, f"promotion review diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in text,
+        "promotion review diagnostic publication regressed to direct write_text",
+    )
+
+
 def prove_atomic_write_failure(reconciler: Any, original_contract: bytes, original_registry: bytes) -> None:
     original_replace = reconciler.os.replace
 
@@ -95,6 +115,7 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
     original_registry = CANONICAL_REGISTRY.read_bytes()
+    validate_atomic_diagnostic_publication()
 
     expect_authority_substitution_rejected(reconciler, "CONTRACT", reconciler.REGISTRY, "promotion review contract substitution", "promotion review contract authority drift", original_contract, original_registry)
     expect_authority_substitution_rejected(reconciler, "REGISTRY", reconciler.GEN_REGISTRY, "promotion review registry substitution", "promotion review registry authority drift", original_contract, original_registry)
@@ -153,6 +174,7 @@ def main() -> int:
     print("operability validator executable substitution accepted: false")
     print("production operability status substitution accepted: false")
     print("non-atomic promotion-review authority write accepted: false")
+    print("non-atomic promotion-review diagnostic write accepted: false")
     print("promotion validator ran before aggregate operability validator: true")
     print("aggregate operability rejection rolled back promotion registry/contract: true")
     print("automatic human promotion authorization created: false")
