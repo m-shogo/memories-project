@@ -1,0 +1,53 @@
+name: Backup Restore Admission Chain Permission Negative
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-admission-chain.yml"
+      - ".github/workflows/backup-restore-admission-chain-permission-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-admission-chain.yml"
+      - ".github/workflows/backup-restore-admission-chain-permission-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py"
+
+permissions:
+  contents: read
+
+jobs:
+  permission-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Require exact clean source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          fi
+
+      - name: Enforce admission-chain permission boundary
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py
+          python scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py
+          test -z "$(git status --porcelain)"
