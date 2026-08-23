@@ -54,20 +54,69 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: incident-contact-routing-admission-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean pull request authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Validate contact routing admission read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/register-memory-os-observability-stack-deployment.py \
+            scripts/register-memory-os-incident-contact-routing.py \
+            scripts/validate-memory-os-incident-contact-routing.py \
+            scripts/reconcile-memory-os-incident-contact-routing.py \
+            scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py \
+            scripts/validate-memory-os-incident-contact-routing-generation-authority-negative.py \
+            scripts/validate-memory-os-incident-response.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-incident-contact-routing-generation-authority-negative.py
+          python scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py
+          python scripts/reconcile-memory-os-incident-contact-routing.py
+          python scripts/validate-memory-os-incident-response.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/incident-contact-routing-admission-contract.v1.json \
+            contracts/operations/production-operability-status.json \
+            docs/fixtures/memory-os-operability/incident-contact-routing-diagnostic.last.json
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -75,10 +124,10 @@ jobs:
       - name: Confirm exact clean authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          test -n "$expected"
-          test "$(git rev-parse HEAD)" = "$expected"
+          test -n "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
       - name: Reconcile and validate contact routing admission
         id: routing
         run: |
@@ -98,35 +147,19 @@ jobs:
             scripts/validate-memory-os-incident-response.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-incident-contact-routing-generation-authority-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/reconcile-memory-os-incident-contact-routing.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-incident-response.py >> "$log" 2>&1 || code=$?
-            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
-          fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-incident-contact-routing-generation-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-incident-contact-routing.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-incident-response.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request' && steps.routing.outputs.exit_code == '0'
-        run: |
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/incident-contact-routing-admission-contract.v1.json \
-            contracts/operations/production-operability-status.json \
-            docs/fixtures/memory-os-operability/incident-contact-routing-diagnostic.last.json
       - name: Commit bounded contact-routing authority
-        if: github.event_name != 'pull_request' && steps.routing.outputs.exit_code == '0'
+        if: steps.routing.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
+          source_sha="$SOURCE_SHA"
           git rm -f docs/fixtures/memory-os-operability/incident-contact-routing-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/incident-contact-routing-admission-contract.v1.json \
@@ -145,22 +178,25 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && steps.routing.outputs.exit_code != '0'
+        if: steps.routing.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           ROUTING_EXIT_CODE: ${{ steps.routing.outputs.exit_code }}
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
+          git fetch origin so
+          test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+            echo "Contact-routing diagnostic source is stale: validated $SOURCE_SHA but so is $(git rev-parse origin/so)" >&2
+            exit 75
+          }
           python - <<'PY'
-          import json, os, subprocess
+          import json, os, tempfile
           from pathlib import Path
           text = Path('/tmp/incident-contact-routing.log').read_text(encoding='utf-8', errors='replace')
-          source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'incident-contact-routing-admission',
               'result': 'FAIL',
-              'sourceCommitSha': source_sha,
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'exitCode': int(os.environ['ROUTING_EXIT_CODE']),
               'output': text[-12000:],
               'containsSecrets': False,
@@ -170,18 +206,30 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/incident-contact-routing-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+          try:
+              with os.fdopen(fd, 'wb') as handle:
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(tmp_name, path)
+          finally:
+              try:
+                  os.unlink(tmp_name)
+              except FileNotFoundError:
+                  pass
           PY
           git add docs/fixtures/memory-os-operability/incident-contact-routing-diagnostic.last.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(incident): record contact routing diagnostic"
-            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-            if [[ "$remote_sha" != "$source_sha" ]]; then
-              echo "Contact-routing diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "Contact-routing diagnostic source advanced before publication; refusing stale diagnostic." >&2
               exit 75
-            fi
+            }
             git push origin HEAD:so
           fi
       - name: Enforce validation
