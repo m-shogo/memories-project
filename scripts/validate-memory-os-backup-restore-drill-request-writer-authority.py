@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +56,41 @@ def require_module_authorities(module, expected: dict[str, Path], prefix: str) -
         canonical_repo_file(actual, f"{prefix} {name}")
 
 
+def require_cli_authority_boundary(writer) -> None:
+    main_source = inspect.getsource(writer.main)
+    guard_index = main_source.find("require_cli_authorities()")
+    parser_index = main_source.find("argparse.ArgumentParser")
+    require(guard_index >= 0, "drill request CLI does not enforce canonical authority guard")
+    require(parser_index >= 0 and guard_index < parser_index, "drill request CLI authority guard must run before argument parsing")
+
+    substitutions = {
+        "CONTRACT": EXPECTED_STATUS,
+        "REGISTRY": EXPECTED_STATUS,
+        "GEN_REGISTRY": EXPECTED_STATUS,
+        "OBJECTIVES_REGISTRY": EXPECTED_STATUS,
+        "ELIGIBILITY_HELPER": VALIDATOR,
+        "OBJECTIVES_WRITER": VALIDATOR,
+        "LOCK": EXPECTED_CONTRACT,
+    }
+    for name, alternate in substitutions.items():
+        original = getattr(writer, name)
+        setattr(writer, name, alternate)
+        try:
+            try:
+                writer.require_cli_authorities()
+            except writer.Fail:
+                pass
+            else:
+                raise Fail(f"drill request CLI accepted substituted authority: {name}")
+        finally:
+            setattr(writer, name, original)
+
+    try:
+        writer.require_cli_authorities()
+    except writer.Fail as exc:
+        raise Fail(f"canonical drill request CLI authority rejected: {exc}") from exc
+
+
 def require_atomic_diagnostic_publication() -> None:
     canonical_repo_file(WORKFLOW, "drill request workflow")
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -93,6 +129,7 @@ def main() -> int:
     writer_lock = getattr(writer, "LOCK", None)
     require(writer_lock == EXPECTED_LOCK, "drill request writer authority drift: LOCK")
     require(writer_lock.parent == EXPECTED_REGISTRY.parent, "drill request writer lock must share registry authority directory")
+    require_cli_authority_boundary(writer)
 
     require_module_authorities(
         reconciler,
@@ -118,6 +155,7 @@ def main() -> int:
 
     require_atomic_diagnostic_publication()
     print("PASS: drill request writer and reconciler executable/data/lock authorities are canonical")
+    print("PASS: drill request CLI rejects substituted data/helper/lock authorities before parsing input")
     print("PASS: canonical drill request append-only registry including approval evidence digests is valid")
     print("PASS: drill request failure diagnostic publication is crash-safe")
     return 0
