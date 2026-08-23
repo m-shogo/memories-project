@@ -76,27 +76,86 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: migration-production-shaped-admission-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Confirm exact clean pull request authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_HEAD_SHA"
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile and validate production-shaped migration admission read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/memory_os_migration_production_admission_ledger.py \
+            scripts/register-memory-os-migration-production-shaped-admission.py \
+            scripts/validate-memory-os-migration-production-shaped-admission.py \
+            scripts/validate-memory-os-migration-production-shaped-admission-negative.py \
+            scripts/validate-memory-os-migration-production-shaped-admission-generation-authority-negative.py \
+            scripts/validate-memory-os-migration-production-admission-ledger-authority-negative.py \
+            scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py \
+            scripts/reconcile-memory-os-migration-production-shaped-admission.py \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/register-memory-os-migration-rehearsal-evidence.py \
+            scripts/validate-memory-os-migration-evidence-registry.py \
+            scripts/validate-memory-os-release-baseline-registry.py \
+            scripts/validate-memory-os-migration-lifecycle.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-migration-production-shaped-admission-generation-authority-negative.py
+          python scripts/validate-memory-os-migration-production-admission-ledger-authority-negative.py
+          python scripts/validate-memory-os-migration-production-shaped-admission-negative.py
+          python scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py
+          python scripts/reconcile-memory-os-migration-production-shaped-admission.py
+          python scripts/validate-memory-os-migration-lifecycle.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/migration-production-shaped-admission-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - name: Confirm exact clean authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          test -n "$expected"
-          test "$(git rev-parse HEAD)" = "$expected"
+          test -n "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
       - uses: actions/setup-python@v5
         with:
@@ -152,15 +211,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Require reconciled authority in pull requests
-        if: github.event_name == 'pull_request' && steps.admission.outputs.exit_code == '0'
-        run: |
-          git diff --exit-code -- \
-            contracts/operations/migration-production-shaped-admission-contract.v1.json \
-            contracts/operations/migration-lifecycle-contract.v1.json \
-            contracts/operations/production-operability-status.json
       - name: Commit bounded migration admission authority
-        if: github.event_name != 'pull_request' && steps.admission.outputs.exit_code == '0'
+        if: steps.admission.outputs.exit_code == '0'
         env:
           SOURCE_COMMIT_SHA: ${{ steps.admission.outputs.source_sha }}
         run: |
@@ -185,7 +237,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && steps.admission.outputs.exit_code != '0'
+        if: steps.admission.outputs.exit_code != '0'
         env:
           ADMISSION_EXIT_CODE: ${{ steps.admission.outputs.exit_code }}
           SOURCE_COMMIT_SHA: ${{ steps.admission.outputs.source_sha }}
@@ -198,7 +250,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os
+          import json, os, tempfile
           from pathlib import Path
           text = Path('/tmp/migration-production-shaped-admission.log').read_text(encoding='utf-8', errors='replace')
           value = {
@@ -215,8 +267,26 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/migration-production-shaped-admission-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          fd, temp_name = tempfile.mkstemp(prefix='.migration-production-shaped-admission-diagnostic.', suffix='.tmp', dir=path.parent)
+          try:
+              with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                  json.dump(value, handle, indent=2)
+                  handle.write('\n')
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_name, path)
+          finally:
+              try:
+                  os.unlink(temp_name)
+              except FileNotFoundError:
+                  pass
           PY
+          git fetch origin so
+          remote_sha="$(git rev-parse origin/so)"
+          if [[ "$remote_sha" != "$SOURCE_COMMIT_SHA" ]]; then
+            echo "source HEAD advanced before diagnostic publication; refusing stale migration diagnostic write" >&2
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/migration-production-shaped-admission-diagnostic.last.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
