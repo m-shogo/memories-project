@@ -105,7 +105,82 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate drill planning authority read-only
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py \
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-request-digest-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-objective-authority-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-request-load-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py \
+            scripts/reconcile-memory-os-backup-restore-drill-request.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-binding.py \
+            scripts/validate-memory-os-backup-restore-generation-binding-negative.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-production-equivalent-environment-generation.py
+          python scripts/validate-memory-os-recovery-objectives.py
+          python scripts/validate-memory-os-recovery-objectives-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py
+          python scripts/validate-memory-os-backup-restore-drill-request-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-digest-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-objective-authority-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py
+          python scripts/reconcile-memory-os-backup-restore-drill-request.py
+          python scripts/validate-memory-os-backup-restore-drill-request.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+          python scripts/validate-memory-os-backup-restore-generation-binding.py
+          python scripts/validate-memory-os-backup-restore-generation-binding-negative.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- \
+            contracts/operations/backup-restore-drill-request-contract.v1.json \
+            contracts/operations/backup-restore-drill-request-registry.v1.json \
+            contracts/operations/production-operability-status.json
+
   validate:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
