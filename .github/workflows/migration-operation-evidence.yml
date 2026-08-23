@@ -38,21 +38,98 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: migration-operation-evidence-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact clean PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+
+      - name: Compile evidence tooling
+        run: |
+          python -m py_compile \
+            scripts/migration_operation_evidence_lib.py \
+            scripts/create-memory-os-migration-operation-evidence.py \
+            scripts/validate-memory-os-migration-operation-evidence.py \
+            scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py \
+            scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py \
+            scripts/reconcile-memory-os-migration-operation-evidence.py \
+            scripts/validate-memory-os-migration-lifecycle.py \
+            scripts/validate-memory-os-operability.py
+
+      - name: Reconcile authority read-only
+        run: |
+          python scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py
+          python scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py
+          python scripts/reconcile-memory-os-migration-operation-evidence.py
+          python scripts/reconcile-memory-os-migration-operation-evidence.py --check
+
+      - name: Prove exclusive-create append-only behavior
+        run: |
+          ledger="$(mktemp -d)"
+          record="docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json"
+          python scripts/create-memory-os-migration-operation-evidence.py \
+            "$record" --ledger-dir "$ledger"
+          test "$(find "$ledger" -type f -name 'mgr_*.json' | wc -l | tr -d ' ')" = "1"
+          if python scripts/create-memory-os-migration-operation-evidence.py \
+            "$record" --ledger-dir "$ledger"; then
+            echo "duplicate migrationRunId unexpectedly overwrote evidence" >&2
+            exit 1
+          fi
+          test "$(find "$ledger" -type f -name 'mgr_*.json' | wc -l | tr -d ' ')" = "1"
+
+      - name: Validate ledger and authority
+        run: |
+          python scripts/validate-memory-os-migration-operation-evidence.py
+          python scripts/validate-memory-os-migration-lifecycle.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Reject auto-healed authority drift
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/migration-operation-evidence-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -61,7 +138,6 @@ jobs:
           python-version: "3.12"
 
       - name: Capture exact migration operation source
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           expected="${{ github.sha }}"
@@ -109,18 +185,7 @@ jobs:
           python scripts/validate-memory-os-migration-lifecycle.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Reject auto-healed authority drift on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/migration-operation-evidence-contract.v1.json \
-            contracts/operations/migration-lifecycle-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit reconciled authority on so
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
