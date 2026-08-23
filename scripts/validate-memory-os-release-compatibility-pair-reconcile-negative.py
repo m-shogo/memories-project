@@ -91,6 +91,30 @@ def validate_gap_projection(reconciler: ModuleType) -> None:
             "unsatisfied release/pair count gaps were removed")
 
 
+def validate_evidence_ordering(reconciler: ModuleType) -> None:
+    prefix = reconciler.EVIDENCE_PREFIX
+    replacement = f"{prefix} replacement"
+    values = ["before", f"{prefix} stale", "after"]
+    reconciler.replace_prefixed_once(values, prefix, replacement)
+    require(values == ["before", replacement, "after"],
+            "release-pair evidence update moved its deterministic authority entry")
+
+    absent = ["before", "after"]
+    reconciler.replace_prefixed_once(absent, prefix, replacement)
+    require(absent == ["before", "after", replacement],
+            "release-pair evidence was not appended when its authority entry was absent")
+
+    duplicates = [f"{prefix} first", "middle", f"{prefix} second"]
+    try:
+        reconciler.replace_prefixed_once(duplicates, prefix, replacement)
+    except reconciler.Fail:
+        pass
+    else:
+        raise Fail("release-pair evidence accepted duplicate deterministic authority prefixes")
+    require(duplicates == [f"{prefix} first", "middle", f"{prefix} second"],
+            "duplicate-prefix rejection mutated release-pair evidence ordering")
+
+
 def validate_canonical_validator_chain(reconciler: ModuleType) -> None:
     expected = [
         reconciler.VALIDATOR,
@@ -121,6 +145,7 @@ def validate_canonical_validator_chain(reconciler: ModuleType) -> None:
 def main() -> int:
     reconciler = load_module()
     validate_gap_projection(reconciler)
+    validate_evidence_ordering(reconciler)
     validate_canonical_validator_chain(reconciler)
     originals = {path: path.read_bytes() for path in (CONTRACT, GAPS, STATUS)}
 
@@ -156,7 +181,7 @@ def main() -> int:
     for path, payload in originals.items():
         require(path.read_bytes() == payload, f"partial release-pair authority write survived rollback: {path.relative_to(ROOT)}")
 
-    print("PASS: release compatibility pair gap projection is monotonic and aggregate reconcile rollback is transactional")
+    print("PASS: release compatibility pair gap projection/order is deterministic and aggregate reconcile rollback is transactional")
     return 0
 
 
