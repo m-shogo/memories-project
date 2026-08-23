@@ -4,19 +4,31 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/production-equivalent-dependency-contract.v1.json"
-LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-DEPENDENCY_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-dependencies.py"
-LOAD_INDEX_VALIDATOR = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/production-equivalent-dependency-contract.v1.json"
+CANONICAL_LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_DEPENDENCY_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-dependencies.py"
+CANONICAL_LOAD_INDEX_VALIDATOR = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_WORKFLOW_PATH = ROOT / ".github/workflows/production-equivalent-dependency-contract.yml"
+
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+LOAD_PATH = CANONICAL_LOAD_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+DEPENDENCY_VALIDATOR = CANONICAL_DEPENDENCY_VALIDATOR
+LOAD_INDEX_VALIDATOR = CANONICAL_LOAD_INDEX_VALIDATOR
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
+WORKFLOW_PATH = CANONICAL_WORKFLOW_PATH
 
 FOUNDATION_REFS = (
     "contracts/operations/production-equivalent-dependency-contract.v1.json",
@@ -35,7 +47,35 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_runtime_authority(candidate: Path, expected: Path, label: str) -> None:
+    root = ROOT.resolve(strict=True)
+    require(candidate == expected, f"{label} authority drift: expected {expected.relative_to(ROOT)}, got {candidate}")
+    require(not candidate.is_symlink(), f"{label} authority must not be a symlink")
+    try:
+        resolved = candidate.resolve(strict=True)
+        expected_resolved = expected.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise Fail(f"{label} authority missing or escapes repository: {candidate}") from exc
+    require(resolved == expected_resolved, f"{label} authority drift after resolution")
+
+
+def enforce_runtime_authorities() -> None:
+    for candidate, expected, label in (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "dependency contract"),
+        (LOAD_PATH, CANONICAL_LOAD_PATH, "load contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
+        (DEPENDENCY_VALIDATOR, CANONICAL_DEPENDENCY_VALIDATOR, "dependency validator"),
+        (LOAD_INDEX_VALIDATOR, CANONICAL_LOAD_INDEX_VALIDATOR, "load index validator"),
+        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+        (WORKFLOW_PATH, CANONICAL_WORKFLOW_PATH, "foundation workflow"),
+    ):
+        require_runtime_authority(candidate, expected, label)
+
+
 def load(path: Path) -> dict[str, Any]:
+    enforce_runtime_authorities()
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
@@ -46,8 +86,19 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+def atomic_write(path: Path, value: dict[str, Any] | bytes) -> None:
+    data = value if isinstance(value, bytes) else (json.dumps(value, indent=2) + "\n").encode("utf-8")
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
 
 
 def append_unique(values: list[Any], value: Any) -> None:
@@ -56,7 +107,7 @@ def append_unique(values: list[Any], value: Any) -> None:
 
 
 def run_validator(path: Path, label: str) -> None:
-    require(path.is_file(), f"canonical {label} validator missing")
+    enforce_runtime_authorities()
     completed = subprocess.run(
         [sys.executable, str(path)],
         cwd=ROOT,
@@ -72,6 +123,7 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def validate_current_authority() -> None:
+    enforce_runtime_authorities()
     for path, label in (
         (DEPENDENCY_VALIDATOR, "production-equivalent dependency"),
         (LOAD_INDEX_VALIDATOR, "load evidence index"),
@@ -85,21 +137,23 @@ def write_and_validate_transactionally(
     load_contract: dict[str, Any],
     status: dict[str, Any],
 ) -> None:
+    enforce_runtime_authorities()
     originals = {
         LOAD_PATH: LOAD_PATH.read_bytes(),
         STATUS_PATH: STATUS_PATH.read_bytes(),
     }
     try:
-        write(LOAD_PATH, load_contract)
-        write(STATUS_PATH, status)
+        atomic_write(LOAD_PATH, load_contract)
+        atomic_write(STATUS_PATH, status)
         validate_current_authority()
     except Exception:
         for path, data in originals.items():
-            path.write_bytes(data)
+            atomic_write(path, data)
         raise
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     admission = load(CONTRACT_PATH)
     readiness = admission.get("readiness")
     require(isinstance(readiness, dict), "admission readiness missing")
@@ -144,7 +198,12 @@ def main() -> int:
     require(status.get("productionDecision") == "NO_GO", "production decision drift")
     require(load_area.get("status") == "PARTIAL", "OPS-P0-006 status drift")
 
-    write_and_validate_transactionally(load_contract, status)
+    proposed_load = (json.dumps(load_contract, indent=2) + "\n").encode("utf-8")
+    proposed_status = (json.dumps(status, indent=2) + "\n").encode("utf-8")
+    if LOAD_PATH.read_bytes() == proposed_load and STATUS_PATH.read_bytes() == proposed_status:
+        validate_current_authority()
+    else:
+        write_and_validate_transactionally(load_contract, status)
     print("Memory OS production-equivalent admission foundation reconciled")
     print("environment provisioned: false")
     print("production-equivalent dependencies: false")
