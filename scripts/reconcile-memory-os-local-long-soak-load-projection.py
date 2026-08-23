@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +76,22 @@ def load(path: Path) -> dict[str, Any]:
         raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
 
 
 def assert_local_only_boundary(row: dict[str, Any]) -> None:
@@ -203,10 +221,10 @@ def main() -> int:
     load_contract["externalExecutedScenarios"] = rebuilt
     original_load_bytes = LOAD_PATH.read_bytes()
     try:
-        LOAD_PATH.write_text(json.dumps(load_contract, indent=2) + "\n", encoding="utf-8")
+        atomic_replace_bytes(LOAD_PATH, (json.dumps(load_contract, indent=2) + "\n").encode("utf-8"))
         validate_projected_load_authority()
     except BaseException:
-        LOAD_PATH.write_bytes(original_load_bytes)
+        atomic_replace_bytes(LOAD_PATH, original_load_bytes)
         raise
     print(f"{SCENARIO_ID} load projection reconciled: {'registered' if first_run else 'withheld'}")
     print(f"legacy {LEGACY_ALIAS_ID} alias present after reconcile: false")
