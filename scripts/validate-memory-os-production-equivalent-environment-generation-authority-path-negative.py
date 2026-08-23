@@ -48,6 +48,7 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_generation_validator_authority_path_negative")
     require(writer.canonical_repo_file(writer.ENV_VALIDATOR, "environment record semantic validator") == writer.ENV_VALIDATOR, "canonical environment validator rejected")
     writer.require_canonical_runtime_authorities()
+    writer.require_actual_cli_authorities()
 
     original_root = validator.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-external-") as external_tmp:
@@ -132,12 +133,35 @@ def main() -> int:
             escaped_authority.unlink(missing_ok=True)
             loop_authority.unlink(missing_ok=True)
 
+        canonical_cli_authorities = (
+            ("CONTRACT", writer.CANONICAL_CONTRACT),
+            ("REGISTRY", writer.CANONICAL_REGISTRY),
+            ("ENV_SCHEMA", writer.CANONICAL_ENV_SCHEMA),
+            ("GEN_SCHEMA", writer.CANONICAL_GEN_SCHEMA),
+            ("ENV_VALIDATOR", writer.CANONICAL_ENV_VALIDATOR),
+            ("LOCK", writer.CANONICAL_LOCK),
+        )
+        for attribute, canonical in canonical_cli_authorities:
+            original = getattr(writer, attribute)
+            try:
+                setattr(writer, attribute, outside_authority)
+                expect_rejected(
+                    f"generation writer CLI {attribute} substitution",
+                    writer.require_actual_cli_authorities,
+                    writer.Fail,
+                )
+            finally:
+                setattr(writer, attribute, original)
+            require(getattr(writer, attribute) == canonical, f"generation writer CLI {attribute} canonical authority not restored")
+        writer.require_actual_cli_authorities()
+
     print("Memory OS production-equivalent generation authority-path negative suite PASS")
     print("absolute authority refs accepted: false")
     print("parent-traversal authority refs accepted: false")
     print("repo-local symlink to external authority accepted: false")
     print("writer invalid UTF-8/I/O accepted: false")
     print("writer executable semantic validator escape accepted: false")
+    print("writer CLI data/executable/lock substitution accepted: false")
     print("canonical generation contract/registry/schema containment: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
