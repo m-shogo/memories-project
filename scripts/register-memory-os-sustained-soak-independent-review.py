@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
 CANONICAL_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
+CANONICAL_RESULT_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
 CANONICAL_LOCK_PATH = ROOT / "contracts/operations/.sustained-soak-independent-review.lock"
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 REGISTRY = CANONICAL_REGISTRY
@@ -79,6 +80,7 @@ def load_validator() -> Any:
     spec.loader.exec_module(module)
     require(module.CONTRACT.resolve() == CANONICAL_CONTRACT_PATH.resolve(), "sustained-soak review validator contract authority drift")
     require(module.REGISTRY.resolve() == CANONICAL_REGISTRY.resolve(), "sustained-soak review validator registry authority drift")
+    require(module.RESULT_VALIDATOR.resolve() == CANONICAL_RESULT_VALIDATOR_PATH.resolve(), "sustained-soak review per-run result validator authority drift")
     return module
 
 
