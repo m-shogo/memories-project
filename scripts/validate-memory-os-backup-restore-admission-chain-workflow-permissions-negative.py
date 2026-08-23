@@ -88,6 +88,10 @@ def main() -> int:
             "stale diagnostic refusal removed",
             replace_all(canonical, "refusing stale failure diagnostic", "allowing stale failure diagnostic", "stale diagnostic refusal"),
         ),
+        (
+            "atomic diagnostic replacement removed",
+            replace_once(canonical, "os.replace(tmp_name, path)", "path.write_text(json.dumps(value, indent=2) + '\\n', encoding='utf-8')", "atomic diagnostic replacement"),
+        ),
     )
 
     for label, mutated in cases:
@@ -97,6 +101,7 @@ def main() -> int:
     require(module.exact_workflow() == canonical, "negative suite mutated canonical workflow authority")
     print("Backup/restore admission-chain workflow permission negative PASS")
     print(f"forbidden workflow mutations rejected: {len(cases)}")
+    print("crash-safe failure diagnostic publication required: true")
     print("production evidence created: false")
     print("production traffic changed: false")
     print("production decision: NO_GO")
