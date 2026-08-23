@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
+WORKFLOW = ROOT / ".github/workflows/backup-restore-drill-preflight.yml"
 EXPECTED_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 EXPECTED_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 EXPECTED_OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
@@ -55,6 +56,25 @@ def require_module_authority(module: object, name: str, expected: Path, field: s
     canonical_repo_file(actual, f"{field} {name}")
 
 
+def require_atomic_diagnostic_publication() -> None:
+    canonical_repo_file(WORKFLOW, "restore drill preflight workflow")
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in text]
+    require(not missing, f"restore drill preflight diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in text,
+        "restore drill preflight diagnostic publication regressed to direct write_text",
+    )
+
+
 def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_authority_validator", "restore drill preflight validator")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_authority_reconciler", "restore drill preflight reconciler")
@@ -80,9 +100,11 @@ def main() -> int:
     for name, expected in expected_reconciler_authorities.items():
         require_module_authority(reconciler, name, expected, "restore drill preflight reconciler")
 
+    require_atomic_diagnostic_publication()
     print("PASS: restore drill preflight data/executable authorities are canonical")
     print(f"validator executable authorities checked: {len(expected_validator_authorities)}")
     print(f"reconciler data/executable authorities checked: {len(expected_reconciler_authorities)}")
+    print("crash-safe failure diagnostic publication required: true")
     print("production evidence created: false")
     print("production decision changed: false")
     return 0
