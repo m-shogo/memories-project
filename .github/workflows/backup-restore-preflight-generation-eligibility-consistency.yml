@@ -52,20 +52,61 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: backup-restore-preflight-generation-eligibility-consistency-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact clean consistency PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$expected"
+      - name: Validate strict generation eligibility boundary read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-production-equivalent-environment-eligibility.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
+            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py \
+            scripts/request-memory-os-backup-restore-drill.py
+          python scripts/validate-memory-os-production-equivalent-environment-eligibility.py
+          python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
+          python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
+          test -z "$(git status --porcelain)"
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -73,7 +114,7 @@ jobs:
       - name: Capture exact consistency authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.sha }}"
           test -n "$expected"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$expected"
@@ -102,7 +143,7 @@ jobs:
           cat "$log"
           exit 0
       - name: Remove stale consistency diagnostic
-        if: steps.validation.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validation.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -123,7 +164,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe consistency diagnostic
-        if: steps.validation.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validation.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
