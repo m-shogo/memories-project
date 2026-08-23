@@ -142,12 +142,23 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
     original_status = reconciler.STATUS
     original_run = reconciler.subprocess.run
     original_enforcer = reconciler.enforce_runtime_authorities
-    call_count = 0
+    observed_commands: list[list[str]] = []
+
+    expected_paths = [
+        str(reconciler.load_validator_module().GEN_VALIDATOR),
+        str(reconciler.load_validator_module().OBJECTIVE_VALIDATOR),
+        str(reconciler.load_validator_module().DRILL_VALIDATOR),
+        str(reconciler.VALIDATOR_MODULE),
+        str(reconciler.OPERABILITY_VALIDATOR),
+    ]
 
     def fail_only_aggregate_post_reconcile(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count <= 4:
+        command = [str(item) for item in (args[0] if args else [])]
+        observed_commands.append(command)
+        call_index = len(observed_commands) - 1
+        require(call_index < len(expected_paths), "unexpected extra preflight validator invocation")
+        require(command[-1] == expected_paths[call_index], f"preflight validator order drift at call {call_index + 1}: {command}")
+        if call_index < 4:
             return SimpleNamespace(returncode=0, stdout="upstream/preflight authority validator pass", stderr="")
         return SimpleNamespace(returncode=1, stdout="forced post-reconcile operability validator failure", stderr="")
 
@@ -166,10 +177,10 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
         reconciler.STATUS = original_status
         reconciler.subprocess.run = original_run
 
-    require(call_count == 5, "expected three upstream validators before preflight and operability post-validation")
+    require(len(observed_commands) == 5, "expected exact five-stage preflight validation chain")
     require(contract.read_bytes() == before_contract, "preflight contract was not rolled back byte-for-byte")
     require(status.read_bytes() == before_status, "production status was not rolled back byte-for-byte")
-    print("PASS boundary: three upstream authority validators ran before reconcile mutation")
+    print("PASS boundary: validator order is environment generation -> recovery objectives -> drill request -> preflight -> aggregate Operability")
     print("PASS boundary: preflight validator passed before aggregate operability rejection")
     print("PASS rollback: preflight contract restored byte-for-byte after aggregate rejection")
     print("PASS rollback: production status restored byte-for-byte after aggregate rejection")
