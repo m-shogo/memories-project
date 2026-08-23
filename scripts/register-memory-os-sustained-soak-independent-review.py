@@ -77,6 +77,7 @@ def load_validator() -> Any:
     require(spec is not None and spec.loader is not None, "unable to import sustained-soak independent review validator")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(module.CONTRACT.resolve() == CANONICAL_CONTRACT_PATH.resolve(), "sustained-soak review validator contract authority drift")
     require(module.REGISTRY.resolve() == CANONICAL_REGISTRY.resolve(), "sustained-soak review validator registry authority drift")
     return module
 
