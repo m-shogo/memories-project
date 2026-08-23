@@ -147,6 +147,15 @@ def append_once(items: list[Any], value: str) -> None:
         items.append(value)
 
 
+def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
+    matches = [index for index, item in enumerate(values) if isinstance(item, str) and item.startswith(prefix)]
+    require(len(matches) <= 1, f"duplicate authority evidence prefix: {prefix}")
+    if matches:
+        values[matches[0]] = value
+    else:
+        values.append(value)
+
+
 def expected_decision(
     generation_count: int,
     eligible_pair_count: int,
@@ -324,11 +333,8 @@ def main() -> int:
     readiness["independentReviewCompleted"] = False
     readiness["productionReady"] = False
 
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
-    append_once(
-        existing,
-        f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, semantic preflight-eligible generations={eligible_count}, unsuperseded semantic preflight-eligible generations={unsuperseded_eligible_count}, distinct semantic preflight-eligible environments={distinct_eligible_environment_count}, eligible directed source-target pairs={eligible_pair_count}, approved recovery objectives={objective_count}, current approved objective available={str(current_objective_available).lower()}, admitted planning requests={request_count}, currently executable requests={executable_count}, admissionDecision={state['admissionDecision']}; admission requires two distinct unsuperseded semantically restore-preflight-eligible registered production-equivalent generations from distinct environments, the current approved objective, PITR/WAL and exact object-version policies, all eight planned evidence domains, distinct Recovery Owner/Security/Operability approvals and mandatory stop conditions; registered generation count or historical objective count alone never creates planning authority, historical requests remain auditable after supersession but become non-executable, and request admission never executes a restore or creates production evidence",
-    )
+    evidence = f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, semantic preflight-eligible generations={eligible_count}, unsuperseded semantic preflight-eligible generations={unsuperseded_eligible_count}, distinct semantic preflight-eligible environments={distinct_eligible_environment_count}, eligible directed source-target pairs={eligible_pair_count}, approved recovery objectives={objective_count}, current approved objective available={str(current_objective_available).lower()}, admitted planning requests={request_count}, currently executable requests={executable_count}, admissionDecision={state['admissionDecision']}; admission requires two distinct unsuperseded semantically restore-preflight-eligible registered production-equivalent generations from distinct environments, the current approved objective, PITR/WAL and exact object-version policies, all eight planned evidence domains, distinct Recovery Owner/Security/Operability approvals and mandatory stop conditions; registered generation count or historical objective count alone never creates planning authority, historical requests remain auditable after supersession but become non-executable, and request admission never executes a restore or creates production evidence"
+    replace_single_prefixed(existing, EVIDENCE_PREFIX, evidence)
     for ref in REFS:
         append_once(refs, ref)
 
