@@ -30,6 +30,8 @@ on:
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -69,6 +71,8 @@ on:
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -116,6 +120,8 @@ jobs:
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/reconcile-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
@@ -126,6 +132,8 @@ jobs:
             scripts/validate-memory-os-operability.py
       - name: Revalidate semantic preflight authority
         run: python scripts/validate-memory-os-backup-restore-drill-preflight.py
+      - name: Prove drill request reconcile authority and rollback
+        run: python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
       - name: Validate canonical chain
         run: python scripts/validate-memory-os-backup-restore-admission-chain.py
       - name: Prove fail-closed chain mutations
