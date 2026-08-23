@@ -11,15 +11,25 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
-ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
-WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-generation-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+GEN_SCHEMA_REL = Path("contracts/operations/production-equivalent-environment-generation-record.v1.schema.json")
+ENV_VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-record.py")
+WRITER_REL = Path("scripts/register-memory-os-production-equivalent-environment-generation.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-generation.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+NEGATIVE_REL = Path("scripts/validate-memory-os-production-equivalent-environment-generation-negative.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+GEN_SCHEMA = ROOT / GEN_SCHEMA_REL
+ENV_VALIDATOR = ROOT / ENV_VALIDATOR_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+NEGATIVE = ROOT / NEGATIVE_REL
+STATUS = ROOT / STATUS_REL
+EVIDENCE_PREFIX = "production-equivalent environment generation admission is machine-readable and append-only:"
 REFS = (
     "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
     "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
@@ -54,6 +64,34 @@ def require_repo_file(path: Path, message: str) -> Path:
     relative = repo_relative(path)
     require((ROOT / relative).is_file(), message)
     return relative
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "environment generation contract"),
+        (REGISTRY, REGISTRY_REL, "environment generation registry"),
+        (GEN_SCHEMA, GEN_SCHEMA_REL, "environment generation record schema"),
+        (ENV_VALIDATOR, ENV_VALIDATOR_REL, "environment semantic validator"),
+        (WRITER, WRITER_REL, "environment generation writer"),
+        (VALIDATOR, VALIDATOR_REL, "environment generation validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (NEGATIVE, NEGATIVE_REL, "environment generation negative suite"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def canonical_repo_ref(ref: object, message: str) -> Path:
@@ -92,14 +130,14 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    relative = require_repo_file(WRITER, "environment generation writer missing")
+    require_exact_repo_file(WRITER, WRITER_REL, "environment generation writer")
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_reconcile", WRITER)
-    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+        raise Fail(f"cannot load environment generation writer: {exc}") from exc
     return module
 
 
@@ -108,7 +146,30 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
+    matches = [index for index, item in enumerate(values) if isinstance(item, str) and item.startswith(prefix)]
+    require(len(matches) <= 1, f"duplicate authority evidence prefix: {prefix}")
+    if matches:
+        values[matches[0]] = value
+    else:
+        values.append(value)
+
+
+def run_validator(path: Path, expected_relative: Path, label: str) -> None:
+    require_exact_repo_file(path, expected_relative, label)
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
+
+
 def main() -> int:
+    enforce_runtime_authorities()
     original_contract_text = read_text(CONTRACT)
     original_status_text = read_text(STATUS)
     contract = load(CONTRACT)
@@ -143,16 +204,6 @@ def main() -> int:
     reviewed = bool(current_eligible and boundary_value.get("independentReviewCompleted") is True)
     equivalent = current_eligible
 
-    for path, message in (
-        (GEN_SCHEMA, "generation record schema missing"),
-        (ENV_VALIDATOR, "environment semantic validator missing"),
-        (WRITER, "environment generation writer missing"),
-        (VALIDATOR, "environment generation validator missing"),
-        (OPERABILITY_VALIDATOR, "operability validator missing"),
-        (NEGATIVE, "environment generation negative suite missing"),
-    ):
-        require_repo_file(path, message)
-
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
     require(isinstance(boundary, dict) and isinstance(readiness, dict), "generation authority state missing")
@@ -185,14 +236,14 @@ def main() -> int:
             "this contract prevents cross-generation evidence reuse but does not provision infrastructure",
             "a registered generation and hash match do not by themselves prove environment equivalence or restore-drill preflight eligibility",
             "preflight eligibility additionally requires a fully validated environment record, production-equivalent dependency controls, repository-resolvable evidence references and independent review evidence",
-            "production traffic and production credentials remain outside automatic evidence generation"
+            "production traffic and production credentials remain outside automatic evidence generation",
         ]
     else:
         contract["limitations"] = [
             "registered environment generations remain non-production evidence and may include planned/provisioned/rejected historical states",
             "generation registration does not by itself approve load, restore, failure-drill or production promotion",
             "restore-drill preflight may use only semantically validated generations whose environment records prove production-equivalent dependencies and independent review with repository-resolvable evidence",
-            "production traffic and production credentials remain outside automatic evidence generation"
+            "production traffic and production credentials remain outside automatic evidence generation",
         ]
 
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
@@ -204,12 +255,10 @@ def main() -> int:
     missing = gate.get("missingEvidence")
     require(isinstance(existing, list) and isinstance(refs, list) and isinstance(missing, list), "OPS-P0-006 authority arrays missing")
     evidence = (
-        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; "
+        f"{EVIDENCE_PREFIX} load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; "
         f"registered generations={count}, preflight-eligible generations={preflight_eligible_count}, current generation={current_id or 'none'}, and current production-equivalent dependencies={str(equivalent).lower()}; registration alone never creates preflight eligibility"
     )
-    stale_prefix = "production-equivalent environment generation admission is machine-readable and append-only:"
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(stale_prefix))]
-    append_once(existing, evidence)
+    replace_single_prefixed(existing, EVIDENCE_PREFIX, evidence)
     for ref in REFS:
         require_repo_file(ROOT / ref, f"generation evidence ref missing: {ref}")
         append_once(refs, ref)
@@ -224,10 +273,8 @@ def main() -> int:
     try:
         write_text(CONTRACT, contract_text)
         write_text(STATUS, status_text)
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"generation validator failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
-        operability = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(operability.returncode == 0, f"operability validator failed:\n{operability.stdout[-9000:]}{operability.stderr[-9000:]}")
+        run_validator(VALIDATOR, VALIDATOR_REL, "generation validator")
+        run_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
     except Exception:
         write_text(CONTRACT, original_contract_text)
         write_text(STATUS, original_status_text)
@@ -238,6 +285,7 @@ def main() -> int:
     print(f"preflight-eligible generations: {preflight_eligible_count}")
     print(f"current generation: {current_id or 'none'}")
     print(f"current production-equivalent dependencies: {str(equivalent).lower()}")
+    print("canonical environment generation data/executable authorities enforced: true")
     print("registration implies preflight eligibility: false")
     print("cross-generation evidence reuse: forbidden")
     print("failed aggregate validation leaves generation/status mutation behind: false")
