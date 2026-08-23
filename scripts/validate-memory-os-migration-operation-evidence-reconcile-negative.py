@@ -134,6 +134,63 @@ def prove_contract_guards_are_required(contract_payload: bytes) -> None:
             CONTRACT.write_bytes(contract_payload)
 
 
+def prove_validator_chain_substitution_rejected(module, originals: dict[Path, bytes]) -> None:
+    original_chain = module.POST_WRITE_VALIDATORS
+    module.POST_WRITE_VALIDATORS = ()
+    argv = sys.argv
+    sys.argv = [str(RECONCILER), "--check"]
+    try:
+        rejected = False
+        try:
+            module.main()
+        except module.ReconcileFailure as exc:
+            require("validator chain authority drift" in str(exc),
+                    f"unexpected validator-chain rejection: {exc}")
+            rejected = True
+        require(rejected, "migration operation validator chain substitution was accepted")
+    finally:
+        sys.argv = argv
+        module.POST_WRITE_VALIDATORS = original_chain
+
+    for path, payload in originals.items():
+        require(path.read_bytes() == payload,
+                f"{path.name} changed after rejected validator-chain substitution")
+
+
+def prove_post_write_failure_rolls_back(module, originals: dict[Path, bytes]) -> None:
+    candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
+    for candidate in candidates:
+        candidate["rollbackProbe"] = "must-not-persist"
+
+    original_run_validator = module.run_validator
+    calls: list[Path] = []
+
+    def controlled_run_validator(path: Path, *, phase: str) -> None:
+        calls.append(path)
+        if len(calls) == 3:
+            raise module.ReconcileFailure(
+                f"{phase} migration operation authority failed validation: {path.name}"
+            )
+
+    module.run_validator = controlled_run_validator
+    try:
+        rejected = False
+        try:
+            module.commit_validated_triple(*candidates)
+        except module.ReconcileFailure as exc:
+            require("failed validation" in str(exc), f"unexpected rejection: {exc}")
+            rejected = True
+        require(rejected, "post-write validation failure was not rejected")
+    finally:
+        module.run_validator = original_run_validator
+
+    require(calls == list(module.EXPECTED_POST_WRITE_VALIDATORS),
+            "controlled post-write validator order drifted")
+    for path, payload in originals.items():
+        require(path.read_bytes() == payload,
+                f"{path.name} changed after rejected migration operation reconcile")
+
+
 def main() -> int:
     originals = {
         CONTRACT: CONTRACT.read_bytes(),
@@ -143,33 +200,16 @@ def main() -> int:
     module = load_module(RECONCILER, "migration_operation_reconciler")
     prove_stronger_authority_is_preserved(module, originals[LIFECYCLE])
     prove_contract_guards_are_required(originals[CONTRACT])
-
-    candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
-    for candidate in candidates:
-        candidate["rollbackProbe"] = "must-not-persist"
+    prove_validator_chain_substitution_rejected(module, originals)
 
     with tempfile.TemporaryDirectory(prefix="migration-operation-reconcile-negative-") as tmp:
         tmp_path = Path(tmp)
         prove_canonical_ledger_preappend_guard(tmp_path)
         prove_postappend_failure_removes_new_record(tmp_path)
-        pass_validator = tmp_path / "pass.py"
-        fail_validator = tmp_path / "fail.py"
-        pass_validator.write_text("raise SystemExit(0)\n", encoding="utf-8")
-        fail_validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
-        module.POST_WRITE_VALIDATORS = (pass_validator, pass_validator, fail_validator)
 
-        rejected = False
-        try:
-            module.commit_validated_triple(*candidates)
-        except module.ReconcileFailure as exc:
-            require("failed validation" in str(exc), f"unexpected rejection: {exc}")
-            rejected = True
-
-    require(rejected, "post-write validation failure was not rejected")
-    for path, payload in originals.items():
-        require(path.read_bytes() == payload,
-                f"{path.name} changed after rejected migration operation reconcile")
+    prove_post_write_failure_rolls_back(module, originals)
     print("PASS: migration operation append and reconcile are fail-closed and rollback-safe")
+    print("migration operation validator-chain substitution accepted: false")
     return 0
 
 
