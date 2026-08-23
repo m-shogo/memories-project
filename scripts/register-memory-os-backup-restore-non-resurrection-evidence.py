@@ -80,6 +80,21 @@ def require_canonical_runtime_authority(path: Path, canonical: Path, field: str)
     if path == canonical:
         canonical_repo_file(path, field)
 
+def require_cli_authorities() -> None:
+    """Pin the actual typed-evidence append entrypoint to canonical authorities."""
+    authorities = (
+        (CONTRACT, CANONICAL_CONTRACT, "typed non-resurrection contract"),
+        (REGISTRY, CANONICAL_REGISTRY, "typed non-resurrection registry"),
+        (GEN_EVIDENCE_REGISTRY, CANONICAL_GEN_EVIDENCE_REGISTRY, "generation evidence registry"),
+        (GEN_WRITER, ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py", "generation recovery writer"),
+    )
+    for actual, canonical, field in authorities:
+        require(actual == canonical, f"{field} must use canonical authority")
+        canonical_repo_file(actual, field)
+    canonical_lock = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
+    require(LOCK == canonical_lock, "typed non-resurrection lock must use canonical authority")
+    require(LOCK.parent == CANONICAL_REGISTRY.parent, "typed non-resurrection lock must share canonical registry directory")
+
 def payload_sha256(payload: dict[str, Any]) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
@@ -365,6 +380,7 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
         raise
 
 def main() -> int:
+    require_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
     args = parser.parse_args()
@@ -375,7 +391,6 @@ def main() -> int:
         pass
     else:
         raise Fail("input non-resurrection evidence must be outside repository")
-    require_canonical_runtime_authority(REGISTRY, CANONICAL_REGISTRY, "typed non-resurrection registry")
     record = load(input_path)
     validate_record(record)
     try:
