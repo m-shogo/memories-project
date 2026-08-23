@@ -18,6 +18,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-production-shaped-failure-drill.py"
       - "scripts/validate-memory-os-production-shaped-failure-drills.py"
+      - "scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
@@ -38,6 +39,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-production-shaped-failure-drill.py"
       - "scripts/validate-memory-os-production-shaped-failure-drills.py"
+      - "scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
@@ -82,11 +84,13 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-production-shaped-failure-drill.py \
             scripts/validate-memory-os-production-shaped-failure-drills.py \
+            scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py \
             scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py \
             scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-production-shaped-failure-drills.py
+          python scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py
           python scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py
           python scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py
           python scripts/reconcile-memory-os-production-shaped-failure-drills.py
@@ -132,12 +136,14 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-production-shaped-failure-drill.py \
             scripts/validate-memory-os-production-shaped-failure-drills.py \
+            scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py \
             scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py \
             scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-production-shaped-failure-drills.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-production-shaped-failure-drills.py >> "$log" 2>&1 || code=$?; fi
