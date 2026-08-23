@@ -2,7 +2,9 @@
 """Fail-closed authority and rollback negatives for typed non-resurrection reconcile."""
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -61,6 +63,50 @@ def prove_substitution_rejected(attribute: str) -> None:
     print(f"PASS reject: {attribute} substitution fails closed without canonical mutation")
 
 
+def expect_shared_registry_rejection(module, registry: dict, label: str) -> None:
+    validator = getattr(module, "validate_registry_for_append", None)
+    require(callable(validator), f"{label} shared registry validator missing")
+    try:
+        validator(registry)
+    except Exception as exc:
+        fail_type = getattr(module, "Fail", None)
+        require(isinstance(fail_type, type) and isinstance(exc, fail_type), f"{label} leaked non-domain exception: {type(exc).__name__}")
+        return
+    raise Fail(f"corrupt {label} registry unexpectedly accepted")
+
+
+def prove_corrupt_append_only_authority_rejected() -> None:
+    reconciler = load_reconciler("memory_os_typed_non_resurrection_corrupt_registry")
+    before = canonical_bytes()
+    typed_writer = reconciler.load_module(reconciler.TYPED_WRITER, "memory_os_typed_writer_negative")
+    generation_writer = reconciler.load_module(reconciler.GEN_WRITER, "memory_os_generation_writer_negative")
+    typed_registry = json.loads(CANONICAL_REGISTRY.read_text(encoding="utf-8"))
+    generation_registry = json.loads(CANONICAL_GEN_REGISTRY.read_text(encoding="utf-8"))
+
+    typed_cases = (
+        ("registeredRecordCount", 1),
+        ("completeRecordCount", True),
+        ("productionEvidence", True),
+    )
+    for field, value in typed_cases:
+        corrupt = copy.deepcopy(typed_registry)
+        corrupt[field] = value
+        expect_shared_registry_rejection(typed_writer, corrupt, f"typed {field}")
+
+    generation_cases = (
+        ("registeredEvidenceCount", 1),
+        ("productionEquivalentRecoveryCandidateCount", True),
+        ("productionReady", True),
+    )
+    for field, value in generation_cases:
+        corrupt = copy.deepcopy(generation_registry)
+        corrupt[field] = value
+        expect_shared_registry_rejection(generation_writer, corrupt, f"generation {field}")
+
+    require_unchanged(before, "corrupt registry rejection")
+    print("PASS reject: corrupt append-only typed/generation authority is rejected without auto-heal")
+
+
 def prove_post_write_aggregate_rollback() -> None:
     reconciler = load_reconciler("memory_os_typed_non_resurrection_aggregate_rollback")
     before = canonical_bytes()
@@ -95,6 +141,7 @@ def main() -> int:
         "STATUS",
     ):
         prove_substitution_rejected(attribute)
+    prove_corrupt_append_only_authority_rejected()
     prove_post_write_aggregate_rollback()
     print("Memory OS typed non-resurrection reconcile negative suite PASS")
     print("generic non-resurrection PASS promoted to typed coverage: false")
