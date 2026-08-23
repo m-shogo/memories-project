@@ -65,7 +65,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate semantic generation binding read-only
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py \
+            scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py \
+            scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py
+          python scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py
+          python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json
+
   validate:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
