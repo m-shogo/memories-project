@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
 AGGREGATE_UPDATER = ROOT / "scripts/update-memory-os-sustained-local-soak-aggregate.py"
+TREND_REVIEWER = ROOT / "scripts/review-memory-os-sustained-local-soak-trends.py"
 WORKFLOW = ROOT / ".github/workflows/reconcile-sustained-local-soak-authority.yml"
 MAIN_WORKFLOW = ROOT / ".github/workflows/sustained-local-soak.yml"
 
@@ -28,6 +29,10 @@ def load_reconciler():
 
 def load_aggregate_updater():
     return load_module(AGGREGATE_UPDATER, "memory_os_sustained_local_soak_aggregate_updater")
+
+
+def load_trend_reviewer():
+    return load_module(TREND_REVIEWER, "memory_os_sustained_local_soak_trend_reviewer")
 
 
 def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
@@ -94,10 +99,12 @@ def validate_atomic_writer(module, path: Path, label: str) -> None:
 def main() -> int:
     module = load_reconciler()
     updater = load_aggregate_updater()
+    reviewer = load_trend_reviewer()
     validate_atomic_diagnostic_workflow(WORKFLOW, "sustained soak authority")
     validate_atomic_diagnostic_workflow(MAIN_WORKFLOW, "sustained soak execution")
     validate_atomic_writer(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_atomic_writer(updater, updater.AGGREGATE_PATH, "sustained-soak aggregate")
+    validate_atomic_writer(reviewer, reviewer.REVIEW_PATH, "sustained-soak trend review")
 
     expect_authority_rejection(updater, "RESULT_DIR", updater.ROOT / "docs")
     expect_authority_rejection(updater, "AGGREGATE_PATH", updater.CONTRACT_PATH)
@@ -105,6 +112,11 @@ def main() -> int:
     expect_authority_rejection(updater, "CONTRACT_PATH", updater.AGGREGATE_PATH)
     expect_authority_rejection(updater, "RESULT_VALIDATOR", updater.REVIEW_VALIDATOR)
     expect_authority_rejection(updater, "REVIEW_VALIDATOR", updater.RESULT_VALIDATOR)
+
+    expect_authority_rejection(reviewer, "RESULT_DIR", reviewer.ROOT / "docs")
+    expect_authority_rejection(reviewer, "CONTRACT_PATH", reviewer.REVIEW_PATH)
+    expect_authority_rejection(reviewer, "RESULT_VALIDATOR", reviewer.CONTRACT_PATH)
+    expect_authority_rejection(reviewer, "REVIEW_PATH", reviewer.CONTRACT_PATH)
 
     paths = (module.CONTRACT_PATH, module.LOAD_PATH, module.STATUS_PATH)
     original = {path: path.read_bytes() for path in paths}
@@ -157,7 +169,7 @@ def main() -> int:
                 module.atomic_replace_bytes(path, original[path])
 
     print("PASS: sustained local soak execution and authority diagnostics are atomic and crash-safe")
-    print("PASS: sustained local soak reconciler and aggregate updater reject authority substitution")
+    print("PASS: sustained local soak reconciler, aggregate updater and trend reviewer reject authority substitution")
     print("PASS: sustained local soak atomic replacement failure preserves canonical authority")
     print("PASS: sustained local soak reconcile rollback is fail-closed")
     print("production evidence generated: false")
