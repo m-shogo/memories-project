@@ -146,7 +146,54 @@ def expect_projection_rollback(module) -> None:
         if original is None:
             path.unlink(missing_ok=True)
         else:
-            path.write_bytes(original)
+            module.atomic_replace_output_bytes(original)
+
+
+def expect_atomic_replace_failure(module) -> None:
+    path = module.OUTPUT
+    original = path.read_bytes() if path.exists() else None
+    original_replace = module.os.replace
+    validator_called = False
+
+    def fail_replace(source, target) -> None:
+        raise OSError("synthetic compatibility admission atomic replace failure")
+
+    def unexpected_validator(_validator_path: Path) -> None:
+        nonlocal validator_called
+        validator_called = True
+
+    original_run_validator = module.run_validator
+    module.os.replace = fail_replace
+    module.run_validator = unexpected_validator
+    try:
+        rejected = False
+        try:
+            module.write_validated_output({
+                "schemaVersion": "synthetic-atomic-replace-probe",
+                "productionEvidence": False,
+                "productionReady": False,
+                "productionDecision": "NO_GO",
+            })
+        except OSError as exc:
+            require("synthetic compatibility admission atomic replace failure" in str(exc),
+                    f"unexpected atomic replacement rejection: {exc}")
+            rejected = True
+        require(rejected, "compatibility projection accepted synthetic atomic replace failure")
+        require(not validator_called, "operability validator ran after failed atomic publication")
+        if original is None:
+            require(not path.exists(), "failed atomic replacement created compatibility projection")
+        else:
+            require(path.read_bytes() == original,
+                    "failed atomic replacement changed canonical compatibility projection")
+        leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(not leftovers, f"failed atomic replacement left temporary authority files: {leftovers}")
+    finally:
+        module.os.replace = original_replace
+        module.run_validator = original_run_validator
+        if original is None:
+            path.unlink(missing_ok=True)
+        elif path.read_bytes() != original:
+            module.atomic_replace_output_bytes(original)
 
 
 def main() -> int:
@@ -164,7 +211,8 @@ def main() -> int:
     require(module.non_negative_count(0, "validZero") == 0, "zero count should remain valid")
     expect_pair_authority_rejection(module)
     expect_projection_rollback(module)
-    print("PASS: compatibility admission counts, exact data/executable authority and projection rollback fail closed")
+    expect_atomic_replace_failure(module)
+    print("PASS: compatibility admission counts, exact authority, atomic publication and projection rollback fail closed")
     return 0
 
 
