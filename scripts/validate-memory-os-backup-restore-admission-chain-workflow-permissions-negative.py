@@ -45,6 +45,12 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_all(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    require(count > 0, f"negative fixture boundary drift for {label}: expected at least one match")
+    return text.replace(old, new)
+
+
 def main() -> int:
     module = load_validator()
     canonical = module.exact_workflow()
@@ -76,7 +82,7 @@ def main() -> int:
         ),
         (
             "bounded stale-authority refusal removed",
-            replace_once(canonical, "refusing stale derived authority", "allowing stale derived authority", "stale authority refusal"),
+            replace_all(canonical, "refusing stale derived authority", "allowing stale derived authority", "stale authority refusal"),
         ),
         (
             "stale diagnostic refusal removed",
