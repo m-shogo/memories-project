@@ -107,6 +107,33 @@ def prove_corrupt_append_only_authority_rejected() -> None:
     print("PASS reject: corrupt append-only typed/generation authority is rejected without auto-heal")
 
 
+def prove_atomic_write_failure() -> None:
+    reconciler = load_reconciler("memory_os_typed_non_resurrection_atomic_write")
+    before = canonical_bytes()
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        try:
+            reconciler.write_text(CANONICAL_CONTRACT, before[CANONICAL_CONTRACT].decode("utf-8") + " ")
+        except reconciler.Fail as exc:
+            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("synthetic typed non-resurrection atomic replace failure unexpectedly accepted")
+    finally:
+        reconciler.os.replace = original_replace
+
+    require_unchanged(before, "atomic replace rejection")
+    leftovers: list[Path] = []
+    for path in before:
+        leftovers.extend(path.parent.glob(f".{path.name}.*.tmp"))
+    require(not leftovers, f"atomic replace rejection left temporary typed non-resurrection authority files: {leftovers}")
+    print("PASS boundary: failed atomic typed non-resurrection write preserves canonical bytes and cleans temporary files")
+
+
 def prove_post_write_aggregate_rollback() -> None:
     reconciler = load_reconciler("memory_os_typed_non_resurrection_aggregate_rollback")
     before = canonical_bytes()
@@ -161,9 +188,11 @@ def main() -> int:
     ):
         prove_substitution_rejected(attribute)
     prove_corrupt_append_only_authority_rejected()
+    prove_atomic_write_failure()
     prove_post_write_aggregate_rollback()
     print("Memory OS typed non-resurrection reconcile negative suite PASS")
     print("generic non-resurrection PASS promoted to typed coverage: false")
+    print("non-atomic typed non-resurrection authority write accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
