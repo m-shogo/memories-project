@@ -39,13 +39,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout
+      - name: Checkout exact authority source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Confirm exact clean authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
 
       - name: Compile validators and runner
         run: |
@@ -53,7 +64,8 @@ jobs:
             scripts/run-memory-os-local-object-version-restore.py \
             scripts/validate-memory-os-local-object-version-restore.py \
             scripts/reconcile-memory-os-local-object-version-restore.py \
-            scripts/validate-memory-os-backup-restore.py
+            scripts/validate-memory-os-backup-restore.py \
+            scripts/validate-memory-os-operability.py
 
       - name: Validate local object-version restore boundary
         run: python scripts/validate-memory-os-local-object-version-restore.py
