@@ -4,21 +4,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/backup-restore-admission-chain.yml"
-      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
-      - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
-      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
-      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
-      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
-      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
-      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
-      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
-      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
-      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
-      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
-      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-*.json"
+      - "contracts/operations/production-equivalent-environment-*.json"
+      - "contracts/operations/recovery-objectives-*.json"
       - "contracts/operations/operability-admission-inventory.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/backup-restore/**"
@@ -27,64 +15,18 @@ on:
       - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
-      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
-      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
-      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
-      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
-      - "scripts/register-memory-os-recovery-objectives.py"
-      - "scripts/validate-memory-os-recovery-objectives.py"
-      - "scripts/validate-memory-os-recovery-objectives-negative.py"
-      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
-      - "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
-      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
-      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
-      - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
-      - "scripts/request-memory-os-backup-restore-drill.py"
-      - "scripts/validate-memory-os-backup-restore-drill-request.py"
-      - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
-      - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
-      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
-      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
-      - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
-      - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
-      - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
-      - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
-      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
-      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
-      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
-      - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
-      - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
-      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
-      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
-      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
-      - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
-      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
-      - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
+      - "scripts/*backup*restore*.py"
+      - "scripts/*recovery*objective*.py"
+      - "scripts/*production*equivalent*environment*.py"
       - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
     paths:
       - ".github/workflows/backup-restore-admission-chain.yml"
-      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
-      - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
-      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
-      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
-      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
-      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
-      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
-      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
-      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
-      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
-      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
-      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-*.json"
+      - "contracts/operations/production-equivalent-environment-*.json"
+      - "contracts/operations/recovery-objectives-*.json"
       - "contracts/operations/operability-admission-inventory.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/backup-restore/**"
@@ -93,62 +35,65 @@ on:
       - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
-      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
-      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
-      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
-      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
-      - "scripts/register-memory-os-recovery-objectives.py"
-      - "scripts/validate-memory-os-recovery-objectives.py"
-      - "scripts/validate-memory-os-recovery-objectives-negative.py"
-      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
-      - "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
-      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
-      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
-      - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
-      - "scripts/request-memory-os-backup-restore-drill.py"
-      - "scripts/validate-memory-os-backup-restore-drill-request.py"
-      - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
-      - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
-      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
-      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
-      - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
-      - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
-      - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
-      - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
-      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
-      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
-      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
-      - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
-      - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
-      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
-      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
-      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
-      - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
-      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
-      - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
+      - "scripts/*backup*restore*.py"
+      - "scripts/*recovery*objective*.py"
+      - "scripts/*production*equivalent*environment*.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: backup-restore-admission-chain-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
-      - name: Checkout exact source
+      - name: Checkout exact PR source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact clean PR authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+
+      - name: Validate end-to-end recovery admission chain read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/validate-memory-os-backup-restore-admission-chain-full.py
+          python scripts/validate-memory-os-backup-restore-admission-chain-full.py
+          git diff --check
+          git diff --exit-code
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact publication source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -157,166 +102,30 @@ jobs:
           python-version: "3.12"
 
       - name: Capture exact chain authority source
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
-          expected="${{ github.sha }}"
-          test -n "$expected"
+          test -n "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$expected"
-          echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
 
-      - name: Write chain authority manifest
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
-        run: |
-          cat > "$RUNNER_TEMP/backup-restore-chain-authority-paths" <<'EOF'
-          .github/workflows/backup-restore-admission-chain.yml
-          contracts/operations/backup-restore-drill-preflight-contract.v1.json
-          contracts/operations/backup-restore-admission-chain-contract.v1.json
-          contracts/operations/backup-restore-drill-request-contract.v1.json
-          contracts/operations/backup-restore-drill-request-registry.v1.json
-          contracts/operations/backup-restore-generation-evidence-contract.v1.json
-          contracts/operations/backup-restore-generation-evidence-registry.v1.json
-          contracts/operations/backup-restore-generation-binding-contract.v1.json
-          contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
-          contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
-          contracts/operations/production-equivalent-environment-generation-contract.v1.json
-          contracts/operations/production-equivalent-environment-generation-registry.v1.json
-          contracts/operations/production-equivalent-environment-record.v1.schema.json
-          contracts/operations/production-equivalent-environment-generation-record.v1.schema.json
-          contracts/operations/recovery-objectives-admission-contract.v1.json
-          contracts/operations/recovery-objectives-registry.v1.json
-          contracts/operations/operability-admission-inventory.v1.json
-          contracts/operations/production-operability-status.json
-          docs/evidence/backup-restore
-          docs/evidence/recovery-objectives/approvals
-          docs/fixtures/memory-os-operability/backup-restore-generation-evidence
-          docs/fixtures/memory-os-operability/recovery-objectives-approval
-          scripts/memory_os_backup_restore_blockers.py
-          scripts/memory_os_environment_generation_eligibility.py
-          scripts/register-memory-os-production-equivalent-environment-generation.py
-          scripts/validate-memory-os-production-equivalent-environment-record.py
-          scripts/validate-memory-os-production-equivalent-environment-generation.py
-          scripts/validate-memory-os-production-equivalent-environment-generation-negative.py
-          scripts/register-memory-os-recovery-objectives.py
-          scripts/validate-memory-os-recovery-objectives.py
-          scripts/validate-memory-os-recovery-objectives-negative.py
-          scripts/validate-memory-os-backup-restore-drill-preflight.py
-          scripts/validate-memory-os-backup-restore-drill-preflight-negative.py
-          scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
-          scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
-          scripts/reconcile-memory-os-backup-restore-drill-preflight.py
-          scripts/request-memory-os-backup-restore-drill.py
-          scripts/validate-memory-os-backup-restore-drill-request.py
-          scripts/validate-memory-os-backup-restore-drill-request-negative.py
-          scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
-          scripts/reconcile-memory-os-backup-restore-drill-request.py
-          scripts/register-memory-os-backup-restore-generation-evidence.py
-          scripts/validate-memory-os-backup-restore-generation-evidence.py
-          scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
-          scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py
-          scripts/validate-memory-os-backup-restore-semantic-generation-negative.py
-          scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py
-          scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py
-          scripts/reconcile-memory-os-backup-restore-generation-evidence.py
-          scripts/validate-memory-os-backup-restore-generation-binding.py
-          scripts/validate-memory-os-backup-restore-generation-binding-negative.py
-          scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
-          scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
-          scripts/validate-memory-os-backup-restore-non-resurrection-negative.py
-          scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
-          scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
-          scripts/reconcile-memory-os-backup-non-resurrection-authority.py
-          scripts/validate-memory-os-backup-restore-admission-chain.py
-          scripts/validate-memory-os-backup-restore-admission-chain-negative.py
-          scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
-          scripts/reconcile-memory-os-backup-restore-admission-chain.py
-          scripts/validate-memory-os-operability.py
-          EOF
-
-      - name: Validate end-to-end recovery admission chain
+      - name: Reconcile and validate end-to-end recovery admission chain
         id: chain
         run: |
           set +e
           log=/tmp/backup-restore-admission-chain.log
           : > "$log"
           code=0
-          python -m py_compile \
-            scripts/memory_os_backup_restore_blockers.py \
-            scripts/memory_os_environment_generation_eligibility.py \
-            scripts/register-memory-os-production-equivalent-environment-generation.py \
-            scripts/validate-memory-os-production-equivalent-environment-record.py \
-            scripts/validate-memory-os-production-equivalent-environment-generation.py \
-            scripts/validate-memory-os-production-equivalent-environment-generation-negative.py \
-            scripts/register-memory-os-recovery-objectives.py \
-            scripts/validate-memory-os-recovery-objectives.py \
-            scripts/validate-memory-os-recovery-objectives-negative.py \
-            scripts/validate-memory-os-backup-restore-drill-preflight.py \
-            scripts/validate-memory-os-backup-restore-drill-preflight-negative.py \
-            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
-            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py \
-            scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
-            scripts/request-memory-os-backup-restore-drill.py \
-            scripts/validate-memory-os-backup-restore-drill-request.py \
-            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
-            scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py \
-            scripts/reconcile-memory-os-backup-restore-drill-request.py \
-            scripts/register-memory-os-backup-restore-generation-evidence.py \
-            scripts/validate-memory-os-backup-restore-generation-evidence.py \
-            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
-            scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py \
-            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
-            scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
-            scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py \
-            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
-            scripts/validate-memory-os-backup-restore-generation-binding.py \
-            scripts/validate-memory-os-backup-restore-generation-binding-negative.py \
-            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
-            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
-            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
-            scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py \
-            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
-            scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
-            scripts/validate-memory-os-backup-restore-admission-chain.py \
-            scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
-            scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py \
-            scripts/reconcile-memory-os-backup-restore-admission-chain.py \
-            scripts/validate-memory-os-operability.py \
-            >> "$log" 2>&1 || code=$?
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-admission-chain-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
+          python -m py_compile scripts/validate-memory-os-backup-restore-admission-chain-full.py >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-admission-chain-full.py >> "$log" 2>&1 || code=$?
+          fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
 
-      - name: Reject stale admission chain authority on pull requests
-        if: steps.chain.outputs.exit_code == '0' && github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- contracts/operations/backup-restore-admission-chain-contract.v1.json
-
       - name: Commit bounded chain authority
-        if: steps.chain.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.chain.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           log=/tmp/backup-restore-admission-chain.log
@@ -327,28 +136,21 @@ jobs:
             SOURCE_SHA="$(git rev-parse HEAD)"
             export SOURCE_SHA
             : > "$log"
-            python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1
-            python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1
-            python scripts/reconcile-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-admission-chain-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1
-            python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1
-            python scripts/validate-memory-os-operability.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-admission-chain-full.py >> "$log" 2>&1
+          }
+
+          assert_only_derived_chain_changes() {
+            while IFS= read -r changed; do
+              [[ -z "$changed" ]] && continue
+              case "$changed" in
+                contracts/operations/backup-restore-admission-chain-contract.v1.json|docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json)
+                  ;;
+                *)
+                  echo "Unexpected admission-chain workspace mutation: $changed"
+                  exit 1
+                  ;;
+              esac
+            done < <(git status --porcelain | sed -E 's/^.. //')
           }
 
           for reconcile_attempt in 1 2; do
@@ -362,6 +164,7 @@ jobs:
               revalidate_latest_chain
             fi
 
+            assert_only_derived_chain_changes
             git rm -f docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json 2>/dev/null || true
             git add contracts/operations/backup-restore-admission-chain-contract.v1.json
             git add -u docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json 2>/dev/null || true
@@ -395,7 +198,7 @@ jobs:
           exit 75
 
       - name: Record privacy-safe chain diagnostic
-        if: steps.chain.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.chain.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           CHAIN_EXIT_CODE: ${{ steps.chain.outputs.exit_code }}
         run: |
