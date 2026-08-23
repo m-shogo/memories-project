@@ -152,6 +152,31 @@ def prove_shared_registry_fail_closed(reconciler: object) -> None:
     print(f"PASS boundary: shared append-only registry corruption rejected without canonical mutation: {len(cases)}")
 
 
+def prove_atomic_write_failure(reconciler: object) -> None:
+    contract_before = CONTRACT.read_bytes()
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        try:
+            reconciler.write_text(CONTRACT, contract_before.decode("utf-8") + " ")
+        except reconciler.Fail as exc:
+            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("synthetic atomic replace failure unexpectedly accepted")
+    finally:
+        reconciler.os.replace = original_replace
+
+    require(CONTRACT.read_bytes() == contract_before, "atomic replace failure mutated canonical admission-chain contract")
+    leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    require(not leftovers, f"atomic replace failure left temporary authority files: {leftovers}")
+    print("PASS boundary: atomic replace failure preserves canonical admission-chain contract")
+    print("PASS boundary: failed atomic write leaves no temporary authority file")
+
+
 def prove_post_validation_rollback(reconciler: object) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
@@ -220,10 +245,12 @@ def main() -> int:
             expect_domain_fail("admission-chain validator authority escapes repository", lambda: validator.load(outside), validator.Fail)
             expect_domain_fail("admission-chain reconciler authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
+    prove_atomic_write_failure(reconciler)
     prove_post_validation_rollback(reconciler)
 
     print("direct admission-chain data/executable substitutions accepted: false")
     print("shared append-only registry corruption auto-healed by reconciler: false")
+    print("non-atomic derived admission-chain contract write accepted: false")
     print("Admission-chain validator/reconcile negative suite PASS")
     return 0
 
