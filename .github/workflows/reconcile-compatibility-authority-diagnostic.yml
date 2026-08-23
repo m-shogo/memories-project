@@ -10,6 +10,7 @@ on:
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "scripts/validate-memory-os-compatibility-authority-diagnostic-permission-negative.py"
       - "scripts/validate-memory-os-operability.py"
   push:
     branches:
@@ -22,6 +23,7 @@ on:
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "scripts/validate-memory-os-compatibility-authority-diagnostic-permission-negative.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
@@ -66,7 +68,9 @@ jobs:
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-version-compatibility-foundations.py \
             scripts/reconcile-memory-os-version-compatibility-foundation-status.py \
+            scripts/validate-memory-os-compatibility-authority-diagnostic-permission-negative.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-compatibility-authority-diagnostic-permission-negative.py
           python scripts/validate-memory-os-version-compatibility.py
           python scripts/reconcile-memory-os-version-compatibility-foundation-status.py
           python scripts/validate-memory-os-version-compatibility-foundations.py
@@ -117,8 +121,13 @@ jobs:
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-version-compatibility-foundations.py \
             scripts/reconcile-memory-os-version-compatibility-foundation-status.py \
+            scripts/validate-memory-os-compatibility-authority-diagnostic-permission-negative.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: permission-negative" >> "$log"
+            python scripts/validate-memory-os-compatibility-authority-diagnostic-permission-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: canonical-validator" >> "$log"
             python scripts/validate-memory-os-version-compatibility.py >> "$log" 2>&1 || code=$?
