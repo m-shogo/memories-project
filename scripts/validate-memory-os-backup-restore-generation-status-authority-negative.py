@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-status.py"
+WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-binding.yml"
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
@@ -50,11 +51,31 @@ def expect_direct_authority_rejected(reconciler, name: str, field: str, attribut
         setattr(reconciler, attribute, original)
 
 
+def validate_atomic_diagnostic_publication() -> None:
+    require(WORKFLOW.is_file(), "generation binding workflow missing")
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in text]
+    require(not missing, f"generation binding diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in text,
+        "generation binding diagnostic publication regressed to direct write_text",
+    )
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "generation status reconciler missing")
     require(CONTRACT.is_file() and STATUS.is_file(), "canonical generation status authority missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     reconciler = load_reconciler()
+    validate_atomic_diagnostic_publication()
 
     cases = (
         ("generation binding contract substitution", "generation binding contract", "CONTRACT", reconciler.STATUS),
@@ -100,11 +121,6 @@ def main() -> int:
                 require(label == "operability validator", f"unexpected generation status validator: {label}")
                 raise reconciler.Fail("synthetic generation status operability rejection")
 
-            # Direct production invocation is canonical-only. This harness bypasses
-            # only the identity guard around repo-contained copies to prove the
-            # status write plus backup/operability validation transaction. The
-            # authority may already be byte-current, so observe the atomic write
-            # helper rather than requiring a byte-different intermediate state.
             reconciler.enforce_runtime_authorities = lambda: None
             reconciler.CONTRACT = contract_copy
             reconciler.STATUS = status_copy
@@ -134,6 +150,7 @@ def main() -> int:
     print("generation binding validator remains pre-write: true")
     print("backup and operability validators remain post-write: true")
     print("byte-current status still exercises atomic write boundary: true")
+    print("crash-safe generation-binding failure diagnostic required: true")
     print("canonical blockers rewritten: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
