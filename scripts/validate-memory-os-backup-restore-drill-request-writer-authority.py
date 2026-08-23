@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-request.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+WORKFLOW = ROOT / ".github/workflows/backup-restore-drill-request.yml"
 EXPECTED_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 EXPECTED_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 EXPECTED_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
@@ -54,6 +55,25 @@ def require_module_authorities(module, expected: dict[str, Path], prefix: str) -
         canonical_repo_file(actual, f"{prefix} {name}")
 
 
+def require_atomic_diagnostic_publication() -> None:
+    canonical_repo_file(WORKFLOW, "drill request workflow")
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in text]
+    require(not missing, f"drill request diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in text,
+        "drill request diagnostic publication regressed to direct write_text",
+    )
+
+
 def main() -> int:
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_authority", "drill request writer")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_authority", "drill request reconciler")
@@ -96,8 +116,10 @@ def main() -> int:
     except writer.Fail as exc:
         raise Fail(f"canonical drill request append-only registry authority invalid: {exc}") from exc
 
+    require_atomic_diagnostic_publication()
     print("PASS: drill request writer and reconciler executable/data/lock authorities are canonical")
     print("PASS: canonical drill request append-only registry including approval evidence digests is valid")
+    print("PASS: drill request failure diagnostic publication is crash-safe")
     return 0
 
 
