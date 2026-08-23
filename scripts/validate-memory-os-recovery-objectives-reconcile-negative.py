@@ -50,6 +50,30 @@ def assert_canonical_unchanged(contract_bytes: bytes, status_bytes: bytes, label
     require(STATUS.read_bytes() == status_bytes, f"{label} changed canonical production status")
 
 
+def prove_atomic_write_failure(reconciler: object, canonical_contract: bytes, canonical_status: bytes) -> None:
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        expect_domain_fail(
+            "recovery objective atomic replace rejection",
+            lambda: reconciler.write_text(CONTRACT, canonical_contract.decode("utf-8") + " "),
+            reconciler.Fail,
+            "cannot atomically write",
+        )
+    finally:
+        reconciler.os.replace = original_replace
+
+    assert_canonical_unchanged(canonical_contract, canonical_status, "atomic replace rejection")
+    contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    require(not contract_leftovers and not status_leftovers, "atomic write rejection left temporary recovery objective authority files")
+    print("PASS boundary: failed atomic recovery objective write preserves canonical bytes and cleans temporary files")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "recovery objective reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
@@ -122,6 +146,8 @@ def main() -> int:
             outside.write_text("{}\n", encoding="utf-8")
             expect_domain_fail("objective authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
+    prove_atomic_write_failure(reconciler, canonical_contract, canonical_status)
+
     original_run_validator = reconciler.run_validator
     validator_calls: list[tuple[Path, str]] = []
 
@@ -156,6 +182,7 @@ def main() -> int:
     print("paired recovery objective fixture substitution accepted: false")
     print("recovery objective data/executable substitution accepted: false")
     print("recovery objective evidence reordering accepted: false")
+    print("non-atomic recovery objective authority write accepted: false")
     print("Recovery objective reconcile negative suite PASS")
     print("objective created or defaulted: false")
     print("production evidence: false")
