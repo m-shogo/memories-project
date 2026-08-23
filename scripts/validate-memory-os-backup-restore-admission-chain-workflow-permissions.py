@@ -44,6 +44,23 @@ def job_block(text: str, name: str, next_name: str | None = None) -> str:
     return text[start:end]
 
 
+def require_atomic_diagnostic_publication(publish: str) -> None:
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in publish]
+    require(not missing, f"failure diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in publish,
+        "failure diagnostic publication regressed to direct write_text",
+    )
+
+
 def main() -> int:
     text = exact_workflow()
     require("pull_request_target:" not in text, "pull_request_target must never control backup/restore admission publication")
@@ -68,6 +85,7 @@ def main() -> int:
     require("git reset --hard origin/so" in publish, "bounded retry must restart from latest canonical so")
     require("refusing stale derived authority" in publish, "bounded publication must fail closed on repeated source drift")
     require("refusing stale failure diagnostic" in publish, "failure diagnostic must reject stale source")
+    require_atomic_diagnostic_publication(publish)
 
     require(text.count("contents: write") == 1, "exactly one contents: write grant is allowed in the admission-chain workflow")
     require(text.count("validate-memory-os-backup-restore-admission-chain-full.py") >= 3, "canonical full-chain runner must be shared by PR, publication and bounded revalidation")
@@ -77,6 +95,7 @@ def main() -> int:
     print("PR exact-head validation: true")
     print("non-PR publication write authority: isolated")
     print("bounded latest-so revalidation and stale-source refusal: preserved")
+    print("crash-safe failure diagnostic publication: required")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
