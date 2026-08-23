@@ -38,20 +38,53 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: admission-authority-linkage-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate admission authority links read-only
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-admission-authority-linkage.py \
+            scripts/validate-memory-os-admission-authority-linkage-negative.py
+          python scripts/validate-memory-os-admission-authority-linkage.py
+          python scripts/validate-memory-os-admission-authority-linkage-negative.py
+          git diff --check
+          git diff --exit-code -- docs/fixtures/memory-os-operability/admission-authority-linkage-diagnostic.last.json
+          test -z "$(git status --porcelain)"
+
+  validate:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -59,7 +92,7 @@ jobs:
       - name: Confirm exact clean authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.sha }}"
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
@@ -82,13 +115,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Require no diagnostic mutation on pull requests
-        if: github.event_name == 'pull_request' && steps.linkage.outputs.exit_code == '0'
-        run: |
-          git diff --check
-          git diff --exit-code -- docs/fixtures/memory-os-operability/admission-authority-linkage-diagnostic.last.json
       - name: Clear stale diagnostic
-        if: github.event_name != 'pull_request' && steps.linkage.outputs.exit_code == '0'
+        if: steps.linkage.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
@@ -105,7 +133,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe linkage diagnostic
-        if: github.event_name != 'pull_request' && steps.linkage.outputs.exit_code != '0'
+        if: steps.linkage.outputs.exit_code != '0'
         env:
           LINKAGE_EXIT_CODE: ${{ steps.linkage.outputs.exit_code }}
         run: |
