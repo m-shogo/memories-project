@@ -26,25 +26,69 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-compatibility-authority-diagnostic-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean PR authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$expected"
+
+      - name: Validate and reconcile compatibility authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-version-compatibility-foundations.py \
+            scripts/reconcile-memory-os-version-compatibility-foundation-status.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/reconcile-memory-os-version-compatibility-foundation-status.py
+          python scripts/validate-memory-os-version-compatibility-foundations.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- contracts/operations/production-operability-status.json
+
   reconcile:
     if: >-
-      github.event_name != 'push' ||
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
       (!contains(github.event.head_commit.message, 'docs(version): register bounded compatibility authority diagnostic') &&
-       !contains(github.event.head_commit.message, 'test(version): record compatibility authority diagnostic'))
+       !contains(github.event.head_commit.message, 'test(version): record compatibility authority diagnostic')))
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -53,18 +97,16 @@ jobs:
           python-version: "3.12"
 
       - name: Confirm exact clean authority source
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          expected="${{ github.sha }}"
+          test -n "$expected"
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          fi
+          test "$(git rev-parse HEAD)" = "$expected"
+          echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"
 
       - name: Validate and reconcile with stage capture
+        id: compatibility
         run: |
           set +e
           log=/tmp/memory-os-compatibility-authority.log
@@ -93,21 +135,19 @@ jobs:
             echo "STAGE: aggregate-validator" >> "$log"
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
           fi
-          echo "COMPATIBILITY_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
           exit 0
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request' && env.COMPATIBILITY_EXIT_CODE == '0'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- contracts/operations/production-operability-status.json
-
       - name: Commit bounded compatibility status
-        if: github.event_name != 'pull_request' && env.COMPATIBILITY_EXIT_CODE == '0'
+        if: steps.compatibility.outputs.exit_code == '0'
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Compatibility authority source advanced after validation; refusing stale derived authority." >&2
+            exit 75
+          fi
           git add contracts/operations/production-operability-status.json
           if git ls-files --error-unmatch docs/fixtures/memory-os-operability/compatibility-authority-diagnostic.last.json >/dev/null 2>&1; then
             rm -f docs/fixtures/memory-os-operability/compatibility-authority-diagnostic.last.json
@@ -121,18 +161,24 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(version): register bounded compatibility authority diagnostic"
-          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-          if [[ "$remote_sha" != "$source_sha" ]]; then
-            echo "Compatibility authority source is stale: validated $source_sha but so is $remote_sha" >&2
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Compatibility authority source advanced after derived authority capture; refusing stale write." >&2
             exit 75
           fi
           git push origin HEAD:so
 
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && env.COMPATIBILITY_EXIT_CODE != '0'
+        if: steps.compatibility.outputs.exit_code != '0'
+        env:
+          COMPATIBILITY_EXIT_CODE: ${{ steps.compatibility.outputs.exit_code }}
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Compatibility authority source advanced after failed validation; refusing stale diagnostic." >&2
+            exit 75
+          fi
           python - <<'PY'
           import json
           import os
@@ -142,7 +188,7 @@ jobs:
           value = {
               "schemaVersion": "memory-os-validator-diagnostic.v1",
               "workflow": "reconcile-compatibility-authority-diagnostic",
-              "sourceCommitSha": os.environ["GITHUB_SHA"],
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
               "result": "FAIL",
               "exitCode": int(os.environ["COMPATIBILITY_EXIT_CODE"]),
               "output": text[-12000:],
@@ -170,13 +216,15 @@ jobs:
           git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test(version): record compatibility authority diagnostic"
-          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-          if [[ "$remote_sha" != "$source_sha" ]]; then
-            echo "Compatibility diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
-            exit 75
+          if ! git diff --cached --quiet; then
+            git commit -m "test(version): record compatibility authority diagnostic"
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Compatibility diagnostic source advanced after capture; refusing stale diagnostic." >&2
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
-          git push origin HEAD:so
 
       - name: Enforce success
-        run: test "${COMPATIBILITY_EXIT_CODE}" = "0"
+        run: test "${{ steps.compatibility.outputs.exit_code }}" = "0"
