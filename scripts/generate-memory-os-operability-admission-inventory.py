@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +31,36 @@ def require_generator_authority_identity() -> None:
             raise SystemExit(f"canonical {label} missing or escapes repository") from exc
         if lexical != expected or resolved != expected or not path.is_file():
             raise SystemExit(f"canonical {label} path drift: {lexical}")
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    relative = path.relative_to(ROOT)
+    if not path.parent.is_dir():
+        raise SystemExit(f"authority parent missing: {relative.parent}")
+    temp_name: str | None = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            text=True,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
+    except OSError as exc:
+        raise SystemExit(f"cannot atomically write {relative}: {exc}") from exc
+    finally:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
 
 def load(relative: str) -> dict[str, Any]:
@@ -732,14 +764,15 @@ def main() -> int:
         ]
     }
     output_before = OUTPUT.read_bytes() if OUTPUT.exists() else None
-    OUTPUT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    output_text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+    atomic_write_text(OUTPUT, output_text)
     try:
         validate_generated_inventory()
     except BaseException:
         if output_before is None:
             OUTPUT.unlink(missing_ok=True)
         else:
-            OUTPUT.write_bytes(output_before)
+            atomic_write_text(OUTPUT, output_before.decode("utf-8"))
         raise
     print("Memory OS operability admission inventory generated")
     print(f"P0 areas inventoried: {len(areas)}")
