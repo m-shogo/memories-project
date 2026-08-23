@@ -19,6 +19,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-observability-stack-deployment.py"
       - "scripts/register-memory-os-incident-contact-routing.py"
+      - "scripts/validate-memory-os-incident-contact-routing-writer-authority-negative.py"
       - "scripts/validate-memory-os-incident-contact-routing.py"
       - "scripts/reconcile-memory-os-incident-contact-routing.py"
       - "scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py"
@@ -45,6 +46,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-observability-stack-deployment.py"
       - "scripts/register-memory-os-incident-contact-routing.py"
+      - "scripts/validate-memory-os-incident-contact-routing-writer-authority-negative.py"
       - "scripts/validate-memory-os-incident-contact-routing.py"
       - "scripts/reconcile-memory-os-incident-contact-routing.py"
       - "scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py"
@@ -90,12 +92,14 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-observability-stack-deployment.py \
             scripts/register-memory-os-incident-contact-routing.py \
+            scripts/validate-memory-os-incident-contact-routing-writer-authority-negative.py \
             scripts/validate-memory-os-incident-contact-routing.py \
             scripts/reconcile-memory-os-incident-contact-routing.py \
             scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py \
             scripts/validate-memory-os-incident-contact-routing-generation-authority-negative.py \
             scripts/validate-memory-os-incident-response.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-incident-contact-routing-writer-authority-negative.py
           python scripts/validate-memory-os-incident-contact-routing-generation-authority-negative.py
           python scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py
           python scripts/reconcile-memory-os-incident-contact-routing.py
@@ -140,6 +144,7 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-observability-stack-deployment.py \
             scripts/register-memory-os-incident-contact-routing.py \
+            scripts/validate-memory-os-incident-contact-routing-writer-authority-negative.py \
             scripts/validate-memory-os-incident-contact-routing.py \
             scripts/reconcile-memory-os-incident-contact-routing.py \
             scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py \
@@ -147,6 +152,7 @@ jobs:
             scripts/validate-memory-os-incident-response.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-incident-contact-routing-writer-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-incident-contact-routing-generation-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-incident-contact-routing.py >> "$log" 2>&1 || code=$?; fi
