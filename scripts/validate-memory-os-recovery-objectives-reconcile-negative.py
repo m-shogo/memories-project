@@ -10,6 +10,7 @@ from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-recovery-objectives.py"
+WORKFLOW = ROOT / ".github/workflows/recovery-objectives-admission.yml"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
@@ -50,6 +51,25 @@ def assert_canonical_unchanged(contract_bytes: bytes, status_bytes: bytes, label
     require(STATUS.read_bytes() == status_bytes, f"{label} changed canonical production status")
 
 
+def validate_atomic_diagnostic_publication() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required_fragments = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required_fragments if fragment not in text]
+    require(not missing, f"recovery objective diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in text,
+        "recovery objective diagnostic publication regressed to direct write_text",
+    )
+    print("PASS boundary: recovery objective failure diagnostic publication is crash-safe")
+
+
 def prove_atomic_write_failure(reconciler: object, canonical_contract: bytes, canonical_status: bytes) -> None:
     original_replace = reconciler.os.replace
 
@@ -76,11 +96,13 @@ def prove_atomic_write_failure(reconciler: object, canonical_contract: bytes, ca
 
 def main() -> int:
     require(RECONCILER.is_file(), "recovery objective reconciler missing")
+    require(WORKFLOW.is_file(), "recovery objective workflow missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     reconciler = load_reconciler()
 
     canonical_contract = CONTRACT.read_bytes()
     canonical_status = STATUS.read_bytes()
+    validate_atomic_diagnostic_publication()
 
     substitutions = (
         ("CONTRACT", reconciler.REGISTRY, "recovery objective contract authority drift"),
@@ -183,6 +205,7 @@ def main() -> int:
     print("recovery objective data/executable substitution accepted: false")
     print("recovery objective evidence reordering accepted: false")
     print("non-atomic recovery objective authority write accepted: false")
+    print("non-atomic recovery objective diagnostic write accepted: false")
     print("Recovery objective reconcile negative suite PASS")
     print("objective created or defaulted: false")
     print("production evidence: false")
