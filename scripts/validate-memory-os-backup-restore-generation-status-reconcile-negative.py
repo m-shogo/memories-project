@@ -51,11 +51,19 @@ def prove_post_write_aggregate_rollback() -> None:
     reconciler = load_reconciler("memory_os_generation_status_aggregate_rollback")
     original_status = CANONICAL_STATUS.read_bytes()
     original_run_validator = reconciler.run_validator
+    observed: list[tuple[Path, Path, str]] = []
 
     def fail_operability(path: Path, expected_relative: Path, label: str) -> None:
-        if label == "operability validator":
+        observed.append((path, expected_relative, label))
+        if path == reconciler.OPERABILITY_VALIDATOR:
             raise reconciler.Fail("synthetic aggregate operability rejection")
-        original_run_validator(path, expected_relative, label)
+        if path == reconciler.VALIDATOR:
+            require(expected_relative == reconciler.VALIDATOR_REL and label == "generation binding validator", "generation binding pre-write validator identity drift")
+            return
+        if path == reconciler.BACKUP_VALIDATOR:
+            require(expected_relative == reconciler.BACKUP_VALIDATOR_REL and label == "backup validator", "backup post-write validator identity drift")
+            return
+        raise Fail(f"unexpected generation status validator invocation: {(path, expected_relative, label)}")
 
     reconciler.run_validator = fail_operability
     try:
@@ -64,7 +72,20 @@ def prove_post_write_aggregate_rollback() -> None:
         require("synthetic aggregate operability rejection" in str(exc), "unexpected aggregate rejection")
     else:
         raise Fail("synthetic aggregate operability rejection unexpectedly accepted")
+    finally:
+        reconciler.run_validator = original_run_validator
+
+    require(
+        observed
+        == [
+            (reconciler.VALIDATOR, reconciler.VALIDATOR_REL, "generation binding validator"),
+            (reconciler.BACKUP_VALIDATOR, reconciler.BACKUP_VALIDATOR_REL, "backup validator"),
+            (reconciler.OPERABILITY_VALIDATOR, reconciler.OPERABILITY_VALIDATOR_REL, "operability validator"),
+        ],
+        f"generation status validator order drift: {observed}",
+    )
     require(CANONICAL_STATUS.read_bytes() == original_status, "aggregate rejection did not byte-restore canonical status")
+    print("PASS boundary: validator order is generation binding -> backup -> aggregate Operability")
     print("PASS rollback: post-write aggregate rejection restores canonical status byte-for-byte")
 
 
