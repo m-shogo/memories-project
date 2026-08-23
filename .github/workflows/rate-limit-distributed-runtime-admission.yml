@@ -16,6 +16,7 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime-writer-authority-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py"
@@ -41,6 +42,7 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime-writer-authority-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py"
@@ -52,33 +54,82 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: rate-limit-distributed-runtime-admission-${{ github.ref }}
+  group: rate-limit-distributed-runtime-admission-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean pull request validation source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Validate distributed runtime admission read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/register-memory-os-rate-limit-distributed-runtime.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-writer-authority-negative.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py \
+            scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-rate-limit-distributed-runtime.py
+          python scripts/validate-memory-os-rate-limit-distributed-runtime-writer-authority-negative.py
+          python scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py
+          python scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py
+          python scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py
+          python scripts/reconcile-memory-os-rate-limit-distributed-runtime.py
+          python scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Confirm exact clean validation source
-        id: source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          test -n "$expected"
-          test "$(git rev-parse HEAD)" = "$expected"
+          test -n "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
-          echo "sha=$expected" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
       - name: Reconcile and validate distributed runtime admission
         id: runtime
         run: |
@@ -90,6 +141,7 @@ jobs:
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-rate-limit-distributed-runtime.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-writer-authority-negative.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py \
@@ -99,33 +151,19 @@ jobs:
             scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-rate-limit-distributed-runtime.py \
             >> "$log" 2>&1 || code=$?
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/reconcile-memory-os-rate-limit-distributed-runtime.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-rate-limit-operations.py >> "$log" 2>&1 || code=$?
-            python scripts/validate-memory-os-rate-limit.py >> "$log" 2>&1 || code=$?
-            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
-          fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-distributed-runtime-writer-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-rate-limit-distributed-runtime.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-operations.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Require PR validation to be read-only
-        if: github.event_name == 'pull_request' && steps.runtime.outputs.exit_code == '0'
-        run: git diff --exit-code
       - name: Commit bounded runtime admission authority
-        if: github.event_name != 'pull_request' && steps.runtime.outputs.exit_code == '0'
-        env:
-          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        if: steps.runtime.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git rm -f docs/fixtures/memory-os-operability/rate-limit-distributed-runtime-diagnostic.last.json 2>/dev/null || true
@@ -146,10 +184,9 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && steps.runtime.outputs.exit_code != '0'
+        if: steps.runtime.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           RUNTIME_EXIT_CODE: ${{ steps.runtime.outputs.exit_code }}
-          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
           git fetch origin so
@@ -158,7 +195,7 @@ jobs:
             exit 75
           }
           python - <<'PY'
-          import json, os
+          import json, os, tempfile
           from pathlib import Path
           text = Path('/tmp/rate-limit-distributed-runtime.log').read_text(encoding='utf-8', errors='replace')
           value = {
@@ -175,13 +212,30 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/rate-limit-distributed-runtime-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+          try:
+              with os.fdopen(fd, 'wb') as handle:
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(tmp_name, path)
+          finally:
+              try:
+                  os.unlink(tmp_name)
+              except FileNotFoundError:
+                  pass
           PY
           git add docs/fixtures/memory-os-operability/rate-limit-distributed-runtime-diagnostic.last.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(rate-limit): record distributed runtime diagnostic"
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "so advanced before diagnostic publication; refusing stale distributed-runtime diagnostic write" >&2
+              exit 75
+            }
             git push origin HEAD:so
           fi
       - name: Enforce validation
