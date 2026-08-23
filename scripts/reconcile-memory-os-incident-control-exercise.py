@@ -145,19 +145,23 @@ def run_validator(path: Path) -> None:
             f"reconciled incident authority failed validation: {path.name}")
 
 
+def run_canonical_validators() -> None:
+    for validator in (
+        EXERCISE_VALIDATOR,
+        INCIDENT_RESPONSE_VALIDATOR,
+        TABLETOP_VALIDATOR,
+        OPERABILITY_VALIDATOR,
+    ):
+        run_validator(validator)
+
+
 def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
     original_contract = CONTRACT_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     try:
         CONTRACT_PATH.write_bytes(render(contract))
         STATUS_PATH.write_bytes(render(status))
-        for validator in (
-            EXERCISE_VALIDATOR,
-            INCIDENT_RESPONSE_VALIDATOR,
-            TABLETOP_VALIDATOR,
-            OPERABILITY_VALIDATOR,
-        ):
-            run_validator(validator)
+        run_canonical_validators()
     except BaseException:
         CONTRACT_PATH.write_bytes(original_contract)
         STATUS_PATH.write_bytes(original_status)
@@ -235,6 +239,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not contract_changed and not status_changed:
+        run_canonical_validators()
         print("Incident control exercise authority already reconciled")
         return 0
 
