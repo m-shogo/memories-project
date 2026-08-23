@@ -22,10 +22,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
-LOCK = ROOT / "contracts/operations/.client-baseline-registry.lock"
-VALIDATOR = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
+CANONICAL_LOCK = ROOT / "contracts/operations/.client-baseline-registry.lock"
+CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+LOCK = CANONICAL_LOCK
+VALIDATOR = CANONICAL_VALIDATOR
 CONFIRMATION = "REGISTER REVIEWED CLIENT BASELINE"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -65,6 +69,23 @@ class Failure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Failure(message)
+
+
+def require_actual_cli_authorities() -> None:
+    for label, actual, canonical in (
+        ("contract", CONTRACT, CANONICAL_CONTRACT),
+        ("registry", REGISTRY, CANONICAL_REGISTRY),
+        ("validator", VALIDATOR, CANONICAL_VALIDATOR),
+    ):
+        require(actual == canonical, f"client baseline CLI {label} authority substitution rejected")
+        require(not actual.is_symlink(), f"client baseline CLI {label} authority must be symlink-free")
+        require(actual.resolve(strict=True) == canonical.resolve(strict=True), f"client baseline CLI {label} authority drift")
+    require(LOCK == CANONICAL_LOCK, "client baseline CLI lock authority substitution rejected")
+    require(not LOCK.is_symlink(), "client baseline CLI lock authority must be symlink-free")
+    require(
+        LOCK.parent.resolve(strict=True) == CANONICAL_LOCK.parent.resolve(strict=True),
+        "client baseline CLI lock parent authority drift",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -350,6 +371,7 @@ def append_registry_transactionally(registry: dict[str, Any], original_bytes: by
 
 
 def main() -> int:
+    require_actual_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
     parser.add_argument("--artifact", required=True)
