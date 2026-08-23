@@ -86,7 +86,7 @@ def main() -> int:
         ),
         (
             "stale diagnostic refusal removed",
-            replace_once(canonical, "refusing stale failure diagnostic", "allowing stale failure diagnostic", "stale diagnostic refusal"),
+            replace_all(canonical, "refusing stale failure diagnostic", "allowing stale failure diagnostic", "stale diagnostic refusal"),
         ),
     )
 
