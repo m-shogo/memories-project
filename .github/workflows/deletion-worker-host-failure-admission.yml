@@ -40,20 +40,68 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: deletion-worker-host-failure-admission-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean pull request authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_HEAD_SHA"
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Validate physical host-failure boundary read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/validate-memory-os-deletion-worker-host-failure.py \
+            scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py \
+            scripts/reconcile-memory-os-deletion-worker-host-failure.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py
+          python scripts/validate-memory-os-load.py
+          python scripts/reconcile-memory-os-deletion-worker-host-failure.py
+          python scripts/validate-memory-os-deletion-worker-host-failure.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/deletion-worker-host-failure-contract.v1.json \
+            contracts/operations/production-operability-status.json \
+            docs/fixtures/memory-os-operability/deletion-worker-host-failure-admission-diagnostic.last.json
+
+  reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -61,9 +109,8 @@ jobs:
       - name: Confirm exact clean authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          test -n "$expected"
-          test "$(git rev-parse HEAD)" = "$expected"
+          test -n "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
       - name: Validate and reconcile physical host-failure boundary
         id: admission
@@ -97,16 +144,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request' && steps.admission.outputs.exit_code == '0'
-        run: |
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/deletion-worker-host-failure-contract.v1.json \
-            contracts/operations/production-operability-status.json \
-            docs/fixtures/memory-os-operability/deletion-worker-host-failure-admission-diagnostic.last.json
       - name: Commit bounded foundation authority
-        if: github.event_name != 'pull_request' && steps.admission.outputs.exit_code == '0'
+        if: steps.admission.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
@@ -128,14 +167,19 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && steps.admission.outputs.exit_code != '0'
+        if: steps.admission.outputs.exit_code != '0'
         env:
           ADMISSION_EXIT_CODE: ${{ steps.admission.outputs.exit_code }}
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$source_sha" ]]; then
+            echo "Host-failure diagnostic source is stale before publication: validated $source_sha but so is $remote_sha" >&2
+            exit 75
+          fi
           python - <<'PY'
-          import json, os, subprocess
+          import json, os, subprocess, tempfile
           from pathlib import Path
           text = Path('/tmp/deletion-host-failure-admission.log').read_text(encoding='utf-8', errors='replace')
           source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
@@ -155,18 +199,30 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/deletion-worker-host-failure-admission-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          fd, temp_name = tempfile.mkstemp(prefix='.deletion-worker-host-failure-admission-diagnostic.', suffix='.tmp', dir=path.parent)
+          try:
+              with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                  json.dump(value, handle, indent=2)
+                  handle.write('\n')
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_name, path)
+          finally:
+              try:
+                  os.unlink(temp_name)
+              except FileNotFoundError:
+                  pass
           PY
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$source_sha" ]]; then
+            echo "Host-failure diagnostic source is stale before push: validated $source_sha but so is $remote_sha" >&2
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/deletion-worker-host-failure-admission-diagnostic.last.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(deletion): record host-failure admission diagnostic"
-            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-            if [[ "$remote_sha" != "$source_sha" ]]; then
-              echo "Host-failure diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
-              exit 75
-            fi
             git push origin HEAD:so
           fi
       - name: Enforce admission result
