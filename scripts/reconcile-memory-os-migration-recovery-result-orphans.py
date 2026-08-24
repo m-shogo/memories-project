@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -93,6 +94,32 @@ def enforce_runtime_authorities() -> None:
         (GLOBAL_RECONCILER, GLOBAL_RECONCILER_REL, "migration evidence registry reconciler"),
     ):
         require_exact_repo_file(path, expected, field)
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def restore_originals_atomically(originals: dict[Path, bytes]) -> None:
+    for path, payload in originals.items():
+        atomic_write_bytes(path, payload)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -325,8 +352,7 @@ def reconcile(orphans: list[tuple[int, Path, dict[str, Any]]], writer: ModuleTyp
             )
             require(completed.returncode == 0, f"local recovery authority reconcile failed for {run_id}: {completed.stdout.strip()}")
     except BaseException:
-        for path, payload in originals.items():
-            path.write_bytes(payload)
+        restore_originals_atomically(originals)
         raise
     finally:
         os.close(lock_fd)
