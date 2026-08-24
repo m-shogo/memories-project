@@ -39,7 +39,10 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
-    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    require(
+        relative == resolved and path.is_file() and not path.is_symlink(),
+        f"{field} must resolve to its canonical repository file",
+    )
     return path
 
 
@@ -143,7 +146,69 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def derive(registry_path: Path = GEN_REGISTRY) -> dict[str, Any]:
+CANONICAL_REQUIRE = require
+CANONICAL_EXECUTION_HELPERS = (
+    load,
+    canonical_repo_file,
+    require_canonical_registry,
+    load_generation_writer,
+    independent_review_ref_for_row,
+    derive_registry,
+)
+
+
+def enforce_runtime_execution_authority(
+    canonical_registry: Path = CANONICAL_GEN_REGISTRY,
+    canonical_writer: Path = GEN_WRITER,
+    canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+    canonical_require=CANONICAL_REQUIRE,
+) -> None:
+    expected_root = Path(enforce_runtime_execution_authority.__code__.co_filename).resolve().parents[1]
+    try:
+        actual_root = ROOT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("generation eligibility repository root missing") from exc
+    if actual_root != expected_root:
+        raise Fail("generation eligibility repository root drift")
+
+    expected_registry = expected_root / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+    expected_writer = expected_root / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+    for current, captured, expected, label in (
+        (CANONICAL_GEN_REGISTRY, canonical_registry, expected_registry, "canonical generation registry"),
+        (GEN_REGISTRY, canonical_registry, expected_registry, "generation registry"),
+        (GEN_WRITER, canonical_writer, expected_writer, "generation writer"),
+    ):
+        if current != captured or current != expected:
+            raise Fail(f"generation eligibility {label} authority drift")
+        try:
+            resolved = current.resolve(strict=True)
+        except (FileNotFoundError, OSError, RuntimeError) as exc:
+            raise Fail(f"generation eligibility {label} authority missing") from exc
+        if resolved != expected or not current.is_file() or current.is_symlink():
+            raise Fail(f"generation eligibility {label} authority path drift")
+
+    if require is not canonical_require:
+        raise Fail("generation eligibility require helper drift")
+    current_helpers = (
+        load,
+        canonical_repo_file,
+        require_canonical_registry,
+        load_generation_writer,
+        independent_review_ref_for_row,
+        derive_registry,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("generation eligibility execution helper drift")
+
+
+def derive(
+    registry_path: Path = GEN_REGISTRY,
+    canonical_execution_guard=enforce_runtime_execution_authority,
+) -> dict[str, Any]:
+    if registry_path == CANONICAL_GEN_REGISTRY:
+        if enforce_runtime_execution_authority is not canonical_execution_guard:
+            raise Fail("generation eligibility execution guard drift")
+        enforce_runtime_execution_authority()
     require_canonical_registry(registry_path)
     return derive_registry(load(registry_path))
 
@@ -156,7 +221,15 @@ def eligible_generation_by_id(generation_id: Any, *, registry_path: Path = GEN_R
     return matches[0]
 
 
-def main() -> int:
+def main(
+    canonical_execution_guard=enforce_runtime_execution_authority,
+    canonical_derive=derive,
+) -> int:
+    if enforce_runtime_execution_authority is not canonical_execution_guard:
+        raise Fail("generation eligibility main execution guard drift")
+    if derive is not canonical_derive:
+        raise Fail("generation eligibility main derivation helper drift")
+    enforce_runtime_execution_authority()
     state = derive()
     print("Memory OS environment generation eligibility derivation PASS")
     print(f"registered generations: {state['registeredGenerationCount']}")
@@ -169,6 +242,7 @@ def main() -> int:
     print("isolated fixture registry derivation remains supported: true")
     print("generation writer executable authority pinned: true")
     print("generation registry validation delegated to canonical writer: true")
+    print("canonical execution helper substitution accepted: false")
     print("eligible environment independent review reuse accepted: false")
     print("generation registry schema drift accepted: false")
     print("generation registry class drift accepted: false")
