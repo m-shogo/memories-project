@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import inspect
 import json
 import subprocess
 import sys
@@ -17,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
@@ -46,7 +49,39 @@ def load_writer() -> ModuleType:
     require(spec is not None and spec.loader is not None, "cannot load migration rehearsal writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(callable(getattr(module, "require_actual_cli_authorities", None)), "migration rehearsal CLI authority guard missing")
     return module
+
+
+def expect_cli_authority_substitution_rejected(writer: ModuleType) -> None:
+    main_source = inspect.getsource(writer.main)
+    guard_index = main_source.find("require_actual_cli_authorities()")
+    parser_index = main_source.find("argparse.ArgumentParser()")
+    require(guard_index >= 0 and parser_index >= 0 and guard_index < parser_index,
+            "migration rehearsal CLI authority guard must run before argument parsing")
+    originals = {path: path.read_bytes() for path in (CONTRACT, REGISTRY, LIFECYCLE, STATUS)}
+    substitutions = (
+        ("CONTRACT", STATUS),
+        ("REGISTRY", STATUS),
+        ("LIFECYCLE", STATUS),
+        ("GEN_REGISTRY", STATUS),
+        ("GEN_WRITER", STATUS),
+        ("LOCK", ROOT / "contracts/operations/.migration-evidence-registry-negative.lock"),
+    )
+    for name, substitute in substitutions:
+        original = getattr(writer, name)
+        setattr(writer, name, substitute)
+        try:
+            try:
+                writer.require_actual_cli_authorities()
+            except Exception as exc:
+                require("substitution rejected" in str(exc), f"migration rehearsal CLI {name} substitution rejected for unrelated reason: {exc}")
+            else:
+                raise Fail(f"migration rehearsal CLI accepted {name} authority substitution")
+        finally:
+            setattr(writer, name, original)
+    for path, original in originals.items():
+        require(path.read_bytes() == original, f"migration rehearsal CLI authority substitution mutated {path.relative_to(ROOT)}")
 
 
 def expect_writer_rejected(writer: ModuleType, contract: dict[str, Any], name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
@@ -281,6 +316,7 @@ def expect_recovery_evidence_mutation_rejected(writer: ModuleType, contract: dic
 
 def main() -> int:
     writer = load_writer()
+    expect_cli_authority_substitution_rejected(writer)
     contract = load_json(CONTRACT)
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
@@ -321,7 +357,7 @@ def main() -> int:
     expect_local_artifact_lineage_rejected()
     expect_local_artifact_reconcile_rejected_on_corrupt_registry()
     expect_recovery_evidence_mutation_rejected(writer, contract)
-    print("PASS: migration rehearsal ledger/contract corruption, transactional append rollback, reconcile partial writes, local reconcile corruption rejection, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected")
+    print("PASS: migration rehearsal CLI authority, ledger/contract corruption, transactional append rollback, reconcile partial writes, local reconcile corruption rejection, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected")
     return 0
 
 
