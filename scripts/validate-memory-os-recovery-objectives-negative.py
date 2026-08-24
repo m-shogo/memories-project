@@ -117,6 +117,18 @@ def main() -> int:
     finally:
         writer.LOCK = canonical_lock
 
+    canonical_validator_lock = validator.EXPECTED_LOCK
+    validator.EXPECTED_LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
+    try:
+        expect_validator_rejected(
+            validator,
+            "recovery objective validator append lock substitution",
+            validator.enforce_runtime_authorities,
+        )
+    finally:
+        validator.EXPECTED_LOCK = canonical_validator_lock
+    validator.enforce_runtime_authorities()
+
     valid = base_record()
     writer.validate_record(valid)
     print("PASS accept: explicit typed reviewed recovery objective")
@@ -300,6 +312,7 @@ def main() -> int:
     print("canonical registry mutated: false")
     print("objective registry append corruption rejection: enforced")
     print("runtime lock substitution accepted: false")
+    print("validator append lock substitution accepted: false")
     print("objective values invented/defaulted: false")
     print("arbitrary repository file approval accepted: false")
     print("objective authority refs escape repository: false")
