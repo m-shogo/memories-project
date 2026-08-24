@@ -14,9 +14,11 @@ import argparse
 import copy
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -256,6 +258,29 @@ def normalize(status: dict[str, Any]) -> dict[str, Any]:
     return status
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        temp_path = None
+    except OSError as exc:
+        raise ReconcileFailure(f"atomic authority write failed: {path.name}") from exc
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
@@ -280,15 +305,13 @@ def main() -> int:
         return 0
 
     original_bytes = STATUS_PATH.read_bytes()
-    STATUS_PATH.write_text(
-        json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    payload = (json.dumps(candidate, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    atomic_write_bytes(STATUS_PATH, payload)
     try:
         run_validator(BACKUP_VALIDATOR)
         run_validator(OPERABILITY_VALIDATOR)
     except Exception:
-        STATUS_PATH.write_bytes(original_bytes)
+        atomic_write_bytes(STATUS_PATH, original_bytes)
         raise
 
     print("Normalized OPS-P0-007 local foundations; canonical production blockers unchanged")
