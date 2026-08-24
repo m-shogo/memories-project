@@ -33,6 +33,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
@@ -73,6 +75,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
@@ -130,6 +134,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
+            scripts/validate-memory-os-backup-restore-admission-chain.py \
+            scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py \
             scripts/reconcile-memory-os-backup-restore.py \
@@ -143,6 +149,9 @@ jobs:
 
       - name: Validate canonical blocker negatives
         run: python scripts/validate-memory-os-backup-restore-blockers-negative.py
+
+      - name: Validate admission-chain canonical authority boundary
+        run: python scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py
 
       - name: Validate OPS-P0-007 ephemeral lock authorities
         run: python scripts/validate-memory-os-backup-restore-ephemeral-lock-authority-negative.py
