@@ -200,11 +200,24 @@ CANONICAL_EXECUTION_HELPERS = (
     validate_material_delta_payload,
     validate_row,
 )
+CANONICAL_AUTHORITY_CONFIG = (
+    CONTRACT_REL.as_posix(),
+    REGISTRY_REL.as_posix(),
+    VALIDATOR_REL.as_posix(),
+    NEGATIVE_REL.as_posix(),
+    MATERIAL_DELTA_ROOT.as_posix(),
+    EXPECTED_SCHEMA,
+    EXPECTED_VALIDATOR,
+    EXPECTED_NEGATIVE,
+    REVIEW_RESULT,
+    REVIEWER.pattern,
+)
 
 
 def enforce_execution_authority(
     canonical_require=CANONICAL_REQUIRE,
     canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+    canonical_config: tuple[Any, ...] = CANONICAL_AUTHORITY_CONFIG,
 ) -> None:
     expected_root = Path(enforce_execution_authority.__code__.co_filename).resolve().parents[1]
     try:
@@ -229,6 +242,20 @@ def enforce_execution_authority(
     )
     if current_helpers != canonical_helpers:
         raise Fail("material-delta review execution helper drift")
+    current_config = (
+        CONTRACT_REL.as_posix(),
+        REGISTRY_REL.as_posix(),
+        VALIDATOR_REL.as_posix(),
+        NEGATIVE_REL.as_posix(),
+        MATERIAL_DELTA_ROOT.as_posix(),
+        EXPECTED_SCHEMA,
+        EXPECTED_VALIDATOR,
+        EXPECTED_NEGATIVE,
+        REVIEW_RESULT,
+        REVIEWER.pattern,
+    )
+    if current_config != canonical_config:
+        raise Fail("material-delta review semantic authority drift")
 
 
 CANONICAL_EXECUTION_GUARD = enforce_execution_authority
@@ -274,6 +301,7 @@ def main(
     print(f"PASS: typed generation material-delta review authority records={len(rows)} productionEvidence=false productionReady=false")
     print("canonical generation evidence contract/registry authority substitution accepted: false")
     print("material-delta review execution helper substitution accepted: false")
+    print("paired semantic authority substitution accepted: false")
     print("automatic promotion authority created: false")
     return 0
 
