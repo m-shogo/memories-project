@@ -15,6 +15,7 @@ CONTRACT_REL = Path("contracts/operations/backup-restore-drill-generation-eligib
 DRILL_CONTRACT_REL = Path("contracts/operations/backup-restore-drill-request-contract.v1.json")
 DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
 DRILL_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+DRILL_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-drill-request.py")
 DRILL_NEGATIVE_REL = Path("scripts/validate-memory-os-backup-restore-drill-request-negative.py")
 ELIGIBILITY_CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-eligibility-contract.v1.json")
 ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
@@ -24,6 +25,7 @@ CONTRACT = ROOT / CONTRACT_REL
 DRILL_CONTRACT = ROOT / DRILL_CONTRACT_REL
 DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
 DRILL_WRITER = ROOT / DRILL_WRITER_REL
+DRILL_VALIDATOR = ROOT / DRILL_VALIDATOR_REL
 DRILL_NEGATIVE = ROOT / DRILL_NEGATIVE_REL
 ELIGIBILITY_CONTRACT = ROOT / ELIGIBILITY_CONTRACT_REL
 ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
@@ -40,6 +42,13 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def exact_success(result: Any, label: str) -> None:
+    require(
+        isinstance(result, int) and not isinstance(result, bool) and result == 0,
+        f"{label} returned nonzero/invalid result: {result}",
+    )
+
+
 def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
     try:
         lexical = path.relative_to(ROOT)
@@ -47,7 +56,7 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(
-        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
         f"{field} authority drift",
     )
     return path
@@ -59,6 +68,7 @@ def enforce_runtime_authorities() -> None:
         (DRILL_CONTRACT, DRILL_CONTRACT_REL, "drill request contract"),
         (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
         (DRILL_WRITER, DRILL_WRITER_REL, "drill request writer"),
+        (DRILL_VALIDATOR, DRILL_VALIDATOR_REL, "drill request validator"),
         (DRILL_NEGATIVE, DRILL_NEGATIVE_REL, "drill request negative validator"),
         (ELIGIBILITY_CONTRACT, ELIGIBILITY_CONTRACT_REL, "generation eligibility contract"),
         (ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "generation eligibility helper"),
@@ -90,7 +100,61 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
     return module
 
 
-def main() -> int:
+def run_negative_suite() -> None:
+    require_exact_repo_file(DRILL_NEGATIVE, DRILL_NEGATIVE_REL, "drill request negative validator")
+    completed = subprocess.run(
+        [sys.executable, str(DRILL_NEGATIVE)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"drill request negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}",
+    )
+
+
+CANONICAL_REQUIRE = require
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_RUNTIME_ENFORCER = enforce_runtime_authorities
+CANONICAL_EXECUTION_HELPERS = (
+    exact_success,
+    require_exact_repo_file,
+    load,
+    load_module,
+    run_negative_suite,
+)
+
+
+def enforce_execution_identity(
+    canonical_enforcer=CANONICAL_RUNTIME_ENFORCER,
+    canonical_require=CANONICAL_REQUIRE,
+    canonical_subprocess_run=CANONICAL_SUBPROCESS_RUN,
+    canonical_helpers=CANONICAL_EXECUTION_HELPERS,
+) -> None:
+    if enforce_runtime_authorities is not canonical_enforcer:
+        raise Fail("drill generation binding runtime authority enforcer drift")
+    if require is not canonical_require:
+        raise Fail("drill generation binding require helper drift")
+    if subprocess.run is not canonical_subprocess_run:
+        raise Fail("drill generation binding subprocess transport drift")
+    current_helpers = (
+        exact_success,
+        require_exact_repo_file,
+        load,
+        load_module,
+        run_negative_suite,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("drill generation binding execution helper drift")
+
+
+def main(canonical_execution_guard=enforce_execution_identity) -> int:
+    if enforce_execution_identity is not canonical_execution_guard:
+        raise Fail("drill generation binding execution guard drift")
+    enforce_execution_identity()
     enforce_runtime_authorities()
     contract = load(CONTRACT)
     drill_contract = load(DRILL_CONTRACT)
@@ -101,6 +165,12 @@ def main() -> int:
         DRILL_WRITER_REL,
         "memory_os_drill_request_writer_for_generation_binding",
         "drill request writer",
+    )
+    drill_validator = load_module(
+        DRILL_VALIDATOR,
+        DRILL_VALIDATOR_REL,
+        "memory_os_drill_request_validator_for_generation_binding",
+        "drill request validator",
     )
     helper = load_module(
         ELIGIBILITY_HELPER,
@@ -126,6 +196,12 @@ def main() -> int:
         require_exact_repo_file(ROOT / relative, relative, f"binding artifact {field}")
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "binding rules must remain fail-closed")
+
+    try:
+        drill_result = drill_validator.main()
+    except drill_validator.Fail as exc:
+        raise Fail(f"drill request full admission authority invalid: {exc}") from exc
+    exact_success(drill_result, "drill request full admission authority")
 
     eligibility = helper.derive()
     eligibility_boundary = eligibility_contract.get("currentBoundary")
@@ -190,15 +266,15 @@ def main() -> int:
         require(boundary.get(field) == value, f"binding boundary drift: {field}")
     require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False and boundary.get("productionDecision") == "NO_GO", "binding cannot promote production")
 
-    require_exact_repo_file(DRILL_NEGATIVE, DRILL_NEGATIVE_REL, "drill request negative validator")
-    completed = subprocess.run([sys.executable, str(DRILL_NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"drill request negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+    run_negative_suite()
 
     print("Memory OS drill request semantic generation binding PASS")
     print(f"eligible directed restore pairs: {pair_count}")
     print(f"reviewed/current drill requests: {request_count}/{current_count}")
     print(f"historical auditable requests: {historical_auditable}")
     print("canonical data/executable authorities enforced: true")
+    print("drill request full admission validator delegated: true")
+    print("delegated validator nonzero accepted: false")
     print("generation registration alone is sufficient: false")
     print("noneligible generation can create current request: false")
     print("production evidence: false")
