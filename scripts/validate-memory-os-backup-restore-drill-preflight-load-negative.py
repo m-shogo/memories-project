@@ -123,7 +123,6 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
     original_contract = reconciler.CONTRACT
     original_status = reconciler.STATUS
     original_run = reconciler.subprocess.run
-    original_enforcer = reconciler.enforce_runtime_authorities
     observed_commands: list[list[str]] = []
 
     expected_paths = [
@@ -144,14 +143,12 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
             return SimpleNamespace(returncode=0, stdout="upstream/preflight authority validator pass", stderr="")
         return SimpleNamespace(returncode=1, stdout="forced post-reconcile operability validator failure", stderr="")
 
-    reconciler.enforce_runtime_authorities = lambda: None
     reconciler.CONTRACT = contract
     reconciler.STATUS = status
     reconciler.subprocess.run = fail_only_aggregate_post_reconcile
     try:
-        expect_domain_fail("forced aggregate operability validation failure", reconciler.main, reconciler.Fail)
+        expect_domain_fail("forced aggregate operability validation failure", reconciler._reconcile, reconciler.Fail)
     finally:
-        reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.CONTRACT = original_contract
         reconciler.STATUS = original_status
         reconciler.subprocess.run = original_run
@@ -197,6 +194,7 @@ def main() -> int:
 
     print("Preflight unreadable-authority and reconcile rollback negative suite PASS")
     print("direct reconciler data/executable authority substitutions accepted: false")
+    print("production CLI authority weakened for transactional fixtures: false")
     print("reconciler invalid UTF-8 authority leaked raw exception: false")
     print("reconciler unreadable directory authority leaked raw exception: false")
     print("reconciler escaped authority accepted: false")
