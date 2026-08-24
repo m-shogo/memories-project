@@ -64,10 +64,20 @@ def drill_registry_value(request: dict, *, current_count: int = 1) -> dict:
     }
 
 
-def successor_environment_record(source_path: Path, generation_id: str, destination: Path) -> Path:
+def successor_environment_record(
+    source_path: Path,
+    generation_id: str,
+    destination: Path,
+    *,
+    independent_review_ref: str,
+) -> Path:
     value = json.loads(source_path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), "successor environment fixture root must be object")
     value["generationId"] = generation_id
+    boundary = value.get("evidenceBoundary")
+    require(isinstance(boundary, dict), "successor environment fixture evidenceBoundary missing")
+    require(isinstance(independent_review_ref, str) and independent_review_ref, "successor independent review ref required")
+    boundary["independentReviewRef"] = independent_review_ref
     write_json(destination, value)
     return destination
 
@@ -138,12 +148,16 @@ def main() -> int:
             overlay_registry = tmp_path / "typed-overlay.json"
 
             source_successor_env = successor_environment_record(
-                fixture.SOURCE_ENV_FIXTURE, "pegen_source_v2",
+                fixture.SOURCE_ENV_FIXTURE,
+                "pegen_source_v2",
                 env_tmp_path / "source-environment-record.v2.valid.json",
+                independent_review_ref="SECURITY.md",
             )
             target_successor_env = successor_environment_record(
-                fixture.TARGET_ENV_FIXTURE, "pegen_target_v2",
+                fixture.TARGET_ENV_FIXTURE,
+                "pegen_target_v2",
                 env_tmp_path / "target-environment-record.v2.valid.json",
+                independent_review_ref="README.md",
             )
             successor_commit = temporary_source_commit(original_head, [source_successor_env, target_successor_env])
             source_successor_env.unlink()
@@ -273,6 +287,7 @@ def main() -> int:
         print("Memory OS generation/objective/request rollover candidate negative suite PASS")
         print("historical evidence remains auditable after valid supersession: true")
         print("synthetic successor sourceCommitSha ancestor validation exercised: true")
+        print("eligible generation independent review reuse accepted: false")
         print("branch or ref updated by synthetic source commits: false")
         print("production evidence: false")
         print("production decision: NO_GO")
