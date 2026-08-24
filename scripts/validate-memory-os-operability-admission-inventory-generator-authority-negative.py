@@ -33,6 +33,12 @@ def load_generator():
     return module
 
 
+def restore_input(input_before: bytes) -> None:
+    INPUT.unlink(missing_ok=True)
+    INPUT.write_bytes(input_before)
+    ALIAS_TARGET.unlink(missing_ok=True)
+
+
 def main() -> int:
     generator = load_generator()
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
@@ -40,10 +46,10 @@ def main() -> int:
     input_before = INPUT.read_bytes()
     output_before = generator.OUTPUT.read_bytes()
 
-    ALIAS_TARGET.write_bytes(input_before)
-    INPUT.unlink()
-    INPUT.symlink_to(ALIAS_TARGET.name)
     try:
+        ALIAS_TARGET.write_bytes(input_before)
+        INPUT.unlink()
+        INPUT.symlink_to(ALIAS_TARGET.name)
         rejected = False
         try:
             generator.load(INPUT_REL.as_posix())
@@ -54,9 +60,7 @@ def main() -> int:
         require(generator.exists(INPUT_REL.as_posix()) is False, "symlinked foundation path counted as canonical foundation")
         require(generator.OUTPUT.read_bytes() == output_before, "input authority rejection mutated canonical inventory")
     finally:
-        INPUT.unlink(missing_ok=True)
-        INPUT.write_bytes(input_before)
-        ALIAS_TARGET.unlink(missing_ok=True)
+        restore_input(input_before)
 
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input was not restored")
     require(INPUT.read_bytes() == input_before, "canonical inventory input bytes changed after negative probe")
@@ -66,6 +70,7 @@ def main() -> int:
     print("Memory OS operability inventory generator authority negative PASS")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
+    print("fixture setup failure can strand canonical input authority: false")
     print("rejected probe mutated canonical input authority: false")
     print("rejected probe mutated canonical inventory: false")
     print("production evidence: false")
