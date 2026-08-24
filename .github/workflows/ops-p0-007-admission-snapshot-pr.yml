@@ -25,9 +25,13 @@ on:
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
@@ -68,13 +72,21 @@ jobs:
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
             scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py
+          python scripts/validate-memory-os-recovery-objectives.py
+          python scripts/validate-memory-os-backup-restore-drill-request.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py
           python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py
           python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py
