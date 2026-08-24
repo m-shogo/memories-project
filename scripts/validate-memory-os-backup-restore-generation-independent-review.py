@@ -19,38 +19,28 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+MATERIAL_DELTA_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-material-delta-review.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-independent-review.py")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
 EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
 REVIEW_SCHEMA = "memory-os-backup-restore-generation-review-evidence.v1"
-MATERIAL_DELTA_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+MATERIAL_DELTA_VALIDATOR = ROOT / MATERIAL_DELTA_VALIDATOR_REL
+VALIDATOR = ROOT / VALIDATOR_REL
 REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
 REQUIRED_FIELDS = {
-    "schemaVersion",
-    "evidenceId",
-    "drillRequestId",
-    "recoveryObjectivesId",
-    "sourceEnvironmentGenerationId",
-    "restoreTargetGenerationId",
-    "reviewRole",
-    "reviewResult",
-    "reviewedAt",
-    "reviewerPseudonym",
-    "productionTrafficChanged",
-    "productionCredentialsUsed",
-    "automaticPromotion",
+    "schemaVersion", "evidenceId", "drillRequestId", "recoveryObjectivesId",
+    "sourceEnvironmentGenerationId", "restoreTargetGenerationId", "reviewRole",
+    "reviewResult", "reviewedAt", "reviewerPseudonym", "productionTrafficChanged",
+    "productionCredentialsUsed", "automaticPromotion",
 }
 BOUND_FIELDS = (
-    "evidenceId",
-    "drillRequestId",
-    "recoveryObjectivesId",
-    "sourceEnvironmentGenerationId",
-    "restoreTargetGenerationId",
+    "evidenceId", "drillRequestId", "recoveryObjectivesId",
+    "sourceEnvironmentGenerationId", "restoreTargetGenerationId",
 )
-ROLE_BY_REF = {
-    "securityReviewRef": "SECURITY",
-    "operabilityReviewRef": "OPERABILITY",
-}
+ROLE_BY_REF = {"securityReviewRef": "SECURITY", "operabilityReviewRef": "OPERABILITY"}
 BOUND_RULE_BY_FIELD = {
     "evidenceId": "independentReviewMustBindEvidenceId",
     "drillRequestId": "independentReviewMustBindDrillRequestId",
@@ -69,6 +59,29 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "generation evidence contract"),
+        (REGISTRY, REGISTRY_REL, "generation evidence registry"),
+        (MATERIAL_DELTA_VALIDATOR, MATERIAL_DELTA_VALIDATOR_REL, "candidate material-delta review validator"),
+        (VALIDATOR, VALIDATOR_REL, "generation independent-review validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
+
+
 def load_json(path: Path, field: str) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -79,27 +92,13 @@ def load_json(path: Path, field: str) -> dict[str, Any]:
 
 
 def validate_contract_authority() -> None:
+    require_exact_repo_file(CONTRACT, CONTRACT_REL, "generation evidence contract")
     contract = load_json(CONTRACT, "generation evidence contract")
-    require(
-        contract.get("independentReviewEvidenceSchemaVersion") == REVIEW_SCHEMA,
-        "independent review evidence schema authority drift",
-    )
-    require(
-        contract.get("independentReviewEvidenceRoot") == EVIDENCE_ROOT.as_posix(),
-        "independent review evidence root authority drift",
-    )
-    require(
-        contract.get("materialDeltaReviewValidator") == MATERIAL_DELTA_VALIDATOR.relative_to(ROOT).as_posix(),
-        "candidate material-delta review validator authority drift",
-    )
+    require(contract.get("independentReviewEvidenceSchemaVersion") == REVIEW_SCHEMA, "independent review evidence schema authority drift")
+    require(contract.get("independentReviewEvidenceRoot") == EVIDENCE_ROOT.as_posix(), "independent review evidence root authority drift")
+    require(contract.get("materialDeltaReviewValidator") == MATERIAL_DELTA_VALIDATOR_REL.as_posix(), "candidate material-delta review validator authority drift")
     fields = contract.get("requiredIndependentReviewEvidenceFields")
-    require(
-        isinstance(fields, list)
-        and all(isinstance(field, str) and field for field in fields)
-        and len(fields) == len(set(fields))
-        and set(fields) == REQUIRED_FIELDS,
-        "independent review required field authority drift",
-    )
+    require(isinstance(fields, list) and all(isinstance(field, str) and field for field in fields) and len(fields) == len(set(fields)) and set(fields) == REQUIRED_FIELDS, "independent review required field authority drift")
     require(contract.get("independentReviewRoles") == ROLE_BY_REF, "independent review role authority drift")
     rules = contract.get("recordRules")
     require(isinstance(rules, dict), "generation evidence recordRules missing")
@@ -119,10 +118,7 @@ def validate_contract_authority() -> None:
         require(rules.get(rule) is True, f"independent review binding rule drift: {field}")
     promotion = contract.get("promotionBoundary")
     require(isinstance(promotion, dict), "generation evidence promotionBoundary missing")
-    require(
-        promotion.get("completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews") is True,
-        "independent review promotion boundary drift",
-    )
+    require(promotion.get("completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews") is True, "independent review promotion boundary drift")
 
 
 def canonical_ref(value: Any, field: str) -> tuple[str, Path]:
@@ -140,14 +136,7 @@ def canonical_ref(value: Any, field: str) -> tuple[str, Path]:
 
 
 def git_history(ref: str, field: str) -> list[str]:
-    completed = subprocess.run(
-        ["git", "log", "--format=%H", "--follow", "--", ref],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    completed = subprocess.run(["git", "log", "--format=%H", "--follow", "--", ref], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"cannot inspect {field} Git history")
     commits = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
     require(commits, f"{field} must be committed review evidence")
@@ -157,13 +146,7 @@ def git_history(ref: str, field: str) -> list[str]:
 def require_append_only_review(ref: str, path: Path, field: str) -> None:
     commits = git_history(ref, field)
     require(len(commits) == 1, f"{field} must remain append-only after its first committed version")
-    completed = subprocess.run(
-        ["git", "show", f"{commits[0]}:{ref}"],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    completed = subprocess.run(["git", "show", f"{commits[0]}:{ref}"], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"cannot read initial committed bytes for {field}")
     require(path.read_bytes() == completed.stdout, f"{field} bytes drift from initial committed review evidence")
 
@@ -199,12 +182,7 @@ def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> 
 
 
 def load_material_delta_validator():
-    try:
-        relative = MATERIAL_DELTA_VALIDATOR.relative_to(ROOT)
-        resolved = MATERIAL_DELTA_VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail("candidate material-delta review validator missing or escapes repository") from exc
-    require(relative == resolved and MATERIAL_DELTA_VALIDATOR.is_file(), "candidate material-delta review validator authority drift")
+    require_exact_repo_file(MATERIAL_DELTA_VALIDATOR, MATERIAL_DELTA_VALIDATOR_REL, "candidate material-delta review validator")
     spec = importlib.util.spec_from_file_location("memory_os_generation_material_delta_review_for_candidate_reviews", MATERIAL_DELTA_VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load candidate material-delta review validator")
     module = importlib.util.module_from_spec(spec)
@@ -216,7 +194,7 @@ def load_material_delta_validator():
 
 
 def candidate_reviews_approved(row: dict[str, Any]) -> bool:
-    """Validate exact typed candidate review authorities for one generation evidence row."""
+    enforce_runtime_authorities()
     validate_contract_authority()
     try:
         material_delta_ok = load_material_delta_validator().material_delta_review_approved(row)
@@ -233,6 +211,7 @@ def candidate_reviews_approved(row: dict[str, Any]) -> bool:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     validate_contract_authority()
     registry = load_json(REGISTRY, "generation evidence registry")
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "generation evidence registry schema drift")
@@ -240,14 +219,14 @@ def main() -> int:
     require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "generation evidence registry production boundary drift")
     rows = registry.get("records")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation evidence registry records invalid")
-
     for index, row in enumerate(rows):
         try:
             candidate_reviews_approved(row)
         except Fail as exc:
             raise Fail(f"records[{index}] independent review authority invalid: {exc}") from exc
-
     print(f"PASS: generation candidate review authority records={len(rows)} productionEvidence=false productionReady=false")
+    print("canonical generation evidence contract/registry authority substitution accepted: false")
+    print("human production promotion remains separate: true")
     return 0
 
 
