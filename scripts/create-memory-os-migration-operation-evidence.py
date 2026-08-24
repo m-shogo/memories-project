@@ -17,8 +17,28 @@ from migration_operation_evidence_lib import (
     validate_record,
 )
 
-DEFAULT_LEDGER = ROOT / "docs/evidence/migration-operations"
-VALIDATOR = ROOT / "scripts/validate-memory-os-migration-operation-evidence.py"
+CANONICAL_DEFAULT_LEDGER = ROOT / "docs/evidence/migration-operations"
+CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-operation-evidence.py"
+DEFAULT_LEDGER = CANONICAL_DEFAULT_LEDGER
+VALIDATOR = CANONICAL_VALIDATOR
+
+
+def require_actual_cli_authorities() -> None:
+    if DEFAULT_LEDGER != CANONICAL_DEFAULT_LEDGER:
+        raise EvidenceValidationError("migration operation CLI default ledger authority substitution rejected")
+    if VALIDATOR != CANONICAL_VALIDATOR:
+        raise EvidenceValidationError("migration operation CLI validator authority substitution rejected")
+    if DEFAULT_LEDGER.is_symlink():
+        raise EvidenceValidationError("migration operation CLI default ledger authority must be symlink-free")
+    if VALIDATOR.is_symlink():
+        raise EvidenceValidationError("migration operation CLI validator authority must be symlink-free")
+    try:
+        if DEFAULT_LEDGER.resolve(strict=True) != CANONICAL_DEFAULT_LEDGER.resolve(strict=True):
+            raise EvidenceValidationError("migration operation CLI default ledger authority drift")
+        if VALIDATOR.resolve(strict=True) != CANONICAL_VALIDATOR.resolve(strict=True):
+            raise EvidenceValidationError("migration operation CLI validator authority drift")
+    except FileNotFoundError as exc:
+        raise EvidenceValidationError("migration operation CLI canonical authority missing") from exc
 
 
 def run_canonical_validator() -> None:
@@ -63,6 +83,7 @@ def validate_canonical_ledger_after_append(ledger: Path) -> None:
 
 
 def main() -> int:
+    require_actual_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("record", help="path to the JSON record to append")
     parser.add_argument("--ledger-dir", default=str(DEFAULT_LEDGER))
