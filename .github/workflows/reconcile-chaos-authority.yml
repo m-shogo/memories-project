@@ -74,21 +74,117 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-chaos-authority-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  reconcile:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean PR authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+
+      - name: Validate normalized chaos authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/reconcile-memory-os-chaos-authority.py \
+            scripts/reconcile-memory-os-chaos-inflight-overlay.py \
+            scripts/reconcile-memory-os-chaos-failure-drills.py \
+            scripts/reconcile-memory-os-chaos-failure-drills-v2.py \
+            scripts/reconcile-memory-os-parser-restart-matrix.py \
+            scripts/reconcile-memory-os-parser-inflight-cancellation.py \
+            scripts/reconcile-memory-os-parser-process-group-reaping.py \
+            scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py \
+            scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py \
+            scripts/validate-memory-os-parser-process-group-reaping-reconcile-negative.py \
+            scripts/validate-memory-os-chaos-failure-drills.py \
+            scripts/validate-memory-os-chaos-failure-drills-v2.py \
+            scripts/validate-memory-os-parser-restart-matrix.py \
+            scripts/validate-memory-os-database-commit-outage.py \
+            scripts/validate-memory-os-parser-inflight-cancellation.py \
+            scripts/validate-memory-os-parser-process-group-reaping.py \
+            scripts/validate-memory-os-operability.py
+
+          validate_committed_sources() {
+            python scripts/validate-memory-os-chaos-failure-drills.py
+            python scripts/validate-memory-os-chaos-failure-drills-v2.py
+            python scripts/validate-memory-os-parser-restart-matrix.py
+            if python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json').read_text())
+          assertions = value.get('assertions', {})
+          raise SystemExit(0 if assertions.get('sameSpoolIdReused') is True else 1)
+          PY
+            then
+              python scripts/validate-memory-os-database-commit-outage.py
+            else
+              echo "Legacy new-spool database result retained until same-spool exact-source evidence arrives."
+            fi
+            if test -f docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json; then
+              python scripts/validate-memory-os-parser-inflight-cancellation.py
+            else
+              echo "In-flight cancellation result not committed yet; gap remains open."
+            fi
+            if test -f docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json; then
+              python scripts/validate-memory-os-parser-process-group-reaping.py
+            else
+              echo "Process-group reaping result not committed yet; orphan/reaping gap remains open."
+            fi
+            python scripts/validate-memory-os-operability.py
+          }
+
+          validate_committed_sources
+          python scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py
+          python scripts/validate-memory-os-parser-process-group-reaping-reconcile-negative.py
+          python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
+          python scripts/reconcile-memory-os-chaos-authority.py
+          python scripts/reconcile-memory-os-chaos-authority.py --check
+          python scripts/reconcile-memory-os-chaos-inflight-overlay.py
+          python scripts/reconcile-memory-os-chaos-inflight-overlay.py --check
+          python scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py
+          python scripts/validate-memory-os-parser-process-group-reaping-reconcile-negative.py
+          python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
+          validate_committed_sources
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  reconcile-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -97,17 +193,13 @@ jobs:
           python-version: "3.12"
 
       - name: Confirm exact clean authority source
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          expected="${{ github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "$EVENT_SHA"
-          fi
+          echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"
 
       - name: Normalize all committed drill generations
         run: |
@@ -160,7 +252,6 @@ jobs:
             python scripts/validate-memory-os-operability.py
           }
 
-          # Fail before any deterministic mutation if committed source authority is invalid.
           validate_committed_sources
           python scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py
           python scripts/validate-memory-os-parser-process-group-reaping-reconcile-negative.py
@@ -172,22 +263,12 @@ jobs:
           python scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py
           python scripts/validate-memory-os-parser-process-group-reaping-reconcile-negative.py
           python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
-          # Re-read all canonical validators after normalization as the final authority boundary.
           validate_committed_sources
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code
-          test -z "$(git status --porcelain)"
-
       - name: Commit normalized authority
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
           git add contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Chaos authority is already normalized."
@@ -198,8 +279,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(chaos): normalize failure-drill authority"
           remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-          if [[ "$remote_sha" != "$source_sha" ]]; then
-            echo "Chaos authority source is stale: validated $source_sha but so is $remote_sha" >&2
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Chaos authority source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
             exit 75
           fi
           git push origin HEAD:so
