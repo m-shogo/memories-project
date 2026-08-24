@@ -187,14 +187,79 @@ def validate_row(row: dict[str, Any], index: int, required_fields: list[str]) ->
     validate_material_delta_payload(row, payload, index, required_fields)
 
 
-def material_delta_review_approved(row: dict[str, Any]) -> bool:
+CANONICAL_REQUIRE = require
+CANONICAL_EXECUTION_HELPERS = (
+    enforce_runtime_authorities,
+    require_exact_repo_file,
+    load_json,
+    validate_contract_authority,
+    canonical_material_delta_ref,
+    git_history,
+    require_append_only_review,
+    require_utc_rfc3339,
+    validate_material_delta_payload,
+    validate_row,
+)
+
+
+def enforce_execution_authority(
+    canonical_require=CANONICAL_REQUIRE,
+    canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+) -> None:
+    expected_root = Path(enforce_execution_authority.__code__.co_filename).resolve().parents[1]
+    try:
+        actual_root = ROOT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("material-delta review repository root missing") from exc
+    if actual_root != expected_root:
+        raise Fail("material-delta review repository root drift")
+    if require is not canonical_require:
+        raise Fail("material-delta review require helper drift")
+    current_helpers = (
+        enforce_runtime_authorities,
+        require_exact_repo_file,
+        load_json,
+        validate_contract_authority,
+        canonical_material_delta_ref,
+        git_history,
+        require_append_only_review,
+        require_utc_rfc3339,
+        validate_material_delta_payload,
+        validate_row,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("material-delta review execution helper drift")
+
+
+CANONICAL_EXECUTION_GUARD = enforce_execution_authority
+
+
+def material_delta_review_approved(
+    row: dict[str, Any],
+    canonical_execution_guard=CANONICAL_EXECUTION_GUARD,
+) -> bool:
+    if enforce_execution_authority is not canonical_execution_guard:
+        raise Fail("material-delta review execution guard drift")
+    enforce_execution_authority()
     enforce_runtime_authorities()
     contract = validate_contract_authority()
     validate_row(row, 0, contract["requiredMaterialDeltaReviewEvidenceFields"])
     return True
 
 
-def main() -> int:
+CANONICAL_MATERIAL_DELTA_REVIEW = material_delta_review_approved
+CANONICAL_MAIN_EXECUTION_GUARD = enforce_execution_authority
+
+
+def main(
+    canonical_material_delta_review=CANONICAL_MATERIAL_DELTA_REVIEW,
+    canonical_execution_guard=CANONICAL_MAIN_EXECUTION_GUARD,
+) -> int:
+    if enforce_execution_authority is not canonical_execution_guard:
+        raise Fail("material-delta review main execution guard drift")
+    if material_delta_review_approved is not canonical_material_delta_review:
+        raise Fail("material-delta review candidate authority drift")
+    enforce_execution_authority()
     enforce_runtime_authorities()
     contract = validate_contract_authority()
     required_fields = contract["requiredMaterialDeltaReviewEvidenceFields"]
@@ -208,6 +273,7 @@ def main() -> int:
         validate_row(row, index, required_fields)
     print(f"PASS: typed generation material-delta review authority records={len(rows)} productionEvidence=false productionReady=false")
     print("canonical generation evidence contract/registry authority substitution accepted: false")
+    print("material-delta review execution helper substitution accepted: false")
     print("automatic promotion authority created: false")
     return 0
 
