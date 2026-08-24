@@ -75,4 +75,6 @@ jobs:
           python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-admission-chain.py
           python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code
           test -z "$(git status --porcelain)"
