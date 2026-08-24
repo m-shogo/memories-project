@@ -13,6 +13,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence.yml"
+EXPECTED_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+EXPECTED_NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
 EXPECTED_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 EXPECTED_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 EXPECTED_GENERATION_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
@@ -54,6 +57,10 @@ def load_writer() -> Any:
     return load_module(WRITER, "memory_os_generation_evidence_writer_authority", "generation-evidence writer")
 
 
+def load_generation_validator() -> Any:
+    return load_module(EXPECTED_VALIDATOR, "memory_os_generation_evidence_validator_authority", "generation-evidence validator")
+
+
 def load_contract() -> dict[str, Any]:
     try:
         value = json.loads(EXPECTED_CONTRACT.read_text(encoding="utf-8"))
@@ -75,6 +82,21 @@ def require_authority(writer: Any, name: str, expected: Path, label: str) -> Non
     canonical_repo_file = getattr(writer, "canonical_repo_file", None)
     require(callable(canonical_repo_file), "canonical repository authority guard missing")
     canonical_repo_file(actual, label)
+
+
+def require_generation_validator_authorities(validator: Any) -> None:
+    for name, expected, label in (
+        ("NEGATIVE_VALIDATOR", EXPECTED_NEGATIVE_VALIDATOR, "negative admission validator"),
+        ("SEMANTIC_NEGATIVE_VALIDATOR", EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR, "semantic generation negative validator"),
+    ):
+        actual = getattr(validator, name, None)
+        require(actual == expected, f"generation-evidence validator {label} authority drift")
+        require(expected.is_file(), f"canonical generation-evidence {label} missing")
+        require(not expected.is_symlink(), f"canonical generation-evidence {label} must not be symlink")
+        try:
+            require(expected.resolve(strict=True) == expected, f"canonical generation-evidence {label} resolved path drift")
+        except OSError as exc:
+            raise Fail(f"canonical generation-evidence {label} cannot resolve: {exc}") from exc
 
 
 def require_cli_guard(writer: Any) -> None:
@@ -128,8 +150,10 @@ def run_review_validator(path: Path, module_name: str, label: str) -> None:
 
 def main() -> int:
     writer = load_writer()
+    validator = load_generation_validator()
     contract = load_contract()
     require_cli_guard(writer)
+    require_generation_validator_authorities(validator)
 
     for name, expected, label in (
         ("CONTRACT", EXPECTED_CONTRACT, "contract"),
@@ -194,6 +218,8 @@ def main() -> int:
 
     print("Memory OS generation-evidence executable/data authority validation PASS")
     print("generation-evidence CLI authority guard required: true")
+    print("generation-evidence negative validator authority substitution accepted: false")
+    print("generation-evidence semantic negative validator authority substitution accepted: false")
     print("environment-generation authority substitution accepted: false")
     print("recovery-objectives authority substitution accepted: false")
     print("drill-request authority substitution accepted: false")
