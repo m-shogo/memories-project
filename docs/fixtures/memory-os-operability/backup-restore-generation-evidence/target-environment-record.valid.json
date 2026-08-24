@@ -51,7 +51,7 @@
     "productionEvidence": false,
     "productionEquivalentDependencies": true,
     "independentReviewCompleted": true,
-    "independentReviewRef": "SECURITY.md",
+    "independentReviewRef": "AGENTS.md",
     "productionReady": false
   }
 }
