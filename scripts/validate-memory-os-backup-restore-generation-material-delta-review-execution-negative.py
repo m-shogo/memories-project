@@ -52,6 +52,20 @@ def expect_candidate_rejected(module: Any, field: str, replacement: Any) -> None
         setattr(module, field, original)
 
 
+def expect_transport_rejected(module: Any) -> None:
+    original = module.subprocess.run
+    module.subprocess.run = lambda *_args, **_kwargs: None
+    try:
+        try:
+            module.material_delta_review_approved(same_generation_row())
+        except module.Fail as exc:
+            require("execution transport drift" in str(exc), f"subprocess transport rejected at wrong boundary: {exc}")
+            return
+        raise Fail("material-delta subprocess transport substitution unexpectedly passed")
+    finally:
+        module.subprocess.run = original
+
+
 def expect_candidate_mutation_rejected(module: Any, mutate: Callable[[], None], restore: Callable[[], None], label: str) -> None:
     mutate()
     try:
@@ -107,6 +121,8 @@ def main() -> int:
         ("validate_row", lambda *_args: None),
     ):
         expect_candidate_rejected(module, field, replacement)
+
+    expect_transport_rejected(module)
 
     original_contract = module.CONTRACT
     original_contract_rel = module.CONTRACT_REL
@@ -242,6 +258,7 @@ def main() -> int:
     require(module.REGISTRY.read_bytes() == canonical_registry, "execution substitution mutated canonical generation evidence registry")
     print("Memory OS generation material-delta execution authority negative PASS")
     print("candidate execution helper substitution accepted: false")
+    print("subprocess execution transport substitution accepted: false")
     print("paired semantic authority substitution accepted: false")
     print("main execution guard substitution accepted: false")
     print("main candidate helper substitution accepted: false")
