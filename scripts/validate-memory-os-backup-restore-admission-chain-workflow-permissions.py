@@ -75,6 +75,10 @@ def main() -> int:
     require("ref: ${{ github.event.pull_request.head.sha }}" in pr, "PR validation must checkout the exact PR head")
     require("python scripts/validate-memory-os-backup-restore-admission-chain-full.py" in pr, "PR validation must execute the canonical full chain runner")
     require("git diff --exit-code" in pr, "PR validation must reject deterministic derived-authority drift")
+    require(
+        'test -z "$(git status --porcelain --untracked-files=all)"' in pr,
+        "PR validation must reject tracked or untracked workspace mutation",
+    )
 
     require("if: github.event_name != 'pull_request'" in publish, "publication job must exclude pull requests")
     require("permissions:\n      contents: write\n" in publish, "publication job must own the only contents: write permission")
@@ -93,6 +97,7 @@ def main() -> int:
     print("Backup/restore admission-chain workflow permission boundary PASS")
     print("PR contents write authority: false")
     print("PR exact-head validation: true")
+    print("PR tracked/untracked mutation accepted: false")
     print("non-PR publication write authority: isolated")
     print("bounded latest-so revalidation and stale-source refusal: preserved")
     print("crash-safe failure diagnostic publication: required")
