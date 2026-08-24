@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -123,6 +125,29 @@ def validate_projected_authority() -> None:
         run_validator(path)
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        temp_path = None
+    except OSError as exc:
+        raise ReconcileFailure(f"atomic authority write failed: {path.name}") from exc
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
+
+
 def main() -> int:
     # Exact executable and data-path identity are source authorities. Full validators also read
     # the derived production status, so they run after deterministic projection
@@ -196,14 +221,12 @@ def main() -> int:
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
     original_status = STATUS_PATH.read_bytes()
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    payload = (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    atomic_write_bytes(STATUS_PATH, payload)
     try:
         validate_projected_authority()
     except Exception:
-        STATUS_PATH.write_bytes(original_status)
+        atomic_write_bytes(STATUS_PATH, original_status)
         raise
     print("Registered backup/restore policy foundations; canonical production blockers unchanged")
     return 0
