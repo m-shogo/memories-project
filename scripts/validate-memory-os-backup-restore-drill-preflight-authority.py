@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
@@ -37,7 +38,10 @@ def canonical_repo_file(path: Path, field: str) -> Path:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
-    require(lexical == resolved and path.is_file(), f"{field} must be canonical repository file")
+    require(
+        lexical == resolved and path.is_file() and not path.is_symlink(),
+        f"{field} must be canonical repository file",
+    )
     return path
 
 
@@ -54,6 +58,40 @@ def require_module_authority(module: object, name: str, expected: Path, field: s
     actual = getattr(module, name, None)
     require(actual == expected, f"{field} authority drift: {name}")
     canonical_repo_file(actual, f"{field} {name}")
+
+
+def expect_reconciler_helper_substitution_rejected(reconciler: Any, name: str, replacement: Any) -> None:
+    original = getattr(reconciler, name)
+    setattr(reconciler, name, replacement)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail:
+            return
+        raise Fail(f"restore drill preflight reconciler accepted execution helper substitution: {name}")
+    finally:
+        setattr(reconciler, name, original)
+
+
+def require_reconciler_execution_authority(reconciler: Any) -> None:
+    helper_cases = (
+        ("require", lambda condition, message: None),
+        ("repo_relative", lambda path: path),
+        ("require_repo_file", lambda path, message: path),
+        ("require_exact_repo_file", lambda path, expected, field: path),
+        ("enforce_runtime_authorities", lambda: None),
+        ("read_text", lambda path: "{}"),
+        ("load", lambda path: {}),
+        ("write_text", lambda path, text: None),
+        ("load_validator_module", lambda: object()),
+        ("append_once", lambda values, value: None),
+        ("replace_single_prefixed", lambda values, prefix, value: None),
+        ("run_post_reconcile_validator", lambda path, label: None),
+        ("enforce_execution_identity", lambda: None),
+    )
+    for name, replacement in helper_cases:
+        expect_reconciler_helper_substitution_rejected(reconciler, name, replacement)
+    print(f"reconciler execution helper substitutions rejected: {len(helper_cases)}")
 
 
 def require_atomic_diagnostic_publication() -> None:
@@ -100,10 +138,13 @@ def main() -> int:
     for name, expected in expected_reconciler_authorities.items():
         require_module_authority(reconciler, name, expected, "restore drill preflight reconciler")
 
+    require_reconciler_execution_authority(reconciler)
     require_atomic_diagnostic_publication()
     print("PASS: restore drill preflight data/executable authorities are canonical")
     print(f"validator executable authorities checked: {len(expected_validator_authorities)}")
     print(f"reconciler data/executable authorities checked: {len(expected_reconciler_authorities)}")
+    print("reconciler execution helpers canonical: true")
+    print("symlinked canonical authority accepted: false")
     print("crash-safe failure diagnostic publication required: true")
     print("production evidence created: false")
     print("production decision changed: false")
