@@ -10,12 +10,24 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
-GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-ENV_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-record.v1.schema.json"
-ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
-HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-eligibility-contract.v1.json")
+GEN_CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-generation-contract.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+ENV_SCHEMA_REL = Path("contracts/operations/production-equivalent-environment-record.v1.schema.json")
+ENV_VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-record.py")
+HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-eligibility.py")
+RECONCILE_REL = Path("scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py")
+WORKFLOW_REL = Path(".github/workflows/production-equivalent-environment-eligibility.yml")
+CONTRACT = ROOT / CONTRACT_REL
+GEN_CONTRACT = ROOT / GEN_CONTRACT_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+ENV_SCHEMA = ROOT / ENV_SCHEMA_REL
+ENV_VALIDATOR = ROOT / ENV_VALIDATOR_REL
+HELPER = ROOT / HELPER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+RECONCILE = ROOT / RECONCILE_REL
+WORKFLOW = ROOT / WORKFLOW_REL
 
 
 class Fail(RuntimeError):
@@ -34,6 +46,34 @@ def display_path(path: Path) -> str:
         return str(path)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "environment eligibility contract"),
+        (GEN_CONTRACT, GEN_CONTRACT_REL, "environment generation contract"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+        (ENV_SCHEMA, ENV_SCHEMA_REL, "environment record schema"),
+        (ENV_VALIDATOR, ENV_VALIDATOR_REL, "environment semantic validator"),
+        (HELPER, HELPER_REL, "environment generation eligibility helper"),
+        (VALIDATOR, VALIDATOR_REL, "environment eligibility validator"),
+        (RECONCILE, RECONCILE_REL, "environment eligibility reconciler"),
+        (WORKFLOW, WORKFLOW_REL, "environment eligibility workflow"),
+    ):
+        require_exact_repo_file(path, expected, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -44,12 +84,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_helper():
-    try:
-        expected = (ROOT / "scripts/memory_os_environment_generation_eligibility.py").resolve(strict=True)
-        actual = HELPER.resolve(strict=True)
-    except (FileNotFoundError, OSError, RuntimeError) as exc:
-        raise Fail("environment generation eligibility helper missing") from exc
-    require(actual == expected and HELPER.is_file(), "environment generation eligibility helper executable authority drift")
+    require_exact_repo_file(HELPER, HELPER_REL, "environment generation eligibility helper")
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_validator", HELPER)
     require(spec is not None and spec.loader is not None, "cannot load environment generation eligibility helper")
     module = importlib.util.module_from_spec(spec)
@@ -58,6 +93,7 @@ def load_helper():
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     generation_contract = load(GEN_CONTRACT)
     registry = load(GEN_REGISTRY)
@@ -65,19 +101,19 @@ def main() -> int:
 
     require(contract.get("schemaVersion") == "memory-os-production-equivalent-environment-eligibility-contract.v1", "eligibility contract schema drift")
     refs = {
-        "generationContract": GEN_CONTRACT,
-        "generationRegistry": GEN_REGISTRY,
-        "environmentRecordSchema": ENV_SCHEMA,
-        "environmentSemanticValidator": ENV_VALIDATOR,
-        "generationEligibilityHelper": HELPER,
-        "validator": Path("scripts/validate-memory-os-production-equivalent-environment-eligibility.py"),
-        "reconcile": Path("scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py"),
-        "workflow": Path(".github/workflows/production-equivalent-environment-eligibility.yml"),
+        "generationContract": GEN_CONTRACT_REL,
+        "generationRegistry": GEN_REGISTRY_REL,
+        "environmentRecordSchema": ENV_SCHEMA_REL,
+        "environmentSemanticValidator": ENV_VALIDATOR_REL,
+        "generationEligibilityHelper": HELPER_REL,
+        "validator": VALIDATOR_REL,
+        "reconcile": RECONCILE_REL,
+        "workflow": WORKFLOW_REL,
     }
-    for field, path in refs.items():
-        expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
+    for field, relative in refs.items():
+        expected = str(relative)
         require(contract.get(field) == expected, f"eligibility ref drift: {field}")
-        require((ROOT / expected).is_file(), f"eligibility artifact missing: {expected}")
+        require_exact_repo_file(ROOT / relative, relative, f"eligibility artifact {field}")
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "eligibility rules must remain fail-closed")
     for key in (
@@ -137,7 +173,7 @@ def main() -> int:
     print(f"unsuperseded preflight-eligible generations: {unsuperseded_eligible}")
     print(f"distinct preflight-eligible environments: {distinct_eligible}")
     print(f"eligible directed restore pairs: {pair_count}")
-    print("eligibility helper executable authority pinned: true")
+    print("canonical data/executable authorities enforced: true")
     print("unreadable eligibility authority accepted: false")
     print("registration implies eligibility: false")
     print("production evidence: false")
