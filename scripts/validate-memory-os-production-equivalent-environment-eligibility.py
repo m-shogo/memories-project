@@ -53,7 +53,10 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(
-        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        lexical == expected_relative
+        and resolved == expected_relative
+        and path.is_file()
+        and not path.is_symlink(),
         f"{field} authority drift",
     )
     return path
@@ -92,7 +95,39 @@ def load_helper():
     return module
 
 
-def main() -> int:
+CANONICAL_REQUIRE = require
+CANONICAL_RUNTIME_ENFORCER = enforce_runtime_authorities
+CANONICAL_EXECUTION_HELPERS = (
+    display_path,
+    require_exact_repo_file,
+    load,
+    load_helper,
+)
+
+
+def enforce_execution_identity(
+    canonical_enforcer=CANONICAL_RUNTIME_ENFORCER,
+    canonical_require=CANONICAL_REQUIRE,
+    canonical_helpers=CANONICAL_EXECUTION_HELPERS,
+) -> None:
+    if enforce_runtime_authorities is not canonical_enforcer:
+        raise Fail("environment eligibility runtime authority enforcer drift")
+    if require is not canonical_require:
+        raise Fail("environment eligibility require helper drift")
+    current_helpers = (
+        display_path,
+        require_exact_repo_file,
+        load,
+        load_helper,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("environment eligibility execution helper drift")
+
+
+def main(canonical_execution_guard=enforce_execution_identity) -> int:
+    if enforce_execution_identity is not canonical_execution_guard:
+        raise Fail("environment eligibility execution guard drift")
+    enforce_execution_identity()
     enforce_runtime_authorities()
     contract = load(CONTRACT)
     generation_contract = load(GEN_CONTRACT)
@@ -174,6 +209,8 @@ def main() -> int:
     print(f"distinct preflight-eligible environments: {distinct_eligible}")
     print(f"eligible directed restore pairs: {pair_count}")
     print("canonical data/executable authorities enforced: true")
+    print("canonical execution helpers enforced: true")
+    print("symlinked canonical authority accepted: false")
     print("unreadable eligibility authority accepted: false")
     print("registration implies eligibility: false")
     print("production evidence: false")
