@@ -6,11 +6,13 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json"
@@ -26,12 +28,89 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_reconciler():
-    spec = importlib.util.spec_from_file_location("memory_os_drill_generation_binding_reconcile_negative", RECONCILER)
-    require(spec is not None and spec.loader is not None, "cannot load drill generation binding reconciler")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_reconciler():
+    return load_module(RECONCILER, "memory_os_drill_generation_binding_reconcile_negative")
+
+
+def canonical_bytes() -> tuple[bytes, bytes]:
+    return CONTRACT.read_bytes(), DRILL_REGISTRY.read_bytes()
+
+
+def assert_canonical_unchanged(contract_bytes: bytes, registry_bytes: bytes, label: str) -> None:
+    require(CONTRACT.read_bytes() == contract_bytes, f"canonical binding contract mutated while rejecting {label}")
+    require(DRILL_REGISTRY.read_bytes() == registry_bytes, f"canonical drill registry mutated while rejecting {label}")
+
+
+def expect_validator_substitution_rejected(validator: Any, attribute: str, replacement: Any) -> None:
+    contract_bytes, registry_bytes = canonical_bytes()
+    original = getattr(validator, attribute)
+    setattr(validator, attribute, replacement)
+    try:
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise Fail(f"binding validator unexpectedly accepted substitution: {attribute}")
+        assert_canonical_unchanged(contract_bytes, registry_bytes, attribute)
+    finally:
+        setattr(validator, attribute, original)
+
+
+def prove_validator_execution_identity() -> None:
+    validator = load_module(VALIDATOR, "memory_os_drill_generation_binding_validator_negative")
+    path_cases = (
+        ("CONTRACT", validator.DRILL_REGISTRY),
+        ("DRILL_CONTRACT", validator.CONTRACT),
+        ("DRILL_REGISTRY", validator.CONTRACT),
+        ("DRILL_WRITER", validator.VALIDATOR),
+        ("DRILL_VALIDATOR", validator.DRILL_NEGATIVE),
+        ("DRILL_NEGATIVE", validator.VALIDATOR),
+        ("ELIGIBILITY_CONTRACT", validator.CONTRACT),
+        ("ELIGIBILITY_HELPER", validator.DRILL_WRITER),
+        ("VALIDATOR", validator.DRILL_NEGATIVE),
+        ("WORKFLOW", validator.CONTRACT),
+    )
+    for attribute, replacement in path_cases:
+        expect_validator_substitution_rejected(validator, attribute, replacement)
+
+    helper_cases = (
+        ("require", lambda condition, message: None),
+        ("exact_success", lambda result, label: None),
+        ("require_exact_repo_file", lambda path, expected, field: path),
+        ("enforce_runtime_authorities", lambda: None),
+        ("load", lambda path: {}),
+        ("load_module", lambda path, expected, name, field: object()),
+        ("run_negative_suite", lambda: None),
+        ("enforce_execution_identity", lambda: None),
+    )
+    for attribute, replacement in helper_cases:
+        expect_validator_substitution_rejected(validator, attribute, replacement)
+
+    original_run = validator.subprocess.run
+    validator.subprocess.run = lambda *args, **kwargs: subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    try:
+        contract_bytes, registry_bytes = canonical_bytes()
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise Fail("binding validator unexpectedly accepted subprocess transport substitution")
+        assert_canonical_unchanged(contract_bytes, registry_bytes, "subprocess.run")
+    finally:
+        validator.subprocess.run = original_run
+
+    print(f"PASS boundary: drill binding validator data/executable substitutions rejected: {len(path_cases)}")
+    print(f"PASS boundary: drill binding validator execution helper substitutions rejected: {len(helper_cases) + 1}")
 
 
 def expect_direct_authority_rejected(
@@ -84,8 +163,10 @@ def prove_direct_authority_identity(reconciler: Any) -> None:
 
 
 def main() -> int:
+    require(VALIDATOR.is_file(), "drill generation binding validator missing")
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_validator_execution_identity()
     reconciler = load_reconciler()
     prove_direct_authority_identity(reconciler)
 
@@ -139,8 +220,6 @@ def main() -> int:
                 print(f"PASS reject before reconcile: {name}")
             registry_copy.write_text(json.dumps(canonical_registry, indent=2) + "\n", encoding="utf-8")
 
-            # A failed atomic replacement must never mutate the canonical contract,
-            # and its temporary file must be removed before control returns.
             atomic_original = contract_copy.read_bytes()
             replace_calls = 0
 
@@ -171,8 +250,6 @@ def main() -> int:
                 reconciler.os.replace = original_os_replace
             print("PASS atomic replacement failure: contract bytes preserved and temp cleaned")
 
-            # Make the contract byte-distinct but semantically equivalent so the
-            # post-validator hook proves a write occurred before aggregate failure.
             parsed_contract = json.loads(contract_copy.read_text(encoding="utf-8"))
             contract_copy.write_text(json.dumps(parsed_contract, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
             rollback_original = contract_copy.read_bytes()
@@ -207,7 +284,10 @@ def main() -> int:
         reconciler.os.replace = original_os_replace
 
     print("Drill generation eligibility binding reconcile negative suite PASS")
-    print("direct data/executable authority substitutions accepted: false")
+    print("binding validator direct authority substitutions accepted: false")
+    print("binding validator execution helper substitutions accepted: false")
+    print("binding validator subprocess transport substitution accepted: false")
+    print("direct reconciler data/executable authority substitutions accepted: false")
     print("corrupt planning authority can be auto-healed: false")
     print("atomic replacement failure preserves canonical authority: true")
     print("atomic replacement temp cleanup: true")
