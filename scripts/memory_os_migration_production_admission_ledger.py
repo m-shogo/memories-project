@@ -17,6 +17,8 @@ LEDGER_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contr
 LEDGER_WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 LEDGER_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 LEDGER_LOCK = ROOT / "contracts/operations/.migration-evidence-registry.lock"
+LEDGER_REL = Path("contracts/operations/migration-evidence-registry.v1.json")
+LEDGER_CONTRACT_REL = Path("contracts/operations/migration-evidence-registry-contract.v1.json")
 LEDGER_WRITER_REL = Path("scripts/register-memory-os-migration-rehearsal-evidence.py")
 LEDGER_VALIDATOR_REL = Path("scripts/validate-memory-os-migration-evidence-registry.py")
 
@@ -41,7 +43,7 @@ def load(path: Path) -> dict[str, Any]:
 
 def canonical_repo_file(path: Path, relative: Path, label: str) -> Path:
     expected = ROOT / relative
-    require(path == expected, f"canonical {label} executable authority drift")
+    require(path == expected, f"canonical {label} authority drift")
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
@@ -64,6 +66,8 @@ def load_writer() -> ModuleType:
 
 
 def validate_canonical_ledger() -> dict[str, Any]:
+    canonical_repo_file(LEDGER, LEDGER_REL, "migration rehearsal ledger")
+    canonical_repo_file(LEDGER_CONTRACT, LEDGER_CONTRACT_REL, "migration rehearsal ledger contract")
     validator_path = canonical_repo_file(LEDGER_VALIDATOR, LEDGER_VALIDATOR_REL, "migration rehearsal validator")
     completed = subprocess.run(
         [sys.executable, str(validator_path)],
