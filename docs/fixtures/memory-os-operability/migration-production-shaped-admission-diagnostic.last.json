@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "migration-production-shaped-admission",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "f884f41570648703530abe884f82d5fb53c29ea7",
+  "output": "PASS: migration production-shaped admission rejects corrupt environment-generation authority before admission\nproduction evidence generated: false\nproduction readiness changed: false\nPASS: migration production admission ledger writer, validator and append-lock substitutions are rejected\nwriter symlink escape accepted: false\nvalidator symlink escape accepted: false\nproduction evidence generated: false\nproduction readiness changed: false\nMIGRATION PRODUCTION-SHAPED NEGATIVE FAILED: migration admission CLI LOCK substitution was rejected for an unrelated reason\n",
+  "containsSecrets": false,
+  "admittedRehearsalCount": 0,
+  "productionEvidence": false,
+  "productionReady": false
+}
