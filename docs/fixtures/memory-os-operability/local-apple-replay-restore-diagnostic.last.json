@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "local-apple-replay-restore",
-  "sourceCommitSha": "155a619f57b27410e758f1edb896eba9d763cbcf",
+  "sourceCommitSha": "f115a96273e2830286d5ccf3c530478f8076ddf7",
   "result": "PASS",
   "exitCode": 0,
   "output": "Memory OS local Apple replay restore PASS\nlive replay rows restored: 2  identical replay pair rejected: true\nresult: /home/runner/work/memories-project/memories-project/docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json\n",
