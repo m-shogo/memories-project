@@ -35,6 +35,7 @@ on:
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py"
 
 permissions:
@@ -82,6 +83,7 @@ jobs:
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py
           python scripts/validate-memory-os-recovery-objectives.py
           python scripts/validate-memory-os-backup-restore-drill-request.py
@@ -90,6 +92,7 @@ jobs:
           python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py
           python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py
           python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py
+          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py
           python scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py
       - name: Reject deterministic snapshot drift
         run: |
