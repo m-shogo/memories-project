@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -51,6 +52,19 @@ def expect_candidate_rejected(module: Any, field: str, replacement: Any) -> None
         setattr(module, field, original)
 
 
+def expect_candidate_mutation_rejected(module: Any, mutate: Callable[[], None], restore: Callable[[], None], label: str) -> None:
+    mutate()
+    try:
+        try:
+            module.material_delta_review_approved(same_generation_row())
+        except module.Fail as exc:
+            require("semantic authority drift" in str(exc), f"{label} rejected at wrong boundary: {exc}")
+            return
+        raise Fail(f"material-delta candidate semantic authority substitution unexpectedly passed: {label}")
+    finally:
+        restore()
+
+
 def expect_main_rejected(module: Any, mutate: Callable[[], None], restore: Callable[[], None], label: str, expected: str) -> None:
     mutate()
     try:
@@ -93,6 +107,74 @@ def main() -> int:
         ("validate_row", lambda *_args: None),
     ):
         expect_candidate_rejected(module, field, replacement)
+
+    original_contract = module.CONTRACT
+    original_contract_rel = module.CONTRACT_REL
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: (setattr(module, "CONTRACT", module.REGISTRY), setattr(module, "CONTRACT_REL", module.REGISTRY_REL)),
+        lambda: (setattr(module, "CONTRACT", original_contract), setattr(module, "CONTRACT_REL", original_contract_rel)),
+        "paired contract path authority substitution",
+    )
+
+    original_registry = module.REGISTRY
+    original_registry_rel = module.REGISTRY_REL
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: (setattr(module, "REGISTRY", module.CONTRACT), setattr(module, "REGISTRY_REL", module.CONTRACT_REL)),
+        lambda: (setattr(module, "REGISTRY", original_registry), setattr(module, "REGISTRY_REL", original_registry_rel)),
+        "paired registry path authority substitution",
+    )
+
+    original_validator = module.VALIDATOR
+    original_validator_rel = module.VALIDATOR_REL
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: (setattr(module, "VALIDATOR", module.NEGATIVE), setattr(module, "VALIDATOR_REL", module.NEGATIVE_REL)),
+        lambda: (setattr(module, "VALIDATOR", original_validator), setattr(module, "VALIDATOR_REL", original_validator_rel)),
+        "paired validator authority substitution",
+    )
+
+    original_negative = module.NEGATIVE
+    original_negative_rel = module.NEGATIVE_REL
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: (setattr(module, "NEGATIVE", module.VALIDATOR), setattr(module, "NEGATIVE_REL", module.VALIDATOR_REL)),
+        lambda: (setattr(module, "NEGATIVE", original_negative), setattr(module, "NEGATIVE_REL", original_negative_rel)),
+        "paired negative validator authority substitution",
+    )
+
+    original_root = module.MATERIAL_DELTA_ROOT
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: setattr(module, "MATERIAL_DELTA_ROOT", Path("docs/evidence/backup-restore")),
+        lambda: setattr(module, "MATERIAL_DELTA_ROOT", original_root),
+        "material-delta evidence root widening",
+    )
+
+    original_schema = module.EXPECTED_SCHEMA
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: setattr(module, "EXPECTED_SCHEMA", "memory-os-backup-restore-material-delta-review.v0"),
+        lambda: setattr(module, "EXPECTED_SCHEMA", original_schema),
+        "material-delta schema substitution",
+    )
+
+    original_result = module.REVIEW_RESULT
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: setattr(module, "REVIEW_RESULT", "REJECTED"),
+        lambda: setattr(module, "REVIEW_RESULT", original_result),
+        "material-delta approval result substitution",
+    )
+
+    original_reviewer = module.REVIEWER
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: setattr(module, "REVIEWER", re.compile(r"^.*$")),
+        lambda: setattr(module, "REVIEWER", original_reviewer),
+        "material-delta reviewer rule widening",
+    )
 
     original_guard = module.enforce_execution_authority
     expect_main_rejected(
@@ -160,6 +242,7 @@ def main() -> int:
     require(module.REGISTRY.read_bytes() == canonical_registry, "execution substitution mutated canonical generation evidence registry")
     print("Memory OS generation material-delta execution authority negative PASS")
     print("candidate execution helper substitution accepted: false")
+    print("paired semantic authority substitution accepted: false")
     print("main execution guard substitution accepted: false")
     print("main candidate helper substitution accepted: false")
     print("main double substitution accepted: false")
