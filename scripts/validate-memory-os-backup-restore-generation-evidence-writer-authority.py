@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+EXPECTED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+WRITER = EXPECTED_WRITER
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence.yml"
 EXPECTED_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
 EXPECTED_NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
@@ -104,7 +105,7 @@ def require_generation_validator_authorities(validator: Any) -> None:
         ("DRILL_CONTRACT", EXPECTED_DRILL_REQUEST_CONTRACT, "drill request contract"),
         ("DRILL_REGISTRY", EXPECTED_DRILL_REQUEST_REGISTRY, "drill request registry"),
         ("GEN_BINDING", EXPECTED_GENERATION_BINDING, "generation binding contract"),
-        ("WRITER", WRITER, "writer"),
+        ("WRITER", EXPECTED_WRITER, "writer"),
         ("NEGATIVE_VALIDATOR", EXPECTED_NEGATIVE_VALIDATOR, "negative admission validator"),
         ("SEMANTIC_NEGATIVE_VALIDATOR", EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR, "semantic generation negative validator"),
     ):
