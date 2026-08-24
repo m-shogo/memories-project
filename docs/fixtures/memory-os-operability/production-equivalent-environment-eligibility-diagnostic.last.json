@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "production-equivalent-environment-eligibility",
+  "sourceCommitSha": "3817757e781276281d2e155f8576bb97632e6c24",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "PASS reject: semantic generation writer repo-contained substitution\nPASS reject: semantic generation writer absolute path escapes repository\nPASS reject: semantic generation writer symlink escapes repository\nPASS reject: semantic generation writer symlink loop\nPASS reject: malformed UTF-8 generation registry\nPASS reject: missing generation registry\nPASS: empty registry has zero eligible pairs\nPASS: registration alone does not form restore pair\nPASS: one eligible generation has zero pairs\nPASS: supersession/same environment cannot form pair\nPASS: two eligible distinct environments form exactly two directed pairs\nPASS: three eligible distinct environments form six directed pairs\nPASS: superseded eligible history does not inflate current pairs\nPASS reject: generation registry class drift\nPASS reject: cross-environment generation supersedes\nPASS reject: same-environment generation skips canonical predecessor\nPASS reject: current generation pointer is not latest append-only row\nPASS reject: empty registry has non-null current generation\nPASS reject: boolean registered generation count\nMemory OS environment generation eligibility negative suite PASS\nregistered history discarded: false\nineligible generation counted as pair: false\nsuperseded generation counted as current pair: false\nsame environment can restore-pair with itself: false\ngeneration registry class drift accepted: false\ncross-environment supersedes accepted: false\nsame-environment predecessor skip accepted: false\ncurrent generation pointer drift accepted: false\nboolean registered generation counts accepted: false\nmalformed or missing generation registries accepted: false\ngeneration writer repo-contained substitution accepted: false\ngeneration writer import escape accepted: false\ngeneration writer symlink loop accepted: false\nproduction evidence: false\nproduction decision: NO_GO\nPASS reject before write: eligibility reconciler helper substitution\nENVIRONMENT GENERATION ELIGIBILITY RECONCILE NEGATIVE FAILED: validator substitution leaked non-domain exception: AttributeError: module 'memory_os_environment_generation_eligibility_reconcile_negative' has no attribute 'validate_runtime_executable_authorities'\n",
+  "containsSecrets": false,
+  "generationCreated": false,
+  "eligibilityFabricated": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
