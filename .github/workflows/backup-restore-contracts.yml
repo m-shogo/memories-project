@@ -153,6 +153,9 @@ jobs:
       - name: Validate admission-chain canonical authority boundary
         run: python scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py
 
+      - name: Validate end-to-end backup/restore admission chain
+        run: python scripts/validate-memory-os-backup-restore-admission-chain.py
+
       - name: Validate OPS-P0-007 ephemeral lock authorities
         run: python scripts/validate-memory-os-backup-restore-ephemeral-lock-authority-negative.py
 
