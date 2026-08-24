@@ -184,3 +184,9 @@ jobs:
             -run '^(TestSupervisorRestartRecoveryMatrix|TestSupervisorCancelsStartedWorkerPromptly)$' -count=1
           go test ./internal/importflow \
             -run '^(TestFlowRecoversAfterObjectStoreOutage|TestFlowRecoversAfterDatabaseCommitOutage)$' -count=1
+
+      - name: Require clean read-only worktree
+        run: |
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
