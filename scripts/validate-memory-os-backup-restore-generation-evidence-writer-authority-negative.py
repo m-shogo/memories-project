@@ -24,6 +24,7 @@ EXPECTED_OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objecti
 EXPECTED_DRILL_REQUEST_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 EXPECTED_DRILL_REQUEST_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 EXPECTED_DRILL_REQUEST_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
+EXPECTED_GENERATION_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 EXPECTED_NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 EXPECTED_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 EXPECTED_NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -118,12 +119,29 @@ def reject_generation_validator_substitutions() -> None:
     module = load_authority_validator("generation_evidence_validator_boundary")
     validator = module.load_generation_validator()
     require(EXPECTED_VALIDATOR.is_file(), "generation-evidence validator missing")
-    require(getattr(validator, "NEGATIVE_VALIDATOR", None) == EXPECTED_NEGATIVE_VALIDATOR, "canonical negative validator authority drift")
-    require(
-        getattr(validator, "SEMANTIC_NEGATIVE_VALIDATOR", None) == EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR,
-        "canonical semantic negative validator authority drift",
-    )
+    expected = {
+        "CONTRACT": EXPECTED_CONTRACT,
+        "REGISTRY": EXPECTED_REGISTRY,
+        "GEN_REGISTRY": EXPECTED_GEN_REGISTRY,
+        "OBJECTIVES_REGISTRY": EXPECTED_OBJECTIVES_REGISTRY,
+        "DRILL_CONTRACT": EXPECTED_DRILL_REQUEST_CONTRACT,
+        "DRILL_REGISTRY": EXPECTED_DRILL_REQUEST_REGISTRY,
+        "GEN_BINDING": EXPECTED_GENERATION_BINDING,
+        "WRITER": ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py",
+        "NEGATIVE_VALIDATOR": EXPECTED_NEGATIVE_VALIDATOR,
+        "SEMANTIC_NEGATIVE_VALIDATOR": EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR,
+    }
+    for name, canonical in expected.items():
+        require(getattr(validator, name, None) == canonical, f"canonical generation-evidence validator {name} authority drift")
     substitutions = {
+        "CONTRACT": EXPECTED_DRILL_REQUEST_CONTRACT,
+        "REGISTRY": EXPECTED_DRILL_REQUEST_REGISTRY,
+        "GEN_REGISTRY": EXPECTED_REGISTRY,
+        "OBJECTIVES_REGISTRY": EXPECTED_GEN_REGISTRY,
+        "DRILL_CONTRACT": EXPECTED_CONTRACT,
+        "DRILL_REGISTRY": EXPECTED_OBJECTIVES_REGISTRY,
+        "GEN_BINDING": EXPECTED_CONTRACT,
+        "WRITER": EXPECTED_VALIDATOR,
         "NEGATIVE_VALIDATOR": EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR,
         "SEMANTIC_NEGATIVE_VALIDATOR": EXPECTED_NEGATIVE_VALIDATOR,
     }
@@ -273,6 +291,7 @@ def main() -> int:
 
     print("PASS: complete generation-evidence executable/data/lock/review authority substitution matrix is rejected")
     print("generation-evidence writer CLI authority substitutions accepted: false")
+    print("generation-evidence validator data/writer substitutions accepted: false")
     print("generation-evidence validator negative authority substitutions accepted: false")
     return 0
 
