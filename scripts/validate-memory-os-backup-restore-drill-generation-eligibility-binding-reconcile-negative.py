@@ -93,6 +93,7 @@ def main() -> int:
     original_contract_path = reconciler.CONTRACT
     original_registry_path = reconciler.DRILL_REGISTRY
     original_post_validator = reconciler.run_post_validator
+    original_os_replace = reconciler.os.replace
 
     # Fixture mutation is deliberately below the production authority boundary:
     # direct invocation remains canonical-only, while this suite can still prove
@@ -138,6 +139,38 @@ def main() -> int:
                 print(f"PASS reject before reconcile: {name}")
             registry_copy.write_text(json.dumps(canonical_registry, indent=2) + "\n", encoding="utf-8")
 
+            # A failed atomic replacement must never mutate the canonical contract,
+            # and its temporary file must be removed before control returns.
+            atomic_original = contract_copy.read_bytes()
+            replace_calls = 0
+
+            def fail_first_replace(source: str | Path, destination: str | Path) -> None:
+                nonlocal replace_calls
+                replace_calls += 1
+                if replace_calls == 1:
+                    raise OSError("synthetic atomic replacement failure")
+                original_os_replace(source, destination)
+
+            reconciler.os.replace = fail_first_replace
+            try:
+                try:
+                    reconciler.main()
+                except OSError as exc:
+                    require("synthetic atomic replacement failure" in str(exc), f"atomic replacement failed at wrong boundary: {exc}")
+                except Exception as exc:
+                    raise Fail(f"atomic replacement failure leaked unexpected exception: {type(exc).__name__}: {exc}") from exc
+                else:
+                    raise Fail("synthetic atomic replacement failure unexpectedly accepted")
+                require(replace_calls == 2, f"atomic replacement failure did not perform exactly one rollback replace: {replace_calls}")
+                require(contract_copy.read_bytes() == atomic_original, "failed atomic replacement mutated semantic binding contract")
+                require(
+                    not list(contract_copy.parent.glob(f".{contract_copy.name}.*.tmp")),
+                    "failed atomic replacement left temporary binding authority behind",
+                )
+            finally:
+                reconciler.os.replace = original_os_replace
+            print("PASS atomic replacement failure: contract bytes preserved and temp cleaned")
+
             # Make the contract byte-distinct but semantically equivalent so the
             # post-validator hook proves a write occurred before aggregate failure.
             parsed_contract = json.loads(contract_copy.read_text(encoding="utf-8"))
@@ -171,10 +204,13 @@ def main() -> int:
         reconciler.CONTRACT = original_contract_path
         reconciler.DRILL_REGISTRY = original_registry_path
         reconciler.run_post_validator = original_post_validator
+        reconciler.os.replace = original_os_replace
 
     print("Drill generation eligibility binding reconcile negative suite PASS")
     print("direct data/executable authority substitutions accepted: false")
     print("corrupt planning authority can be auto-healed: false")
+    print("atomic replacement failure preserves canonical authority: true")
+    print("atomic replacement temp cleanup: true")
     print("aggregate operability failure rolls back binding authority: true")
     print("failed post-validation leaves binding authority mutation behind: false")
     print("request created: false")
