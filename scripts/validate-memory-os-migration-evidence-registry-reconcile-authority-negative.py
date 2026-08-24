@@ -79,6 +79,41 @@ def expect_validator_chain_substitution_rejected(module: Any, before: dict[Path,
     require_canonical_bytes_unchanged(before, "validator-chain")
 
 
+def expect_atomic_replace_failure_rolls_back(module: Any, before: dict[Path, bytes]) -> None:
+    paths = (CANONICAL_CONTRACT, CANONICAL_LIFECYCLE, CANONICAL_STATUS)
+    outputs = {path: module.load(path) for path in paths}
+    for value in outputs.values():
+        value["atomicRollbackProbe"] = "must-not-persist"
+
+    original_replace = module.os.replace
+    calls = 0
+
+    def fail_second_replace(source, destination) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("synthetic migration evidence atomic replace failure")
+        original_replace(source, destination)
+
+    module.os.replace = fail_second_replace
+    try:
+        rejected = False
+        try:
+            module.commit_outputs_transactionally(outputs)
+        except module.Fail as exc:
+            require("restored prior authority" in str(exc), f"unexpected atomic rollback rejection: {exc}")
+            rejected = True
+        require(rejected, "migration evidence reconciler accepted synthetic atomic replace failure")
+    finally:
+        module.os.replace = original_replace
+
+    require(calls >= 5, "migration evidence rollback did not atomically restore all canonical authorities")
+    for path in paths:
+        require(path.read_bytes() == before[path], f"atomic replace failure mutated {path.relative_to(ROOT)}")
+        leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(not leftovers, f"temporary migration evidence authority remained after replace failure: {leftovers}")
+
+
 def prove_registry_reconcile_authorities(before: dict[Path, bytes]) -> None:
     module = load_module(RECONCILER, "migration_evidence_registry_reconcile_authority_negative")
     replacement_file = ROOT / "README.md"
@@ -105,6 +140,8 @@ def prove_registry_reconcile_authorities(before: dict[Path, bytes]) -> None:
         print(f"PASS authority reject: registry {label}")
     expect_validator_chain_substitution_rejected(module, before)
     print("PASS authority reject: registry post-write validator chain")
+    expect_atomic_replace_failure_rolls_back(module, before)
+    print("PASS atomic rollback: registry derived authority")
 
 
 def prove_orphan_rescue_authorities(before: dict[Path, bytes]) -> None:
