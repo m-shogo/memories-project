@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -133,8 +135,26 @@ def load_writer() -> ModuleType:
     return load_module(WRITER, "memory_os_migration_production_admission_writer", "migration admission writer")
 
 
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_replace_bytes(
+        path,
+        (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+    )
 
 
 def append_once(values: list[Any], value: str) -> None:
@@ -244,7 +264,7 @@ def main() -> int:
         subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
     except Exception:
         for path, content in originals.items():
-            path.write_bytes(content)
+            atomic_replace_bytes(path, content)
         raise
 
     print("Memory OS migration production-shaped admission reconciliation PASS")
