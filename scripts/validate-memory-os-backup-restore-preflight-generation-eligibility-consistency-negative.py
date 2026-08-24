@@ -13,6 +13,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
 HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+ELIGIBILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
 PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 ELIGIBILITY = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
@@ -163,6 +164,7 @@ def main() -> int:
         ("OBJECTIVES", DRILL_REQUESTS),
         ("DRILL_REQUESTS", OBJECTIVES),
         ("HELPER", SUBSTITUTE_SCRIPT),
+        ("ELIGIBILITY_VALIDATOR", SUBSTITUTE_SCRIPT),
         ("OBJECTIVES_WRITER", SUBSTITUTE_SCRIPT),
         ("DRILL_WRITER", SUBSTITUTE_SCRIPT),
         ("VALIDATOR", SUBSTITUTE_SCRIPT),
@@ -173,6 +175,7 @@ def main() -> int:
     print("Memory OS restore preflight generation-eligibility consistency negative PASS")
     print(f"semantic authority corruption cases: {len(cases)}")
     print(f"direct data/executable substitution cases: {len(authority_cases)}")
+    print("canonical semantic eligibility validator substitution accepted: false")
     print("semantic fixtures bypass runtime authority only inside negative harness: true")
     print("canonical authority mutated: false")
     print("production evidence created: false")
