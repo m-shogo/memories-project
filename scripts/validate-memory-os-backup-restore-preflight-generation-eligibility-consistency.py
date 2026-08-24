@@ -18,6 +18,7 @@ HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
 ELIGIBILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-eligibility.py")
 OBJECTIVES_WRITER_REL = Path("scripts/register-memory-os-recovery-objectives.py")
 DRILL_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+DRILL_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-drill-request.py")
 VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py")
 PREFLIGHT = ROOT / PREFLIGHT_REL
 ELIGIBILITY = ROOT / ELIGIBILITY_REL
@@ -27,6 +28,7 @@ HELPER = ROOT / HELPER_REL
 ELIGIBILITY_VALIDATOR = ROOT / ELIGIBILITY_VALIDATOR_REL
 OBJECTIVES_WRITER = ROOT / OBJECTIVES_WRITER_REL
 DRILL_WRITER = ROOT / DRILL_WRITER_REL
+DRILL_VALIDATOR = ROOT / DRILL_VALIDATOR_REL
 VALIDATOR = ROOT / VALIDATOR_REL
 
 
@@ -62,6 +64,7 @@ def enforce_runtime_authorities() -> None:
         (ELIGIBILITY_VALIDATOR, ELIGIBILITY_VALIDATOR_REL, "environment eligibility validator"),
         (OBJECTIVES_WRITER, OBJECTIVES_WRITER_REL, "recovery objectives writer"),
         (DRILL_WRITER, DRILL_WRITER_REL, "restore drill request writer"),
+        (DRILL_VALIDATOR, DRILL_VALIDATOR_REL, "restore drill request validator"),
         (VALIDATOR, VALIDATOR_REL, "preflight generation eligibility consistency validator"),
     ):
         require_exact_repo_file(path, expected, field)
@@ -122,11 +125,22 @@ def main() -> int:
         "memory_os_restore_drill_request_for_preflight_consistency",
         "restore drill request writer",
     )
+    drill_validator = load_module(
+        DRILL_VALIDATOR,
+        DRILL_VALIDATOR_REL,
+        "memory_os_restore_drill_request_validator_for_preflight_consistency",
+        "restore drill request validator",
+    )
 
     try:
         eligibility_validator.main()
     except eligibility_validator.Fail as exc:
         raise Fail(f"environment eligibility authority invalid: {exc}") from exc
+
+    try:
+        drill_validator.main()
+    except drill_validator.Fail as exc:
+        raise Fail(f"drill request admission authority invalid: {exc}") from exc
 
     try:
         objective_rows = objectives_writer.validate_registry_for_append(objectives)
@@ -202,6 +216,7 @@ def main() -> int:
     print("canonical semantic eligibility validator delegated: true")
     print("recovery objective append-only authority delegated: true")
     print("drill request append-only authority delegated: true")
+    print("drill request full admission validator delegated: true")
     print("boolean authority counters accepted: false")
     print("noneligible generation can make preflight READY: false")
     print("production evidence: false")
