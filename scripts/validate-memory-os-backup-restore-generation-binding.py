@@ -10,14 +10,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
-BACKUP_POLICY = ROOT / "contracts/operations/backup-restore-contract.v1.json"
-LOCAL_FOUNDATIONS = ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json"
-GENERATION = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-EVIDENCE_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-EVIDENCE_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+CONTRACT_REL = Path("contracts/operations/backup-restore-generation-binding-contract.v1.json")
+BACKUP_POLICY_REL = Path("contracts/operations/backup-restore-contract.v1.json")
+LOCAL_FOUNDATIONS_REL = Path("contracts/operations/backup-local-foundation-evidence.v1.json")
+GENERATION_REL = Path("contracts/operations/production-equivalent-environment-generation-contract.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+EVIDENCE_CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
+EVIDENCE_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+EVIDENCE_WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+CONTRACT = ROOT / CONTRACT_REL
+BACKUP_POLICY = ROOT / BACKUP_POLICY_REL
+LOCAL_FOUNDATIONS = ROOT / LOCAL_FOUNDATIONS_REL
+GENERATION = ROOT / GENERATION_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+EVIDENCE_CONTRACT = ROOT / EVIDENCE_CONTRACT_REL
+EVIDENCE_REGISTRY = ROOT / EVIDENCE_REGISTRY_REL
+EVIDENCE_WRITER = ROOT / EVIDENCE_WRITER_REL
 REQUIRED_LOCAL_FOUNDATIONS = {
     "LOCAL_POSTGRESQL_LOGICAL_RESTORE",
     "LOCAL_EXACT_OBJECT_VERSION_RESTORE",
@@ -45,6 +53,33 @@ def repo_relative(path: Path) -> Path:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "generation binding contract"),
+        (BACKUP_POLICY, BACKUP_POLICY_REL, "backup restore policy contract"),
+        (LOCAL_FOUNDATIONS, LOCAL_FOUNDATIONS_REL, "local restore foundation evidence"),
+        (GENERATION, GENERATION_REL, "environment generation contract"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+        (EVIDENCE_CONTRACT, EVIDENCE_CONTRACT_REL, "generation evidence contract"),
+        (EVIDENCE_REGISTRY, EVIDENCE_REGISTRY_REL, "generation evidence registry"),
+        (EVIDENCE_WRITER, EVIDENCE_WRITER_REL, "generation evidence writer"),
+    ):
+        require_exact_repo_file(path, expected, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -56,7 +91,8 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_evidence_writer():
-    relative = repo_relative(EVIDENCE_WRITER)
+    require_exact_repo_file(EVIDENCE_WRITER, EVIDENCE_WRITER_REL, "generation evidence writer")
+    relative = EVIDENCE_WRITER_REL
     spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_writer_for_binding", EVIDENCE_WRITER)
     require(spec is not None and spec.loader is not None, f"cannot load generation evidence writer: {relative}")
     try:
@@ -68,6 +104,7 @@ def load_evidence_writer():
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     backup = load(BACKUP_POLICY)
     local = load(LOCAL_FOUNDATIONS)
@@ -87,7 +124,7 @@ def main() -> int:
     }
     for field, path in refs.items():
         require(contract.get(field) == str(repo_relative(path)), f"{field} ref drift")
-    require((ROOT / repo_relative(EVIDENCE_WRITER)).is_file(), "generation evidence writer missing")
+    require(EVIDENCE_WRITER.is_file(), "generation evidence writer missing")
 
     bindings = contract.get("requiredBindings")
     require(isinstance(bindings, dict) and bindings and all(value is True for value in bindings.values()), "restore generation bindings must remain fail-closed")
@@ -227,6 +264,7 @@ def main() -> int:
     require(readiness.get("productionReady") is False, "restore generation foundation cannot make application production ready")
 
     print("Memory OS backup/restore generation binding PASS")
+    print("generation binding canonical data/writer authority substitution accepted: false")
     print(f"local restore foundations validated: {len(foundations)}")
     print("required PostgreSQL logical restore foundation: committed PASS")
     print("required exact object-version restore foundation: committed PASS")
