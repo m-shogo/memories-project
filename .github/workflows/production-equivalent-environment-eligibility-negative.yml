@@ -38,3 +38,4 @@ jobs:
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/validate-memory-os-environment-generation-eligibility-negative.py
           python scripts/validate-memory-os-environment-generation-eligibility-negative.py
+          test -z "$(git status --porcelain)"
