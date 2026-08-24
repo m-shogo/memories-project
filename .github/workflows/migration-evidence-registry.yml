@@ -64,24 +64,124 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: migration-evidence-registry-${{ github.ref }}
-  cancel-in-progress: true
+  group: migration-evidence-registry-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Confirm exact clean pull request source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_HEAD_SHA"
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Validate migration evidence authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/memory_os_migration_recovery_point.py \
+            scripts/validate-memory-os-local-migration-recovery-artifact.py \
+            scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py \
+            scripts/reconcile-memory-os-local-migration-recovery-artifact.py \
+            scripts/reconcile-memory-os-migration-recovery-result-orphans.py \
+            scripts/register-memory-os-migration-rehearsal-evidence.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/validate-memory-os-migration-evidence-registry.py \
+            scripts/validate-memory-os-migration-evidence-registry-append-negative.py \
+            scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py \
+            scripts/reconcile-memory-os-migration-evidence-registry.py \
+            scripts/validate-memory-os-migration-lifecycle.py \
+            scripts/validate-memory-os-operability.py
+          bash -n scripts/run-memory-os-local-migration-recovery-artifact.sh
+          PYTHONPATH=scripts python - <<'PY'
+          import json
+          from pathlib import Path
+          from memory_os_migration_recovery_point import RecoveryPointFailure, validate_recovery_point
+
+          root = Path('.')
+          contract = json.loads((root / 'contracts/operations/migration-evidence-registry-contract.v1.json').read_text())
+          lifecycle = json.loads((root / 'contracts/operations/migration-lifecycle-contract.v1.json').read_text())
+          canonical = lifecycle['migrationSequence']
+          digest = 'a' * 64
+          run_id = 'mig_20260807_selftest'
+          base = {
+              'migrationRunId': run_id,
+              'sourceCommitSha': 'b' * 40,
+              'recoveryPointReference': 'sha256:' + digest,
+              'recoveryPointArtifactDigest': digest,
+              'recoveryPointVerified': True,
+              'restoreCapabilityEvidenceRef': 'docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json',
+              'restoreCapabilityVerified': True,
+              'recoveryPointRestoreEvidenceRef': f'docs/evidence/migrations/recovery/{run_id}.json',
+          }
+          for candidate, environment, message in (
+              (base, 'LOCAL_POSTGRES_REHEARSAL', 'digest-only local recovery evidence was accepted without per-run restore result'),
+              ({**base, 'recoveryPointReference': 'README.md'}, 'LOCAL_POSTGRES_REHEARSAL', 'arbitrary repository file was accepted as recovery point'),
+              (base, 'PRODUCTION_EQUIVALENT_REHEARSAL', 'production-equivalent rehearsal was accepted without restore capability authority'),
+          ):
+              try:
+                  validate_recovery_point(candidate, environment, canonical, contract)
+              except RecoveryPointFailure:
+                  continue
+              raise SystemExit(message)
+          print('typed recovery evidence negative self-tests PASS')
+          PY
+          python scripts/validate-memory-os-migration-evidence-registry-append-negative.py
+          python scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py
+          python scripts/validate-memory-os-local-migration-recovery-artifact.py
+          python scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py
+          python scripts/reconcile-memory-os-migration-recovery-result-orphans.py --check-only
+          python scripts/reconcile-memory-os-migration-evidence-registry.py
+          python scripts/validate-memory-os-migration-evidence-registry.py
+          python scripts/validate-memory-os-migration-lifecycle.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/migration-evidence-registry.v1.json \
+            contracts/operations/migration-evidence-registry-contract.v1.json \
+            contracts/operations/local-migration-recovery-artifact-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean authority source
+        run: |
+          set -euo pipefail
+          test -n "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
       - name: Reconcile and validate migration evidence authority
         id: migration
         run: |
@@ -159,53 +259,40 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: ledger-corruption-negatives" >> "$log"
-            python scripts/validate-memory-os-migration-evidence-registry-append-negative.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-migration-evidence-registry-append-negative.py >>"$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: reconcile-authority-negatives" >> "$log"
-            python scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py >>"$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: local-artifact-static-validation" >> "$log"
-            python scripts/validate-memory-os-local-migration-recovery-artifact.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-local-migration-recovery-artifact.py >>"$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: local-artifact-reconcile-negatives" >> "$log"
-            python scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py >>"$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: committed-result-ledger-consistency" >> "$log"
-            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-              python scripts/reconcile-memory-os-migration-recovery-result-orphans.py --check-only >> "$log" 2>&1 || code=$?
-            else
-              python scripts/reconcile-memory-os-migration-recovery-result-orphans.py >> "$log" 2>&1 || code=$?
-            fi
+            python scripts/reconcile-memory-os-migration-recovery-result-orphans.py >>"$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: authority-reconcile" >> "$log"
-            python scripts/reconcile-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
+            python scripts/reconcile-memory-os-migration-evidence-registry.py >>"$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: registry-validation" >> "$log"
-            python scripts/validate-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-migration-evidence-registry.py >>"$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-operability.py >>"$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Require reconciled authority in pull requests
-        if: github.event_name == 'pull_request' && steps.migration.outputs.exit_code == '0'
-        run: |
-          git diff --exit-code -- \
-            contracts/operations/migration-evidence-registry.v1.json \
-            contracts/operations/migration-evidence-registry-contract.v1.json \
-            contracts/operations/local-migration-recovery-artifact-contract.v1.json \
-            contracts/operations/migration-lifecycle-contract.v1.json \
-            contracts/operations/production-operability-status.json
       - name: Commit bounded migration evidence authority
-        if: github.event_name != 'pull_request' && steps.migration.outputs.exit_code == '0'
+        if: steps.migration.outputs.exit_code == '0'
         env:
           SOURCE_COMMIT_SHA: ${{ steps.migration.outputs.source_sha }}
         run: |
@@ -237,7 +324,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && steps.migration.outputs.exit_code != '0'
+        if: steps.migration.outputs.exit_code != '0'
         env:
           MIGRATION_EXIT_CODE: ${{ steps.migration.outputs.exit_code }}
           SOURCE_COMMIT_SHA: ${{ steps.migration.outputs.source_sha }}
@@ -250,7 +337,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os
+          import json, os, tempfile
           from pathlib import Path
           text = Path('/tmp/migration-evidence-registry.log').read_text(encoding='utf-8', errors='replace')
           value = {
@@ -266,13 +353,35 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          fd, temp_name = tempfile.mkstemp(prefix='.migration-evidence-registry-diagnostic.', suffix='.tmp', dir=path.parent)
+          try:
+              with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                  json.dump(value, handle, indent=2)
+                  handle.write('\n')
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_name, path)
+          finally:
+              try:
+                  os.unlink(temp_name)
+              except FileNotFoundError:
+                  pass
           PY
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_COMMIT_SHA" ]]; then
+            echo "branch advanced after migration diagnostic validation; refusing stale diagnostic" >&2
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(migration): record evidence registry diagnostic"
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_COMMIT_SHA" ]]; then
+              echo "branch advanced before migration diagnostic push; refusing stale diagnostic" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
       - name: Enforce migration evidence validation
