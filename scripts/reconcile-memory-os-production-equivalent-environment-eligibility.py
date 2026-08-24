@@ -5,19 +5,26 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CANONICAL_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
-CONTRACT = CANONICAL_CONTRACT
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
-HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
-CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
-VALIDATOR = CANONICAL_VALIDATOR
+CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-eligibility-contract.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+GEN_CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-generation-contract.v1.json")
+HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-eligibility.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+CONTRACT = ROOT / CONTRACT_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+GEN_CONTRACT = ROOT / GEN_CONTRACT_REL
+HELPER = ROOT / HELPER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 
 
 class Fail(RuntimeError):
@@ -27,6 +34,31 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "environment eligibility contract"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+        (GEN_CONTRACT, GEN_CONTRACT_REL, "environment generation contract"),
+        (HELPER, HELPER_REL, "environment generation eligibility helper"),
+        (VALIDATOR, VALIDATOR_REL, "environment eligibility validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -39,12 +71,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_helper():
-    try:
-        expected = (ROOT / "scripts/memory_os_environment_generation_eligibility.py").resolve(strict=True)
-        actual = HELPER.resolve(strict=True)
-    except (FileNotFoundError, OSError, RuntimeError) as exc:
-        raise Fail("environment generation eligibility helper missing") from exc
-    require(actual == expected and HELPER.is_file(), "environment generation eligibility helper executable authority drift")
+    require_exact_repo_file(HELPER, HELPER_REL, "environment generation eligibility helper")
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_reconcile", HELPER)
     require(spec is not None and spec.loader is not None, "cannot load environment generation eligibility helper")
     module = importlib.util.module_from_spec(spec)
@@ -52,24 +79,40 @@ def load_helper():
     return module
 
 
-def validate_runtime_executable_authorities() -> None:
+def run_post_validator(path: Path, expected_relative: Path, field: str) -> None:
+    require_exact_repo_file(path, expected_relative, field)
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"post-reconcile {field} failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}",
+    )
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
-        canonical_contract = CANONICAL_CONTRACT.resolve(strict=True)
-        current_contract = CONTRACT.resolve(strict=True)
-    except (FileNotFoundError, OSError, RuntimeError) as exc:
-        raise Fail("eligibility reconcile contract authority missing") from exc
-    if current_contract != canonical_contract:
-        return
-    try:
-        canonical_validator = CANONICAL_VALIDATOR.resolve(strict=True)
-        current_validator = VALIDATOR.resolve(strict=True)
-    except (FileNotFoundError, OSError, RuntimeError) as exc:
-        raise Fail("eligibility reconcile validator authority missing") from exc
-    require(current_validator == canonical_validator and VALIDATOR.is_file(), "eligibility reconcile validator executable authority drift")
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
 
 
 def main() -> int:
-    validate_runtime_executable_authorities()
+    enforce_runtime_authorities()
     try:
         original_contract_text = CONTRACT.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -110,13 +153,14 @@ def main() -> int:
     require(gen_boundary.get("registeredGenerationCount") == mapping["registeredGenerationCount"], "generation registered count drift")
     require(gen_boundary.get("preflightEligibleGenerationCount") == mapping["preflightEligibleGenerationCount"], "generation eligible count drift")
 
+    updated_contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
     try:
-        CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"post-reconcile eligibility validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+        atomic_write_text(CONTRACT, updated_contract_text)
+        run_post_validator(VALIDATOR, VALIDATOR_REL, "environment eligibility validator")
+        run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
     except Exception:
         try:
-            CONTRACT.write_text(original_contract_text, encoding="utf-8")
+            atomic_write_text(CONTRACT, original_contract_text)
         except OSError as restore_exc:
             raise Fail(f"eligibility contract rollback failed: {restore_exc}") from restore_exc
         raise
@@ -126,8 +170,9 @@ def main() -> int:
     print(f"preflight-eligible generations: {mapping['preflightEligibleGenerationCount']}")
     print(f"distinct eligible environments: {mapping['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {mapping['eligibleDirectedRestorePairCount']}")
-    print("eligibility helper executable authority pinned: true")
-    print("canonical runtime validator authority pinned: true")
+    print("canonical data/executable authorities enforced: true")
+    print("atomic eligibility contract replacement: true")
+    print("aggregate operability validation inside transaction: true")
     print("failed post-validation leaves eligibility authority mutation behind: false")
     print("production evidence: false")
     print("production decision: NO_GO")
