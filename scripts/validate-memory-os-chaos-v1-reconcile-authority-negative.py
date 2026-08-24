@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject repo-contained executable and data substitutions in chaos scenario reconcilers."""
+"""Reject repo-contained executable and data substitutions in chaos authority reconcilers."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import importlib.util
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+AGGREGATE_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
 V1_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills.py"
 V2_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
 PARSER_RECONCILER = ROOT / "scripts/reconcile-memory-os-parser-restart-matrix.py"
@@ -127,8 +128,87 @@ def validate_process_group(module) -> None:
             setattr(module, attr, original)
 
 
+def validate_aggregate(module) -> None:
+    original_status_path = module.STATUS_PATH
+    try:
+        module.STATUS_PATH = ROOT / "README.md"
+        expect_rejection(
+            module.enforce_runtime_authorities,
+            "production operability status authority drift",
+        )
+    finally:
+        module.STATUS_PATH = original_status_path
+
+    original_operability = module.OPERABILITY_VALIDATOR
+    try:
+        module.OPERABILITY_VALIDATOR = V1_VALIDATOR
+        expect_rejection(
+            module.enforce_runtime_authorities,
+            "operability validator authority drift",
+        )
+    finally:
+        module.OPERABILITY_VALIDATOR = original_operability
+
+    original_bytes = module.STATUS_PATH.read_bytes()
+    candidate = module.load(module.STATUS_PATH)
+    original_post_write = module.run_post_write_validators
+    original_atomic_write = module.atomic_write_bytes
+    calls: list[str] = []
+    atomic_calls: list[tuple[Path, bytes]] = []
+
+    def tracked_atomic_write(path: Path, payload: bytes) -> None:
+        atomic_calls.append((path, bytes(payload)))
+        original_atomic_write(path, payload)
+
+    def reject_after_write() -> None:
+        calls.append("post-write")
+        raise module.ReconcileFailure("synthetic aggregate post-write rejection")
+
+    module.atomic_write_bytes = tracked_atomic_write
+    module.run_post_write_validators = reject_after_write
+    try:
+        expect_rejection(
+            lambda: module.commit_candidate(candidate),
+            "synthetic aggregate post-write rejection",
+        )
+    finally:
+        module.run_post_write_validators = original_post_write
+        module.atomic_write_bytes = original_atomic_write
+
+    if calls != ["post-write"]:
+        raise RuntimeError(f"aggregate post-write validation order drift: {calls}")
+    if len(atomic_calls) != 2:
+        raise RuntimeError(f"aggregate atomic publish/rollback count drift: {len(atomic_calls)}")
+    if any(path != module.STATUS_PATH for path, _payload in atomic_calls):
+        raise RuntimeError("aggregate atomic authority wrote an unexpected path")
+    if atomic_calls[-1][1] != original_bytes:
+        raise RuntimeError("aggregate atomic rollback did not restore original bytes")
+    if module.STATUS_PATH.read_bytes() != original_bytes:
+        raise RuntimeError("aggregate post-write rejection changed Production Status")
+
+    canonical_replace = module.os.replace
+
+    def reject_replace(_source, _target) -> None:
+        raise OSError("synthetic aggregate atomic replacement rejection")
+
+    try:
+        module.os.replace = reject_replace
+        expect_rejection(
+            lambda: module.atomic_write_bytes(module.STATUS_PATH, original_bytes),
+            "cannot atomically write authority",
+        )
+    finally:
+        module.os.replace = canonical_replace
+    if module.STATUS_PATH.read_bytes() != original_bytes:
+        raise RuntimeError("aggregate atomic replacement failure changed Production Status")
+    residues = list(module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp"))
+    if residues:
+        raise RuntimeError(f"aggregate atomic replacement failure left temp authority residue: {residues}")
+
+
 def main() -> int:
     fixtures = (
+        AGGREGATE_RECONCILER,
         V1_RECONCILER,
         V2_RECONCILER,
         PARSER_RECONCILER,
@@ -144,6 +224,9 @@ def main() -> int:
         if not path.is_file():
             raise RuntimeError(f"authority fixture missing: {path.name}")
 
+    validate_aggregate(
+        load_module(AGGREGATE_RECONCILER, "memory_os_chaos_aggregate_authority_negative")
+    )
     v1 = load_module(V1_RECONCILER, "memory_os_chaos_v1_authority_negative")
     validate_module(
         v1,
@@ -175,7 +258,7 @@ def main() -> int:
         load_module(PROCESS_GROUP_RECONCILER, "memory_os_process_group_authority_negative")
     )
 
-    print("PASS: chaos scenario reconcile executable/data substitutions are rejected")
+    print("PASS: aggregate/scenario chaos authority substitutions, atomic publication, and rollback are fail-closed")
     return 0
 
 
