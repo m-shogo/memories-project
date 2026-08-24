@@ -18,12 +18,18 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-material-delta-review.py")
+NEGATIVE_REL = Path("scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+NEGATIVE = ROOT / NEGATIVE_REL
 MATERIAL_DELTA_ROOT = Path("docs/evidence/backup-restore/material-delta")
 EXPECTED_SCHEMA = "memory-os-backup-restore-material-delta-review.v1"
-EXPECTED_VALIDATOR = "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
-EXPECTED_NEGATIVE = "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+EXPECTED_VALIDATOR = VALIDATOR_REL.as_posix()
+EXPECTED_NEGATIVE = NEGATIVE_REL.as_posix()
 REVIEW_RESULT = "APPROVED"
 REVIEWER = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
 
@@ -37,6 +43,29 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "generation evidence contract"),
+        (REGISTRY, REGISTRY_REL, "generation evidence registry"),
+        (VALIDATOR, VALIDATOR_REL, "material-delta review validator"),
+        (NEGATIVE, NEGATIVE_REL, "material-delta review negative validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
+
+
 def load_json(path: Path, field: str) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -47,36 +76,19 @@ def load_json(path: Path, field: str) -> dict[str, Any]:
 
 
 def validate_contract_authority() -> dict[str, Any]:
+    require_exact_repo_file(CONTRACT, CONTRACT_REL, "generation evidence contract")
     contract = load_json(CONTRACT, "generation evidence contract")
-    require(
-        contract.get("materialDeltaReviewEvidenceRoot") == MATERIAL_DELTA_ROOT.as_posix(),
-        "material-delta review evidence root authority drift",
-    )
-    require(
-        contract.get("materialDeltaReviewEvidenceSchemaVersion") == EXPECTED_SCHEMA,
-        "material-delta review evidence schema authority drift",
-    )
+    require(contract.get("materialDeltaReviewEvidenceRoot") == MATERIAL_DELTA_ROOT.as_posix(), "material-delta review evidence root authority drift")
+    require(contract.get("materialDeltaReviewEvidenceSchemaVersion") == EXPECTED_SCHEMA, "material-delta review evidence schema authority drift")
     require(contract.get("materialDeltaReviewValidator") == EXPECTED_VALIDATOR, "material-delta review validator authority drift")
     require(contract.get("materialDeltaReviewNegativeValidator") == EXPECTED_NEGATIVE, "material-delta review negative validator authority drift")
     required_fields = contract.get("requiredMaterialDeltaReviewEvidenceFields")
-    require(
-        required_fields
-        == [
-            "schemaVersion",
-            "evidenceId",
-            "drillRequestId",
-            "recoveryObjectivesId",
-            "sourceEnvironmentGenerationId",
-            "restoreTargetGenerationId",
-            "reviewResult",
-            "reviewedAt",
-            "reviewerPseudonym",
-            "productionTrafficChanged",
-            "productionCredentialsUsed",
-            "automaticPromotion",
-        ],
-        "material-delta review required fields authority drift",
-    )
+    require(required_fields == [
+        "schemaVersion", "evidenceId", "drillRequestId", "recoveryObjectivesId",
+        "sourceEnvironmentGenerationId", "restoreTargetGenerationId", "reviewResult",
+        "reviewedAt", "reviewerPseudonym", "productionTrafficChanged",
+        "productionCredentialsUsed", "automaticPromotion",
+    ], "material-delta review required fields authority drift")
     rules = contract.get("recordRules")
     require(isinstance(rules, dict), "generation evidence recordRules missing")
     for rule in (
@@ -97,27 +109,15 @@ def validate_contract_authority() -> dict[str, Any]:
         require(rules.get(rule) is True, f"material-delta review contract rule drift: {rule}")
     promotion = contract.get("promotionBoundary")
     require(isinstance(promotion, dict), "generation evidence promotionBoundary missing")
-    require(
-        promotion.get("completeReviewedRecordAlsoRequiresTypedAppendOnlyMaterialDeltaReviewForCrossGenerationRestore") is True,
-        "material-delta promotion boundary drift",
-    )
+    require(promotion.get("completeReviewedRecordAlsoRequiresTypedAppendOnlyMaterialDeltaReviewForCrossGenerationRestore") is True, "material-delta promotion boundary drift")
     return contract
 
 
 def canonical_material_delta_ref(value: Any, field: str) -> tuple[str, Path]:
     require(isinstance(value, str) and value, f"{field} required")
     relative = Path(value)
-    require(
-        not relative.is_absolute()
-        and ".." not in relative.parts
-        and relative.as_posix() == value,
-        f"{field} must be canonical repository-relative path",
-    )
-    require(
-        relative.parts[: len(MATERIAL_DELTA_ROOT.parts)] == MATERIAL_DELTA_ROOT.parts
-        and len(relative.parts) > len(MATERIAL_DELTA_ROOT.parts),
-        f"{field} must remain inside {MATERIAL_DELTA_ROOT.as_posix()}/",
-    )
+    require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == value, f"{field} must be canonical repository-relative path")
+    require(relative.parts[: len(MATERIAL_DELTA_ROOT.parts)] == MATERIAL_DELTA_ROOT.parts and len(relative.parts) > len(MATERIAL_DELTA_ROOT.parts), f"{field} must remain inside {MATERIAL_DELTA_ROOT.as_posix()}/")
     path = ROOT / relative
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
@@ -128,14 +128,7 @@ def canonical_material_delta_ref(value: Any, field: str) -> tuple[str, Path]:
 
 
 def git_history(ref: str, field: str) -> list[str]:
-    completed = subprocess.run(
-        ["git", "log", "--format=%H", "--follow", "--", ref],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    completed = subprocess.run(["git", "log", "--format=%H", "--follow", "--", ref], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"cannot inspect {field} Git history")
     commits = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
     require(commits, f"{field} must be committed material-delta review evidence")
@@ -145,13 +138,7 @@ def git_history(ref: str, field: str) -> list[str]:
 def require_append_only_review(ref: str, path: Path, field: str) -> None:
     commits = git_history(ref, field)
     require(len(commits) == 1, f"{field} must remain append-only after its first committed version")
-    completed = subprocess.run(
-        ["git", "show", f"{commits[0]}:{ref}"],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    completed = subprocess.run(["git", "show", f"{commits[0]}:{ref}"], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"cannot read initial committed bytes for {field}")
     require(path.read_bytes() == completed.stdout, f"{field} bytes drift from initial committed material-delta review evidence")
 
@@ -174,14 +161,8 @@ def validate_material_delta_payload(row: dict[str, Any], payload: dict[str, Any]
     require(payload.get("evidenceId") == row.get("evidenceId"), f"{field} evidenceId mismatch")
     require(payload.get("drillRequestId") == row.get("drillRequestId"), f"{field} drillRequestId mismatch")
     require(payload.get("recoveryObjectivesId") == row.get("recoveryObjectivesId"), f"{field} recoveryObjectivesId mismatch")
-    require(
-        payload.get("sourceEnvironmentGenerationId") == row.get("sourceEnvironmentGenerationId"),
-        f"{field} sourceEnvironmentGenerationId mismatch",
-    )
-    require(
-        payload.get("restoreTargetGenerationId") == row.get("restoreTargetGenerationId"),
-        f"{field} restoreTargetGenerationId mismatch",
-    )
+    require(payload.get("sourceEnvironmentGenerationId") == row.get("sourceEnvironmentGenerationId"), f"{field} sourceEnvironmentGenerationId mismatch")
+    require(payload.get("restoreTargetGenerationId") == row.get("restoreTargetGenerationId"), f"{field} restoreTargetGenerationId mismatch")
     require(payload.get("reviewResult") == REVIEW_RESULT, f"{field} reviewResult must be APPROVED")
     require_utc_rfc3339(payload.get("reviewedAt"), f"{field} reviewedAt")
     reviewer = payload.get("reviewerPseudonym")
@@ -207,13 +188,14 @@ def validate_row(row: dict[str, Any], index: int, required_fields: list[str]) ->
 
 
 def material_delta_review_approved(row: dict[str, Any]) -> bool:
-    """Validate the exact typed material-delta authority for one generation evidence row."""
+    enforce_runtime_authorities()
     contract = validate_contract_authority()
     validate_row(row, 0, contract["requiredMaterialDeltaReviewEvidenceFields"])
     return True
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = validate_contract_authority()
     required_fields = contract["requiredMaterialDeltaReviewEvidenceFields"]
     registry = load_json(REGISTRY, "generation evidence registry")
@@ -225,6 +207,8 @@ def main() -> int:
     for index, row in enumerate(rows):
         validate_row(row, index, required_fields)
     print(f"PASS: typed generation material-delta review authority records={len(rows)} productionEvidence=false productionReady=false")
+    print("canonical generation evidence contract/registry authority substitution accepted: false")
+    print("automatic promotion authority created: false")
     return 0
 
 
