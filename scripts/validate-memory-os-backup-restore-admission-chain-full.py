@@ -56,6 +56,8 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py", "generation independent-review negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py", "typed non-resurrection contract-path negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-negative.py", "typed non-resurrection semantic negative"),
+    ("scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py", "typed non-resurrection source-binding negative"),
+    ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py", "typed non-resurrection unreadable/escaped authority negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py", "typed non-resurrection writer authority negative"),
     ("scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py", "typed non-resurrection reconcile negative"),
     ("scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py", "generation binding status reconcile negative"),
