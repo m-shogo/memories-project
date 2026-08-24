@@ -31,6 +31,24 @@ def expect_reconcile_failure(module, expected: str) -> None:
         raise AssertionError(f"parser cancellation reconcile accepted invalid authority: {expected}")
 
 
+def stale_status_bytes(module) -> bytes:
+    status = module.load(module.CANONICAL_STATUS_PATH)
+    gate = next(
+        item for item in status.get("areas", [])
+        if isinstance(item, dict) and item.get("id") == "OPS-P0-009"
+    )
+    missing = gate.get("missingEvidence")
+    existing = gate.get("existingEvidence")
+    if not isinstance(missing, list) or not isinstance(existing, list):
+        raise RuntimeError("OPS-P0-009 arrays missing for rollback fixture")
+    if module.OLD_MISSING not in missing:
+        missing.append(module.OLD_MISSING)
+    for item in module.NEW_EXISTING:
+        while item in existing:
+            existing.remove(item)
+    return json.dumps(status, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+
+
 def main() -> int:
     source_sha = "0" * 40
 
@@ -58,26 +76,7 @@ def main() -> int:
         result_path = root / "result.json"
         status_path = root / "status.json"
         result_path.write_text(json.dumps({"commitSha": source_sha}) + "\n", encoding="utf-8")
-
-        # Start from the real conservative authority so stronger unresolved
-        # production gaps stay present. Then make only the in-flight slice stale
-        # enough to force a write before injecting the post-write failure.
-        status = module.load(module.CANONICAL_STATUS_PATH)
-        gate = next(
-            item for item in status.get("areas", [])
-            if isinstance(item, dict) and item.get("id") == "OPS-P0-009"
-        )
-        missing = gate.get("missingEvidence")
-        existing = gate.get("existingEvidence")
-        if not isinstance(missing, list) or not isinstance(existing, list):
-            raise RuntimeError("OPS-P0-009 arrays missing for rollback fixture")
-        if module.OLD_MISSING not in missing:
-            missing.append(module.OLD_MISSING)
-        for item in module.NEW_EXISTING:
-            while item in existing:
-                existing.remove(item)
-
-        original_bytes = json.dumps(status, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+        original_bytes = stale_status_bytes(module)
         status_path.write_bytes(original_bytes)
 
         module.RESULT_PATH = result_path
@@ -85,6 +84,12 @@ def main() -> int:
         module.source_is_ancestor = lambda _sha: True
         module.load_normalizer = lambda *_args, **_kwargs: (lambda value: value)
         calls: list[str] = []
+        atomic_calls: list[tuple[Path, bytes]] = []
+        canonical_atomic_write = module.atomic_write_bytes
+
+        def tracked_atomic_write(path: Path, payload: bytes) -> None:
+            atomic_calls.append((path, bytes(payload)))
+            canonical_atomic_write(path, payload)
 
         def fail_after_write(validated_sha: str) -> None:
             if validated_sha != source_sha:
@@ -93,14 +98,51 @@ def main() -> int:
             if len(calls) == 2:
                 raise module.ReconcileFailure("synthetic post-write aggregate rejection")
 
+        module.atomic_write_bytes = tracked_atomic_write
         module.validate_authority_chain = fail_after_write
         expect_reconcile_failure(module, "synthetic post-write aggregate rejection")
         if calls != [source_sha, source_sha]:
             raise AssertionError(f"authority chain call order drift: {calls}")
+        if len(atomic_calls) != 2:
+            raise AssertionError(f"atomic publish/rollback call count drift: {len(atomic_calls)}")
+        if any(path != status_path for path, _payload in atomic_calls):
+            raise AssertionError("atomic parser cancellation authority wrote an unexpected path")
+        if atomic_calls[-1][1] != original_bytes:
+            raise AssertionError("atomic parser cancellation rollback did not restore original bytes")
         if status_path.read_bytes() != original_bytes:
             raise AssertionError("parser cancellation reconcile did not roll back Production Status")
 
-    print("PASS: parser in-flight cancellation reconcile rejects authority substitution and rolls back post-write aggregate rejection")
+    module = load_reconciler()
+    with tempfile.TemporaryDirectory(prefix="memory-os-parser-cancel-replace-") as tmp:
+        root = Path(tmp)
+        result_path = root / "result.json"
+        status_path = root / "status.json"
+        result_path.write_text(json.dumps({"commitSha": source_sha}) + "\n", encoding="utf-8")
+        original_bytes = stale_status_bytes(module)
+        status_path.write_bytes(original_bytes)
+
+        module.RESULT_PATH = result_path
+        module.STATUS_PATH = status_path
+        module.source_is_ancestor = lambda _sha: True
+        module.load_normalizer = lambda *_args, **_kwargs: (lambda value: value)
+        module.validate_authority_chain = lambda _sha: None
+        canonical_replace = module.os.replace
+
+        def reject_replace(_source, _target) -> None:
+            raise OSError("synthetic atomic replacement rejection")
+
+        try:
+            module.os.replace = reject_replace
+            expect_reconcile_failure(module, "cannot atomically write authority")
+        finally:
+            module.os.replace = canonical_replace
+        if status_path.read_bytes() != original_bytes:
+            raise AssertionError("atomic replacement failure mutated parser cancellation authority")
+        residues = list(root.glob(f".{status_path.name}.*.tmp"))
+        if residues:
+            raise AssertionError(f"atomic replacement failure left temp authority residue: {residues}")
+
+    print("PASS: parser in-flight cancellation reconcile rejects authority substitution, publishes atomically, and rolls back post-write aggregate rejection")
     return 0
 
 
