@@ -69,6 +69,7 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py", "generation binding status reconcile negative"),
     ("scripts/reconcile-memory-os-backup-restore-admission-chain.py", "admission-chain deterministic reconcile"),
     ("scripts/validate-memory-os-backup-restore-admission-chain.py", "admission-chain authority"),
+    ("scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py", "admission-chain direct authority negative"),
     ("scripts/validate-memory-os-backup-restore-admission-chain-negative.py", "admission-chain semantic negative"),
     ("scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py", "admission-chain unreadable/escaped authority negative"),
     ("scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py", "admission-chain reconcile negative"),
