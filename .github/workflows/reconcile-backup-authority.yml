@@ -20,6 +20,7 @@ on:
       - "scripts/validate-memory-os-backup-local-foundations.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
+      - "scripts/validate-memory-os-backup-authority-atomic-negative.py"
       - "scripts/validate-memory-os-local-apple-replay-restore.py"
       - "scripts/validate-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-local-object-version-restore.py"
@@ -49,6 +50,7 @@ on:
       - "scripts/validate-memory-os-backup-local-foundations.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
+      - "scripts/validate-memory-os-backup-authority-atomic-negative.py"
       - "scripts/validate-memory-os-local-apple-replay-restore.py"
       - "scripts/validate-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-local-object-version-restore.py"
@@ -62,21 +64,82 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-backup-authority-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean pull request source
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      - name: Validate local backup authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
+            scripts/validate-memory-os-local-apple-replay-restore.py \
+            scripts/validate-memory-os-local-logical-restore.py \
+            scripts/validate-memory-os-local-object-version-restore.py \
+            scripts/validate-memory-os-local-coherent-recovery-set.py \
+            scripts/validate-memory-os-backup-local-foundations.py \
+            scripts/validate-memory-os-backup-restore.py \
+            scripts/validate-memory-os-backup-restore-blockers-negative.py \
+            scripts/validate-memory-os-backup-authority-atomic-negative.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-backup-authority.py \
+            scripts/reconcile-memory-os-backup-coherent-authority.py \
+            scripts/reconcile-memory-os-backup-semantic-overlay.py
+          python scripts/validate-memory-os-local-apple-replay-restore.py
+          python scripts/validate-memory-os-local-logical-restore.py
+          python scripts/validate-memory-os-local-object-version-restore.py
+          python scripts/validate-memory-os-local-coherent-recovery-set.py
+          python scripts/validate-memory-os-backup-local-foundations.py
+          python scripts/validate-memory-os-backup-authority-atomic-negative.py
+          python scripts/reconcile-memory-os-backup-authority.py
+          python scripts/reconcile-memory-os-backup-authority.py --check
+          python scripts/reconcile-memory-os-backup-semantic-overlay.py
+          python scripts/reconcile-memory-os-backup-semantic-overlay.py --check
+          python scripts/reconcile-memory-os-backup-coherent-authority.py
+          python scripts/reconcile-memory-os-backup-coherent-authority.py --check
+          python scripts/validate-memory-os-backup-restore.py
+          python scripts/validate-memory-os-backup-restore-blockers-negative.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- contracts/operations/production-operability-status.json
+
   reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -88,11 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          else
-            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Validate local foundation source inputs
@@ -106,6 +165,7 @@ jobs:
             scripts/validate-memory-os-backup-local-foundations.py \
             scripts/validate-memory-os-backup-restore.py \
             scripts/validate-memory-os-backup-restore-blockers-negative.py \
+            scripts/validate-memory-os-backup-authority-atomic-negative.py \
             scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-backup-authority.py \
             scripts/reconcile-memory-os-backup-coherent-authority.py \
@@ -115,6 +175,7 @@ jobs:
           python scripts/validate-memory-os-local-object-version-restore.py
           python scripts/validate-memory-os-local-coherent-recovery-set.py
           python scripts/validate-memory-os-backup-local-foundations.py
+          python scripts/validate-memory-os-backup-authority-atomic-negative.py
 
       - name: Reconcile backup policy authority
         run: |
@@ -149,12 +210,7 @@ jobs:
       - name: Validate operability authority
         run: python scripts/validate-memory-os-operability.py
 
-      - name: Reject uncommitted PR authority drift
-        if: github.event_name == 'pull_request'
-        run: git diff --exit-code -- contracts/operations/production-operability-status.json
-
       - name: Commit normalized backup authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
 
@@ -168,6 +224,7 @@ jobs:
             python scripts/validate-memory-os-local-object-version-restore.py
             python scripts/validate-memory-os-local-coherent-recovery-set.py
             python scripts/validate-memory-os-backup-local-foundations.py
+            python scripts/validate-memory-os-backup-authority-atomic-negative.py
             python scripts/reconcile-memory-os-backup-authority.py
             python scripts/reconcile-memory-os-backup-authority.py --check
             python scripts/reconcile-memory-os-backup-semantic-overlay.py
