@@ -384,7 +384,40 @@ def validate_command_source(relative: str, module_name: str, label: str) -> None
     exact_success(result, label)
 
 
-def main() -> int:
+CANONICAL_EXECUTION_HELPERS = (
+    enforce_runtime_authority,
+    load,
+    load_validator,
+    validate_inventory_request,
+    validate_human_tabletop_source,
+    validate_load_source,
+    validate_command_source,
+    validate_source,
+)
+
+
+def enforce_execution_authority(
+    canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+) -> None:
+    current_helpers = (
+        enforce_runtime_authority,
+        load,
+        load_validator,
+        validate_inventory_request,
+        validate_human_tabletop_source,
+        validate_load_source,
+        validate_command_source,
+        validate_source,
+    )
+    require(current_helpers == canonical_helpers, "inventory source-authority execution helper drift")
+
+
+def main(canonical_execution_guard=enforce_execution_authority) -> int:
+    require(
+        enforce_execution_authority is canonical_execution_guard,
+        "inventory source-authority execution guard drift",
+    )
+    enforce_execution_authority()
     enforce_runtime_authority()
     validate_inventory_request()
     human_tabletop_count = validate_human_tabletop_source()
@@ -396,6 +429,7 @@ def main() -> int:
     print("Memory OS operability inventory source authority validation PASS")
     print("inventory source-authority repository root substitution accepted: false")
     print("inventory source registry/command sequence substitution accepted: false")
+    print("inventory source execution helper substitution accepted: false")
     print("operability inventory generation request authority: PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
     print(f"validated backup/restore derived authorities: {len(COMMAND_SOURCES)}")
