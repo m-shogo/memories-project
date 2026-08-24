@@ -25,6 +25,7 @@ EXPECTED_OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objecti
 EXPECTED_DRILL_REQUEST_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 EXPECTED_DRILL_REQUEST_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 EXPECTED_DRILL_REQUEST_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
+EXPECTED_GENERATION_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 EXPECTED_NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 EXPECTED_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 EXPECTED_NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -76,6 +77,16 @@ def require_contract_ref(contract: dict[str, Any], field: str, expected: Path, l
     require(expected.is_file(), f"canonical {label} missing")
 
 
+def require_canonical_file(path: Path, expected: Path, label: str) -> None:
+    require(path == expected, f"generation-evidence validator {label} authority drift")
+    require(expected.is_file(), f"canonical generation-evidence {label} missing")
+    require(not expected.is_symlink(), f"canonical generation-evidence {label} must not be symlink")
+    try:
+        require(expected.resolve(strict=True) == expected, f"canonical generation-evidence {label} resolved path drift")
+    except OSError as exc:
+        raise Fail(f"canonical generation-evidence {label} cannot resolve: {exc}") from exc
+
+
 def require_authority(writer: Any, name: str, expected: Path, label: str) -> None:
     actual = getattr(writer, name, None)
     require(actual == expected, f"generation-evidence {label} authority drift")
@@ -86,17 +97,19 @@ def require_authority(writer: Any, name: str, expected: Path, label: str) -> Non
 
 def require_generation_validator_authorities(validator: Any) -> None:
     for name, expected, label in (
+        ("CONTRACT", EXPECTED_CONTRACT, "contract"),
+        ("REGISTRY", EXPECTED_REGISTRY, "registry"),
+        ("GEN_REGISTRY", EXPECTED_GENERATION_REGISTRY, "environment generation registry"),
+        ("OBJECTIVES_REGISTRY", EXPECTED_OBJECTIVES_REGISTRY, "recovery objectives registry"),
+        ("DRILL_CONTRACT", EXPECTED_DRILL_REQUEST_CONTRACT, "drill request contract"),
+        ("DRILL_REGISTRY", EXPECTED_DRILL_REQUEST_REGISTRY, "drill request registry"),
+        ("GEN_BINDING", EXPECTED_GENERATION_BINDING, "generation binding contract"),
+        ("WRITER", WRITER, "writer"),
         ("NEGATIVE_VALIDATOR", EXPECTED_NEGATIVE_VALIDATOR, "negative admission validator"),
         ("SEMANTIC_NEGATIVE_VALIDATOR", EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR, "semantic generation negative validator"),
     ):
         actual = getattr(validator, name, None)
-        require(actual == expected, f"generation-evidence validator {label} authority drift")
-        require(expected.is_file(), f"canonical generation-evidence {label} missing")
-        require(not expected.is_symlink(), f"canonical generation-evidence {label} must not be symlink")
-        try:
-            require(expected.resolve(strict=True) == expected, f"canonical generation-evidence {label} resolved path drift")
-        except OSError as exc:
-            raise Fail(f"canonical generation-evidence {label} cannot resolve: {exc}") from exc
+        require_canonical_file(actual, expected, label)
 
 
 def require_cli_guard(writer: Any) -> None:
@@ -218,6 +231,7 @@ def main() -> int:
 
     print("Memory OS generation-evidence executable/data authority validation PASS")
     print("generation-evidence CLI authority guard required: true")
+    print("generation-evidence validator data/writer authority substitution accepted: false")
     print("generation-evidence negative validator authority substitution accepted: false")
     print("generation-evidence semantic negative validator authority substitution accepted: false")
     print("environment-generation authority substitution accepted: false")
