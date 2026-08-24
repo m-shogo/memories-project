@@ -242,7 +242,79 @@ def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
     return matches[0]
 
 
-def main() -> int:
+CANONICAL_GENERATOR_HELPERS = (
+    require_generator_authority_identity,
+    atomic_write_text,
+    load,
+    exists,
+    valid_count,
+    exact_success,
+    canonical_registry_validator,
+    require_canonical_registry,
+    canonical_human_tabletop_count,
+    require_canonical_load_authority,
+    require_canonical_command_authority,
+    validate_generated_inventory,
+    p0_status,
+)
+
+
+def enforce_generator_execution_authority(
+    canonical_root: Path = ROOT,
+    canonical_output: Path = OUTPUT,
+    canonical_status: Path = STATUS,
+    canonical_inventory_validator: Path = INVENTORY_VALIDATOR,
+    canonical_helpers: tuple[Any, ...] = CANONICAL_GENERATOR_HELPERS,
+) -> None:
+    expected_root = Path(enforce_generator_execution_authority.__code__.co_filename).resolve().parents[1]
+    try:
+        actual_root = ROOT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise SystemExit("inventory generator repository root missing") from exc
+    if ROOT != canonical_root or actual_root != expected_root:
+        raise SystemExit("inventory generator repository root drift")
+    expected_output = expected_root / "contracts/operations/operability-admission-inventory.v1.json"
+    expected_status = expected_root / "contracts/operations/production-operability-status.json"
+    expected_validator = expected_root / "scripts/validate-memory-os-operability-admission-inventory.py"
+    for current, canonical, expected, label in (
+        (OUTPUT, canonical_output, expected_output, "output"),
+        (STATUS, canonical_status, expected_status, "production status"),
+        (INVENTORY_VALIDATOR, canonical_inventory_validator, expected_validator, "inventory validator"),
+    ):
+        if current != canonical or current != expected:
+            raise SystemExit(f"inventory generator {label} authority drift")
+        try:
+            resolved = current.resolve(strict=True)
+        except (FileNotFoundError, OSError, RuntimeError) as exc:
+            raise SystemExit(f"inventory generator {label} authority missing") from exc
+        if resolved != expected or not current.is_file() or current.is_symlink():
+            raise SystemExit(f"inventory generator {label} authority path drift")
+    current_helpers = (
+        require_generator_authority_identity,
+        atomic_write_text,
+        load,
+        exists,
+        valid_count,
+        exact_success,
+        canonical_registry_validator,
+        require_canonical_registry,
+        canonical_human_tabletop_count,
+        require_canonical_load_authority,
+        require_canonical_command_authority,
+        validate_generated_inventory,
+        p0_status,
+    )
+    if current_helpers != canonical_helpers:
+        raise SystemExit("inventory generator execution helper drift")
+
+
+CANONICAL_GENERATOR_EXECUTION_GUARD = enforce_generator_execution_authority
+
+
+def main(canonical_execution_guard=CANONICAL_GENERATOR_EXECUTION_GUARD) -> int:
+    if enforce_generator_execution_authority is not canonical_execution_guard:
+        raise SystemExit("inventory generator execution guard drift")
+    enforce_generator_execution_authority()
     require_generator_authority_identity()
     status = load("contracts/operations/production-operability-status.json")
     if status.get("productionDecision") != "NO_GO":
