@@ -54,6 +54,7 @@ jobs:
           expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
           python -m py_compile \
             scripts/reconcile-memory-os-production-equivalent-generation-status.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
@@ -62,4 +63,6 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-generation-negative.py \
             scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
           python scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
+          git diff --check
           git diff --exit-code
+          test -z "$(git status --porcelain)"
