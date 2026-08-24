@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+SELF_REL = Path("scripts/validate-memory-os-backup-restore-admission-chain-full.py")
 
 STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py", "admission-chain workflow permission boundary"),
@@ -89,6 +90,25 @@ class Fail(RuntimeError):
     pass
 
 
+def enforce_runtime_authority(canonical_steps: tuple[tuple[str, str], ...] = STEPS) -> None:
+    expected_root = Path(enforce_runtime_authority.__code__.co_filename).resolve().parents[1]
+    try:
+        actual_root = ROOT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("admission-chain full runner repository root missing") from exc
+    if actual_root != expected_root:
+        raise Fail("admission-chain full runner repository root drift")
+    self_path = expected_root / SELF_REL
+    try:
+        resolved = self_path.resolve(strict=True).relative_to(expected_root)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("admission-chain full runner missing or escapes repository") from exc
+    if resolved != SELF_REL or not self_path.is_file() or self_path.is_symlink():
+        raise Fail("admission-chain full runner identity drift")
+    if STEPS != canonical_steps:
+        raise Fail("admission-chain full validation sequence drift")
+
+
 def canonical_script(relative: str) -> Path:
     candidate = ROOT / relative
     expected = Path(relative)
@@ -97,7 +117,7 @@ def canonical_script(relative: str) -> Path:
         resolved = candidate.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"validation authority missing or escapes repository: {relative}") from exc
-    if lexical != expected or resolved != expected or not candidate.is_file():
+    if lexical != expected or resolved != expected or not candidate.is_file() or candidate.is_symlink():
         raise Fail(f"validation authority drift: {relative}")
     return candidate
 
@@ -121,10 +141,12 @@ def run_step(relative: str, label: str) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authority()
     for relative, label in STEPS:
         run_step(relative, label)
     print("Memory OS end-to-end backup/restore admission-chain validation PASS")
     print(f"canonical validation steps: {len(STEPS)}")
+    print("validation sequence substitution accepted: false")
     print("automatic generation/objective/request/evidence creation: false")
     print("production evidence created: false")
     print("production traffic changed: false")
