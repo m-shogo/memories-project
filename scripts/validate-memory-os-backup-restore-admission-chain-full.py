@@ -110,6 +110,7 @@ def enforce_execution_transport(
 def enforce_runtime_authority(
     canonical_self_rel: Path = SELF_REL,
     canonical_steps: tuple[tuple[str, str], ...] = STEPS,
+    canonical_transport_guard=enforce_execution_transport,
 ) -> None:
     expected_root = Path(enforce_runtime_authority.__code__.co_filename).resolve().parents[1]
     try:
@@ -129,6 +130,8 @@ def enforce_runtime_authority(
         raise Fail("admission-chain full runner identity drift")
     if STEPS != canonical_steps:
         raise Fail("admission-chain full validation sequence drift")
+    if enforce_execution_transport is not canonical_transport_guard:
+        raise Fail("admission-chain full runner transport guard drift")
     enforce_execution_transport()
 
 
@@ -145,7 +148,16 @@ def canonical_script(relative: str) -> Path:
     return candidate
 
 
-def run_step(relative: str, label: str) -> None:
+def run_step(
+    relative: str,
+    label: str,
+    canonical_transport_guard=enforce_execution_transport,
+    canonical_script_resolver=canonical_script,
+) -> None:
+    if enforce_execution_transport is not canonical_transport_guard:
+        raise Fail("admission-chain full runner transport guard drift")
+    if canonical_script is not canonical_script_resolver:
+        raise Fail("admission-chain full runner script resolver drift")
     enforce_execution_transport()
     script = canonical_script(relative)
     completed = subprocess.run(
@@ -164,7 +176,12 @@ def run_step(relative: str, label: str) -> None:
     print(f"PASS chain step: {label}")
 
 
-def main(canonical_run_step=run_step) -> int:
+def main(
+    canonical_authority_guard=enforce_runtime_authority,
+    canonical_run_step=run_step,
+) -> int:
+    if enforce_runtime_authority is not canonical_authority_guard:
+        raise Fail("admission-chain full runner authority guard drift")
     enforce_runtime_authority()
     if run_step is not canonical_run_step:
         raise Fail("admission-chain full runner execution function drift")
@@ -174,7 +191,10 @@ def main(canonical_run_step=run_step) -> int:
     print(f"canonical validation steps: {len(STEPS)}")
     print("self path substitution accepted: false")
     print("validation sequence substitution accepted: false")
+    print("authority guard substitution accepted: false")
     print("execution function substitution accepted: false")
+    print("transport guard substitution accepted: false")
+    print("script resolver substitution accepted: false")
     print("subprocess transport substitution accepted: false")
     print("Python executable substitution accepted: false")
     print("automatic generation/objective/request/evidence creation: false")
