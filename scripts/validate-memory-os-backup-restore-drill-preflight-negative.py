@@ -91,6 +91,25 @@ def expect_state_rejected(
     raise Fail(f"negative state case unexpectedly accepted: {name}")
 
 
+def expect_helper_authority_substitution_rejected(
+    validator: Any,
+    generations: dict[str, Any],
+    objectives: dict[str, Any],
+    drill_registry: dict[str, Any],
+) -> None:
+    original = validator.ELIGIBILITY_HELPER
+    validator.ELIGIBILITY_HELPER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+    try:
+        validator.derive_state(copy.deepcopy(generations), copy.deepcopy(objectives), copy.deepcopy(drill_registry))
+    except validator.Fail as exc:
+        require("eligibility authority" in str(exc), "runtime semantic helper substitution rejected for unexpected reason")
+        print("PASS reject: runtime semantic eligibility helper substitution")
+        return
+    finally:
+        validator.ELIGIBILITY_HELPER = original
+    raise Fail("runtime semantic eligibility helper substitution unexpectedly accepted")
+
+
 def expect_unexpected_helper_exception_preserved(
     validator: Any,
     generations: dict[str, Any],
@@ -248,12 +267,14 @@ def main() -> int:
         "boolean current executable drill request count",
         lambda _g, _o, d: d.__setitem__("currentExecutableRequestCount", False),
     )
+    expect_helper_authority_substitution_rejected(validator, generations, objectives, drill_registry)
     expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
     print("escaped artifact path accepted: false")
     print("negative validator contract binding: true")
     print("shared semantic eligibility helper contract binding: true")
+    print("runtime semantic eligibility helper substitution accepted: false")
     print("generation registry schema drift accepted: false")
     print("stable blocker ids require semantic preflight gates: true")
     print("registered generation count alone satisfies blocker: false")
