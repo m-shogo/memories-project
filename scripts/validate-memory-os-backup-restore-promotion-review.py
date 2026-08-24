@@ -92,6 +92,25 @@ def require_exact_repo_dir(path: Path, expected_relative: Path, field: str) -> P
     return path
 
 
+def require_canonical_lock_path(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        parent = path.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} parent missing or escapes repository") from exc
+    require(lexical == expected_relative, f"{field} authority drift")
+    require(parent == expected_relative.parent, f"{field} parent authority drift")
+    require(not path.is_symlink(), f"{field} must not be symlink")
+    if path.exists():
+        require(path.is_file(), f"{field} must be a file when materialized")
+        try:
+            resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise Fail(f"{field} materialized path escapes repository") from exc
+        require(resolved == expected_relative, f"{field} materialized authority drift")
+    return path
+
+
 def enforce_runtime_authorities() -> None:
     for path, expected, field in (
         (CONTRACT, CONTRACT_REL, "promotion review contract"),
@@ -105,6 +124,7 @@ def enforce_runtime_authorities() -> None:
     ):
         require_exact_repo_file(path, expected, field)
     require_exact_repo_dir(EXPECTED_EVIDENCE_ROOT, EXPECTED_EVIDENCE_ROOT_REL, "promotion review evidence namespace")
+    require_canonical_lock_path(EXPECTED_LOCK, EXPECTED_LOCK_REL, "promotion review append lock")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -183,6 +203,7 @@ def main() -> int:
     require(getattr(writer, "REVIEW_RESULT", None) == "APPROVED", "promotion review writer approval authority drift")
     writer_lock = getattr(writer, "LOCK", None)
     require(writer_lock == EXPECTED_LOCK, "promotion review writer append lock authority drift")
+    require_canonical_lock_path(writer_lock, EXPECTED_LOCK_REL, "writer promotion review append lock")
     require(writer_lock.parent == REGISTRY.parent, "promotion review append lock must share registry authority directory")
     require_writer_cli_authority_boundary(writer)
     writer.canonical_repo_file(CONTRACT, "promotion review contract")
@@ -276,6 +297,7 @@ def main() -> int:
     require(completed.returncode == 0, f"promotion review negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
     print("Memory OS backup/restore promotion review validation PASS")
     print("promotion review validator canonical runtime authorities enforced: true")
+    print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"final recovery candidates: {candidate_count}")
     print(f"registered historical promotion reviews: {count}")
     print(f"GO/NO_GO/DEFER: {go_count}/{no_go_count}/{defer_count}")
