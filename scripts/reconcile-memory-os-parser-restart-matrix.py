@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,33 @@ def load(path: Path) -> dict[str, Any]:
         raise ReconcileFailure(f"invalid JSON in {label}: {exc}") from exc
     require(isinstance(value, dict), f"root must be an object: {label}")
     return value
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    require(path.parent.is_dir(), f"authority parent missing: {path_label(path.parent)}")
+    temp_name: str | None = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
+    except OSError as exc:
+        raise ReconcileFailure(f"cannot atomically write authority: {path_label(path)}: {exc}") from exc
+    finally:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
 
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
@@ -232,14 +260,12 @@ def main() -> int:
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    payload = json.dumps(status, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+    atomic_write_bytes(STATUS_PATH, payload)
     try:
         validate_authority_chain(source_sha)
     except Exception:
-        STATUS_PATH.write_bytes(original_status_bytes)
+        atomic_write_bytes(STATUS_PATH, original_status_bytes)
         raise
 
     print("Registered exact-source parser restart matrix and preserved canonical stronger chaos authority")
