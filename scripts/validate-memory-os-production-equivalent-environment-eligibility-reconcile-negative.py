@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove environment-generation eligibility reconciliation is canonical and transactionally fail-closed."""
+"""Prove environment-generation eligibility validation/reconciliation is canonical and fail-closed."""
 
 from __future__ import annotations
 
@@ -11,11 +11,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
 GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+SUBSTITUTE_SCRIPT = ROOT / "scripts/validate-memory-os-operability.py"
+SUBSTITUTE_DATA = ROOT / "contracts/operations/production-operability-status.json"
 
 
 class Fail(RuntimeError):
@@ -27,12 +30,74 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_reconciler():
-    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_reconcile_negative", RECONCILER)
-    require(spec is not None and spec.loader is not None, "cannot load generation eligibility reconciler")
+def load_target(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_reconciler():
+    return load_target(RECONCILER, "memory_os_environment_generation_eligibility_reconcile_negative")
+
+
+def canonical_bytes() -> tuple[bytes, bytes, bytes]:
+    return CONTRACT.read_bytes(), GEN_CONTRACT.read_bytes(), GEN_REGISTRY.read_bytes()
+
+
+def assert_canonical_unchanged(before: tuple[bytes, bytes, bytes], label: str) -> None:
+    require(CONTRACT.read_bytes() == before[0], f"canonical eligibility contract mutated while rejecting {label}")
+    require(GEN_CONTRACT.read_bytes() == before[1], f"canonical generation contract mutated while rejecting {label}")
+    require(GEN_REGISTRY.read_bytes() == before[2], f"canonical generation registry mutated while rejecting {label}")
+
+
+def expect_validator_substitution_rejected(validator: Any, field: str, replacement: Any) -> None:
+    before = canonical_bytes()
+    original = getattr(validator, field)
+    setattr(validator, field, replacement)
+    try:
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise Fail(f"eligibility validator unexpectedly accepted substitution: {field}")
+        assert_canonical_unchanged(before, field)
+    finally:
+        setattr(validator, field, original)
+
+
+def prove_validator_execution_identity() -> None:
+    validator = load_target(VALIDATOR, "memory_os_environment_generation_eligibility_validator_negative")
+    path_cases = (
+        ("CONTRACT", validator.GEN_CONTRACT),
+        ("GEN_CONTRACT", validator.CONTRACT),
+        ("GEN_REGISTRY", SUBSTITUTE_DATA),
+        ("ENV_SCHEMA", validator.CONTRACT),
+        ("ENV_VALIDATOR", SUBSTITUTE_SCRIPT),
+        ("HELPER", SUBSTITUTE_SCRIPT),
+        ("VALIDATOR", SUBSTITUTE_SCRIPT),
+        ("RECONCILE", SUBSTITUTE_SCRIPT),
+        ("WORKFLOW", validator.CONTRACT),
+    )
+    for field, replacement in path_cases:
+        expect_validator_substitution_rejected(validator, field, replacement)
+
+    helper_cases = (
+        ("require", lambda condition, message: None),
+        ("display_path", lambda path: str(path)),
+        ("require_exact_repo_file", lambda path, expected, field: path),
+        ("enforce_runtime_authorities", lambda: None),
+        ("load", lambda path: {}),
+        ("load_helper", lambda: object()),
+        ("enforce_execution_identity", lambda: None),
+    )
+    for field, replacement in helper_cases:
+        expect_validator_substitution_rejected(validator, field, replacement)
+
+    print(f"PASS boundary: eligibility validator data/executable substitutions rejected: {len(path_cases)}")
+    print(f"PASS boundary: eligibility validator execution helper substitutions rejected: {len(helper_cases)}")
 
 
 def expect_direct_authority_rejected(
@@ -89,8 +154,10 @@ def prove_direct_authority_identity(reconciler: Any) -> None:
 
 
 def main() -> int:
+    require(VALIDATOR.is_file(), "generation eligibility validator missing")
     require(RECONCILER.is_file(), "generation eligibility reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_validator_execution_identity()
     reconciler = load_reconciler()
     prove_direct_authority_identity(reconciler)
 
@@ -121,9 +188,6 @@ def main() -> int:
             reconciler.GEN_CONTRACT = generation_contract_copy
             reconciler.GEN_REGISTRY = generation_registry_copy
 
-            # The shared helper's path-based API is intentionally canonical-only.
-            # Reconciler fixtures therefore adapt the helper to its explicit
-            # in-memory derive_registry API instead of weakening runtime authority.
             canonical_helper = original_load_helper()
 
             def load_fixture_helper():
@@ -153,8 +217,6 @@ def main() -> int:
 
             shutil.copyfile(GEN_CONTRACT, generation_contract_copy)
 
-            # A failed atomic replacement must preserve the eligibility contract
-            # and remove its temporary authority before control returns.
             atomic_original = contract_copy.read_bytes()
             replace_calls = 0
 
@@ -185,8 +247,6 @@ def main() -> int:
                 reconciler.os.replace = original_os_replace
             print("PASS atomic replacement failure: contract bytes preserved and temp cleaned")
 
-            # Make the contract byte-distinct but semantically equivalent so the
-            # validator hook proves publication occurred before aggregate failure.
             parsed_contract = json.loads(contract_copy.read_text(encoding="utf-8"))
             contract_copy.write_text(json.dumps(parsed_contract, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
             rollback_original = contract_copy.read_bytes()
@@ -224,7 +284,10 @@ def main() -> int:
         reconciler.os.replace = original_os_replace
 
     print("Environment generation eligibility reconcile negative suite PASS")
-    print("direct data/executable authority substitutions accepted: false")
+    print("validator data/executable authority substitutions accepted: false")
+    print("validator execution helper substitutions accepted: false")
+    print("symlinked canonical validator authority accepted: false")
+    print("direct reconciler data/executable authority substitutions accepted: false")
     print("path-based helper authority weakened for fixtures: false")
     print("generation contract drift can mutate eligibility authority: false")
     print("atomic replacement failure preserves canonical authority: true")
