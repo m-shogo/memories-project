@@ -10,6 +10,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
@@ -24,6 +25,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
@@ -62,12 +64,14 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review.py
