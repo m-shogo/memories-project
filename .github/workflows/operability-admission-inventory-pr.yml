@@ -57,10 +57,12 @@ jobs:
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory-source-authorities.py \
+            scripts/validate-memory-os-operability-admission-inventory-generator-authority-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
             scripts/validate-memory-os-operability-status-hygiene.py
           python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py
+          python scripts/validate-memory-os-operability-admission-inventory-generator-authority-negative.py
           python scripts/generate-memory-os-operability-admission-inventory.py
           python scripts/validate-memory-os-operability-admission-inventory.py
           python scripts/validate-memory-os-operability-admission-inventory-registry-negative.py
