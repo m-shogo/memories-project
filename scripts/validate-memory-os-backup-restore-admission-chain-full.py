@@ -16,6 +16,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SELF_REL = Path("scripts/validate-memory-os-backup-restore-admission-chain-full.py")
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_PYTHON_EXECUTABLE = Path(sys.executable).resolve(strict=True)
 
 STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py", "admission-chain workflow permission boundary"),
@@ -90,6 +92,20 @@ class Fail(RuntimeError):
     pass
 
 
+def enforce_execution_transport(
+    canonical_subprocess_run=CANONICAL_SUBPROCESS_RUN,
+    canonical_python_executable: Path = CANONICAL_PYTHON_EXECUTABLE,
+) -> None:
+    if subprocess.run is not canonical_subprocess_run:
+        raise Fail("admission-chain full runner subprocess transport drift")
+    try:
+        runtime_python = Path(sys.executable).resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("admission-chain full runner Python executable missing") from exc
+    if runtime_python != canonical_python_executable:
+        raise Fail("admission-chain full runner Python executable drift")
+
+
 def enforce_runtime_authority(
     canonical_self_rel: Path = SELF_REL,
     canonical_steps: tuple[tuple[str, str], ...] = STEPS,
@@ -112,6 +128,7 @@ def enforce_runtime_authority(
         raise Fail("admission-chain full runner identity drift")
     if STEPS != canonical_steps:
         raise Fail("admission-chain full validation sequence drift")
+    enforce_execution_transport()
 
 
 def canonical_script(relative: str) -> Path:
@@ -128,6 +145,7 @@ def canonical_script(relative: str) -> Path:
 
 
 def run_step(relative: str, label: str) -> None:
+    enforce_execution_transport()
     script = canonical_script(relative)
     completed = subprocess.run(
         [sys.executable, str(script)],
@@ -156,6 +174,8 @@ def main(canonical_run_step=run_step) -> int:
     print("self path substitution accepted: false")
     print("validation sequence substitution accepted: false")
     print("execution function substitution accepted: false")
+    print("subprocess transport substitution accepted: false")
+    print("Python executable substitution accepted: false")
     print("automatic generation/objective/request/evidence creation: false")
     print("production evidence created: false")
     print("production traffic changed: false")
