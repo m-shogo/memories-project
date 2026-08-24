@@ -9,6 +9,7 @@ on:
       - "docs/evidence/backup-restore/**"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
   push:
@@ -21,6 +22,7 @@ on:
       - "docs/evidence/backup-restore/**"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
   workflow_dispatch:
@@ -57,10 +59,12 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review.py
           git diff --check
