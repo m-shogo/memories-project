@@ -37,6 +37,7 @@ on:
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -88,6 +89,7 @@ jobs:
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
@@ -96,6 +98,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
@@ -118,6 +121,7 @@ jobs:
             python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1
             python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1
             python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py >> "$log" 2>&1
           }
 
           for reconcile_attempt in 1 2; do
