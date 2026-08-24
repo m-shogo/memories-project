@@ -27,6 +27,8 @@ on:
       - "docs/evidence/backup-restore/**"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
@@ -100,6 +102,8 @@ on:
       - "docs/evidence/backup-restore/**"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
@@ -178,6 +182,8 @@ jobs:
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
+            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py \
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py \
@@ -249,6 +255,10 @@ jobs:
         run: python scripts/validate-memory-os-backup-restore-drill-preflight.py
       - name: Prove preflight evidence ordering is deterministic
         run: python scripts/validate-memory-os-backup-restore-drill-preflight-ordering-negative.py
+      - name: Validate preflight semantic eligibility consistency
+        run: python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
+      - name: Prove preflight semantic eligibility authority
+        run: python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
       - name: Prove drill request reconcile authority and rollback
         run: python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
       - name: Prove drill request ordering is deterministic
