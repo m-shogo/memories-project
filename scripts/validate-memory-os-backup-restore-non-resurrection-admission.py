@@ -91,7 +91,28 @@ def run_validator(path: Path, label: str) -> None:
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-3000:]}{completed.stderr[-3000:]}")
 
-def main() -> int:
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
+
+def enforce_execution_transport(
+    canonical_subprocess_run=CANONICAL_SUBPROCESS_RUN,
+    canonical_spec_from_file_location=CANONICAL_SPEC_FROM_FILE_LOCATION,
+    canonical_module_from_spec=CANONICAL_MODULE_FROM_SPEC,
+) -> None:
+    if subprocess.run is not canonical_subprocess_run:
+        raise Fail("typed non-resurrection subprocess execution transport drift")
+    if importlib.util.spec_from_file_location is not canonical_spec_from_file_location:
+        raise Fail("typed non-resurrection import spec transport drift")
+    if importlib.util.module_from_spec is not canonical_module_from_spec:
+        raise Fail("typed non-resurrection module loader transport drift")
+
+CANONICAL_EXECUTION_GUARD = enforce_execution_transport
+
+def main(canonical_execution_guard=CANONICAL_EXECUTION_GUARD) -> int:
+    if enforce_execution_transport is not canonical_execution_guard:
+        raise Fail("typed non-resurrection execution guard drift")
+    enforce_execution_transport()
     enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
@@ -252,6 +273,7 @@ def main() -> int:
     print("standalone typed validator delegates append/upstream authority: true")
     print("typed/generation upstream writer identities canonical: true")
     print("canonical typed writer append lock authority validated: true")
+    print("typed validator execution transport substitution accepted: false")
     print("boolean typed/generation/boundary counts accepted: false")
     print("generic PASS candidate bypass: false")
     print("production evidence: false")
