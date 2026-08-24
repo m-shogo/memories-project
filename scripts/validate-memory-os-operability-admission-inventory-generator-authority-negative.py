@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
@@ -44,6 +45,19 @@ def load_source_authority():
     return load_module(SOURCE_AUTHORITY, "memory_os_inventory_source_authority_order_negative")
 
 
+def expect_source_authority_rejected(module: Any, field: str, replacement: Any) -> None:
+    original = getattr(module, field)
+    setattr(module, field, replacement)
+    rejected = False
+    try:
+        module.enforce_runtime_authority()
+    except module.Fail:
+        rejected = True
+    finally:
+        setattr(module, field, original)
+    require(rejected, f"inventory source-authority validator accepted substituted {field}")
+
+
 def restore_input(input_before: bytes) -> None:
     INPUT.unlink(missing_ok=True)
     INPUT.write_bytes(input_before)
@@ -63,16 +77,13 @@ def main() -> int:
         "pre-generation source authority must not validate the inventory-dependent end-to-end admission chain",
     )
 
-    source_root_before = source_authority.ROOT
-    source_authority.ROOT = ROOT / "contracts"
-    root_rejected = False
-    try:
-        source_authority.enforce_runtime_authority()
-    except source_authority.Fail:
-        root_rejected = True
-    finally:
-        source_authority.ROOT = source_root_before
-    require(root_rejected, "inventory source-authority validator accepted substituted repository root")
+    expect_source_authority_rejected(source_authority, "ROOT", ROOT / "contracts")
+    expect_source_authority_rejected(source_authority, "SELF_REL", Path("scripts/validate-memory-os-operability.py"))
+    expect_source_authority_rejected(source_authority, "REQUEST", "contracts/operations/production-operability-status.json")
+    expect_source_authority_rejected(source_authority, "REQUEST_FIELDS", tuple())
+    expect_source_authority_rejected(source_authority, "REQUEST_CONSTRAINTS", tuple())
+    expect_source_authority_rejected(source_authority, "SOURCES", tuple(reversed(source_authority.SOURCES)))
+    expect_source_authority_rejected(source_authority, "COMMAND_SOURCES", tuple(reversed(source_authority.COMMAND_SOURCES)))
     source_authority.enforce_runtime_authority()
 
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
@@ -105,6 +116,8 @@ def main() -> int:
     print("full environment-generation admission authority validated before inventory generation: true")
     print("inventory-dependent end-to-end admission chain validated before inventory generation: false")
     print("inventory source-authority repository root substitution accepted: false")
+    print("inventory source-authority self/request shape substitution accepted: false")
+    print("inventory source registry/command sequence substitution accepted: false")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
