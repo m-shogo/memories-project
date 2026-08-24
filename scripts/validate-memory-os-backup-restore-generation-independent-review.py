@@ -206,6 +206,11 @@ CANONICAL_EXECUTION_HELPERS = (
     validate_review,
     load_material_delta_validator,
 )
+CANONICAL_EXECUTION_TRANSPORT = (
+    subprocess.run,
+    importlib.util.spec_from_file_location,
+    importlib.util.module_from_spec,
+)
 CANONICAL_AUTHORITY_CONFIG = (
     CONTRACT_REL.as_posix(),
     REGISTRY_REL.as_posix(),
@@ -224,6 +229,7 @@ CANONICAL_AUTHORITY_CONFIG = (
 def enforce_execution_authority(
     canonical_require=CANONICAL_REQUIRE,
     canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+    canonical_transport: tuple[Any, ...] = CANONICAL_EXECUTION_TRANSPORT,
     canonical_config: tuple[Any, ...] = CANONICAL_AUTHORITY_CONFIG,
 ) -> None:
     expected_root = Path(enforce_execution_authority.__code__.co_filename).resolve().parents[1]
@@ -249,6 +255,13 @@ def enforce_execution_authority(
     )
     if current_helpers != canonical_helpers:
         raise Fail("generation independent-review execution helper drift")
+    current_transport = (
+        subprocess.run,
+        importlib.util.spec_from_file_location,
+        importlib.util.module_from_spec,
+    )
+    if current_transport != canonical_transport:
+        raise Fail("generation independent-review execution transport drift")
     current_config = (
         CONTRACT_REL.as_posix(),
         REGISTRY_REL.as_posix(),
@@ -321,6 +334,7 @@ def main(
     print(f"PASS: generation candidate review authority records={len(rows)} productionEvidence=false productionReady=false")
     print("canonical generation evidence contract/registry authority substitution accepted: false")
     print("generation independent-review execution helper substitution accepted: false")
+    print("generation independent-review execution transport substitution accepted: false")
     print("paired semantic authority substitution accepted: false")
     print("human production promotion remains separate: true")
     return 0
