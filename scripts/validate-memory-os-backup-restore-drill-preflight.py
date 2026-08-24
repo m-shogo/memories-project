@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -113,7 +114,18 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_eligibility_helper():
-    repo_relative(ELIGIBILITY_HELPER)
+    try:
+        lexical = ELIGIBILITY_HELPER.relative_to(ROOT)
+        resolved = ELIGIBILITY_HELPER.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("shared environment generation eligibility authority missing or escapes repository") from exc
+    require(
+        lexical == ELIGIBILITY_HELPER_REL
+        and resolved == ELIGIBILITY_HELPER_REL
+        and ELIGIBILITY_HELPER.is_file()
+        and not ELIGIBILITY_HELPER.is_symlink(),
+        "shared environment generation eligibility authority drift",
+    )
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
     require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
     module = importlib.util.module_from_spec(spec)
