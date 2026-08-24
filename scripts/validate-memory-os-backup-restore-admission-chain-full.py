@@ -37,6 +37,7 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-drill-request-negative.py", "reviewed drill request semantic negative"),
     ("scripts/validate-memory-os-backup-restore-drill-request-digest-negative.py", "reviewed drill request approval digest negative"),
     ("scripts/validate-memory-os-backup-restore-drill-objective-authority-negative.py", "reviewed drill request objective authority negative"),
+    ("scripts/validate-memory-os-backup-restore-drill-request-load-negative.py", "reviewed drill request unreadable/escaped authority negative"),
     ("scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py", "reviewed drill request append rollback negative"),
     ("scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py", "reviewed drill request reconcile negative"),
     ("scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py", "reviewed drill request writer authority"),
