@@ -48,6 +48,19 @@ def repo_relative(path: Path) -> Path:
     except (OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"artifact path missing, unreadable, or escapes repository root: {path}") from exc
 
+def enforce_runtime_authorities() -> None:
+    canonical_lock = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
+    require(EXPECTED_LOCK == canonical_lock, "typed non-resurrection append-lock authority drift")
+    require(EXPECTED_LOCK.parent == REGISTRY.parent, "typed non-resurrection append lock must share registry authority directory")
+    require(not EXPECTED_LOCK.is_symlink(), "typed non-resurrection append lock must not be a symlink")
+    if EXPECTED_LOCK.exists():
+        require(EXPECTED_LOCK.is_file(), "typed non-resurrection materialized append lock must be a regular file")
+        try:
+            resolved = EXPECTED_LOCK.resolve(strict=True)
+        except (FileNotFoundError, OSError, RuntimeError) as exc:
+            raise Fail("typed non-resurrection materialized append lock is unreadable") from exc
+        require(resolved == canonical_lock, "typed non-resurrection materialized append lock authority drift")
+
 def canonical_repo_file_ref(value: Any, field: str) -> Path:
     require(isinstance(value, str) and value, f"{field} must be a non-empty repository-relative path")
     relative = Path(value)
@@ -79,6 +92,7 @@ def run_validator(path: Path, label: str) -> None:
     require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-3000:]}{completed.stderr[-3000:]}")
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generation_contract = load(GEN_CONTRACT)
