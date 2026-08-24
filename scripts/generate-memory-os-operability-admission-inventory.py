@@ -29,7 +29,7 @@ def require_generator_authority_identity() -> None:
             resolved = path.resolve(strict=True).relative_to(root)
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             raise SystemExit(f"canonical {label} missing or escapes repository") from exc
-        if lexical != expected or resolved != expected or not path.is_file():
+        if lexical != expected or resolved != expected or not path.is_file() or path.is_symlink():
             raise SystemExit(f"canonical {label} path drift: {lexical}")
 
 
@@ -65,7 +65,18 @@ def atomic_write_text(path: Path, text: str) -> None:
 
 def load(relative: str) -> dict[str, Any]:
     path = ROOT / relative
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"canonical inventory input missing or escapes repository: {relative}") from exc
+    expected = Path(relative)
+    if lexical != expected or resolved != expected or not path.is_file() or path.is_symlink():
+        raise SystemExit(f"canonical inventory input path drift: {relative}")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot load canonical inventory input: {relative}: {exc}") from exc
     if not isinstance(value, dict):
         raise SystemExit(f"root must be object: {relative}")
     return value
