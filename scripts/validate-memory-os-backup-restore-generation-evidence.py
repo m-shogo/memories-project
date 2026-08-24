@@ -159,7 +159,26 @@ def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
     run_validator(SEMANTIC_NEGATIVE_VALIDATOR, SEMANTIC_NEGATIVE_VALIDATOR_REL, "semantic generation negative admission suite")
 
 
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
+
+
+def enforce_execution_transport(
+    canonical_subprocess_run=CANONICAL_SUBPROCESS_RUN,
+    canonical_spec_from_file_location=CANONICAL_SPEC_FROM_FILE_LOCATION,
+    canonical_module_from_spec=CANONICAL_MODULE_FROM_SPEC,
+) -> None:
+    if subprocess.run is not canonical_subprocess_run:
+        raise Fail("generation evidence subprocess execution transport drift")
+    if importlib.util.spec_from_file_location is not canonical_spec_from_file_location:
+        raise Fail("generation evidence import spec transport drift")
+    if importlib.util.module_from_spec is not canonical_module_from_spec:
+        raise Fail("generation evidence module loader transport drift")
+
+
 def main() -> int:
+    enforce_execution_transport()
     enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
@@ -368,6 +387,7 @@ def main() -> int:
 
     print("Memory OS drill-bound generation backup/restore evidence validation PASS")
     print("generation evidence validator canonical runtime authorities enforced: true")
+    print("generation evidence execution transport substitution accepted: false")
     print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
     print(f"registered/drill-bound recovery evidence: {count}/{derived_bound}")
