@@ -88,7 +88,7 @@ def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) 
         raise Fail(f"{label}: rejected generator attempt mutated deterministic snapshot")
 
 
-def run_generator_post_write_rollback() -> None:
+def run_generator_post_write_validator_substitution_rejected() -> None:
     before = SNAPSHOT.read_bytes()
     module = load_generator_module()
     original_validator = module.validate_generated_snapshot
@@ -100,16 +100,16 @@ def run_generator_post_write_rollback() -> None:
     try:
         try:
             module.main()
-        except RuntimeError as exc:
-            if str(exc) != "synthetic post-write snapshot validation failure":
-                raise Fail(f"post-write rollback used unexpected rejection: {exc}") from exc
+        except SystemExit as exc:
+            if "strict snapshot generator execution helper drift" not in str(exc):
+                raise Fail(f"post-write validator substitution rejected at unexpected boundary: {exc}") from exc
         else:
-            raise Fail("post-write rollback case unexpectedly succeeded")
+            raise Fail("post-write validator substitution unexpectedly bypassed execution authority")
     finally:
         module.validate_generated_snapshot = original_validator
 
     if SNAPSHOT.read_bytes() != before:
-        raise Fail("post-write snapshot validation failure did not restore original snapshot bytes")
+        raise Fail("post-write validator substitution mutated deterministic snapshot")
 
 
 def run_generator_full_admission_chain_required() -> None:
@@ -124,16 +124,16 @@ def run_generator_full_admission_chain_required() -> None:
     try:
         try:
             module.main()
-        except RuntimeError as exc:
-            if str(exc) != "synthetic full admission validation rejection":
-                raise Fail(f"full admission generator guard used unexpected rejection: {exc}") from exc
+        except SystemExit as exc:
+            if "strict snapshot generator execution helper drift" not in str(exc):
+                raise Fail(f"full admission helper substitution rejected at unexpected boundary: {exc}") from exc
         else:
-            raise Fail("strict snapshot generator skipped full admission validation")
+            raise Fail("strict snapshot generator accepted substituted full admission validator chain")
     finally:
         module.run_full_admission_validators = original_validators
 
     if SNAPSHOT.read_bytes() != before:
-        raise Fail("full admission validation rejection mutated deterministic snapshot")
+        raise Fail("full admission helper substitution mutated deterministic snapshot")
 
 
 def run_generator_atomic_write_failure() -> None:
@@ -351,7 +351,7 @@ def main() -> int:
         run_validator(True, "clean baseline")
         run_generator_atomic_write_failure()
         run_generator_full_admission_chain_required()
-        run_generator_post_write_rollback()
+        run_generator_post_write_validator_substitution_rejected()
         run_generator_authority_substitution()
         run_source_symlink_escape(originals)
         run_module_symlink_escape(originals)
@@ -382,14 +382,14 @@ def main() -> int:
     print(f"controlled validator corruption cases rejected: {len(cases)}")
     print(f"controlled generator corruption cases rejected: {len(generator_cases)}")
     print("strict snapshot generator data/executable authority substitutions rejected: true")
-    print("strict snapshot generator directly requires full recovery-objective/drill-request/generation-evidence/typed admission validation: true")
+    print("strict snapshot generator full admission helper substitution rejected before publication: true")
+    print("strict snapshot generator post-write validator substitution rejected before publication: true")
     print("snapshot source symlink escape rejected by validator and generator: true")
     print("snapshot executable module symlink escape rejected by validator and generator: true")
     print("snapshot unknown/missing field drift rejected: true")
     print("snapshot boolean count drift rejected: true")
     print("snapshot downstream requirement/next-action drift rejected: true")
     print("failed atomic snapshot replace preserves canonical bytes and removes temporary files: true")
-    print("post-write snapshot validator failure restores original snapshot bytes: true")
     print("canonical authority files preserved byte-for-byte: true")
     print("rejected generator attempts leave snapshot byte-for-byte unchanged: true")
     print("canonical six-blocker content and ordering preserved: true")
