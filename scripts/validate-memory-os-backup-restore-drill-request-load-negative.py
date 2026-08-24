@@ -76,6 +76,36 @@ def exercise_registry_corruption(writer) -> None:
         expect_domain_fail(name, lambda mutated=mutated: writer.validate_registry_for_append(mutated), writer.Fail)
 
 
+def exercise_validator_execution_transport(validator) -> None:
+    original_subprocess_run = validator.subprocess.run
+    original_spec_from_file_location = validator.importlib.util.spec_from_file_location
+    original_module_from_spec = validator.importlib.util.module_from_spec
+    original_guard = validator.enforce_execution_transport
+    try:
+        validator.subprocess.run = lambda *args, **kwargs: None
+        expect_domain_fail("drill request subprocess transport substitution", validator.main, validator.Fail)
+    finally:
+        validator.subprocess.run = original_subprocess_run
+
+    try:
+        validator.importlib.util.spec_from_file_location = lambda *args, **kwargs: None
+        expect_domain_fail("drill request import spec transport substitution", validator.main, validator.Fail)
+    finally:
+        validator.importlib.util.spec_from_file_location = original_spec_from_file_location
+
+    try:
+        validator.importlib.util.module_from_spec = lambda *args, **kwargs: None
+        expect_domain_fail("drill request module loader transport substitution", validator.main, validator.Fail)
+    finally:
+        validator.importlib.util.module_from_spec = original_module_from_spec
+
+    try:
+        validator.enforce_execution_transport = lambda: None
+        expect_domain_fail("drill request execution guard substitution", validator.main, validator.Fail)
+    finally:
+        validator.enforce_execution_transport = original_guard
+
+
 def main() -> int:
     require(WRITER.is_file(), "drill-request writer missing")
     require(VALIDATOR.is_file(), "drill-request validator missing")
@@ -86,6 +116,7 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
     require(writer.canonical_repo_file(writer.ELIGIBILITY_HELPER, "environment generation eligibility helper") == writer.ELIGIBILITY_HELPER, "canonical eligibility helper rejected")
     exercise_registry_corruption(writer)
+    exercise_validator_execution_transport(validator)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-drill-request-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -148,6 +179,7 @@ def main() -> int:
     print("Drill-request unreadable/escaped-authority negative suite PASS")
     print("drill-request append registry corruption rejection: enforced")
     print("canonical drill contract/registry/generation/objective containment: enforced")
+    print("drill-request execution transport substitution accepted: false")
     return 0
 
 
