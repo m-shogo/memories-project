@@ -40,6 +40,19 @@ def load_helper():
     return module
 
 
+def expect_runtime_substitution_rejected(helper: Any, field: str, replacement: Any) -> None:
+    original = getattr(helper, field)
+    setattr(helper, field, replacement)
+    try:
+        expect_rejected(
+            f"canonical runtime substitution: {field}",
+            helper.derive,
+            helper.Fail,
+        )
+    finally:
+        setattr(helper, field, original)
+
+
 class FakeWriter:
     Fail = Fail
 
@@ -134,6 +147,7 @@ def main() -> int:
     require(HELPER.is_file(), "generation eligibility helper missing")
     helper = load_helper()
     require(helper.canonical_repo_file(helper.GEN_WRITER, "generation writer") == helper.GEN_WRITER, "canonical generation writer rejected")
+    helper.enforce_runtime_execution_authority()
 
     repo_substitute = ROOT / "scripts/validate-memory-os-operability.py"
     require(repo_substitute.is_file(), "repo-contained writer substitute missing")
@@ -166,6 +180,35 @@ def main() -> int:
                     path.unlink()
                 except FileNotFoundError:
                     pass
+
+    runtime_substitutions = (
+        ("ROOT", ROOT / "contracts"),
+        ("CANONICAL_GEN_REGISTRY", ROOT / "contracts/operations/production-operability-status.json"),
+        ("GEN_REGISTRY", ROOT / "contracts/operations/production-operability-status.json"),
+        ("GEN_WRITER", repo_substitute),
+        ("require", lambda *_args: None),
+        ("load", lambda _path: {}),
+        ("canonical_repo_file", lambda path, _field: path),
+        ("require_canonical_registry", lambda _path: None),
+        ("load_generation_writer", lambda: FakeWriter()),
+        ("independent_review_ref_for_row", lambda _writer, _row: "fabricated-review.json"),
+        ("derive_registry", lambda _registry: {"eligibleDirectedPairCount": 2}),
+        ("enforce_runtime_execution_authority", lambda: None),
+    )
+    for field, replacement in runtime_substitutions:
+        expect_runtime_substitution_rejected(helper, field, replacement)
+    helper.enforce_runtime_execution_authority()
+
+    original_derive = helper.derive
+    helper.derive = lambda *_args, **_kwargs: {"eligibleDirectedPairCount": 2}
+    try:
+        expect_rejected(
+            "canonical main derivation helper substitution",
+            helper.main,
+            helper.Fail,
+        )
+    finally:
+        helper.derive = original_derive
 
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-eligibility-path-negative-") as tmp:
         alternate = Path(tmp) / "registry.json"
@@ -321,6 +364,9 @@ def main() -> int:
     print("generation writer repo-contained substitution accepted: false")
     print("generation writer import escape accepted: false")
     print("generation writer symlink loop accepted: false")
+    print("canonical runtime data/executable substitution accepted: false")
+    print("canonical main derivation helper substitution accepted: false")
+    print("fixture-only in-memory derivation preserved: true")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
