@@ -18,6 +18,7 @@ PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract
 ELIGIBILITY = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
+DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
 SUBSTITUTE_SCRIPT = ROOT / "scripts/validate-memory-os-operability.py"
 
 
@@ -71,11 +72,29 @@ def expect_semantic_rejection(
             validator.DRILL_REQUESTS,
         )
         original_enforcer = validator.enforce_runtime_authorities
+        original_drill_validator = validator.DRILL_VALIDATOR
         validator.PREFLIGHT = paths["preflight"]
         validator.ELIGIBILITY = paths["eligibility"]
         validator.OBJECTIVES = paths["objectives"]
         validator.DRILL_REQUESTS = paths["drill"]
+        validator.DRILL_VALIDATOR = SUBSTITUTE_SCRIPT
         validator.enforce_runtime_authorities = lambda: None
+        original_load_module = validator.load_module
+
+        class FixtureDrillValidator:
+            class Fail(RuntimeError):
+                pass
+
+            @staticmethod
+            def main() -> int:
+                return 0
+
+        def fixture_load_module(path: Path, expected_relative: Path, name: str, field: str):
+            if field == "restore drill request validator":
+                return FixtureDrillValidator
+            return original_load_module(path, expected_relative, name, field)
+
+        validator.load_module = fixture_load_module
         try:
             try:
                 validator.main()
@@ -84,7 +103,9 @@ def expect_semantic_rejection(
             else:
                 raise Fail(f"negative case unexpectedly accepted: {name}")
         finally:
+            validator.load_module = original_load_module
             validator.enforce_runtime_authorities = original_enforcer
+            validator.DRILL_VALIDATOR = original_drill_validator
             (
                 validator.PREFLIGHT,
                 validator.ELIGIBILITY,
@@ -167,6 +188,7 @@ def main() -> int:
         ("ELIGIBILITY_VALIDATOR", SUBSTITUTE_SCRIPT),
         ("OBJECTIVES_WRITER", SUBSTITUTE_SCRIPT),
         ("DRILL_WRITER", SUBSTITUTE_SCRIPT),
+        ("DRILL_VALIDATOR", SUBSTITUTE_SCRIPT),
         ("VALIDATOR", SUBSTITUTE_SCRIPT),
     )
     for field, substitute in authority_cases:
@@ -176,6 +198,7 @@ def main() -> int:
     print(f"semantic authority corruption cases: {len(cases)}")
     print(f"direct data/executable substitution cases: {len(authority_cases)}")
     print("canonical semantic eligibility validator substitution accepted: false")
+    print("canonical drill request full admission validator substitution accepted: false")
     print("semantic fixtures bypass runtime authority only inside negative harness: true")
     print("canonical authority mutated: false")
     print("production evidence created: false")
