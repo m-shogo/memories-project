@@ -68,7 +68,10 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(
-        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        lexical == expected_relative
+        and resolved == expected_relative
+        and path.is_file()
+        and not path.is_symlink(),
         f"{field} authority drift",
     )
     return path
@@ -181,8 +184,48 @@ def run_post_reconcile_validator(path: Path, label: str) -> None:
     )
 
 
-def main() -> int:
-    enforce_runtime_authorities()
+CANONICAL_REQUIRE = require
+CANONICAL_RUNTIME_ENFORCER = enforce_runtime_authorities
+CANONICAL_EXECUTION_HELPERS = (
+    repo_relative,
+    require_repo_file,
+    require_exact_repo_file,
+    read_text,
+    load,
+    write_text,
+    load_validator_module,
+    append_once,
+    replace_single_prefixed,
+    run_post_reconcile_validator,
+)
+
+
+def enforce_execution_identity(
+    canonical_enforcer=CANONICAL_RUNTIME_ENFORCER,
+    canonical_require=CANONICAL_REQUIRE,
+    canonical_helpers=CANONICAL_EXECUTION_HELPERS,
+) -> None:
+    if enforce_runtime_authorities is not canonical_enforcer:
+        raise Fail("restore drill preflight reconcile runtime authority enforcer drift")
+    if require is not canonical_require:
+        raise Fail("restore drill preflight reconcile require helper drift")
+    current_helpers = (
+        repo_relative,
+        require_repo_file,
+        require_exact_repo_file,
+        read_text,
+        load,
+        write_text,
+        load_validator_module,
+        append_once,
+        replace_single_prefixed,
+        run_post_reconcile_validator,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("restore drill preflight reconcile execution helper drift")
+
+
+def _reconcile() -> int:
     original_contract_text = read_text(CONTRACT)
     original_status_text = read_text(STATUS)
     contract = load(CONTRACT)
@@ -267,6 +310,7 @@ def main() -> int:
     print("preflight authority state canonicalized: true")
     print("upstream authority validated before reconcile mutation: true")
     print("canonical reconciler data/executable authorities enforced: true")
+    print("canonical reconciler execution helpers enforced: true")
     print("preflight/status writes use atomic same-directory replace: true")
     print("preflight and aggregate operability validated inside transaction: true")
     print("failed post-validation leaves derived preflight/status mutation behind: false")
@@ -277,6 +321,14 @@ def main() -> int:
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
+
+
+def main(canonical_execution_guard=enforce_execution_identity) -> int:
+    if enforce_execution_identity is not canonical_execution_guard:
+        raise Fail("restore drill preflight reconcile execution guard drift")
+    enforce_execution_identity()
+    enforce_runtime_authorities()
+    return _reconcile()
 
 
 if __name__ == "__main__":
