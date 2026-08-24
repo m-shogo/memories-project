@@ -61,6 +61,7 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-generator-authority-negative.py"
       - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
       - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
@@ -169,6 +170,7 @@ jobs:
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory-source-authorities.py \
+            scripts/validate-memory-os-operability-admission-inventory-generator-authority-negative.py \
             scripts/validate-memory-os-incident-human-tabletops.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
@@ -287,6 +289,9 @@ jobs:
             python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability-admission-inventory-generator-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
             python scripts/generate-memory-os-operability-admission-inventory.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
@@ -343,6 +348,7 @@ jobs:
             python scripts/validate-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-promotion-review-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py >> "$log" 2>&1
+            python scripts/validate-memory-os-operability-admission-inventory-generator-authority-negative.py >> "$log" 2>&1
             python scripts/generate-memory-os-operability-admission-inventory.py >> "$log" 2>&1
             python scripts/validate-memory-os-operability-admission-inventory.py >> "$log" 2>&1
             python scripts/validate-memory-os-operability-admission-inventory-registry-negative.py >> "$log" 2>&1
@@ -410,7 +416,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os
+          import json, os, tempfile
           from pathlib import Path
           text = Path('/tmp/operability-admission-inventory.log').read_text(encoding='utf-8', errors='replace')
           value = {
@@ -431,7 +437,22 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/operability-admission-inventory-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          payload = json.dumps(value, indent=2) + '\n'
+          temp_name = None
+          try:
+              fd, temp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent, text=True)
+              with os.fdopen(fd, 'w', encoding='utf-8', newline='') as handle:
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_name, path)
+              temp_name = None
+          finally:
+              if temp_name is not None:
+                  try:
+                      os.unlink(temp_name)
+                  except FileNotFoundError:
+                      pass
           PY
           git add docs/fixtures/memory-os-operability/operability-admission-inventory-diagnostic.last.json
           git config user.name "github-actions[bot]"
