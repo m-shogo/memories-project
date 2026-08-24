@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,36 @@ def expect_rejected(writer: Any, field: str, substitute: Path) -> None:
         setattr(writer, field, original)
 
 
+def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
+    lock = writer.LOCK
+    require(lock == ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock",
+            "typed non-resurrection canonical lock path drift")
+    require(not lock.exists() and not lock.is_symlink(),
+            "typed non-resurrection canonical lock must be absent before symlink negative")
+    with tempfile.TemporaryDirectory(prefix="memory-os-typed-lock-negative-") as temp_dir:
+        target = Path(temp_dir) / "outside.lock"
+        target.write_bytes(b"outside-lock-target\n")
+        before = target.read_bytes()
+        lock.symlink_to(target)
+        try:
+            try:
+                writer.os.open(lock, writer.os.O_WRONLY | writer.os.O_CREAT | writer.os.O_EXCL, 0o600)
+            except FileExistsError:
+                pass
+            else:
+                raise NegativeFailure("typed non-resurrection writer lock flags followed a materialized symlink")
+            require(lock.is_symlink(), "typed non-resurrection lock symlink unexpectedly replaced")
+            require(target.read_bytes() == before,
+                    "typed non-resurrection lock symlink rejection mutated external target")
+        finally:
+            try:
+                lock.unlink()
+            except FileNotFoundError:
+                pass
+    require(not lock.exists() and not lock.is_symlink(),
+            "typed non-resurrection lock symlink negative left canonical lock materialized")
+
+
 def main() -> int:
     writer = load_writer()
     guard = getattr(writer, "require_cli_authorities", None)
@@ -49,9 +80,12 @@ def main() -> int:
     main_source = inspect.getsource(writer.main)
     guard_offset = main_source.find("require_cli_authorities()")
     parser_offset = main_source.find("argparse.ArgumentParser")
+    lock_open_offset = main_source.find("os.O_CREAT | os.O_EXCL")
     require(guard_offset >= 0, "typed non-resurrection writer main does not invoke CLI authority guard")
     require(parser_offset >= 0 and guard_offset < parser_offset,
             "typed non-resurrection writer must validate CLI authority before parsing input")
+    require(lock_open_offset >= 0 and parser_offset < lock_open_offset,
+            "typed non-resurrection writer must retain exclusive-create lock semantics")
 
     writer.require_cli_authorities()
     contract_before = writer.CANONICAL_CONTRACT.read_bytes()
@@ -68,6 +102,7 @@ def main() -> int:
     for field, substitute in substitutions:
         expect_rejected(writer, field, substitute)
 
+    prove_materialized_lock_symlink_fails_closed(writer)
     writer.require_cli_authorities()
     require(writer.CANONICAL_CONTRACT.read_bytes() == contract_before,
             "typed writer CLI authority rejection mutated canonical contract")
@@ -79,6 +114,8 @@ def main() -> int:
     print("Memory OS typed non-resurrection writer CLI authority negative PASS")
     print("canonical typed evidence authorities substitution-rejected: true")
     print("CLI authority guard executes before input parsing: true")
+    print("materialized lock symlink rejected by exclusive-create semantics: true")
+    print("external lock target mutated: false")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
