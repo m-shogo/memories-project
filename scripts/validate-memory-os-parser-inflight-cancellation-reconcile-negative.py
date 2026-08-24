@@ -58,8 +58,26 @@ def main() -> int:
         result_path = root / "result.json"
         status_path = root / "status.json"
         result_path.write_text(json.dumps({"commitSha": source_sha}) + "\n", encoding="utf-8")
-        status = {"productionDecision": "NO_GO", "areas": [{"id": "OPS-P0-009", "status": "PARTIAL", "existingEvidence": [], "missingEvidence": [module.OLD_MISSING], "evidenceRefs": []}]}
-        original_bytes = json.dumps(status, indent=2).encode("utf-8") + b"\n"
+
+        # Start from the real conservative authority so stronger unresolved
+        # production gaps stay present. Then make only the in-flight slice stale
+        # enough to force a write before injecting the post-write failure.
+        status = module.load(module.CANONICAL_STATUS_PATH)
+        gate = next(
+            item for item in status.get("areas", [])
+            if isinstance(item, dict) and item.get("id") == "OPS-P0-009"
+        )
+        missing = gate.get("missingEvidence")
+        existing = gate.get("existingEvidence")
+        if not isinstance(missing, list) or not isinstance(existing, list):
+            raise RuntimeError("OPS-P0-009 arrays missing for rollback fixture")
+        if module.OLD_MISSING not in missing:
+            missing.append(module.OLD_MISSING)
+        for item in module.NEW_EXISTING:
+            while item in existing:
+                existing.remove(item)
+
+        original_bytes = json.dumps(status, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
         status_path.write_bytes(original_bytes)
 
         module.RESULT_PATH = result_path
