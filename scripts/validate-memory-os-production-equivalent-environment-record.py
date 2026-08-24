@@ -131,6 +131,7 @@ def validate_environment_record(
     deltas = env.get("materialDeltas")
     require(isinstance(deltas, list), "materialDeltas must be list")
     delta_ids: set[str] = set()
+    material_delta_review_refs: list[str] = []
     material_deltas_accepted = True
     for index, raw_delta in enumerate(deltas):
         delta = exact_object(raw_delta, {"deltaId", "description", "classification", "accepted", "independentReviewRef"}, f"materialDeltas[{index}]")
@@ -143,6 +144,8 @@ def validate_environment_record(
         accepted = delta.get("accepted")
         require(isinstance(accepted, bool), f"materialDeltas[{index}].accepted must be boolean")
         review_ref = repo_ref(delta.get("independentReviewRef"), f"materialDeltas[{index}].independentReviewRef", required=False)
+        if review_ref is not None:
+            material_delta_review_refs.append(review_ref)
         if classification == "MATERIAL":
             if not accepted:
                 material_deltas_accepted = False
@@ -166,6 +169,24 @@ def validate_environment_record(
     failure_ref = repo_ref(network.get("failureInjectionRef"), "network.failureInjectionRef", required=False)
     credential_ref = repo_ref(identity.get("credentialScopeRef"), "identityAndSecrets.credentialScopeRef", required=False)
     backup_ref = repo_ref(backup.get("evidenceRef"), "backupRestore.evidenceRef", required=False)
+
+    if independent_review_ref is not None:
+        implementation_refs = (
+            pg_restore_ref,
+            object_restore_ref,
+            latency_ref,
+            failure_ref,
+            credential_ref,
+            backup_ref,
+        )
+        require(
+            independent_review_ref not in implementation_refs,
+            "environment independent review evidence must not be reused as implementation/restore evidence",
+        )
+        require(
+            independent_review_ref not in material_delta_review_refs,
+            "environment independent review evidence must not be reused as material-delta review evidence",
+        )
 
     semantic_controls = all((
         status == "VALIDATED_LOCAL_NONPRODUCTION",
@@ -212,6 +233,7 @@ def main() -> int:
     eligible = validate_environment_record(env)
     print("Memory OS production-equivalent environment record semantic validation PASS")
     print(f"preflight eligible generation environment: {str(eligible).lower()}")
+    print("environment independent review reuse accepted: false")
     print("production evidence: false")
     print("production ready: false")
     return 0
