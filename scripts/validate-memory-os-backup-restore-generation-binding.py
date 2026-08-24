@@ -103,7 +103,27 @@ def load_evidence_writer():
     return module
 
 
-def main() -> int:
+CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
+
+
+def enforce_execution_transport(
+    canonical_spec_from_file_location=CANONICAL_SPEC_FROM_FILE_LOCATION,
+    canonical_module_from_spec=CANONICAL_MODULE_FROM_SPEC,
+) -> None:
+    if importlib.util.spec_from_file_location is not canonical_spec_from_file_location:
+        raise Fail("generation binding import spec transport drift")
+    if importlib.util.module_from_spec is not canonical_module_from_spec:
+        raise Fail("generation binding module loader transport drift")
+
+
+CANONICAL_EXECUTION_GUARD = enforce_execution_transport
+
+
+def main(canonical_execution_guard=CANONICAL_EXECUTION_GUARD) -> int:
+    if enforce_execution_transport is not canonical_execution_guard:
+        raise Fail("generation binding execution guard drift")
+    enforce_execution_transport()
     enforce_runtime_authorities()
     contract = load(CONTRACT)
     backup = load(BACKUP_POLICY)
@@ -265,6 +285,8 @@ def main() -> int:
 
     print("Memory OS backup/restore generation binding PASS")
     print("generation binding canonical data/writer authority substitution accepted: false")
+    print("generation binding execution transport substitution accepted: false")
+    print("generation binding execution guard substitution accepted: false")
     print(f"local restore foundations validated: {len(foundations)}")
     print("required PostgreSQL logical restore foundation: committed PASS")
     print("required exact object-version restore foundation: committed PASS")
