@@ -56,14 +56,22 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def path_label(path: Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def load(path: Path) -> dict[str, Any]:
+    label = path_label(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+        raise ReconcileFailure(f"missing file: {label}") from exc
     except json.JSONDecodeError as exc:
-        raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+        raise ReconcileFailure(f"invalid JSON in {label}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be an object: {label}")
     return value
 
 
