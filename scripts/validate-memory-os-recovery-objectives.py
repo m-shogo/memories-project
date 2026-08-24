@@ -64,6 +64,25 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     return path
 
 
+def require_canonical_lock_path(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        parent = path.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} parent missing or escapes repository") from exc
+    require(lexical == expected_relative, f"{field} authority drift")
+    require(parent == expected_relative.parent, f"{field} parent authority drift")
+    require(not path.is_symlink(), f"{field} must not be symlink")
+    if path.exists():
+        require(path.is_file(), f"{field} must be a file when materialized")
+        try:
+            resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise Fail(f"{field} materialized path escapes repository") from exc
+        require(resolved == expected_relative, f"{field} materialized authority drift")
+    return path
+
+
 def enforce_runtime_authorities() -> None:
     for path, expected, field in (
         (CONTRACT, CONTRACT_REL, "recovery objective contract"),
@@ -72,6 +91,7 @@ def enforce_runtime_authorities() -> None:
         (NEGATIVE, NEGATIVE_REL, "recovery objective negative validator"),
     ):
         require_exact_repo_file(path, expected, field)
+    require_canonical_lock_path(EXPECTED_LOCK, EXPECTED_LOCK_REL, "recovery objective append lock")
 
 
 def repo_file(value: Any, field: str) -> Path:
@@ -146,6 +166,7 @@ def main() -> int:
         writer.canonical_repo_file(runtime_path, field)
     writer_lock = getattr(writer, "LOCK", None)
     require(writer_lock == EXPECTED_LOCK, "writer append lock authority drift")
+    require_canonical_lock_path(writer_lock, EXPECTED_LOCK_REL, "writer recovery objective append lock")
     require(writer_lock.parent == REGISTRY.parent, "writer append lock must share registry authority directory")
     approval_dir = getattr(writer, "APPROVAL_DIR", None)
     canonical_approval_dir = getattr(writer, "CANONICAL_APPROVAL_DIR", None)
@@ -219,6 +240,7 @@ def main() -> int:
 
     print("Memory OS recovery objectives validation PASS")
     print("recovery objective validator canonical runtime authorities enforced: true")
+    print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"approved objective records: {count}")
     print(f"current objective: {current_id or 'none'}")
     print(f"RPO/RTO defined: {str(defined).lower()}")
