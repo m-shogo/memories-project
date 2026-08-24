@@ -40,6 +40,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
@@ -96,6 +97,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
@@ -158,6 +160,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
@@ -177,6 +180,7 @@ jobs:
           python scripts/validate-memory-os-recovery-objectives.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
           python scripts/reconcile-memory-os-backup-non-resurrection-authority.py
@@ -188,13 +192,9 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-binding.py
           python scripts/validate-memory-os-backup-restore-generation-binding-negative.py
           python scripts/validate-memory-os-operability.py
-          git diff --exit-code -- \
-            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
-            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json \
-            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
-            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
-            contracts/operations/backup-restore-generation-binding-contract.v1.json \
-            contracts/operations/production-operability-status.json
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   validate:
     if: github.event_name != 'pull_request'
@@ -238,6 +238,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
@@ -258,6 +259,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1 || code=$?; fi
@@ -288,6 +290,7 @@ jobs:
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1
