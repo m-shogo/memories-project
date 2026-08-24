@@ -177,7 +177,12 @@ def enforce_execution_transport(
         raise Fail("generation evidence module loader transport drift")
 
 
-def main() -> int:
+CANONICAL_EXECUTION_GUARD = enforce_execution_transport
+
+
+def main(canonical_execution_guard=CANONICAL_EXECUTION_GUARD) -> int:
+    if enforce_execution_transport is not canonical_execution_guard:
+        raise Fail("generation evidence execution guard drift")
     enforce_execution_transport()
     enforce_runtime_authorities()
     contract = load(CONTRACT)
@@ -388,6 +393,7 @@ def main() -> int:
     print("Memory OS drill-bound generation backup/restore evidence validation PASS")
     print("generation evidence validator canonical runtime authorities enforced: true")
     print("generation evidence execution transport substitution accepted: false")
+    print("generation evidence execution guard substitution accepted: false")
     print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
     print(f"registered/drill-bound recovery evidence: {count}/{derived_bound}")
