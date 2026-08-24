@@ -73,6 +73,15 @@ def main() -> int:
             replace_once(canonical, "ref: ${{ github.event.pull_request.head.sha }}", "ref: ${{ github.sha }}", "PR exact-head checkout"),
         ),
         (
+            "PR clean-worktree assertion removed",
+            replace_once(
+                canonical,
+                'test -z "$(git status --porcelain --untracked-files=all)"',
+                'echo "PR workspace cleanliness check removed"',
+                "PR clean-worktree assertion",
+            ),
+        ),
+        (
             "publication allowed on pull requests",
             replace_once(canonical, "if: github.event_name != 'pull_request'", "if: github.event_name == 'pull_request'", "publication PR exclusion"),
         ),
@@ -101,6 +110,7 @@ def main() -> int:
     require(module.exact_workflow() == canonical, "negative suite mutated canonical workflow authority")
     print("Backup/restore admission-chain workflow permission negative PASS")
     print(f"forbidden workflow mutations rejected: {len(cases)}")
+    print("PR tracked/untracked workspace mutation accepted: false")
     print("crash-safe failure diagnostic publication required: true")
     print("production evidence created: false")
     print("production traffic changed: false")
