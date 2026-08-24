@@ -180,7 +180,8 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          git diff --exit-code -- contracts/operations/production-operability-status.json
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
       - name: Commit normalized authority
         if: github.event_name != 'pull_request'
