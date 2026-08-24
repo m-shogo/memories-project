@@ -10,21 +10,40 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
-PREFLIGHT_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
-DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
-DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-GEN_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-BINDING_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
-TYPED_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
-TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
-INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
-GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
-TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
-BLOCKER_AUTHORITY = ROOT / "scripts/memory_os_backup_restore_blockers.py"
+CONTRACT_REL = Path("contracts/operations/backup-restore-admission-chain-contract.v1.json")
+PREFLIGHT_CONTRACT_REL = Path("contracts/operations/backup-restore-drill-preflight-contract.v1.json")
+DRILL_CONTRACT_REL = Path("contracts/operations/backup-restore-drill-request-contract.v1.json")
+DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+GEN_CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+BINDING_CONTRACT_REL = Path("contracts/operations/backup-restore-generation-binding-contract.v1.json")
+TYPED_CONTRACT_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json")
+TYPED_REGISTRY_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
+INVENTORY_REL = Path("contracts/operations/operability-admission-inventory.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+DRILL_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+GEN_WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+TYPED_WRITER_REL = Path("scripts/register-memory-os-backup-restore-non-resurrection-evidence.py")
+BLOCKER_AUTHORITY_REL = Path("scripts/memory_os_backup_restore_blockers.py")
+SELF_REL = Path("scripts/validate-memory-os-backup-restore-admission-chain.py")
+WORKFLOW_REL = Path(".github/workflows/backup-restore-admission-chain.yml")
+CONTRACT = ROOT / CONTRACT_REL
+PREFLIGHT_CONTRACT = ROOT / PREFLIGHT_CONTRACT_REL
+DRILL_CONTRACT = ROOT / DRILL_CONTRACT_REL
+DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
+GEN_CONTRACT = ROOT / GEN_CONTRACT_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+BINDING_CONTRACT = ROOT / BINDING_CONTRACT_REL
+TYPED_CONTRACT = ROOT / TYPED_CONTRACT_REL
+TYPED_REGISTRY = ROOT / TYPED_REGISTRY_REL
+INVENTORY = ROOT / INVENTORY_REL
+STATUS = ROOT / STATUS_REL
+DRILL_WRITER = ROOT / DRILL_WRITER_REL
+GEN_WRITER = ROOT / GEN_WRITER_REL
+TYPED_WRITER = ROOT / TYPED_WRITER_REL
+BLOCKER_AUTHORITY = ROOT / BLOCKER_AUTHORITY_REL
+SELF = ROOT / SELF_REL
+WORKFLOW = ROOT / WORKFLOW_REL
 
 
 class Fail(RuntimeError):
@@ -51,6 +70,45 @@ def require_repo_file(path: Path, message: str) -> Path:
     relative = repo_relative(path)
     require((ROOT / relative).is_file(), message)
     return relative
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative
+        and resolved == expected_relative
+        and path.is_file()
+        and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "admission-chain contract"),
+        (PREFLIGHT_CONTRACT, PREFLIGHT_CONTRACT_REL, "drill preflight contract"),
+        (DRILL_CONTRACT, DRILL_CONTRACT_REL, "drill request contract"),
+        (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+        (GEN_CONTRACT, GEN_CONTRACT_REL, "generation evidence contract"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "generation evidence registry"),
+        (BINDING_CONTRACT, BINDING_CONTRACT_REL, "generation binding contract"),
+        (TYPED_CONTRACT, TYPED_CONTRACT_REL, "typed non-resurrection contract"),
+        (TYPED_REGISTRY, TYPED_REGISTRY_REL, "typed non-resurrection registry"),
+        (INVENTORY, INVENTORY_REL, "operability admission inventory"),
+        (STATUS, STATUS_REL, "production operability status"),
+        (DRILL_WRITER, DRILL_WRITER_REL, "drill request writer"),
+        (GEN_WRITER, GEN_WRITER_REL, "generation evidence writer"),
+        (TYPED_WRITER, TYPED_WRITER_REL, "typed non-resurrection writer"),
+        (BLOCKER_AUTHORITY, BLOCKER_AUTHORITY_REL, "OPS-P0-007 blocker authority"),
+        (SELF, SELF_REL, "admission-chain validator"),
+        (WORKFLOW, WORKFLOW_REL, "admission-chain workflow"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -90,6 +148,7 @@ def validate_shared_registry(module: Any, registry: dict[str, Any], label: str) 
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     preflight_contract = load(PREFLIGHT_CONTRACT)
     drill_contract = load(DRILL_CONTRACT)
@@ -118,22 +177,17 @@ def main() -> int:
         "typedNonResurrectionRegistry": TYPED_REGISTRY,
         "operabilityInventory": INVENTORY,
         "operabilityStatus": STATUS,
-        "validator": Path("scripts/validate-memory-os-backup-restore-admission-chain.py"),
-        "workflow": Path(".github/workflows/backup-restore-admission-chain.yml"),
+        "validator": SELF,
+        "workflow": WORKFLOW,
     }
     for field, path in refs.items():
-        candidate = path if path.is_absolute() else ROOT / path
-        expected = str(require_repo_file(candidate, f"chain artifact missing: {path}"))
+        expected = str(require_repo_file(path, f"chain artifact missing: {path}"))
         require(contract.get(field) == expected, f"chain ref drift: {field}")
     require_repo_file(DRILL_WRITER, "restore drill request writer authority missing")
     require_repo_file(GEN_WRITER, "generation evidence writer authority missing")
     require_repo_file(TYPED_WRITER, "typed non-resurrection writer authority missing")
     require_repo_file(BLOCKER_AUTHORITY, "canonical OPS-P0-007 blocker authority missing")
 
-    # Chain validation must begin from each layer's canonical append-only registry
-    # authority. The cross-chain checks below intentionally remain independent and
-    # re-derive relationships; they must not substitute a partial local copy of
-    # schema/class/append-only/current-authority validation.
     drill_rows = validate_shared_registry(drill_writer, drill_registry, "drill request")
     gen_rows = validate_shared_registry(gen_writer, gen_registry, "generation evidence")
     typed_rows = validate_shared_registry(typed_writer, typed_registry, "typed non-resurrection")
@@ -411,6 +465,7 @@ def main() -> int:
     blocker_authority.require_canonical_gaps(status7.get("missingEvidence"), Fail)
 
     print("Memory OS backup/restore end-to-end admission chain PASS")
+    print("canonical data/writer/blocker/workflow authority substitution accepted: false")
     print("shared drill/generation/typed append-only registry authority validated: true")
     print(f"preflight: {preflight_decision}")
     print(f"preflight eligible pairs: {preflight_pair_count}")
