@@ -53,8 +53,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout exact source with ancestry
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -91,6 +94,9 @@ jobs:
           python scripts/validate-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-operability.py
           git diff --exit-code -- contracts/operations/production-operability-status.json
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
       - name: Execute targeted CI boundary drills
         working-directory: services/import-api
