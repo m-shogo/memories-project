@@ -24,6 +24,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
   push:
     branches:
       - so
@@ -49,6 +50,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
   workflow_dispatch:
 
 permissions:
@@ -91,10 +93,13 @@ jobs:
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py \
-            scripts/request-memory-os-backup-restore-drill.py
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py
           python scripts/validate-memory-os-production-equivalent-environment-eligibility.py
           python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
           python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
+          git diff --check
+          git diff --exit-code
           test -z "$(git status --porcelain)"
 
   validate-and-publish:
@@ -135,6 +140,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py \
             scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1 || code=$?; fi
