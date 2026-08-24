@@ -82,6 +82,11 @@ def run_validator(path: Path) -> None:
             f"canonical validator rejected coherent backup authority: {path.name}")
 
 
+def validate_projected_authority() -> None:
+    run_validator(BACKUP_VALIDATOR)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
 def source_is_ancestor(value: Any) -> bool:
     if not isinstance(value, str) or SHA40.fullmatch(value) is None:
         return False
@@ -193,6 +198,7 @@ def main() -> int:
     changed = left != right
     if args.check:
         require(not changed, "coherent backup authority is not normalized")
+        validate_projected_authority()
         print("Memory OS coherent backup authority check PASS")
         return 0
     if changed:
@@ -200,13 +206,13 @@ def main() -> int:
         payload = (json.dumps(candidate, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
         atomic_write_bytes(STATUS, payload)
         try:
-            run_validator(BACKUP_VALIDATOR)
-            run_validator(OPERABILITY_VALIDATOR)
+            validate_projected_authority()
         except Exception:
             atomic_write_bytes(STATUS, original_bytes)
             raise
         print("Registered local coherent recovery-set evidence in OPS-P0-007")
     else:
+        validate_projected_authority()
         print("Coherent recovery-set authority already normalized")
     print("temporal recovery-point skew measured: false")
     print("production decision: NO_GO")
