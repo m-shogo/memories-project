@@ -29,6 +29,7 @@ on:
       - "scripts/reconcile-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
+      - "scripts/validate-memory-os-backup-restore-blocker-authority-negative.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
@@ -78,6 +79,7 @@ on:
       - "scripts/reconcile-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
+      - "scripts/validate-memory-os-backup-restore-blocker-authority-negative.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
@@ -138,6 +140,7 @@ jobs:
             scripts/reconcile-memory-os-local-logical-restore.py \
             scripts/validate-memory-os-backup-restore.py \
             scripts/validate-memory-os-backup-restore-blockers-negative.py \
+            scripts/validate-memory-os-backup-restore-blocker-authority-negative.py \
             scripts/validate-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
@@ -164,6 +167,9 @@ jobs:
 
       - name: Validate canonical blocker negatives
         run: python scripts/validate-memory-os-backup-restore-blockers-negative.py
+
+      - name: Validate canonical blocker helper authority
+        run: python scripts/validate-memory-os-backup-restore-blocker-authority-negative.py
 
       - name: Validate admission-chain canonical authority boundary
         run: python scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py
