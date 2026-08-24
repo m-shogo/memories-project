@@ -64,6 +64,15 @@ def expect_main_rejected(module: Any, mutate: Callable[[], None], restore: Calla
         restore()
 
 
+def expect_row_rejected(module: Any, row: dict[str, Any], label: str) -> None:
+    required_fields = module.validate_contract_authority()["requiredMaterialDeltaReviewEvidenceFields"]
+    try:
+        module.validate_row(row, 0, required_fields)
+    except module.Fail:
+        return
+    raise Fail(f"material-delta row semantic negative unexpectedly passed: {label}")
+
+
 def main() -> int:
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
@@ -119,6 +128,34 @@ def main() -> int:
         "main execution guard drift",
     )
 
+    expect_row_rejected(
+        module,
+        {
+            "sourceEnvironmentGenerationId": "pegen_source_execution_negative",
+            "restoreTargetGenerationId": "pegen_target_execution_negative",
+            "materialDeltaReviewRef": "SECURITY.md",
+        },
+        "generic repository review ref",
+    )
+    expect_row_rejected(
+        module,
+        {
+            "sourceEnvironmentGenerationId": "pegen_same_execution_negative",
+            "restoreTargetGenerationId": "pegen_same_execution_negative",
+            "materialDeltaReviewRef": "docs/evidence/backup-restore/material-delta/should-be-null.json",
+        },
+        "same-generation non-null review ref",
+    )
+    expect_row_rejected(
+        module,
+        {
+            "sourceEnvironmentGenerationId": "pegen_source_execution_negative",
+            "restoreTargetGenerationId": "pegen_target_execution_negative",
+            "materialDeltaReviewRef": "docs/evidence/backup-restore/material-delta/../escape.json",
+        },
+        "material-delta path traversal",
+    )
+
     require(module.CONTRACT.read_bytes() == canonical_contract, "execution substitution mutated canonical generation evidence contract")
     require(module.REGISTRY.read_bytes() == canonical_registry, "execution substitution mutated canonical generation evidence registry")
     print("Memory OS generation material-delta execution authority negative PASS")
@@ -126,6 +163,9 @@ def main() -> int:
     print("main execution guard substitution accepted: false")
     print("main candidate helper substitution accepted: false")
     print("main double substitution accepted: false")
+    print("generic repository material-delta ref accepted: false")
+    print("same-generation non-null material-delta ref accepted: false")
+    print("material-delta path traversal accepted: false")
     print("canonical authority mutation: false")
     print("automatic production promotion authority created: false")
     return 0
