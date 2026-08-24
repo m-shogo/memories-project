@@ -111,6 +111,30 @@ def run_generator_post_write_rollback() -> None:
         raise Fail("post-write snapshot validation failure did not restore original snapshot bytes")
 
 
+def run_generator_full_admission_chain_required() -> None:
+    before = SNAPSHOT.read_bytes()
+    module = load_generator_module()
+    original_validators = module.run_full_admission_validators
+
+    def reject_full_admission() -> None:
+        raise RuntimeError("synthetic full admission validation rejection")
+
+    module.run_full_admission_validators = reject_full_admission
+    try:
+        try:
+            module.main()
+        except RuntimeError as exc:
+            if str(exc) != "synthetic full admission validation rejection":
+                raise Fail(f"full admission generator guard used unexpected rejection: {exc}") from exc
+        else:
+            raise Fail("strict snapshot generator skipped full admission validation")
+    finally:
+        module.run_full_admission_validators = original_validators
+
+    if SNAPSHOT.read_bytes() != before:
+        raise Fail("full admission validation rejection mutated deterministic snapshot")
+
+
 def run_generator_atomic_write_failure() -> None:
     snapshot_before = SNAPSHOT.read_bytes()
     status_before = STATUS.read_bytes()
@@ -149,6 +173,10 @@ def run_generator_authority_substitution() -> None:
         ("ELIGIBILITY_HELPER", module.OBJECTIVE_WRITER),
         ("BLOCKER_HELPER", module.OBJECTIVE_WRITER),
         ("SNAPSHOT_VALIDATOR", module.OBJECTIVE_WRITER),
+        ("RECOVERY_OBJECTIVE_VALIDATOR", module.OBJECTIVE_WRITER),
+        ("DRILL_REQUEST_VALIDATOR", module.OBJECTIVE_WRITER),
+        ("GEN_EVIDENCE_VALIDATOR", module.OBJECTIVE_WRITER),
+        ("TYPED_VALIDATOR", module.OBJECTIVE_WRITER),
         ("OBJECTIVES", module.DRILL_REQUESTS),
         ("DRILL_REQUESTS", module.OBJECTIVES),
         ("GEN_EVIDENCE", module.TYPED),
@@ -312,6 +340,7 @@ def main() -> int:
     try:
         run_validator(True, "clean baseline")
         run_generator_atomic_write_failure()
+        run_generator_full_admission_chain_required()
         run_generator_post_write_rollback()
         run_generator_authority_substitution()
         run_source_symlink_escape(originals)
@@ -343,6 +372,7 @@ def main() -> int:
     print(f"controlled validator corruption cases rejected: {len(cases)}")
     print(f"controlled generator corruption cases rejected: {len(generator_cases)}")
     print("strict snapshot generator data/executable authority substitutions rejected: true")
+    print("strict snapshot generator directly requires full recovery-objective/drill-request/generation-evidence/typed admission validation: true")
     print("snapshot source symlink escape rejected by validator and generator: true")
     print("snapshot executable module symlink escape rejected by validator and generator: true")
     print("snapshot unknown/missing field drift rejected: true")
