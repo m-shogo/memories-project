@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -81,8 +82,36 @@ def append_once(values: list[Any], value: str) -> bool:
     return True
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    require(path.parent.is_dir(), f"authority parent missing: {path.parent}")
+    temp_name: str | None = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
+    except OSError as exc:
+        raise ReconcileFailure(f"cannot atomically write authority: {path.relative_to(ROOT)}: {exc}") from exc
+    finally:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+
+
 def write_json(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    payload = json.dumps(value, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+    atomic_write_bytes(path, payload)
 
 
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
@@ -141,8 +170,8 @@ def commit_candidate(contract: dict[str, Any], status: dict[str, Any], source_sh
         write_json(STATUS_PATH, status)
         run_authority_validators(source_sha)
     except Exception:
-        CONTRACT_PATH.write_bytes(original_contract)
-        STATUS_PATH.write_bytes(original_status)
+        atomic_write_bytes(CONTRACT_PATH, original_contract)
+        atomic_write_bytes(STATUS_PATH, original_status)
         raise
 
 
