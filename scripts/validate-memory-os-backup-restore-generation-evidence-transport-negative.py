@@ -49,6 +49,15 @@ def expect_rejected(module: Any, label: str, mutate: Callable[[], None], restore
 def main() -> int:
     module = load_validator()
 
+    original_guard = module.enforce_execution_transport
+    expect_rejected(
+        module,
+        "execution guard",
+        lambda: setattr(module, "enforce_execution_transport", lambda: None),
+        lambda: setattr(module, "enforce_execution_transport", original_guard),
+        "execution guard drift",
+    )
+
     original_run = module.subprocess.run
     expect_rejected(
         module,
@@ -77,6 +86,7 @@ def main() -> int:
     )
 
     print("Memory OS generation-evidence execution transport negative PASS")
+    print("execution guard substitution accepted: false")
     print("subprocess validation transport substitution accepted: false")
     print("import spec transport substitution accepted: false")
     print("module loader transport substitution accepted: false")
