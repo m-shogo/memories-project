@@ -199,7 +199,11 @@ def main() -> int:
                 raise cls.Fail("currentGenerationId must equal latest append-only record")
             return rows
 
+    real_independent_review_ref = shared_eligibility_helper.independent_review_ref_for_row
     shared_eligibility_helper.load_generation_writer = lambda: SyntheticGenerationWriter
+    shared_eligibility_helper.independent_review_ref_for_row = (
+        lambda _writer, row: f"synthetic-review:{row['generationId']}"
+    )
 
     with tempfile.TemporaryDirectory(prefix="memory-os-restore-drill-request-negative-") as tmp:
         tmp_path = Path(tmp)
@@ -462,6 +466,8 @@ def main() -> int:
         writer.ROOT = real_root
         writer.require_preflight_eligible_generation = real_eligibility_guard
         writer.load_eligibility_helper = real_eligibility_loader
+
+    shared_eligibility_helper.independent_review_ref_for_row = real_independent_review_ref
 
     print("Memory OS production-equivalent backup/restore drill request negative suite PASS")
     print("canonical request registry mutated: false")
