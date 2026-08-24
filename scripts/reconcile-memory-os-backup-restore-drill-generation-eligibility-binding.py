@@ -43,7 +43,10 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(
-        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        lexical == expected_relative
+        and resolved == expected_relative
+        and path.is_file()
+        and not path.is_symlink(),
         f"{field} authority drift",
     )
     return path
@@ -115,8 +118,38 @@ def atomic_write_text(path: Path, text: str) -> None:
             pass
 
 
-def main() -> int:
-    enforce_runtime_authorities()
+CANONICAL_REQUIRE = require
+CANONICAL_RUNTIME_ENFORCER = enforce_runtime_authorities
+CANONICAL_EXECUTION_HELPERS = (
+    require_exact_repo_file,
+    load,
+    load_module,
+    run_post_validator,
+    atomic_write_text,
+)
+
+
+def enforce_execution_identity(
+    canonical_enforcer=CANONICAL_RUNTIME_ENFORCER,
+    canonical_require=CANONICAL_REQUIRE,
+    canonical_helpers=CANONICAL_EXECUTION_HELPERS,
+) -> None:
+    if enforce_runtime_authorities is not canonical_enforcer:
+        raise Fail("drill generation binding reconcile runtime authority enforcer drift")
+    if require is not canonical_require:
+        raise Fail("drill generation binding reconcile require helper drift")
+    current_helpers = (
+        require_exact_repo_file,
+        load,
+        load_module,
+        run_post_validator,
+        atomic_write_text,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("drill generation binding reconcile execution helper drift")
+
+
+def _reconcile() -> int:
     try:
         original_contract_text = CONTRACT.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -172,12 +205,21 @@ def main() -> int:
     print(f"reviewed/current drill requests: {request_count}/{current_count}")
     print(f"historical auditable requests: {historical_count}")
     print("canonical data/executable authorities enforced: true")
+    print("canonical execution helpers enforced: true")
     print("atomic contract replacement: true")
     print("aggregate operability validation inside transaction: true")
     print("failed post-validation leaves semantic binding authority mutation behind: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
+
+
+def main(canonical_execution_guard=enforce_execution_identity) -> int:
+    if enforce_execution_identity is not canonical_execution_guard:
+        raise Fail("drill generation binding reconcile execution guard drift")
+    enforce_execution_identity()
+    enforce_runtime_authorities()
+    return _reconcile()
 
 
 if __name__ == "__main__":
