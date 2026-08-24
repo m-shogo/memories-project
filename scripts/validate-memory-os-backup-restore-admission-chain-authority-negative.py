@@ -107,6 +107,18 @@ def validate_full_runner_authority() -> None:
     finally:
         runner.STEPS = steps_before
 
+    authority_guard_before = runner.enforce_runtime_authority
+    runner.enforce_runtime_authority = lambda: None
+    try:
+        rejected = False
+        try:
+            runner.main()
+        except runner.Fail:
+            rejected = True
+        require(rejected, "full admission-chain runner accepted substituted authority guard")
+    finally:
+        runner.enforce_runtime_authority = authority_guard_before
+
     run_step_before = runner.run_step
     runner.run_step = lambda _relative, _label: None
     try:
@@ -118,6 +130,30 @@ def validate_full_runner_authority() -> None:
         require(rejected, "full admission-chain runner accepted substituted execution function")
     finally:
         runner.run_step = run_step_before
+
+    transport_guard_before = runner.enforce_execution_transport
+    runner.enforce_execution_transport = lambda: None
+    try:
+        rejected = False
+        try:
+            runner.enforce_runtime_authority()
+        except runner.Fail:
+            rejected = True
+        require(rejected, "full admission-chain runner accepted substituted transport guard")
+    finally:
+        runner.enforce_execution_transport = transport_guard_before
+
+    resolver_before = runner.canonical_script
+    runner.canonical_script = lambda _relative: ALTERNATE_SCRIPT
+    try:
+        rejected = False
+        try:
+            runner.run_step("scripts/validate-memory-os-operability.py", "resolver substitution probe")
+        except runner.Fail:
+            rejected = True
+        require(rejected, "full admission-chain runner accepted substituted script resolver")
+    finally:
+        runner.canonical_script = resolver_before
 
     subprocess_run_before = runner.subprocess.run
     runner.subprocess.run = lambda *_args, **_kwargs: None
@@ -205,7 +241,10 @@ def main() -> int:
     print("full validation runner root substitution accepted: false")
     print("full validation runner self path substitution accepted: false")
     print("full validation sequence substitution accepted: false")
+    print("full validation authority guard substitution accepted: false")
     print("full validation execution function substitution accepted: false")
+    print("full validation transport guard substitution accepted: false")
+    print("full validation script resolver substitution accepted: false")
     print("full validation subprocess transport substitution accepted: false")
     print("full validation Python executable substitution accepted: false")
     print("rejected probe mutated admission-chain authorities: false")
