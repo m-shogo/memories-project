@@ -103,7 +103,67 @@ def validate_source_authorities() -> None:
     require(isinstance(result, int) and not isinstance(result, bool) and result == 0, f"inventory source-authority validator returned nonzero result: {result}")
 
 
-def main() -> int:
+CANONICAL_REQUIRE = require
+CANONICAL_EXECUTION_HELPERS = (
+    valid_count,
+    require_count_match,
+    repo_relative,
+    load,
+    canonical_registry_validator,
+    require_canonical_registry,
+    validate_source_authorities,
+)
+
+
+def enforce_runtime_authority(
+    canonical_inventory: Path = INVENTORY,
+    canonical_status: Path = STATUS,
+    canonical_source_authority_validator: Path = SOURCE_AUTHORITY_VALIDATOR,
+    canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+    canonical_require=CANONICAL_REQUIRE,
+) -> None:
+    expected_root = Path(enforce_runtime_authority.__code__.co_filename).resolve().parents[1]
+    try:
+        actual_root = ROOT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("inventory validator repository root missing") from exc
+    if actual_root != expected_root:
+        raise Fail("inventory validator repository root drift")
+    expected_inventory = expected_root / "contracts/operations/operability-admission-inventory.v1.json"
+    expected_status = expected_root / "contracts/operations/production-operability-status.json"
+    expected_source_validator = expected_root / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+    for current, canonical, expected, label in (
+        (INVENTORY, canonical_inventory, expected_inventory, "inventory"),
+        (STATUS, canonical_status, expected_status, "production status"),
+        (SOURCE_AUTHORITY_VALIDATOR, canonical_source_authority_validator, expected_source_validator, "source-authority validator"),
+    ):
+        if current != canonical or current != expected:
+            raise Fail(f"inventory validator {label} authority drift")
+        try:
+            resolved = current.resolve(strict=True)
+        except (FileNotFoundError, OSError, RuntimeError) as exc:
+            raise Fail(f"inventory validator {label} authority missing") from exc
+        if resolved != expected or not current.is_file() or current.is_symlink():
+            raise Fail(f"inventory validator {label} authority path drift")
+    if require is not canonical_require:
+        raise Fail("inventory validator require helper drift")
+    current_helpers = (
+        valid_count,
+        require_count_match,
+        repo_relative,
+        load,
+        canonical_registry_validator,
+        require_canonical_registry,
+        validate_source_authorities,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("inventory validator execution helper drift")
+
+
+def main(canonical_execution_guard=enforce_runtime_authority) -> int:
+    if enforce_runtime_authority is not canonical_execution_guard:
+        raise Fail("inventory validator execution guard drift")
+    enforce_runtime_authority()
     validate_source_authorities()
     inventory = load(INVENTORY)
     status = load(STATUS)
