@@ -63,6 +63,30 @@ def assert_canonical_unchanged(before: dict[str, bytes], label: str) -> None:
             raise Fail(f"canonical {field} mutated while rejecting {label}")
 
 
+def fixture_drill_validator(result: int = 0):
+    class FixtureDrillValidator:
+        class Fail(RuntimeError):
+            pass
+
+        @staticmethod
+        def main() -> int:
+            return result
+
+    return FixtureDrillValidator
+
+
+def fixture_eligibility_validator(result: int = 0):
+    class FixtureEligibilityValidator:
+        class Fail(RuntimeError):
+            pass
+
+        @staticmethod
+        def main() -> int:
+            return result
+
+    return FixtureEligibilityValidator
+
+
 def expect_semantic_rejection(
     validator,
     helper,
@@ -75,15 +99,6 @@ def expect_semantic_rejection(
 ) -> None:
     state = copy.deepcopy(baseline)
     mutate(state)
-
-    class FixtureDrillValidator:
-        class Fail(RuntimeError):
-            pass
-
-        @staticmethod
-        def main() -> int:
-            return 0
-
     try:
         validator.validate_state(
             state["preflight"],
@@ -94,12 +109,43 @@ def expect_semantic_rejection(
             eligibility_validator=eligibility_validator,
             objectives_writer=objectives_writer,
             drill_writer=drill_writer,
-            drill_validator=FixtureDrillValidator,
+            drill_validator=fixture_drill_validator(),
         )
     except validator.Fail:
         pass
     else:
         raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def expect_delegated_nonzero_rejection(
+    validator,
+    helper,
+    objectives_writer,
+    drill_writer,
+    baseline: dict[str, dict[str, Any]],
+    name: str,
+    *,
+    eligibility_result: int = 0,
+    drill_result: int = 0,
+) -> None:
+    before = canonical_bytes()
+    try:
+        validator.validate_state(
+            copy.deepcopy(baseline["preflight"]),
+            copy.deepcopy(baseline["eligibility"]),
+            copy.deepcopy(baseline["objectives"]),
+            copy.deepcopy(baseline["drill"]),
+            helper=helper,
+            eligibility_validator=fixture_eligibility_validator(eligibility_result),
+            objectives_writer=objectives_writer,
+            drill_writer=drill_writer,
+            drill_validator=fixture_drill_validator(drill_result),
+        )
+    except validator.Fail:
+        pass
+    else:
+        raise Fail(f"delegated nonzero validator unexpectedly accepted: {name}")
+    assert_canonical_unchanged(before, name)
 
 
 def expect_authority_rejection(validator, field: str, substitute: Path) -> None:
@@ -183,6 +229,25 @@ def main() -> int:
             mutate,
         )
 
+    expect_delegated_nonzero_rejection(
+        validator,
+        helper,
+        objectives_writer,
+        drill_writer,
+        baseline,
+        "environment eligibility validator nonzero",
+        eligibility_result=1,
+    )
+    expect_delegated_nonzero_rejection(
+        validator,
+        helper,
+        objectives_writer,
+        drill_writer,
+        baseline,
+        "drill request admission validator nonzero",
+        drill_result=1,
+    )
+
     authority_cases = (
         ("PREFLIGHT", ELIGIBILITY),
         ("ELIGIBILITY", PREFLIGHT),
@@ -200,6 +265,7 @@ def main() -> int:
 
     helper_cases = (
         ("require", lambda condition, message: None),
+        ("exact_success", lambda result, label: None),
         ("require_exact_repo_file", lambda path, expected, field: path),
         ("enforce_runtime_authorities", lambda: None),
         ("display_path", lambda path: str(path)),
@@ -213,10 +279,12 @@ def main() -> int:
 
     print("Memory OS restore preflight generation-eligibility consistency negative PASS")
     print(f"semantic authority corruption cases: {len(cases)}")
+    print("delegated nonzero validator rejection cases: 2")
     print(f"direct data/executable substitution cases: {len(authority_cases)}")
     print(f"direct execution helper substitution cases: {len(helper_cases)}")
     print("canonical semantic eligibility validator substitution accepted: false")
     print("canonical drill request full admission validator substitution accepted: false")
+    print("nonzero delegated validator accepted: false")
     print("semantic fixtures bypass runtime authority: false")
     print("semantic fixtures use pure state validation only: true")
     print("canonical authority mutated: false")
