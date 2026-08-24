@@ -162,6 +162,38 @@ def prove_direct_authority_identity(reconciler: Any) -> None:
     print(f"PASS boundary: direct semantic-binding data/executable substitutions rejected: {len(cases)}")
 
 
+def expect_reconcile_helper_substitution_rejected(reconciler: Any, field: str, replacement: Any) -> None:
+    contract_bytes, registry_bytes = canonical_bytes()
+    original = getattr(reconciler, field)
+    setattr(reconciler, field, replacement)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail:
+            pass
+        else:
+            raise Fail(f"semantic-binding reconciler unexpectedly accepted execution helper substitution: {field}")
+        assert_canonical_unchanged(contract_bytes, registry_bytes, f"reconciler {field}")
+    finally:
+        setattr(reconciler, field, original)
+
+
+def prove_reconciler_execution_identity(reconciler: Any) -> None:
+    helper_cases = (
+        ("require", lambda condition, message: None),
+        ("require_exact_repo_file", lambda path, expected, field: path),
+        ("enforce_runtime_authorities", lambda: None),
+        ("load", lambda path: {}),
+        ("load_module", lambda path, expected, name, field: object()),
+        ("run_post_validator", lambda path, expected, field: None),
+        ("atomic_write_text", lambda path, text: None),
+        ("enforce_execution_identity", lambda: None),
+    )
+    for field, replacement in helper_cases:
+        expect_reconcile_helper_substitution_rejected(reconciler, field, replacement)
+    print(f"PASS boundary: direct semantic-binding reconcile execution helper substitutions rejected: {len(helper_cases)}")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "drill generation binding validator missing")
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
@@ -169,17 +201,16 @@ def main() -> int:
     prove_validator_execution_identity()
     reconciler = load_reconciler()
     prove_direct_authority_identity(reconciler)
+    prove_reconciler_execution_identity(reconciler)
 
-    original_enforcer = reconciler.enforce_runtime_authorities
     original_contract_path = reconciler.CONTRACT
     original_registry_path = reconciler.DRILL_REGISTRY
     original_post_validator = reconciler.run_post_validator
     original_os_replace = reconciler.os.replace
 
-    # Fixture mutation is deliberately below the production authority boundary:
-    # direct invocation remains canonical-only, while this suite can still prove
-    # append-only corruption rejection and transactional rollback internally.
-    reconciler.enforce_runtime_authorities = lambda: None
+    # Fixture mutation is deliberately below the production CLI authority boundary:
+    # direct main() remains canonical-only, while the internal reconcile core proves
+    # append-only corruption rejection and transactional rollback.
     try:
         with tempfile.TemporaryDirectory(prefix=".tmp-drill-generation-binding-reconcile-", dir=TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
@@ -209,7 +240,7 @@ def main() -> int:
                 mutate(corrupted)
                 registry_copy.write_text(json.dumps(corrupted, indent=2) + "\n", encoding="utf-8")
                 try:
-                    reconciler.main()
+                    reconciler._reconcile()
                 except reconciler.Fail as exc:
                     require("drill request append-only authority invalid" in str(exc), f"{name} rejected at wrong boundary: {exc}")
                 except Exception as exc:
@@ -233,7 +264,7 @@ def main() -> int:
             reconciler.os.replace = fail_first_replace
             try:
                 try:
-                    reconciler.main()
+                    reconciler._reconcile()
                 except OSError as exc:
                     require("synthetic atomic replacement failure" in str(exc), f"atomic replacement failed at wrong boundary: {exc}")
                 except Exception as exc:
@@ -267,7 +298,7 @@ def main() -> int:
 
             reconciler.run_post_validator = aggregate_failure_after_binding_success
             try:
-                reconciler.main()
+                reconciler._reconcile()
             except reconciler.Fail as exc:
                 require("synthetic aggregate operability rejection" in str(exc), f"post-validation failure rejected at wrong boundary: {exc}")
             except Exception as exc:
@@ -277,7 +308,6 @@ def main() -> int:
             require(observed == ["drill generation binding validator", "operability validator"], "canonical post-write validator order drift")
             require(contract_copy.read_bytes() == rollback_original, "failed aggregate validation left binding contract mutation")
     finally:
-        reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.CONTRACT = original_contract_path
         reconciler.DRILL_REGISTRY = original_registry_path
         reconciler.run_post_validator = original_post_validator
@@ -288,6 +318,8 @@ def main() -> int:
     print("binding validator execution helper substitutions accepted: false")
     print("binding validator subprocess transport substitution accepted: false")
     print("direct reconciler data/executable authority substitutions accepted: false")
+    print("direct reconciler execution helper substitutions accepted: false")
+    print("production CLI authority weakened for fixtures: false")
     print("corrupt planning authority can be auto-healed: false")
     print("atomic replacement failure preserves canonical authority: true")
     print("atomic replacement temp cleanup: true")
