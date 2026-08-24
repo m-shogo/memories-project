@@ -75,3 +75,4 @@ jobs:
           set -euo pipefail
           git diff --check
           git diff --exit-code
+          test -z "$(git status --porcelain)"
