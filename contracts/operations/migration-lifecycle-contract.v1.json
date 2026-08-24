@@ -195,7 +195,8 @@
     "docs/evidence/migrations/recovery/mig_20260818_ead7e37fac9b.json",
     "docs/evidence/migrations/recovery/mig_20260821_fbc4dd4c973e.json",
     "docs/evidence/migrations/recovery/mig_20260824_f3582ffaefde.json",
-    "docs/evidence/migrations/recovery/mig_20260824_5793b8e5b560.json"
+    "docs/evidence/migrations/recovery/mig_20260824_5793b8e5b560.json",
+    "docs/evidence/migrations/recovery/mig_20260824_eb8b278ba7af.json"
   ],
   "readiness": {
     "policyDefined": true,
