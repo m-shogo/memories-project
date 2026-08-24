@@ -53,6 +53,13 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def path_label(path: Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority substitution")
     require(canonical.is_file(), f"canonical {label} missing")
@@ -75,25 +82,20 @@ def enforce_runtime_authorities() -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
+    label = path_label(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+        raise ReconcileFailure(f"missing file: {label}") from exc
     except json.JSONDecodeError as exc:
-        raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+        raise ReconcileFailure(f"invalid JSON in {label}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be an object: {label}")
     return value
 
 
 def source_is_ancestor(source_sha: str) -> bool:
     try:
-        return subprocess.run(
-            ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode == 0
+        return subprocess.run(["git", "merge-base", "--is-ancestor", source_sha, "HEAD"], cwd=ROOT, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
     except OSError:
         return False
 
@@ -103,19 +105,9 @@ def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
     require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
     require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
     env = os.environ.copy()
-    if expected_sha is not None:
-        env["EXPECTED_COMMIT_SHA"] = expected_sha
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        env=env,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    require(type(completed.returncode) is int and completed.returncode == 0,
-            f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}")
+    if expected_sha is not None: env["EXPECTED_COMMIT_SHA"] = expected_sha
+    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, env=env, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    require(type(completed.returncode) is int and completed.returncode == 0, f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}")
 
 
 def validate_authority_chain(source_sha: str) -> None:
@@ -128,78 +120,43 @@ def main() -> int:
     enforce_runtime_authorities()
     result = load(RESULT_PATH)
     source_sha = result.get("commitSha")
-    require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
-            "database outage result source SHA is invalid")
-    require(source_is_ancestor(source_sha),
-            "database outage source SHA is not an ancestor of current HEAD")
-
-    # The canonical validator owns the exact-source result and contract
-    # semantics; the direct reconciler may only derive from accepted authority.
+    require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None, "database outage result source SHA is invalid")
+    require(source_is_ancestor(source_sha), "database outage source SHA is not an ancestor of current HEAD")
     validate_authority_chain(source_sha)
-
     original_status_bytes = STATUS_PATH.read_bytes()
     status = load(STATUS_PATH)
-    require(status.get("productionDecision") == "NO_GO",
-            "database outage evidence cannot change production decision")
-    gate = next((item for item in status.get("areas", [])
-                 if isinstance(item, dict) and item.get("id") == "OPS-P0-009"), None)
+    require(status.get("productionDecision") == "NO_GO", "database outage evidence cannot change production decision")
+    gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-009"), None)
     require(isinstance(gate, dict), "OPS-P0-009 missing")
     require(gate.get("status") == "PARTIAL", "OPS-P0-009 must remain PARTIAL")
-    existing = gate.get("existingEvidence")
-    missing = gate.get("missingEvidence")
-    refs = gate.get("evidenceRefs")
+    existing = gate.get("existingEvidence"); missing = gate.get("missingEvidence"); refs = gate.get("evidenceRefs")
     require(isinstance(existing, list), "OPS-P0-009 existingEvidence must be a list")
     require(isinstance(missing, list), "OPS-P0-009 missingEvidence must be a list")
     require(isinstance(refs, list), "OPS-P0-009 evidenceRefs must be a list")
-
     changed = False
     for old in (OLD_MISSING, OBSOLETE_MISSING):
-        if old in missing:
-            missing.remove(old)
-            changed = True
+        if old in missing: missing.remove(old); changed = True
     for item in NEW_EXISTING:
-        if item not in existing:
-            existing.append(item)
-            changed = True
+        if item not in existing: existing.append(item); changed = True
     for item in NEW_MISSING:
-        if item not in missing:
-            missing.append(item)
-            changed = True
+        if item not in missing: missing.append(item); changed = True
     for ref in NEW_REFS:
         require((ROOT / ref).is_file(), f"database outage evidence path missing: {ref}")
-        if ref not in refs:
-            refs.append(ref)
-            changed = True
-
-    for phrase in (
-        "mixed-version failure",
-        "production multi-instance",
-        "production-shaped object-store",
-        "production-shaped PostgreSQL",
-        "host or container restart",
-        "expired sessions",
-    ):
-        require(any(phrase in item for item in missing),
-                f"required OPS-P0-009 gap disappeared: {phrase}")
-    require(status.get("productionDecision") == "NO_GO",
-            "production decision changed unexpectedly")
-
+        if ref not in refs: refs.append(ref); changed = True
+    for phrase in ("mixed-version failure", "production multi-instance", "production-shaped object-store", "production-shaped PostgreSQL", "host or container restart", "expired sessions"):
+        require(any(phrase in item for item in missing), f"required OPS-P0-009 gap disappeared: {phrase}")
+    require(status.get("productionDecision") == "NO_GO", "production decision changed unexpectedly")
     if not changed:
         validate_authority_chain(source_sha)
         print("Database commit outage authority already reconciled")
         return 0
-
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     try:
         validate_authority_chain(source_sha)
     except Exception:
         STATUS_PATH.write_bytes(original_status_bytes)
         raise
-
     print("Registered exact-source same-spool database commit recovery; OPS-P0-009 remains PARTIAL")
     return 0
 
