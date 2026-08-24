@@ -100,11 +100,16 @@ def main() -> int:
     source_authority.enforce_runtime_authority()
 
     expect_source_execution_rejected(source_authority, "enforce_execution_authority", lambda: None)
+    expect_source_execution_rejected(source_authority, "require", lambda *_args: None)
     expect_source_execution_rejected(source_authority, "load", lambda _relative: {})
     expect_source_execution_rejected(source_authority, "load_validator", lambda *_args: (lambda *_inner: 0))
     expect_source_execution_rejected(source_authority, "validate_inventory_request", lambda: None)
+    expect_source_execution_rejected(source_authority, "validate_human_tabletop_source", lambda: 6)
+    expect_source_execution_rejected(source_authority, "validate_load_source", lambda: None)
     expect_source_execution_rejected(source_authority, "validate_command_source", lambda *_args: None)
     expect_source_execution_rejected(source_authority, "validate_source", lambda *_args: None)
+    expect_source_execution_rejected(source_authority, "exact_success", lambda *_args: None)
+    expect_source_execution_rejected(source_authority, "validate_registry_result", lambda *_args: None)
 
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
