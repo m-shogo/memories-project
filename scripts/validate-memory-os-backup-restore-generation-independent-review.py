@@ -206,11 +206,25 @@ CANONICAL_EXECUTION_HELPERS = (
     validate_review,
     load_material_delta_validator,
 )
+CANONICAL_AUTHORITY_CONFIG = (
+    CONTRACT_REL.as_posix(),
+    REGISTRY_REL.as_posix(),
+    MATERIAL_DELTA_VALIDATOR_REL.as_posix(),
+    VALIDATOR_REL.as_posix(),
+    EVIDENCE_ROOT.as_posix(),
+    REVIEW_SCHEMA,
+    tuple(sorted(REQUIRED_FIELDS)),
+    BOUND_FIELDS,
+    tuple(sorted(ROLE_BY_REF.items())),
+    tuple(sorted(BOUND_RULE_BY_FIELD.items())),
+    REVIEWER_ID.pattern,
+)
 
 
 def enforce_execution_authority(
     canonical_require=CANONICAL_REQUIRE,
     canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+    canonical_config: tuple[Any, ...] = CANONICAL_AUTHORITY_CONFIG,
 ) -> None:
     expected_root = Path(enforce_execution_authority.__code__.co_filename).resolve().parents[1]
     try:
@@ -235,6 +249,21 @@ def enforce_execution_authority(
     )
     if current_helpers != canonical_helpers:
         raise Fail("generation independent-review execution helper drift")
+    current_config = (
+        CONTRACT_REL.as_posix(),
+        REGISTRY_REL.as_posix(),
+        MATERIAL_DELTA_VALIDATOR_REL.as_posix(),
+        VALIDATOR_REL.as_posix(),
+        EVIDENCE_ROOT.as_posix(),
+        REVIEW_SCHEMA,
+        tuple(sorted(REQUIRED_FIELDS)),
+        BOUND_FIELDS,
+        tuple(sorted(ROLE_BY_REF.items())),
+        tuple(sorted(BOUND_RULE_BY_FIELD.items())),
+        REVIEWER_ID.pattern,
+    )
+    if current_config != canonical_config:
+        raise Fail("generation independent-review semantic authority drift")
 
 
 CANONICAL_EXECUTION_GUARD = enforce_execution_authority
@@ -292,6 +321,7 @@ def main(
     print(f"PASS: generation candidate review authority records={len(rows)} productionEvidence=false productionReady=false")
     print("canonical generation evidence contract/registry authority substitution accepted: false")
     print("generation independent-review execution helper substitution accepted: false")
+    print("paired semantic authority substitution accepted: false")
     print("human production promotion remains separate: true")
     return 0
 
