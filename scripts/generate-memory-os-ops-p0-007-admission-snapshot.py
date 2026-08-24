@@ -15,6 +15,10 @@ OUTPUT_REL = Path("contracts/operations/ops-p0-007-admission-snapshot.v1.json")
 ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
 BLOCKER_HELPER_REL = Path("scripts/memory_os_backup_restore_blockers.py")
 SNAPSHOT_VALIDATOR_REL = Path("scripts/validate-memory-os-ops-p0-007-admission-snapshot.py")
+RECOVERY_OBJECTIVE_VALIDATOR_REL = Path("scripts/validate-memory-os-recovery-objectives.py")
+DRILL_REQUEST_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-drill-request.py")
+GEN_EVIDENCE_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-evidence.py")
+TYPED_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-non-resurrection-admission.py")
 OBJECTIVES_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
 DRILL_REQUESTS_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
 GEN_EVIDENCE_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
@@ -28,6 +32,10 @@ OUTPUT = ROOT / OUTPUT_REL
 ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
 BLOCKER_HELPER = ROOT / BLOCKER_HELPER_REL
 SNAPSHOT_VALIDATOR = ROOT / SNAPSHOT_VALIDATOR_REL
+RECOVERY_OBJECTIVE_VALIDATOR = ROOT / RECOVERY_OBJECTIVE_VALIDATOR_REL
+DRILL_REQUEST_VALIDATOR = ROOT / DRILL_REQUEST_VALIDATOR_REL
+GEN_EVIDENCE_VALIDATOR = ROOT / GEN_EVIDENCE_VALIDATOR_REL
+TYPED_VALIDATOR = ROOT / TYPED_VALIDATOR_REL
 OBJECTIVES = ROOT / OBJECTIVES_REL
 DRILL_REQUESTS = ROOT / DRILL_REQUESTS_REL
 GEN_EVIDENCE = ROOT / GEN_EVIDENCE_REL
@@ -57,6 +65,10 @@ def enforce_runtime_authorities() -> None:
         (ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "environment generation eligibility helper"),
         (BLOCKER_HELPER, BLOCKER_HELPER_REL, "backup/restore blocker helper"),
         (SNAPSHOT_VALIDATOR, SNAPSHOT_VALIDATOR_REL, "snapshot validator"),
+        (RECOVERY_OBJECTIVE_VALIDATOR, RECOVERY_OBJECTIVE_VALIDATOR_REL, "recovery objective admission validator"),
+        (DRILL_REQUEST_VALIDATOR, DRILL_REQUEST_VALIDATOR_REL, "reviewed drill request admission validator"),
+        (GEN_EVIDENCE_VALIDATOR, GEN_EVIDENCE_VALIDATOR_REL, "generation recovery evidence admission validator"),
+        (TYPED_VALIDATOR, TYPED_VALIDATOR_REL, "typed non-resurrection admission validator"),
         (OBJECTIVES, OBJECTIVES_REL, "recovery objective registry"),
         (DRILL_REQUESTS, DRILL_REQUESTS_REL, "restore drill request registry"),
         (GEN_EVIDENCE, GEN_EVIDENCE_REL, "generation recovery evidence registry"),
@@ -148,6 +160,31 @@ def validate_registry(module, registry: dict[str, Any], label: str) -> list[dict
     return rows
 
 
+def run_canonical_validator(path: Path, module_name: str, label: str) -> None:
+    module = load_module(path, module_name)
+    validator = getattr(module, "main", None)
+    failure_type = getattr(module, "Fail", RuntimeError)
+    if not callable(validator) or not isinstance(failure_type, type) or not issubclass(failure_type, BaseException):
+        raise SystemExit(f"{label} canonical admission validator interface invalid")
+    try:
+        result = validator()
+    except failure_type as exc:
+        raise SystemExit(f"{label} canonical admission authority invalid: {exc}") from exc
+    if not isinstance(result, int) or isinstance(result, bool) or result != 0:
+        raise SystemExit(f"{label} canonical admission validator returned invalid result: {result}")
+
+
+def run_full_admission_validators() -> None:
+    enforce_runtime_authorities()
+    for path, module_name, label in (
+        (RECOVERY_OBJECTIVE_VALIDATOR, "memory_os_objective_admission_ops_p0_007_snapshot", "recovery objective"),
+        (DRILL_REQUEST_VALIDATOR, "memory_os_drill_request_admission_ops_p0_007_snapshot", "reviewed drill request"),
+        (GEN_EVIDENCE_VALIDATOR, "memory_os_generation_evidence_admission_ops_p0_007_snapshot", "generation recovery evidence"),
+        (TYPED_VALIDATOR, "memory_os_typed_non_resurrection_admission_ops_p0_007_snapshot", "typed non-resurrection"),
+    ):
+        run_canonical_validator(path, module_name, label)
+
+
 def validate_generated_snapshot() -> None:
     enforce_runtime_authorities()
     module = load_module(SNAPSHOT_VALIDATOR, "memory_os_ops_p0_007_snapshot_post_write_validator")
@@ -169,6 +206,7 @@ def load_helper():
 
 def main() -> int:
     enforce_runtime_authorities()
+    run_full_admission_validators()
     helper = load_helper()
     blocker_helper = load_module(BLOCKER_HELPER, "memory_os_backup_restore_blockers_ops_p0_007_snapshot")
     eligibility = helper.derive()
