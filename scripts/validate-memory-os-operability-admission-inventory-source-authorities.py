@@ -150,6 +150,11 @@ SOURCES: tuple[tuple[str, str, str, str, str], ...] = (
 
 COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
     (
+        "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+        "memory_os_inventory_source_environment_generation_admission",
+        "production-equivalent environment generation admission authority",
+    ),
+    (
         "scripts/validate-memory-os-recovery-objectives.py",
         "memory_os_inventory_source_recovery_objectives_admission",
         "backup/restore recovery objective admission authority",
@@ -203,6 +208,11 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "scripts/validate-memory-os-backup-restore-promotion-review.py",
         "memory_os_inventory_source_backup_promotion_review",
         "backup/restore human promotion review authority",
+    ),
+    (
+        "scripts/validate-memory-os-backup-restore-admission-chain.py",
+        "memory_os_inventory_source_backup_admission_chain",
+        "backup/restore end-to-end admission chain authority",
     ),
 )
 
