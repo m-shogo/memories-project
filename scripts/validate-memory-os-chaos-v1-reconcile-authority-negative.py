@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AGGREGATE_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
+INFLIGHT_OVERLAY = ROOT / "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
 V1_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills.py"
 V2_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
 PARSER_RECONCILER = ROOT / "scripts/reconcile-memory-os-parser-restart-matrix.py"
@@ -206,9 +208,36 @@ def validate_aggregate(module) -> None:
         raise RuntimeError(f"aggregate atomic replacement failure left temp authority residue: {residues}")
 
 
+def validate_overlay_atomic(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-chaos-overlay-atomic-") as tmp:
+        root = Path(tmp)
+        status_path = root / "status.json"
+        original_bytes = b'{"productionDecision":"NO_GO"}\n'
+        status_path.write_bytes(original_bytes)
+        canonical_replace = module.os.replace
+
+        def reject_replace(_source, _target) -> None:
+            raise OSError("synthetic overlay atomic replacement rejection")
+
+        try:
+            module.os.replace = reject_replace
+            expect_rejection(
+                lambda: module.atomic_write_bytes(status_path, b'{"productionDecision":"NO_GO","changed":true}\n'),
+                "cannot atomically write authority",
+            )
+        finally:
+            module.os.replace = canonical_replace
+        if status_path.read_bytes() != original_bytes:
+            raise RuntimeError("overlay atomic replacement failure changed status fixture")
+        residues = list(root.glob(f".{status_path.name}.*.tmp"))
+        if residues:
+            raise RuntimeError(f"overlay atomic replacement failure left temp authority residue: {residues}")
+
+
 def main() -> int:
     fixtures = (
         AGGREGATE_RECONCILER,
+        INFLIGHT_OVERLAY,
         V1_RECONCILER,
         V2_RECONCILER,
         PARSER_RECONCILER,
@@ -226,6 +255,9 @@ def main() -> int:
 
     validate_aggregate(
         load_module(AGGREGATE_RECONCILER, "memory_os_chaos_aggregate_authority_negative")
+    )
+    validate_overlay_atomic(
+        load_module(INFLIGHT_OVERLAY, "memory_os_chaos_overlay_atomic_negative")
     )
     v1 = load_module(V1_RECONCILER, "memory_os_chaos_v1_authority_negative")
     validate_module(
@@ -258,7 +290,7 @@ def main() -> int:
         load_module(PROCESS_GROUP_RECONCILER, "memory_os_process_group_authority_negative")
     )
 
-    print("PASS: aggregate/scenario chaos authority substitutions, atomic publication, and rollback are fail-closed")
+    print("PASS: aggregate/scenario/overlay chaos authorities reject substitution and publish atomically with rollback")
     return 0
 
 
