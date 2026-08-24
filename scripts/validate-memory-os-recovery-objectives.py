@@ -11,11 +11,16 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
-EXPECTED_LOCK = ROOT / "contracts/operations/.recovery-objectives.lock"
-NEGATIVE = ROOT / "scripts/validate-memory-os-recovery-objectives-negative.py"
+CONTRACT_REL = Path("contracts/operations/recovery-objectives-admission-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-recovery-objectives.py")
+NEGATIVE_REL = Path("scripts/validate-memory-os-recovery-objectives-negative.py")
+EXPECTED_LOCK_REL = Path("contracts/operations/.recovery-objectives.lock")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+WRITER = ROOT / WRITER_REL
+EXPECTED_LOCK = ROOT / EXPECTED_LOCK_REL
+NEGATIVE = ROOT / NEGATIVE_REL
 EXPECTED_NEGATIVE_CASES = {
     "arbitrary repository files used as approval evidence",
     "absolute, parent-traversal or symlinked authority refs",
@@ -44,6 +49,29 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "recovery objective contract"),
+        (REGISTRY, REGISTRY_REL, "recovery objective registry"),
+        (WRITER, WRITER_REL, "recovery objective writer"),
+        (NEGATIVE, NEGATIVE_REL, "recovery objective negative validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def repo_file(value: Any, field: str) -> Path:
@@ -85,7 +113,8 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    writer_path = repo_file(str(WRITER.relative_to(ROOT)), "writer")
+    require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
+    writer_path = WRITER
     spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_writer", writer_path)
     require(spec is not None and spec.loader is not None, "cannot load recovery objectives writer")
     module = importlib.util.module_from_spec(spec)
@@ -94,11 +123,13 @@ def load_writer():
 
 
 def run_negative() -> None:
+    require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "recovery objective negative validator")
     completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"recovery objective negative admission suite failed:\n{completed.stdout[-6000:]}{completed.stderr[-6000:]}")
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     writer = load_writer()
@@ -187,6 +218,7 @@ def main() -> int:
     run_negative()
 
     print("Memory OS recovery objectives validation PASS")
+    print("recovery objective validator canonical runtime authorities enforced: true")
     print(f"approved objective records: {count}")
     print(f"current objective: {current_id or 'none'}")
     print(f"RPO/RTO defined: {str(defined).lower()}")
