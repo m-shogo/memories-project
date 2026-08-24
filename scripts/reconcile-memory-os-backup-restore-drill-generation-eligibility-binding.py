@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +95,26 @@ def run_post_validator(path: Path, expected_relative: Path, field: str) -> None:
     )
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
 def main() -> int:
     enforce_runtime_authorities()
     try:
@@ -133,13 +155,14 @@ def main() -> int:
     boundary["productionReady"] = False
     boundary["productionDecision"] = "NO_GO"
 
+    updated_contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
     try:
-        CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_text(CONTRACT, updated_contract_text)
         run_post_validator(VALIDATOR, VALIDATOR_REL, "drill generation binding validator")
         run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
     except Exception:
         try:
-            CONTRACT.write_text(original_contract_text, encoding="utf-8")
+            atomic_write_text(CONTRACT, original_contract_text)
         except OSError as restore_exc:
             raise Fail(f"drill generation eligibility binding rollback failed: {restore_exc}") from restore_exc
         raise
@@ -149,6 +172,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {request_count}/{current_count}")
     print(f"historical auditable requests: {historical_count}")
     print("canonical data/executable authorities enforced: true")
+    print("atomic contract replacement: true")
     print("aggregate operability validation inside transaction: true")
     print("failed post-validation leaves semantic binding authority mutation behind: false")
     print("production evidence: false")
