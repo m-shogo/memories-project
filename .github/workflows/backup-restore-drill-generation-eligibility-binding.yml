@@ -22,6 +22,7 @@ on:
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py"
       - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py"
@@ -50,6 +51,7 @@ on:
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py"
       - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py"
@@ -58,7 +60,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: backup-restore-drill-generation-eligibility-binding-${{ github.event.pull_request.number || 'so' }}
@@ -92,6 +94,7 @@ jobs:
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
             scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py \
             scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py \
@@ -101,16 +104,20 @@ jobs:
           python scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py
           python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py
           python scripts/validate-memory-os-operability.py
-          git diff --exit-code -- contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   validate:
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -118,7 +125,7 @@ jobs:
       - name: Capture exact semantic binding authority source
         run: |
           set -euo pipefail
-          EXPECTED_SOURCE_SHA="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          EXPECTED_SOURCE_SHA="${{ github.sha }}"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           echo "SOURCE_SHA=$EXPECTED_SOURCE_SHA" >> "$GITHUB_ENV"
@@ -135,6 +142,7 @@ jobs:
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
             scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py \
             scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py \
@@ -148,13 +156,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Reject stale semantic binding on pull requests
-        if: steps.validation.outputs.exit_code == '0' && github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json
       - name: Commit bounded semantic binding authority
-        if: steps.validation.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validation.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           log=/tmp/backup-restore-drill-generation-eligibility-binding.log
@@ -214,7 +217,7 @@ jobs:
           done
           exit 75
       - name: Record privacy-safe semantic binding diagnostic
-        if: steps.validation.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validation.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
