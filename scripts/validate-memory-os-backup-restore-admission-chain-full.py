@@ -62,6 +62,7 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py", "typed non-resurrection unreadable/escaped authority negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py", "typed non-resurrection writer authority negative"),
     ("scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py", "typed non-resurrection reconcile negative"),
+    ("scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py", "generation binding status authority negative"),
     ("scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py", "generation binding status reconcile negative"),
     ("scripts/reconcile-memory-os-backup-restore-admission-chain.py", "admission-chain deterministic reconcile"),
     ("scripts/validate-memory-os-backup-restore-admission-chain.py", "admission-chain authority"),
@@ -78,6 +79,7 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-non-resurrection-admission.py", "typed non-resurrection admission"),
     ("scripts/validate-memory-os-backup-restore-promotion-review.py", "human promotion review authority"),
     ("scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py", "human promotion review reconcile negative"),
+    ("scripts/validate-memory-os-backup-restore.py", "aggregate backup/restore authority"),
     ("scripts/validate-memory-os-operability.py", "aggregate operability"),
 )
 
