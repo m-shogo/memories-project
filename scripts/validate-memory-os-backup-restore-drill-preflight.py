@@ -20,9 +20,12 @@ OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 CHAIN_CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
-GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
-OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
-DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+GEN_VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-generation.py")
+OBJECTIVE_VALIDATOR_REL = Path("scripts/validate-memory-os-recovery-objectives.py")
+DRILL_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-drill-request.py")
+GEN_VALIDATOR = ROOT / GEN_VALIDATOR_REL
+OBJECTIVE_VALIDATOR = ROOT / OBJECTIVE_VALIDATOR_REL
+DRILL_VALIDATOR = ROOT / DRILL_VALIDATOR_REL
 NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
@@ -113,18 +116,26 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_eligibility_helper():
+def require_exact_executable(path: Path, expected_relative: Path, field: str) -> None:
     try:
-        lexical = ELIGIBILITY_HELPER.relative_to(ROOT)
-        resolved = ELIGIBILITY_HELPER.resolve(strict=True).relative_to(ROOT.resolve())
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail("shared environment generation eligibility authority missing or escapes repository") from exc
+        raise Fail(f"{field} missing or escapes repository") from exc
     require(
-        lexical == ELIGIBILITY_HELPER_REL
-        and resolved == ELIGIBILITY_HELPER_REL
-        and ELIGIBILITY_HELPER.is_file()
-        and not ELIGIBILITY_HELPER.is_symlink(),
-        "shared environment generation eligibility authority drift",
+        lexical == expected_relative
+        and resolved == expected_relative
+        and path.is_file()
+        and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+
+
+def load_eligibility_helper():
+    require_exact_executable(
+        ELIGIBILITY_HELPER,
+        ELIGIBILITY_HELPER_REL,
+        "shared environment generation eligibility authority",
     )
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
     require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
@@ -134,7 +145,14 @@ def load_eligibility_helper():
 
 
 def run_validator(path: Path, name: str) -> None:
-    repo_relative(path)
+    expected_by_name = {
+        "environment generation": GEN_VALIDATOR_REL,
+        "recovery objectives": OBJECTIVE_VALIDATOR_REL,
+        "restore drill request": DRILL_VALIDATOR_REL,
+    }
+    expected = expected_by_name.get(name)
+    require(isinstance(expected, Path), f"unknown upstream validator authority: {name}")
+    require_exact_executable(path, expected, f"{name} validator")
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{name} validator failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
 
@@ -327,6 +345,7 @@ def main() -> int:
     print(f"preflight decision: {state['preflightDecision']}")
     print("semantic generation authority shared with downstream admission: true")
     print("registered generation blocker semantically requires eligible distinct environments: true")
+    print("upstream validator executable authorities pinned: true")
     print("boolean registry/current-state counts accepted: false")
     print("automatic prerequisite/request creation: false")
     print("restore executed: false")
