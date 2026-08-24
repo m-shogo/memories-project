@@ -59,6 +59,20 @@ def load_generation_writer():
     return module
 
 
+def independent_review_ref_for_row(writer: Any, row: dict[str, Any]) -> str:
+    try:
+        env_path = writer.repo_ref(row.get("environmentRecordRef"), "environmentRecordRef")
+        env = writer.load(env_path)
+    except writer.Fail as exc:
+        raise Fail(f"cannot resolve eligible generation environment review authority: {exc}") from exc
+    boundary = env.get("evidenceBoundary")
+    require(isinstance(boundary, dict), "eligible generation evidenceBoundary missing")
+    require(boundary.get("independentReviewCompleted") is True, "eligible generation independent review not completed")
+    review_ref = boundary.get("independentReviewRef")
+    require(isinstance(review_ref, str) and review_ref, "eligible generation independent review ref missing")
+    return review_ref
+
+
 def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
     """Derive semantic preflight authority from an already loaded registry object."""
     require(isinstance(registry, dict), "generation registry root must be object")
@@ -70,7 +84,6 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
         raise Fail(f"generation registry authority validation failed: {exc}") from exc
 
     count = registry.get("registeredGenerationCount")
-    generation_ids = [row["generationId"] for row in rows]
     superseded_ids = {
         row.get("supersedesGenerationId")
         for row in rows
@@ -89,6 +102,12 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
         eligible_by_id[generation_id] = value
 
     eligible_rows = [row for row in rows if eligible_by_id.get(row["generationId"]) is True]
+    eligible_review_refs = [independent_review_ref_for_row(writer, row) for row in eligible_rows]
+    require(
+        len(eligible_review_refs) == len(set(eligible_review_refs)),
+        "eligible generations reuse environment independent review evidence",
+    )
+
     unsuperseded_eligible_rows = [row for row in unsuperseded_rows if eligible_by_id.get(row["generationId"]) is True]
     distinct_unsuperseded_environments = {
         row.get("environmentId")
@@ -148,6 +167,7 @@ def main() -> int:
     print("canonical generation registry identity required for default derivation: true")
     print("generation writer executable authority pinned: true")
     print("generation registry validation delegated to canonical writer: true")
+    print("eligible environment independent review reuse accepted: false")
     print("generation registry schema drift accepted: false")
     print("generation registry class drift accepted: false")
     print("cross-environment supersedes accepted: false")
