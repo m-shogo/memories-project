@@ -51,7 +51,7 @@
     "productionEvidence": false,
     "productionEquivalentDependencies": true,
     "independentReviewCompleted": true,
-    "independentReviewRef": "CLAUDE.md",
+    "independentReviewRef": "requirements-security-validation.txt",
     "productionReady": false
   }
 }
