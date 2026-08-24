@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "incident-contact-routing-admission",
+  "result": "FAIL",
+  "sourceCommitSha": "9784a34d5092349c6bfc690600301f82abcfb2b1",
+  "exitCode": 1,
+  "output": "PASS reject: contact routing writer CLI CONTRACT substitution\nPASS reject: contact routing writer CLI REGISTRY substitution\nPASS reject: contact routing writer CLI OBS_REGISTRY substitution\nPASS reject: contact routing writer CLI OBS_WRITER substitution\nPASS reject: contact routing writer CLI GEN_REGISTRY substitution\nPASS reject: contact routing writer CLI LOCK substitution\nMemory OS incident contact routing writer authority negative suite PASS\nwriter CLI data/executable/lock substitution accepted: false\ncontact routing evidence generated: false\nproduction evidence generated: false\nproduction readiness changed: false\nPASS: contact routing rejects corrupt environment-generation authority before admission\nproduction evidence generated: false\nproduction readiness changed: false\nPASS: contact routing rejects local/upstream/review/lock authority corruption without mutation\nPASS: contact routing reconciler rejects all canonical executable/data authority substitutions without mutation\nPASS: contact routing direct append rolls back on post-append validation failure\nPASS: contact routing post-write and aggregate validation failures roll back contract and status\ngeneric repository JSON accepted as privacy/operability review: false\nautomatic production promotion authorized: false\nINCIDENT CONTACT ROUTING VALIDATION FAILED: contact routing append lock missing or escapes repository\nINCIDENT CONTACT ROUTING RECONCILE FAILED: canonical contact routing authority is invalid before reconcile\n",
+  "containsSecrets": false,
+  "admittedRoutingCount": 0,
+  "productionEvidence": false,
+  "productionReady": false
+}
