@@ -203,9 +203,10 @@ def enforce_runtime_execution_authority(
 
 def derive(
     registry_path: Path = GEN_REGISTRY,
+    canonical_registry_path: Path = CANONICAL_GEN_REGISTRY,
     canonical_execution_guard=enforce_runtime_execution_authority,
 ) -> dict[str, Any]:
-    if registry_path == CANONICAL_GEN_REGISTRY:
+    if registry_path == canonical_registry_path:
         if enforce_runtime_execution_authority is not canonical_execution_guard:
             raise Fail("generation eligibility execution guard drift")
         enforce_runtime_execution_authority()
