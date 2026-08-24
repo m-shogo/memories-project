@@ -204,8 +204,47 @@ def load_helper():
     return load_module(ELIGIBILITY_HELPER, "memory_os_generation_eligibility_ops_p0_007_snapshot")
 
 
-def main() -> int:
+CANONICAL_EXECUTION_HELPERS = (
+    require_exact_repo_file,
+    enforce_runtime_authorities,
+    atomic_write_text,
+    load,
+    load_module,
+    validate_registry,
+    run_canonical_validator,
+    run_full_admission_validators,
+    validate_generated_snapshot,
+    load_helper,
+)
+
+
+def enforce_execution_authority(
+    canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+    canonical_runtime_guard=enforce_runtime_authorities,
+) -> None:
+    if enforce_runtime_authorities is not canonical_runtime_guard:
+        raise SystemExit("strict snapshot generator runtime authority guard drift")
+    current_helpers = (
+        require_exact_repo_file,
+        enforce_runtime_authorities,
+        atomic_write_text,
+        load,
+        load_module,
+        validate_registry,
+        run_canonical_validator,
+        run_full_admission_validators,
+        validate_generated_snapshot,
+        load_helper,
+    )
+    if current_helpers != canonical_helpers:
+        raise SystemExit("strict snapshot generator execution helper drift")
     enforce_runtime_authorities()
+
+
+def main(canonical_execution_guard=enforce_execution_authority) -> int:
+    if enforce_execution_authority is not canonical_execution_guard:
+        raise SystemExit("strict snapshot generator execution guard drift")
+    enforce_execution_authority()
     run_full_admission_validators()
     helper = load_helper()
     blocker_helper = load_module(BLOCKER_HELPER, "memory_os_backup_restore_blockers_ops_p0_007_snapshot")
@@ -327,7 +366,7 @@ def main() -> int:
         "productionReady": False,
         "productionDecision": "NO_GO",
     }
-    enforce_runtime_authorities()
+    enforce_execution_authority()
     previous = OUTPUT.read_bytes()
     output_text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
     try:
