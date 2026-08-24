@@ -90,7 +90,10 @@ class Fail(RuntimeError):
     pass
 
 
-def enforce_runtime_authority(canonical_steps: tuple[tuple[str, str], ...] = STEPS) -> None:
+def enforce_runtime_authority(
+    canonical_self_rel: Path = SELF_REL,
+    canonical_steps: tuple[tuple[str, str], ...] = STEPS,
+) -> None:
     expected_root = Path(enforce_runtime_authority.__code__.co_filename).resolve().parents[1]
     try:
         actual_root = ROOT.resolve(strict=True)
@@ -98,12 +101,14 @@ def enforce_runtime_authority(canonical_steps: tuple[tuple[str, str], ...] = STE
         raise Fail("admission-chain full runner repository root missing") from exc
     if actual_root != expected_root:
         raise Fail("admission-chain full runner repository root drift")
-    self_path = expected_root / SELF_REL
+    if SELF_REL != canonical_self_rel:
+        raise Fail("admission-chain full runner self path drift")
+    self_path = expected_root / canonical_self_rel
     try:
         resolved = self_path.resolve(strict=True).relative_to(expected_root)
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail("admission-chain full runner missing or escapes repository") from exc
-    if resolved != SELF_REL or not self_path.is_file() or self_path.is_symlink():
+    if resolved != canonical_self_rel or not self_path.is_file() or self_path.is_symlink():
         raise Fail("admission-chain full runner identity drift")
     if STEPS != canonical_steps:
         raise Fail("admission-chain full validation sequence drift")
@@ -146,6 +151,7 @@ def main() -> int:
         run_step(relative, label)
     print("Memory OS end-to-end backup/restore admission-chain validation PASS")
     print(f"canonical validation steps: {len(STEPS)}")
+    print("self path substitution accepted: false")
     print("validation sequence substitution accepted: false")
     print("automatic generation/objective/request/evidence creation: false")
     print("production evidence created: false")
