@@ -150,6 +150,11 @@ SOURCES: tuple[tuple[str, str, str, str, str], ...] = (
 
 COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
     (
+        "scripts/validate-memory-os-recovery-objectives.py",
+        "memory_os_inventory_source_recovery_objectives_admission",
+        "backup/restore recovery objective admission authority",
+    ),
+    (
         "scripts/validate-memory-os-backup-restore-generation-binding.py",
         "memory_os_inventory_source_backup_generation_binding",
         "backup/restore generation binding authority",
@@ -180,6 +185,11 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "backup/restore preflight generation eligibility consistency authority",
     ),
     (
+        "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+        "memory_os_inventory_source_backup_generation_evidence",
+        "backup/restore generation recovery evidence admission authority",
+    ),
+    (
         "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py",
         "memory_os_inventory_source_backup_generation_evidence_writer_authority",
         "backup/restore generation evidence executable authority",
@@ -188,6 +198,11 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
         "memory_os_inventory_source_backup_non_resurrection_contract",
         "backup/restore typed non-resurrection authority",
+    ),
+    (
+        "scripts/validate-memory-os-backup-restore-promotion-review.py",
+        "memory_os_inventory_source_backup_promotion_review",
+        "backup/restore human promotion review authority",
     ),
 )
 
