@@ -314,6 +314,42 @@ def expect_recovery_evidence_mutation_rejected(writer: ModuleType, contract: dic
         evidence_path.write_bytes(original)
 
 
+def expect_restore_capability_symlink_rejected(writer: ModuleType, contract: dict[str, Any]) -> None:
+    registry = load_json(REGISTRY)
+    records = registry.get("records")
+    record = next(
+        (copy.deepcopy(item) for item in records if isinstance(item, dict) and item.get("environmentClass") == "LOCAL_POSTGRES_REHEARSAL"),
+        None,
+    )
+    require(isinstance(record, dict), "migration ledger needs one local record for restore capability symlink negative")
+    authorities = contract.get("restoreCapabilityAuthorities")
+    require(isinstance(authorities, dict), "restore capability authorities missing")
+    authority = authorities.get("LOCAL_POSTGRES_REHEARSAL")
+    require(isinstance(authority, dict), "local restore capability authority missing")
+    evidence_ref = authority.get("evidenceRef")
+    require(isinstance(evidence_ref, str) and evidence_ref, "local restore capability evidenceRef missing")
+    evidence_path = ROOT / evidence_ref
+    original = evidence_path.read_bytes()
+    required = contract.get("requiredRecordFields")
+    require(isinstance(required, list), "requiredRecordFields missing")
+    with tempfile.TemporaryDirectory(prefix="memory-os-migration-restore-capability-negative-") as tmp:
+        external = Path(tmp) / evidence_path.name
+        external.write_bytes(original)
+        evidence_path.unlink()
+        evidence_path.symlink_to(external)
+        try:
+            try:
+                writer.validate_record(record, set(required), contract)
+            except Exception as exc:
+                require("symlink" in str(exc).lower() or "repository" in str(exc).lower(),
+                        f"restore capability symlink was rejected for unrelated reason: {exc}")
+                return
+            raise Fail("writer accepted symlinked restore capability evidence")
+        finally:
+            evidence_path.unlink(missing_ok=True)
+            evidence_path.write_bytes(original)
+
+
 def main() -> int:
     writer = load_writer()
     expect_cli_authority_substitution_rejected(writer)
@@ -357,7 +393,8 @@ def main() -> int:
     expect_local_artifact_lineage_rejected()
     expect_local_artifact_reconcile_rejected_on_corrupt_registry()
     expect_recovery_evidence_mutation_rejected(writer, contract)
-    print("PASS: migration rehearsal CLI authority, ledger/contract corruption, transactional append rollback, reconcile partial writes, local reconcile corruption rejection, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected")
+    expect_restore_capability_symlink_rejected(writer, contract)
+    print("PASS: migration rehearsal CLI authority, ledger/contract corruption, transactional append rollback, reconcile partial writes, local reconcile corruption rejection, append-lock drift, registry/local-artifact source-lineage drift, recovery-evidence mutation and restore-capability symlink escape are rejected")
     return 0
 
 
