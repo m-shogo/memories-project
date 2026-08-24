@@ -1,6 +1,11 @@
 name: Backup Restore Non-Resurrection Path Negative
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-non-resurrection-path-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
   push:
     branches:
       - so
@@ -14,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: backup-restore-non-resurrection-path-negative-so
+  group: backup-restore-non-resurrection-path-negative-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -24,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -32,8 +37,9 @@ jobs:
       - name: Capture exact typed path-negative source
         run: |
           set -euo pipefail
-          test -n "${{ github.sha }}"
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Validate typed admission path negatives
@@ -43,7 +49,9 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
+          test -z "$(git status --porcelain)"
       - name: Refuse stale path-negative success
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -52,3 +60,4 @@ jobs:
             .github/workflows/backup-restore-non-resurrection-path-negative.yml \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
+          test -z "$(git status --porcelain)"
