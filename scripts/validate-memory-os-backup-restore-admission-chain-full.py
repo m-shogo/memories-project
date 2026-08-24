@@ -145,14 +145,17 @@ def run_step(relative: str, label: str) -> None:
     print(f"PASS chain step: {label}")
 
 
-def main() -> int:
+def main(canonical_run_step=run_step) -> int:
     enforce_runtime_authority()
+    if run_step is not canonical_run_step:
+        raise Fail("admission-chain full runner execution function drift")
     for relative, label in STEPS:
         run_step(relative, label)
     print("Memory OS end-to-end backup/restore admission-chain validation PASS")
     print(f"canonical validation steps: {len(STEPS)}")
     print("self path substitution accepted: false")
     print("validation sequence substitution accepted: false")
+    print("execution function substitution accepted: false")
     print("automatic generation/objective/request/evidence creation: false")
     print("production evidence created: false")
     print("production traffic changed: false")
