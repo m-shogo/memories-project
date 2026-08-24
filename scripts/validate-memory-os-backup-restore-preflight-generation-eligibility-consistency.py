@@ -10,13 +10,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
-ELIGIBILITY = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
-OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
-OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
-DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
+PREFLIGHT_REL = Path("contracts/operations/backup-restore-drill-preflight-contract.v1.json")
+ELIGIBILITY_REL = Path("contracts/operations/production-equivalent-environment-eligibility-contract.v1.json")
+OBJECTIVES_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+DRILL_REQUESTS_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+OBJECTIVES_WRITER_REL = Path("scripts/register-memory-os-recovery-objectives.py")
+DRILL_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py")
+PREFLIGHT = ROOT / PREFLIGHT_REL
+ELIGIBILITY = ROOT / ELIGIBILITY_REL
+OBJECTIVES = ROOT / OBJECTIVES_REL
+DRILL_REQUESTS = ROOT / DRILL_REQUESTS_REL
+HELPER = ROOT / HELPER_REL
+OBJECTIVES_WRITER = ROOT / OBJECTIVES_WRITER_REL
+DRILL_WRITER = ROOT / DRILL_WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
 
 
 class Fail(RuntimeError):
@@ -28,20 +37,31 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def canonical_repo_file(path: Path, field: str) -> Path:
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
     try:
-        relative = path.resolve(strict=True).relative_to(ROOT.resolve())
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
-    require(relative.parts and ".." not in relative.parts and path.is_file(), f"{field} must be canonical repository file")
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
     return path
 
 
-def canonical_executable(path: Path, expected_relative: str, field: str) -> Path:
-    canonical_repo_file(path, field)
-    expected = (ROOT / expected_relative).resolve(strict=True)
-    require(path.resolve(strict=True) == expected, f"{field} executable authority drift")
-    return path
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (PREFLIGHT, PREFLIGHT_REL, "restore preflight contract"),
+        (ELIGIBILITY, ELIGIBILITY_REL, "environment eligibility contract"),
+        (OBJECTIVES, OBJECTIVES_REL, "recovery objectives registry"),
+        (DRILL_REQUESTS, DRILL_REQUESTS_REL, "restore drill request registry"),
+        (HELPER, HELPER_REL, "generation eligibility helper"),
+        (OBJECTIVES_WRITER, OBJECTIVES_WRITER_REL, "recovery objectives writer"),
+        (DRILL_WRITER, DRILL_WRITER_REL, "restore drill request writer"),
+        (VALIDATOR, VALIDATOR_REL, "preflight generation eligibility consistency validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def display_path(path: Path) -> str:
@@ -60,8 +80,8 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_module(path: Path, name: str, field: str, expected_relative: str):
-    canonical_executable(path, expected_relative, field)
+def load_module(path: Path, expected_relative: Path, name: str, field: str):
+    require_exact_repo_file(path, expected_relative, field)
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {field}")
     module = importlib.util.module_from_spec(spec)
@@ -70,31 +90,30 @@ def load_module(path: Path, name: str, field: str, expected_relative: str):
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     preflight_contract = load(PREFLIGHT)
     eligibility_contract = load(ELIGIBILITY)
     objectives = load(OBJECTIVES)
     drill_registry = load(DRILL_REQUESTS)
     helper = load_module(
         HELPER,
+        HELPER_REL,
         "memory_os_generation_eligibility_for_preflight_consistency",
         "generation eligibility helper",
-        "scripts/memory_os_environment_generation_eligibility.py",
     )
     objectives_writer = load_module(
         OBJECTIVES_WRITER,
+        OBJECTIVES_WRITER_REL,
         "memory_os_recovery_objectives_for_preflight_consistency",
         "recovery objectives writer",
-        "scripts/register-memory-os-recovery-objectives.py",
     )
     drill_writer = load_module(
         DRILL_WRITER,
+        DRILL_WRITER_REL,
         "memory_os_restore_drill_request_for_preflight_consistency",
         "restore drill request writer",
-        "scripts/request-memory-os-backup-restore-drill.py",
     )
 
-    # Revalidate the two append-only planning authorities through their canonical
-    # writers instead of maintaining weaker parallel aggregate checks here.
     try:
         objective_rows = objectives_writer.validate_registry_for_append(objectives)
     except objectives_writer.Fail as exc:
@@ -165,11 +184,9 @@ def main() -> int:
     print(f"strict distinct eligible environments: {strict_distinct_env_count}")
     print(f"strict/preflight directed restore pairs: {strict_pair_count}/{preflight_pair_count}")
     print(f"strict submission eligible: {str(strict_submission_eligible).lower()}")
-    print("generation eligibility executable authority pinned: true")
+    print("canonical data/executable authorities enforced: true")
     print("recovery objective append-only authority delegated: true")
-    print("recovery objective executable authority pinned: true")
     print("drill request append-only authority delegated: true")
-    print("drill request executable authority pinned: true")
     print("boolean authority counters accepted: false")
     print("noneligible generation can make preflight READY: false")
     print("production evidence: false")
