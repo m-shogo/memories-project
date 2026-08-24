@@ -7,6 +7,7 @@ on:
       - "contracts/operations/production-equivalent-environment-review-independence-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
@@ -16,6 +17,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -24,6 +26,7 @@ on:
       - "contracts/operations/production-equivalent-environment-review-independence-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
@@ -33,6 +36,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -74,13 +78,17 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-review-independence.py \
             scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py \
             scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py \
-            scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py
+            scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py
           python scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py
           python scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py
           python scripts/validate-memory-os-production-equivalent-environment-review-independence.py
+          python scripts/validate-memory-os-operability.py
           git diff --check
-          git diff --exit-code -- contracts/operations/production-equivalent-environment-review-independence-contract.v1.json
+          git diff --exit-code -- \
+            contracts/operations/production-equivalent-environment-review-independence-contract.v1.json \
+            contracts/operations/production-operability-status.json
 
   validate-and-publish:
     if: github.event_name != 'pull_request'
@@ -119,11 +127,13 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py \
             scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py \
             scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-review-independence.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
@@ -143,6 +153,7 @@ jobs:
             python scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py >> "$log" 2>&1
             python scripts/validate-memory-os-production-equivalent-environment-review-independence.py >> "$log" 2>&1
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1
           }
 
           for reconcile_attempt in 1 2; do
