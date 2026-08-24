@@ -354,14 +354,14 @@ def main() -> int:
     require_canonical_load_authority()
     for script_name, module_name, label in (
         (
-            "validate-memory-os-recovery-objectives.py",
-            "memory_os_recovery_objectives_inventory_generator_authority",
-            "backup/restore recovery objective admission authority",
-        ),
-        (
             "validate-memory-os-backup-restore-generation-binding.py",
             "memory_os_backup_generation_binding_inventory_generator_authority",
             "backup/restore generation binding authority",
+        ),
+        (
+            "validate-memory-os-recovery-objectives.py",
+            "memory_os_recovery_objectives_inventory_generator_authority",
+            "backup/restore recovery objective admission authority",
         ),
         (
             "validate-memory-os-backup-restore-drill-request.py",
