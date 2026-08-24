@@ -744,7 +744,7 @@ def main() -> int:
         "sustainedSoakLeakProof": soak_leak_proof,
         "backupRestorePreflightEligibleEnvironmentGenerationCount": preflight_eligible_generation_count,
         "backupRestoreUnsupersededEnvironmentGenerationCount": unsuperseded_generation_count,
-        "backupRestoreUnsupersedPreflightEligibleEnvironmentGenerationCount": unsuperseded_preflight_eligible_generation_count,
+        "backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount": unsuperseded_preflight_eligible_generation_count,
         "backupRestoreDistinctUnsupersededPreflightEligibleEnvironmentCount": distinct_unsuperseded_preflight_eligible_environment_count,
         "backupRestoreEligibleDirectedPairCount": eligible_pair_count,
         "backupRestoreDrillPreflightEligible": preflight_eligible,
