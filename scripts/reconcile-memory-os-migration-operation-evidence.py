@@ -7,8 +7,10 @@ import argparse
 import copy
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -120,6 +122,21 @@ def load(path: Path) -> dict[str, Any]:
 
 def render(value: dict[str, Any]) -> bytes:
     return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
 
 
 def unique(values: list[Any]) -> list[Any]:
@@ -248,14 +265,14 @@ def commit_validated_triple(
         STATUS_PATH: STATUS_PATH.read_bytes(),
     }
     try:
-        CONTRACT_PATH.write_bytes(render(contract))
-        LIFECYCLE_PATH.write_bytes(render(lifecycle))
-        STATUS_PATH.write_bytes(render(status))
+        atomic_replace_bytes(CONTRACT_PATH, render(contract))
+        atomic_replace_bytes(LIFECYCLE_PATH, render(lifecycle))
+        atomic_replace_bytes(STATUS_PATH, render(status))
         for validator in POST_WRITE_VALIDATORS:
             run_validator(validator, phase="reconciled")
     except BaseException:
         for path, payload in originals.items():
-            path.write_bytes(payload)
+            atomic_replace_bytes(path, payload)
         raise
 
 
