@@ -148,7 +148,7 @@ def equivalent_env() -> dict[str, Any]:
         "productionEvidence": False,
         "productionEquivalentDependencies": True,
         "independentReviewCompleted": True,
-        "independentReviewRef": "SECURITY.md",
+        "independentReviewRef": ".gitignore",
         "productionReady": False,
     }
     return value
@@ -222,6 +222,14 @@ def main() -> int:
     material_without_review = copy.deepcopy(equivalent)
     material_without_review["materialDeltas"][0]["independentReviewRef"] = None
     expect_rejected("accepted material delta without independent review", lambda: env_validator.validate_environment_record(material_without_review))
+
+    implementation_review_reuse = copy.deepcopy(equivalent)
+    implementation_review_reuse["evidenceBoundary"]["independentReviewRef"] = implementation_review_reuse["postgresql"]["restoreEvidenceRef"]
+    expect_rejected("environment review reused as implementation restore evidence", lambda: env_validator.validate_environment_record(implementation_review_reuse))
+
+    material_review_reuse = copy.deepcopy(equivalent)
+    material_review_reuse["evidenceBoundary"]["independentReviewRef"] = material_review_reuse["materialDeltas"][0]["independentReviewRef"]
+    expect_rejected("environment review reused as material-delta review evidence", lambda: env_validator.validate_environment_record(material_review_reuse))
 
     real_env_root = env_validator.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-semantic-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-semantic-ref-external-") as external_tmp:
@@ -354,6 +362,7 @@ def main() -> int:
     print("canonical registry mutated: false")
     print("registration implies preflight eligibility: false")
     print("incomplete equivalent environment accepted: false")
+    print("environment independent review reuse accepted: false")
     print("semantic environment evidence refs escape repository: false")
     print("generation environment refs escape repository: false")
     print("semantic environment ref symlink loops accepted: false")
