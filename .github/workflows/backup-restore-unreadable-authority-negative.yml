@@ -22,6 +22,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py"
   push:
@@ -47,6 +48,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py"
   workflow_dispatch:
@@ -94,6 +96,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py
       - name: Prove unreadable authorities fail closed
@@ -106,6 +109,10 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py
           python scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py
       - name: Verify read-only negative suite
-        run: test -z "$(git status --porcelain)"
+        run: |
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
