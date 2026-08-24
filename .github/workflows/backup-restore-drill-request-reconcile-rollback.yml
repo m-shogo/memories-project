@@ -91,4 +91,6 @@ jobs:
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
+          git diff --check
+          git diff --exit-code
           test -z "$(git status --porcelain)"
