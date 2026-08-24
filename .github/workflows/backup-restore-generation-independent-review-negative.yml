@@ -63,4 +63,6 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review.py
+          git diff --check
+          git diff --exit-code
           test -z "$(git status --porcelain)"
