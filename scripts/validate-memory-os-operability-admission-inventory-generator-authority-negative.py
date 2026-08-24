@@ -63,6 +63,18 @@ def main() -> int:
         "pre-generation source authority must not validate the inventory-dependent end-to-end admission chain",
     )
 
+    source_root_before = source_authority.ROOT
+    source_authority.ROOT = ROOT / "contracts"
+    root_rejected = False
+    try:
+        source_authority.enforce_runtime_authority()
+    except source_authority.Fail:
+        root_rejected = True
+    finally:
+        source_authority.ROOT = source_root_before
+    require(root_rejected, "inventory source-authority validator accepted substituted repository root")
+    source_authority.enforce_runtime_authority()
+
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
     input_before = INPUT.read_bytes()
@@ -92,6 +104,7 @@ def main() -> int:
     print("Memory OS operability inventory generator authority negative PASS")
     print("full environment-generation admission authority validated before inventory generation: true")
     print("inventory-dependent end-to-end admission chain validated before inventory generation: false")
+    print("inventory source-authority repository root substitution accepted: false")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
