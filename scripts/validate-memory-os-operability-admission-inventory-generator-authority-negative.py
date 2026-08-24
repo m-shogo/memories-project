@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove direct inventory generation rejects symlinked canonical input authorities."""
+"""Prove direct inventory generation rejects substituted canonical authorities."""
 
 from __future__ import annotations
 
@@ -58,6 +58,19 @@ def expect_source_authority_rejected(module: Any, field: str, replacement: Any) 
     require(rejected, f"inventory source-authority validator accepted substituted {field}")
 
 
+def expect_source_execution_rejected(module: Any, field: str, replacement: Any) -> None:
+    original = getattr(module, field)
+    setattr(module, field, replacement)
+    rejected = False
+    try:
+        module.main()
+    except module.Fail:
+        rejected = True
+    finally:
+        setattr(module, field, original)
+    require(rejected, f"inventory source-authority validator accepted substituted execution helper {field}")
+
+
 def restore_input(input_before: bytes) -> None:
     INPUT.unlink(missing_ok=True)
     INPUT.write_bytes(input_before)
@@ -85,6 +98,13 @@ def main() -> int:
     expect_source_authority_rejected(source_authority, "SOURCES", tuple(reversed(source_authority.SOURCES)))
     expect_source_authority_rejected(source_authority, "COMMAND_SOURCES", tuple(reversed(source_authority.COMMAND_SOURCES)))
     source_authority.enforce_runtime_authority()
+
+    expect_source_execution_rejected(source_authority, "enforce_execution_authority", lambda: None)
+    expect_source_execution_rejected(source_authority, "load", lambda _relative: {})
+    expect_source_execution_rejected(source_authority, "load_validator", lambda *_args: (lambda *_inner: 0))
+    expect_source_execution_rejected(source_authority, "validate_inventory_request", lambda: None)
+    expect_source_execution_rejected(source_authority, "validate_command_source", lambda *_args: None)
+    expect_source_execution_rejected(source_authority, "validate_source", lambda *_args: None)
 
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
@@ -118,6 +138,7 @@ def main() -> int:
     print("inventory source-authority repository root substitution accepted: false")
     print("inventory source-authority self/request shape substitution accepted: false")
     print("inventory source registry/command sequence substitution accepted: false")
+    print("inventory source execution helper substitution accepted: false")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
