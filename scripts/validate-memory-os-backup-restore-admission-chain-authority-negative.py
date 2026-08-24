@@ -97,6 +97,18 @@ def validate_full_runner_authority() -> None:
     finally:
         runner.STEPS = steps_before
 
+    run_step_before = runner.run_step
+    runner.run_step = lambda _relative, _label: None
+    try:
+        rejected = False
+        try:
+            runner.main()
+        except runner.Fail:
+            rejected = True
+        require(rejected, "full admission-chain runner accepted substituted execution function")
+    finally:
+        runner.run_step = run_step_before
+
     runner.enforce_runtime_authority()
 
 
@@ -158,6 +170,7 @@ def main() -> int:
     print("full validation runner root substitution accepted: false")
     print("full validation runner self path substitution accepted: false")
     print("full validation sequence substitution accepted: false")
+    print("full validation execution function substitution accepted: false")
     print("rejected probe mutated admission-chain authorities: false")
     print("production evidence: false")
     print("production decision: NO_GO")
