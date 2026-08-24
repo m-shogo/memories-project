@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove generation-status reconcile keeps canonical authority and rollback boundaries."""
+"""Prove generation-binding/status reconcile keeps canonical authority and rollback boundaries."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BINDING_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-status.py"
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-binding.yml"
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
@@ -25,12 +26,20 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_reconciler():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_status_authority_negative", RECONCILER)
-    require(spec is not None and spec.loader is not None, "cannot load generation status reconciler")
+def load_target(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_reconciler():
+    return load_target(RECONCILER, "memory_os_generation_status_authority_negative")
+
+
+def load_binding_validator():
+    return load_target(BINDING_VALIDATOR, "memory_os_generation_binding_authority_negative")
 
 
 def expect_direct_authority_rejected(reconciler, name: str, field: str, attribute: str, replacement: Path) -> None:
@@ -49,6 +58,45 @@ def expect_direct_authority_rejected(reconciler, name: str, field: str, attribut
         require(STATUS.read_bytes() == status_before, f"canonical status mutated while rejecting {name}")
     finally:
         setattr(reconciler, attribute, original)
+
+
+def expect_binding_authority_rejected(binding, name: str, field: str, attribute: str, replacement: Path) -> None:
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
+    original = getattr(binding, attribute)
+    setattr(binding, attribute, replacement)
+    try:
+        try:
+            binding.main()
+        except binding.Fail as exc:
+            require(f"{field} authority drift" in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        else:
+            raise Fail(f"direct generation binding validator unexpectedly accepted: {name}")
+        require(CONTRACT.read_bytes() == contract_before, f"canonical contract mutated while rejecting {name}")
+        require(STATUS.read_bytes() == status_before, f"canonical status mutated while rejecting {name}")
+    finally:
+        setattr(binding, attribute, original)
+
+
+def prove_binding_validator_authorities() -> None:
+    binding = load_binding_validator()
+    cases = (
+        ("generation binding contract substitution", "generation binding contract", "CONTRACT", binding.BACKUP_POLICY),
+        ("backup restore policy substitution", "backup restore policy contract", "BACKUP_POLICY", binding.LOCAL_FOUNDATIONS),
+        ("local restore foundation substitution", "local restore foundation evidence", "LOCAL_FOUNDATIONS", binding.GENERATION),
+        ("environment generation contract substitution", "environment generation contract", "GENERATION", binding.EVIDENCE_CONTRACT),
+        ("environment generation registry substitution", "environment generation registry", "GEN_REGISTRY", binding.EVIDENCE_REGISTRY),
+        ("generation evidence contract substitution", "generation evidence contract", "EVIDENCE_CONTRACT", binding.GENERATION),
+        ("generation evidence registry substitution", "generation evidence registry", "EVIDENCE_REGISTRY", binding.GEN_REGISTRY),
+        ("generation evidence writer substitution", "generation evidence writer", "EVIDENCE_WRITER", BINDING_VALIDATOR),
+    )
+    for name, field, attribute, replacement in cases:
+        expect_binding_authority_rejected(binding, name, field, attribute, replacement)
+    try:
+        binding.enforce_runtime_authorities()
+    except binding.Fail as exc:
+        raise Fail(f"canonical generation binding authorities rejected: {exc}") from exc
+    print(f"PASS boundary: generation binding direct data/writer substitutions rejected: {len(cases)}")
 
 
 def validate_atomic_diagnostic_publication() -> None:
@@ -71,9 +119,11 @@ def validate_atomic_diagnostic_publication() -> None:
 
 
 def main() -> int:
+    require(BINDING_VALIDATOR.is_file(), "generation binding validator missing")
     require(RECONCILER.is_file(), "generation status reconciler missing")
     require(CONTRACT.is_file() and STATUS.is_file(), "canonical generation status authority missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_binding_validator_authorities()
     reconciler = load_reconciler()
     validate_atomic_diagnostic_publication()
 
@@ -147,6 +197,7 @@ def main() -> int:
         reconciler.write_text = original_write
 
     print("PASS rollback: generation status restored byte-for-byte after aggregate operability rejection")
+    print("generation binding canonical data/writer substitutions accepted: false")
     print("generation binding validator remains pre-write: true")
     print("backup and operability validators remain post-write: true")
     print("byte-current status still exercises atomic write boundary: true")
