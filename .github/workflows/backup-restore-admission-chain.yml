@@ -81,6 +81,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-backup-restore-admission-chain-full.py
           python scripts/validate-memory-os-backup-restore-admission-chain-full.py
           git diff --check
+          test -z "$(git status --porcelain --untracked-files=all)"
           git diff --exit-code
 
   validate-and-publish:
