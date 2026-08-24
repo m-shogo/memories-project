@@ -38,6 +38,8 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-generation-evidence-negative.py", "generation evidence semantic negative"),
     ("scripts/validate-memory-os-backup-restore-semantic-generation-negative.py", "generation evidence semantic-generation negative"),
     ("scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py", "generation evidence reconcile negative"),
+    ("scripts/validate-memory-os-backup-restore-generation-material-delta-review.py", "generation material-delta review authority"),
+    ("scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py", "generation material-delta review negative"),
     ("scripts/validate-memory-os-backup-restore-generation-independent-review.py", "generation independent-review authority"),
     ("scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py", "generation independent-review negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py", "typed non-resurrection contract-path negative"),
