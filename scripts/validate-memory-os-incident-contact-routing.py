@@ -51,18 +51,37 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     return path
 
 
+def require_canonical_lock_path(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        parent = path.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} parent missing or escapes repository") from exc
+    require(lexical == expected_relative, f"{field} authority drift")
+    require(parent == expected_relative.parent, f"{field} parent authority drift")
+    require(not path.is_symlink(), f"{field} must not be symlink")
+    if path.exists():
+        require(path.is_file(), f"{field} must be a file when materialized")
+        try:
+            resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise Fail(f"{field} materialized path escapes repository") from exc
+        require(resolved == expected_relative, f"{field} materialized authority drift")
+    return path
+
+
 def enforce_runtime_authorities() -> None:
     for path, expected, field in (
         (CONTRACT, CONTRACT_REL, "contact routing contract"),
         (REGISTRY, REGISTRY_REL, "contact routing registry"),
         (WRITER, WRITER_REL, "contact routing writer"),
-        (LOCK, LOCK_REL, "contact routing append lock"),
         (OBS_REGISTRY, OBS_REGISTRY_REL, "observability stack registry"),
         (OBS_WRITER, OBS_WRITER_REL, "observability stack writer"),
         (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
         (GEN_WRITER, GEN_WRITER_REL, "environment generation writer"),
     ):
         require_exact_repo_file(path, expected, field)
+    require_canonical_lock_path(LOCK, LOCK_REL, "contact routing append lock")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -171,6 +190,7 @@ def main() -> int:
     require(readiness.get("productionReady") is False, "readiness cannot promote production")
     print("Memory OS incident contact routing validation PASS")
     print("contact routing validator canonical runtime authorities enforced: true")
+    print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"admitted routings: {len(routings)}")
     print(f"production-equivalent routings: {pe}")
     print(f"production routings: {prod}")
