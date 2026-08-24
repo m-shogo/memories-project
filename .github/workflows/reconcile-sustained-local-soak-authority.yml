@@ -143,12 +143,8 @@ jobs:
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
           git diff --check
-          git diff --exit-code -- \
-            docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json \
-            docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json \
-            contracts/operations/sustained-local-soak-contract.v1.json \
-            contracts/operations/load-test-scenario-contract.v1.json \
-            contracts/operations/production-operability-status.json
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   reconcile:
     if: >-
