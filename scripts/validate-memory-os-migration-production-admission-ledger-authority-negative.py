@@ -50,8 +50,34 @@ def expect_symlink_escape_rejected(label: str, target_kind: str) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-migration-admission-ledger-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-migration-admission-ledger-external-") as external_tmp:
         root = Path(root_tmp)
         scripts = root / "scripts"
+        contracts = root / "contracts/operations"
         scripts.mkdir(parents=True, exist_ok=True)
-        if target_kind == "writer":
+        contracts.mkdir(parents=True, exist_ok=True)
+        if target_kind == "ledger":
+            relative = helper.LEDGER_REL
+            external = Path(external_tmp) / relative.name
+            external.write_text('{"records": []}\n', encoding="utf-8")
+            linked = root / relative
+            linked.symlink_to(external)
+            helper.ROOT = root
+            helper.LEDGER = linked
+            try:
+                helper.validate_canonical_ledger()
+            except helper.LedgerBindingFailure:
+                return
+        elif target_kind == "contract":
+            relative = helper.LEDGER_CONTRACT_REL
+            external = Path(external_tmp) / relative.name
+            external.write_text('{}\n', encoding="utf-8")
+            linked = root / relative
+            linked.symlink_to(external)
+            helper.ROOT = root
+            helper.LEDGER_CONTRACT = linked
+            try:
+                helper.validate_canonical_ledger()
+            except helper.LedgerBindingFailure:
+                return
+        elif target_kind == "writer":
             relative = helper.LEDGER_WRITER_REL
             external = Path(external_tmp) / relative.name
             external.write_text("REGISTRY = CONTRACT = LOCK = None\n", encoding="utf-8")
@@ -86,11 +112,15 @@ def main() -> int:
     expect_writer_rejected("writer executable", lambda helper: setattr(helper, "LEDGER_WRITER", ALTERNATE_WRITER))
     expect_ledger_rejected("validator executable", lambda helper: setattr(helper, "LEDGER_VALIDATOR", ALTERNATE_VALIDATOR))
     expect_writer_rejected("append lock", lambda helper: setattr(helper, "LEDGER_LOCK", ALTERNATE_LOCK))
+    expect_symlink_escape_rejected("ledger data", "ledger")
+    expect_symlink_escape_rejected("ledger contract", "contract")
     expect_symlink_escape_rejected("writer executable", "writer")
     expect_symlink_escape_rejected("validator executable", "validator")
     print("PASS: migration production admission ledger data, writer, validator and append-lock substitutions are rejected")
     print("ledger data substitution accepted: false")
     print("ledger contract substitution accepted: false")
+    print("ledger data symlink escape accepted: false")
+    print("ledger contract symlink escape accepted: false")
     print("writer symlink escape accepted: false")
     print("validator symlink escape accepted: false")
     print("production evidence generated: false")
