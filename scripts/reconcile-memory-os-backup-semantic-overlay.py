@@ -35,6 +35,18 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def validate_runtime_authority() -> None:
+    canonical = ROOT / "contracts/operations/production-operability-status.json"
+    require(STATUS_PATH == canonical, "canonical production status identity drift")
+    require(STATUS_PATH.is_file(), "canonical production status missing")
+    require(not STATUS_PATH.is_symlink(), "canonical production status must not be a symlink")
+    try:
+        require(STATUS_PATH.resolve(strict=True) == canonical,
+                "canonical production status path drift")
+    except OSError as exc:
+        raise ReconcileFailure("cannot resolve canonical production status") from exc
+
+
 def validate(status: dict[str, Any]) -> None:
     require(status.get("productionDecision") == "NO_GO",
             "backup semantic authority requires productionDecision NO_GO")
@@ -55,6 +67,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     parser.parse_args()
 
+    validate_runtime_authority()
     status = load(STATUS_PATH)
     validate(status)
     print("Memory OS backup semantic authority PASS; canonical blockers unchanged")
