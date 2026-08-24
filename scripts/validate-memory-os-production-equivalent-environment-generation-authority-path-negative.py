@@ -52,6 +52,7 @@ def prove_validator_runtime_authorities(validator) -> None:
         ("NEGATIVE", validator.SOURCE_BINDING_NEGATIVE),
         ("SOURCE_BINDING_NEGATIVE", validator.LINEAGE_NEGATIVE),
         ("LINEAGE_NEGATIVE", validator.NEGATIVE),
+        ("EXPECTED_LOCK", validator.ROOT / "contracts/operations/.recovery-objectives.lock"),
     )
     for attribute, replacement in cases:
         original = getattr(validator, attribute)
@@ -187,7 +188,7 @@ def main() -> int:
     print("absolute authority refs accepted: false")
     print("parent-traversal authority refs accepted: false")
     print("repo-local symlink to external authority accepted: false")
-    print("validator exact data/schema/executable substitutions accepted: false")
+    print("validator exact data/schema/executable/lock substitutions accepted: false")
     print("writer invalid UTF-8/I/O accepted: false")
     print("writer executable semantic validator escape accepted: false")
     print("writer CLI data/executable/lock substitution accepted: false")
