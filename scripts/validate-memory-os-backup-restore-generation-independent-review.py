@@ -193,7 +193,60 @@ def load_material_delta_validator():
     return module
 
 
-def candidate_reviews_approved(row: dict[str, Any]) -> bool:
+CANONICAL_REQUIRE = require
+CANONICAL_EXECUTION_HELPERS = (
+    enforce_runtime_authorities,
+    require_exact_repo_file,
+    load_json,
+    validate_contract_authority,
+    canonical_ref,
+    git_history,
+    require_append_only_review,
+    require_utc_rfc3339,
+    validate_review,
+    load_material_delta_validator,
+)
+
+
+def enforce_execution_authority(
+    canonical_require=CANONICAL_REQUIRE,
+    canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+) -> None:
+    expected_root = Path(enforce_execution_authority.__code__.co_filename).resolve().parents[1]
+    try:
+        actual_root = ROOT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("generation independent-review repository root missing") from exc
+    if actual_root != expected_root:
+        raise Fail("generation independent-review repository root drift")
+    if require is not canonical_require:
+        raise Fail("generation independent-review require helper drift")
+    current_helpers = (
+        enforce_runtime_authorities,
+        require_exact_repo_file,
+        load_json,
+        validate_contract_authority,
+        canonical_ref,
+        git_history,
+        require_append_only_review,
+        require_utc_rfc3339,
+        validate_review,
+        load_material_delta_validator,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("generation independent-review execution helper drift")
+
+
+CANONICAL_EXECUTION_GUARD = enforce_execution_authority
+
+
+def candidate_reviews_approved(
+    row: dict[str, Any],
+    canonical_execution_guard=CANONICAL_EXECUTION_GUARD,
+) -> bool:
+    if enforce_execution_authority is not canonical_execution_guard:
+        raise Fail("generation independent-review execution guard drift")
+    enforce_execution_authority()
     enforce_runtime_authorities()
     validate_contract_authority()
     try:
@@ -210,7 +263,13 @@ def candidate_reviews_approved(row: dict[str, Any]) -> bool:
     return True
 
 
-def main() -> int:
+CANONICAL_CANDIDATE_REVIEW = candidate_reviews_approved
+
+
+def main(canonical_candidate_review=CANONICAL_CANDIDATE_REVIEW) -> int:
+    if candidate_reviews_approved is not canonical_candidate_review:
+        raise Fail("generation independent-review candidate authority drift")
+    enforce_execution_authority()
     enforce_runtime_authorities()
     validate_contract_authority()
     registry = load_json(REGISTRY, "generation evidence registry")
@@ -226,6 +285,7 @@ def main() -> int:
             raise Fail(f"records[{index}] independent review authority invalid: {exc}") from exc
     print(f"PASS: generation candidate review authority records={len(rows)} productionEvidence=false productionReady=false")
     print("canonical generation evidence contract/registry authority substitution accepted: false")
+    print("generation independent-review execution helper substitution accepted: false")
     print("human production promotion remains separate: true")
     return 0
 
