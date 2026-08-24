@@ -131,6 +131,27 @@ def run_negative() -> None:
     require(completed.returncode == 0, f"drill request negative suite failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
 
 
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
+
+
+def enforce_execution_transport(
+    canonical_subprocess_run=CANONICAL_SUBPROCESS_RUN,
+    canonical_spec_from_file_location=CANONICAL_SPEC_FROM_FILE_LOCATION,
+    canonical_module_from_spec=CANONICAL_MODULE_FROM_SPEC,
+) -> None:
+    if subprocess.run is not canonical_subprocess_run:
+        raise Fail("drill request subprocess execution transport drift")
+    if importlib.util.spec_from_file_location is not canonical_spec_from_file_location:
+        raise Fail("drill request import spec transport drift")
+    if importlib.util.module_from_spec is not canonical_module_from_spec:
+        raise Fail("drill request module loader transport drift")
+
+
+CANONICAL_EXECUTION_GUARD = enforce_execution_transport
+
+
 def expected_decision(
     generation_count: int,
     eligible_pair_count: int,
@@ -149,7 +170,10 @@ def expected_decision(
     return "AWAITING_REVIEWED_DRILL_REQUEST"
 
 
-def main() -> int:
+def main(canonical_execution_guard=CANONICAL_EXECUTION_GUARD) -> int:
+    if enforce_execution_transport is not canonical_execution_guard:
+        raise Fail("drill request execution guard drift")
+    enforce_execution_transport()
     enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
@@ -332,6 +356,7 @@ def main() -> int:
     run_negative()
     print("Memory OS production-equivalent backup/restore drill request validation PASS")
     print("drill request validator canonical runtime authorities enforced: true")
+    print("drill request execution transport substitution accepted: false")
     print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"registered environment generations: {generation_count}")
     print(f"semantic preflight-eligible generations: {eligible_count}")
