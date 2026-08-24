@@ -224,21 +224,40 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def enforce_runtime_authority() -> None:
+def enforce_runtime_authority(
+    canonical_self_rel: Path = SELF_REL,
+    canonical_request: str = REQUEST,
+    canonical_request_fields: frozenset[str] = frozenset(REQUEST_FIELDS),
+    canonical_request_constraints: frozenset[str] = frozenset(REQUEST_CONSTRAINTS),
+    canonical_sources: tuple[tuple[str, str, str, str, str], ...] = SOURCES,
+    canonical_command_sources: tuple[tuple[str, str, str], ...] = COMMAND_SOURCES,
+) -> None:
     expected_root = Path(enforce_runtime_authority.__code__.co_filename).resolve().parents[1]
     try:
         actual_root = ROOT.resolve(strict=True)
     except (FileNotFoundError, OSError, RuntimeError) as exc:
         raise Fail("inventory source-authority repository root missing") from exc
     require(actual_root == expected_root, "inventory source-authority repository root drift")
-    self_path = expected_root / SELF_REL
+    require(SELF_REL == canonical_self_rel, "inventory source-authority self path drift")
+    require(REQUEST == canonical_request, "inventory source-authority request path drift")
+    require(frozenset(REQUEST_FIELDS) == canonical_request_fields, "inventory source-authority request field shape drift")
+    require(
+        frozenset(REQUEST_CONSTRAINTS) == canonical_request_constraints,
+        "inventory source-authority request constraint shape drift",
+    )
+    require(SOURCES == canonical_sources, "inventory source registry authority sequence drift")
+    require(COMMAND_SOURCES == canonical_command_sources, "inventory source command authority sequence drift")
+    self_path = expected_root / canonical_self_rel
     try:
         lexical = self_path.relative_to(expected_root)
         resolved = self_path.resolve(strict=True).relative_to(expected_root)
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail("inventory source-authority validator missing or escapes repository") from exc
     require(
-        lexical == SELF_REL and resolved == SELF_REL and self_path.is_file() and not self_path.is_symlink(),
+        lexical == canonical_self_rel
+        and resolved == canonical_self_rel
+        and self_path.is_file()
+        and not self_path.is_symlink(),
         "inventory source-authority validator identity drift",
     )
 
@@ -376,6 +395,7 @@ def main() -> int:
         validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
     print("inventory source-authority repository root substitution accepted: false")
+    print("inventory source registry/command sequence substitution accepted: false")
     print("operability inventory generation request authority: PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
     print(f"validated backup/restore derived authorities: {len(COMMAND_SOURCES)}")
