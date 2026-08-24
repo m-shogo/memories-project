@@ -79,4 +79,6 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-generation-binding.py
           python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code
           test -z "$(git status --porcelain)"
