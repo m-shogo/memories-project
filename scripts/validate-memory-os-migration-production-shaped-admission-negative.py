@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import inspect
 import json
 import subprocess
 import sys
@@ -51,6 +52,8 @@ def load_writer() -> ModuleType:
     spec.loader.exec_module(module)
     require(callable(getattr(module, "append_registry_transactionally", None)),
             "migration admission transactional append authority missing")
+    require(callable(getattr(module, "require_actual_cli_authorities", None)),
+            "migration admission CLI authority guard missing")
     return module
 
 
@@ -58,6 +61,44 @@ def load_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def expect_actual_cli_authority_substitution_rejected(writer: ModuleType) -> None:
+    main_source = inspect.getsource(writer.main)
+    guard_index = main_source.find("require_actual_cli_authorities()")
+    parser_index = main_source.find("argparse.ArgumentParser()")
+    require(guard_index >= 0 and parser_index >= 0 and guard_index < parser_index,
+            "migration admission CLI authority guard must run before argument parsing")
+    canonical_bytes = {path: path.read_bytes() for path in (CONTRACT, REGISTRY, STATUS)}
+    substitutions = (
+        ("CONTRACT", STATUS),
+        ("REGISTRY", STATUS),
+        ("RELEASES", STATUS),
+        ("RELEASE_CONTRACT", STATUS),
+        ("RELEASE_WRITER", STATUS),
+        ("RELEASE_PAIRS", STATUS),
+        ("RELEASE_PAIR_WRITER", STATUS),
+        ("GENERATIONS", STATUS),
+        ("GENERATION_WRITER", STATUS),
+        ("REVIEW_ROOT", ROOT / "docs/evidence"),
+        ("LOCK", ROOT / "contracts/operations/.migration-production-shaped-admission-negative.lock"),
+    )
+    for name, substitute in substitutions:
+        original = getattr(writer, name)
+        setattr(writer, name, substitute)
+        try:
+            try:
+                writer.require_actual_cli_authorities()
+            except Exception as exc:
+                require("substitution rejected" in str(exc),
+                        f"migration admission CLI {name} substitution was rejected for an unrelated reason")
+            else:
+                raise Fail(f"migration admission CLI accepted {name} authority substitution")
+        finally:
+            setattr(writer, name, original)
+    for path, original in canonical_bytes.items():
+        require(path.read_bytes() == original,
+                f"migration admission CLI authority substitution mutated {path.relative_to(ROOT)}")
 
 
 def expect_rejected(writer: ModuleType, name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
@@ -341,6 +382,7 @@ def expect_append_lock_contract_drift_rejected() -> None:
 
 def main() -> int:
     writer = load_writer()
+    expect_actual_cli_authority_substitution_rejected(writer)
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
         ("appendOnly false", lambda value: value.__setitem__("appendOnly", False)),
@@ -368,7 +410,7 @@ def main() -> int:
     expect_external_evidence_containment_rejected(writer)
     expect_mutated_review_history_rejected(writer)
     expect_append_lock_contract_drift_rejected()
-    print("PASS: migration production-shaped admission registry, digest authority, transactional append rollback, append-lock authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
+    print("PASS: migration production-shaped admission CLI authority, registry, digest authority, transactional append rollback, append-lock authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
     return 0
 
 
