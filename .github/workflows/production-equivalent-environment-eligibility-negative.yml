@@ -1,6 +1,11 @@
 name: Production Equivalent Environment Eligibility Negative
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/production-equivalent-environment-eligibility-negative.yml"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-environment-generation-eligibility-negative.py"
   push:
     branches:
       - so
@@ -13,6 +18,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: production-equivalent-environment-eligibility-negative-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -20,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -28,8 +37,9 @@ jobs:
       - name: Confirm exact clean authority source
         run: |
           set -euo pipefail
-          test -n "${{ github.sha }}"
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
       - name: Prove strict pair derivation
         run: |
@@ -38,4 +48,6 @@ jobs:
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/validate-memory-os-environment-generation-eligibility-negative.py
           python scripts/validate-memory-os-environment-generation-eligibility-negative.py
+          git diff --check
+          git diff --exit-code
           test -z "$(git status --porcelain)"
