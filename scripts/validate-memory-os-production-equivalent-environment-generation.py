@@ -73,6 +73,25 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     return path
 
 
+def require_canonical_lock_path(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        parent = path.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} parent missing or escapes repository") from exc
+    require(lexical == expected_relative, f"{field} authority drift")
+    require(parent == expected_relative.parent, f"{field} parent authority drift")
+    require(not path.is_symlink(), f"{field} must not be symlink")
+    if path.exists():
+        require(path.is_file(), f"{field} must be a file when materialized")
+        try:
+            resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise Fail(f"{field} materialized path escapes repository") from exc
+        require(resolved == expected_relative, f"{field} materialized authority drift")
+    return path
+
+
 def enforce_runtime_authorities() -> None:
     for path, expected, field in (
         (CONTRACT, CONTRACT_REL, "environment generation contract"),
@@ -86,6 +105,7 @@ def enforce_runtime_authorities() -> None:
         (LINEAGE_NEGATIVE, LINEAGE_NEGATIVE_REL, "environment generation source-lineage negative validator"),
     ):
         require_exact_repo_file(path, expected, field)
+    require_canonical_lock_path(EXPECTED_LOCK, EXPECTED_LOCK_REL, "environment generation append lock")
 
 
 def repo_file(ref: Any, field: str) -> Path:
@@ -155,6 +175,7 @@ def main() -> int:
         writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
     writer_lock = getattr(writer, "LOCK", None)
     require(writer_lock == EXPECTED_LOCK, "writer append lock authority drift")
+    require_canonical_lock_path(writer_lock, EXPECTED_LOCK_REL, "writer environment generation append lock")
     require(writer_lock.parent == REGISTRY.parent, "writer append lock must share registry authority directory")
     try:
         writer.validate_registry_for_append(registry)
@@ -291,6 +312,7 @@ def main() -> int:
 
     print("Memory OS production-equivalent environment generation validation PASS")
     print("environment generation validator canonical runtime authorities enforced: true")
+    print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"registered generations: {count}")
     print(f"preflight-eligible generations: {preflight_eligible_count}")
     print(f"current generation: {current_id or 'none'}")
