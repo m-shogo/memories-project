@@ -32,6 +32,8 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py", "preflight semantic eligibility negative"),
     ("scripts/validate-memory-os-backup-restore-drill-request-negative.py", "reviewed drill request semantic negative"),
     ("scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py", "reviewed drill request reconcile negative"),
+    ("scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py", "reviewed drill request writer authority"),
+    ("scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py", "reviewed drill request writer authority negative"),
     ("scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py", "reviewed request semantic-generation binding reconcile negative"),
     ("scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py", "reviewed request semantic-generation binding authority"),
     ("scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py", "generation evidence contract-path negative"),
