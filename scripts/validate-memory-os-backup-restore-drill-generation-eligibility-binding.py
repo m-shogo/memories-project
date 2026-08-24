@@ -11,13 +11,24 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json"
-DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
-DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
-DRILL_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
-ELIGIBILITY_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
-ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+CONTRACT_REL = Path("contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json")
+DRILL_CONTRACT_REL = Path("contracts/operations/backup-restore-drill-request-contract.v1.json")
+DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+DRILL_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+DRILL_NEGATIVE_REL = Path("scripts/validate-memory-os-backup-restore-drill-request-negative.py")
+ELIGIBILITY_CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-eligibility-contract.v1.json")
+ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py")
+WORKFLOW_REL = Path(".github/workflows/backup-restore-drill-generation-eligibility-binding.yml")
+CONTRACT = ROOT / CONTRACT_REL
+DRILL_CONTRACT = ROOT / DRILL_CONTRACT_REL
+DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
+DRILL_WRITER = ROOT / DRILL_WRITER_REL
+DRILL_NEGATIVE = ROOT / DRILL_NEGATIVE_REL
+ELIGIBILITY_CONTRACT = ROOT / ELIGIBILITY_CONTRACT_REL
+ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+WORKFLOW = ROOT / WORKFLOW_REL
 
 
 class Fail(RuntimeError):
@@ -29,16 +40,49 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "binding contract"),
+        (DRILL_CONTRACT, DRILL_CONTRACT_REL, "drill request contract"),
+        (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+        (DRILL_WRITER, DRILL_WRITER_REL, "drill request writer"),
+        (DRILL_NEGATIVE, DRILL_NEGATIVE_REL, "drill request negative validator"),
+        (ELIGIBILITY_CONTRACT, ELIGIBILITY_CONTRACT_REL, "generation eligibility contract"),
+        (ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "generation eligibility helper"),
+        (VALIDATOR, VALIDATOR_REL, "generation binding validator"),
+        (WORKFLOW, WORKFLOW_REL, "generation binding workflow"),
+    ):
+        require_exact_repo_file(path, expected, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        try:
+            relative = path.relative_to(ROOT)
+        except ValueError:
+            relative = path
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
 
 
-def load_module(path: Path, name: str):
+def load_module(path: Path, expected_relative: Path, name: str, field: str):
+    require_exact_repo_file(path, expected_relative, field)
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
@@ -47,28 +91,39 @@ def load_module(path: Path, name: str):
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     drill_contract = load(DRILL_CONTRACT)
     drill_registry = load(DRILL_REGISTRY)
     eligibility_contract = load(ELIGIBILITY_CONTRACT)
-    writer = load_module(DRILL_WRITER, "memory_os_drill_request_writer_for_generation_binding")
-    helper = load_module(ELIGIBILITY_HELPER, "memory_os_generation_eligibility_for_drill_binding")
+    writer = load_module(
+        DRILL_WRITER,
+        DRILL_WRITER_REL,
+        "memory_os_drill_request_writer_for_generation_binding",
+        "drill request writer",
+    )
+    helper = load_module(
+        ELIGIBILITY_HELPER,
+        ELIGIBILITY_HELPER_REL,
+        "memory_os_generation_eligibility_for_drill_binding",
+        "generation eligibility helper",
+    )
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-drill-generation-eligibility-binding-contract.v1", "binding contract schema drift")
     refs = {
-        "drillRequestContract": DRILL_CONTRACT,
-        "drillRequestRegistry": DRILL_REGISTRY,
-        "drillRequestWriter": DRILL_WRITER,
-        "drillRequestNegativeValidator": DRILL_NEGATIVE,
-        "generationEligibilityContract": ELIGIBILITY_CONTRACT,
-        "generationEligibilityHelper": ELIGIBILITY_HELPER,
-        "validator": Path("scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py"),
-        "workflow": Path(".github/workflows/backup-restore-drill-generation-eligibility-binding.yml"),
+        "drillRequestContract": DRILL_CONTRACT_REL,
+        "drillRequestRegistry": DRILL_REGISTRY_REL,
+        "drillRequestWriter": DRILL_WRITER_REL,
+        "drillRequestNegativeValidator": DRILL_NEGATIVE_REL,
+        "generationEligibilityContract": ELIGIBILITY_CONTRACT_REL,
+        "generationEligibilityHelper": ELIGIBILITY_HELPER_REL,
+        "validator": VALIDATOR_REL,
+        "workflow": WORKFLOW_REL,
     }
-    for field, path in refs.items():
-        expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
+    for field, relative in refs.items():
+        expected = str(relative)
         require(contract.get(field) == expected, f"binding ref drift: {field}")
-        require((ROOT / expected).is_file(), f"binding artifact missing: {expected}")
+        require_exact_repo_file(ROOT / relative, relative, f"binding artifact {field}")
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "binding rules must remain fail-closed")
 
@@ -135,6 +190,7 @@ def main() -> int:
         require(boundary.get(field) == value, f"binding boundary drift: {field}")
     require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False and boundary.get("productionDecision") == "NO_GO", "binding cannot promote production")
 
+    require_exact_repo_file(DRILL_NEGATIVE, DRILL_NEGATIVE_REL, "drill request negative validator")
     completed = subprocess.run([sys.executable, str(DRILL_NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"drill request negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
 
@@ -142,6 +198,7 @@ def main() -> int:
     print(f"eligible directed restore pairs: {pair_count}")
     print(f"reviewed/current drill requests: {request_count}/{current_count}")
     print(f"historical auditable requests: {historical_auditable}")
+    print("canonical data/executable authorities enforced: true")
     print("generation registration alone is sufficient: false")
     print("noneligible generation can create current request: false")
     print("production evidence: false")
