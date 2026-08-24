@@ -264,9 +264,15 @@ def candidate_reviews_approved(
 
 
 CANONICAL_CANDIDATE_REVIEW = candidate_reviews_approved
+CANONICAL_MAIN_EXECUTION_GUARD = enforce_execution_authority
 
 
-def main(canonical_candidate_review=CANONICAL_CANDIDATE_REVIEW) -> int:
+def main(
+    canonical_candidate_review=CANONICAL_CANDIDATE_REVIEW,
+    canonical_execution_guard=CANONICAL_MAIN_EXECUTION_GUARD,
+) -> int:
+    if enforce_execution_authority is not canonical_execution_guard:
+        raise Fail("generation independent-review main execution guard drift")
     if candidate_reviews_approved is not canonical_candidate_review:
         raise Fail("generation independent-review candidate authority drift")
     enforce_execution_authority()
