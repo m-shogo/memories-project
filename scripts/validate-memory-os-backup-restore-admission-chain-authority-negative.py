@@ -109,6 +109,30 @@ def validate_full_runner_authority() -> None:
     finally:
         runner.run_step = run_step_before
 
+    subprocess_run_before = runner.subprocess.run
+    runner.subprocess.run = lambda *_args, **_kwargs: None
+    try:
+        rejected = False
+        try:
+            runner.enforce_runtime_authority()
+        except runner.Fail:
+            rejected = True
+        require(rejected, "full admission-chain runner accepted substituted subprocess transport")
+    finally:
+        runner.subprocess.run = subprocess_run_before
+
+    python_executable_before = runner.sys.executable
+    runner.sys.executable = str(ALTERNATE_SCRIPT)
+    try:
+        rejected = False
+        try:
+            runner.enforce_runtime_authority()
+        except runner.Fail:
+            rejected = True
+        require(rejected, "full admission-chain runner accepted substituted Python executable")
+    finally:
+        runner.sys.executable = python_executable_before
+
     runner.enforce_runtime_authority()
 
 
@@ -171,6 +195,8 @@ def main() -> int:
     print("full validation runner self path substitution accepted: false")
     print("full validation sequence substitution accepted: false")
     print("full validation execution function substitution accepted: false")
+    print("full validation subprocess transport substitution accepted: false")
+    print("full validation Python executable substitution accepted: false")
     print("rejected probe mutated admission-chain authorities: false")
     print("production evidence: false")
     print("production decision: NO_GO")
