@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Prove migration operation reconcile rejects executable/path authority substitution."""
+"""Prove migration operation reconcile and writer reject executable/path authority substitution."""
 
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-migration-operation-evidence.py"
+WRITER_PATH = ROOT / "scripts/create-memory-os-migration-operation-evidence.py"
 CONTRACT_PATH = ROOT / "contracts/operations/migration-operation-evidence-contract.v1.json"
 LIFECYCLE_PATH = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -24,14 +26,48 @@ def require(condition: bool, message: str) -> None:
         raise NegativeFailure(message)
 
 
-def load_reconciler() -> Any:
-    spec = importlib.util.spec_from_file_location(
-        "migration_operation_reconciler_authority_negative", RECONCILER_PATH
-    )
-    require(spec is not None and spec.loader is not None, "cannot load migration operation reconciler")
+def load_module(path: Path, name: str, label: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {label}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_reconciler() -> Any:
+    return load_module(RECONCILER_PATH, "migration_operation_reconciler_authority_negative", "migration operation reconciler")
+
+
+def load_writer() -> Any:
+    writer = load_module(WRITER_PATH, "migration_operation_writer_authority_negative", "migration operation writer")
+    require(callable(getattr(writer, "require_actual_cli_authorities", None)), "migration operation writer CLI authority guard missing")
+    return writer
+
+
+def expect_writer_cli_authority_rejection(writer: Any) -> None:
+    main_source = inspect.getsource(writer.main)
+    guard_index = main_source.find("require_actual_cli_authorities()")
+    parser_index = main_source.find("argparse.ArgumentParser()")
+    require(guard_index >= 0 and parser_index >= 0 and guard_index < parser_index,
+            "migration operation writer CLI authority guard must run before argument parsing")
+    canonical_status = STATUS_PATH.read_bytes()
+    substitutions = (
+        ("DEFAULT_LEDGER", ROOT / "docs/evidence"),
+        ("VALIDATOR", STATUS_PATH),
+    )
+    for attribute, substitute in substitutions:
+        original = getattr(writer, attribute)
+        setattr(writer, attribute, substitute)
+        try:
+            try:
+                writer.require_actual_cli_authorities()
+            except writer.EvidenceValidationError as exc:
+                require("substitution rejected" in str(exc), f"migration operation writer {attribute} substitution rejected for unrelated reason: {exc}")
+            else:
+                raise NegativeFailure(f"migration operation writer accepted {attribute} authority substitution")
+        finally:
+            setattr(writer, attribute, original)
+    require(STATUS_PATH.read_bytes() == canonical_status, "migration operation writer authority substitution mutated production status")
 
 
 def expect_substitution_rejection(
@@ -67,6 +103,8 @@ def expect_substitution_rejection(
 
 
 def main() -> int:
+    writer = load_writer()
+    expect_writer_cli_authority_rejection(writer)
     reconciler = load_reconciler()
     reconciler.enforce_runtime_authorities()
     cases = (
@@ -80,7 +118,7 @@ def main() -> int:
     )
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
-    print("PASS: migration operation reconcile rejects executable and canonical path substitutions")
+    print("PASS: migration operation writer CLI and reconcile reject executable and canonical path substitutions")
     return 0
 
 
