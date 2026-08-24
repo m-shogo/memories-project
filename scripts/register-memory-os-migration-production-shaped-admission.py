@@ -27,17 +27,28 @@ from memory_os_migration_production_admission_ledger import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
-RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
-RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
-RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
-RELEASE_PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
-GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-REVIEW_ROOT = ROOT / "docs/evidence/migration-production-shaped-admission/independent-reviews"
-LOCK = ROOT / "contracts/operations/.migration-production-shaped-admission.lock"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
+CANONICAL_RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+CANONICAL_RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
+CANONICAL_RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
+CANONICAL_RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
+CANONICAL_RELEASE_PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+CANONICAL_GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+CANONICAL_REVIEW_ROOT = ROOT / "docs/evidence/migration-production-shaped-admission/independent-reviews"
+CANONICAL_LOCK = ROOT / "contracts/operations/.migration-production-shaped-admission.lock"
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+RELEASES = CANONICAL_RELEASES
+RELEASE_CONTRACT = CANONICAL_RELEASE_CONTRACT
+RELEASE_WRITER = CANONICAL_RELEASE_WRITER
+RELEASE_PAIRS = CANONICAL_RELEASE_PAIRS
+RELEASE_PAIR_WRITER = CANONICAL_RELEASE_PAIR_WRITER
+GENERATIONS = CANONICAL_GENERATIONS
+GENERATION_WRITER = CANONICAL_GENERATION_WRITER
+REVIEW_ROOT = CANONICAL_REVIEW_ROOT
+LOCK = CANONICAL_LOCK
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 ADMISSION_ID = re.compile(r"^mpa_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -74,6 +85,38 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_actual_cli_authorities() -> None:
+    for label, actual, canonical in (
+        ("contract", CONTRACT, CANONICAL_CONTRACT),
+        ("registry", REGISTRY, CANONICAL_REGISTRY),
+        ("release registry", RELEASES, CANONICAL_RELEASES),
+        ("release contract", RELEASE_CONTRACT, CANONICAL_RELEASE_CONTRACT),
+        ("release writer", RELEASE_WRITER, CANONICAL_RELEASE_WRITER),
+        ("release pair registry", RELEASE_PAIRS, CANONICAL_RELEASE_PAIRS),
+        ("release pair writer", RELEASE_PAIR_WRITER, CANONICAL_RELEASE_PAIR_WRITER),
+        ("generation registry", GENERATIONS, CANONICAL_GENERATIONS),
+        ("generation writer", GENERATION_WRITER, CANONICAL_GENERATION_WRITER),
+    ):
+        require(actual == canonical, f"migration production admission CLI {label} authority substitution rejected")
+        require(not actual.is_symlink(), f"migration production admission CLI {label} authority must be symlink-free")
+        require(
+            actual.resolve(strict=True) == canonical.resolve(strict=True),
+            f"migration production admission CLI {label} authority drift",
+        )
+    require(REVIEW_ROOT == CANONICAL_REVIEW_ROOT, "migration production admission CLI independent-review namespace substitution rejected")
+    require(not REVIEW_ROOT.is_symlink(), "migration production admission CLI independent-review namespace must be symlink-free")
+    require(
+        REVIEW_ROOT.resolve(strict=True) == CANONICAL_REVIEW_ROOT.resolve(strict=True),
+        "migration production admission CLI independent-review namespace drift",
+    )
+    require(LOCK == CANONICAL_LOCK, "migration production admission CLI lock authority substitution rejected")
+    require(not LOCK.is_symlink(), "migration production admission CLI lock authority must be symlink-free")
+    require(
+        LOCK.parent.resolve(strict=True) == CANONICAL_LOCK.parent.resolve(strict=True),
+        "migration production admission CLI lock parent authority drift",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -441,6 +484,7 @@ def append_registry_transactionally(registry: dict[str, Any], original_bytes: by
 
 
 def main() -> int:
+    require_actual_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
     args = parser.parse_args()
