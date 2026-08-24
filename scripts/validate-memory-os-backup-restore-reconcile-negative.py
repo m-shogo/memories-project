@@ -71,12 +71,7 @@ def data_authority_identity_negative(module) -> None:
         module.STATUS_PATH = original_status
 
 
-def rollback_negative(module) -> None:
-    original_status = module.STATUS_PATH.read_bytes()
-    real_load = module.load
-    real_run_validator = module.run_validator
-    calls: list[Path] = []
-
+def make_stale_status_load(module, real_load):
     def stale_status_load(path: Path):
         value = real_load(path)
         if path != module.STATUS_PATH:
@@ -93,6 +88,49 @@ def rollback_negative(module) -> None:
         existing.remove(module.NEW_EXISTING[0])
         return candidate
 
+    return stale_status_load
+
+
+def atomic_replace_negative(module) -> None:
+    original_status = module.STATUS_PATH.read_bytes()
+    real_load = module.load
+    real_os_replace = module.os.replace
+    replace_calls = 0
+
+    def fail_first_replace(source: str | Path, destination: str | Path) -> None:
+        nonlocal replace_calls
+        replace_calls += 1
+        if replace_calls == 1:
+            raise OSError("synthetic atomic replacement failure")
+        real_os_replace(source, destination)
+
+    module.load = make_stale_status_load(module, real_load)
+    module.os.replace = fail_first_replace
+    try:
+        expect_rejected(
+            "atomic production status replacement failure preserves canonical authority",
+            module.main,
+        )
+        require(replace_calls == 1, f"unexpected atomic replace call count: {replace_calls}")
+        require(module.STATUS_PATH.read_bytes() == original_status,
+                "failed atomic replacement mutated production status")
+        require(
+            not list(module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp")),
+            "failed atomic replacement left temporary production status authority behind",
+        )
+    finally:
+        module.load = real_load
+        module.os.replace = real_os_replace
+        if module.STATUS_PATH.read_bytes() != original_status:
+            module.atomic_write_bytes(module.STATUS_PATH, original_status)
+
+
+def rollback_negative(module) -> None:
+    original_status = module.STATUS_PATH.read_bytes()
+    real_load = module.load
+    real_run_validator = module.run_validator
+    calls: list[Path] = []
+
     def fake_run_validator(path: Path) -> None:
         calls.append(path)
         # Deterministic projection must be repairable first. Reject only after
@@ -100,7 +138,7 @@ def rollback_negative(module) -> None:
         if len(calls) == 4 and path == module.OPERABILITY_VALIDATOR_PATH:
             raise module.ReconcileFailure("synthetic aggregate operability rejection")
 
-    module.load = stale_status_load
+    module.load = make_stale_status_load(module, real_load)
     module.run_validator = fake_run_validator
     try:
         expect_rejected(
@@ -116,11 +154,15 @@ def rollback_negative(module) -> None:
         require(calls == expected, "backup policy validator transaction order drift")
         require(module.STATUS_PATH.read_bytes() == original_status,
                 "production status was not rolled back byte-for-byte")
+        require(
+            not list(module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp")),
+            "post-write rollback left temporary production status authority behind",
+        )
     finally:
         module.load = real_load
         module.run_validator = real_run_validator
         if module.STATUS_PATH.read_bytes() != original_status:
-            module.STATUS_PATH.write_bytes(original_status)
+            module.atomic_write_bytes(module.STATUS_PATH, original_status)
 
 
 def main() -> int:
@@ -128,11 +170,14 @@ def main() -> int:
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
     data_authority_identity_negative(reconciler)
+    atomic_replace_negative(reconciler)
     rollback_negative(reconciler)
     print("Memory OS backup/restore policy reconcile negative suite PASS")
     print("canonical validator identity: enforced")
     print("canonical contract/status identity: enforced")
     print("deterministic drift repair before full validation: enforced")
+    print("atomic production status replacement: enforced")
+    print("atomic replacement temp cleanup: enforced")
     print("post-write aggregate rollback: enforced")
     print("canonical production blockers: unchanged")
     print("production decision: NO_GO")
