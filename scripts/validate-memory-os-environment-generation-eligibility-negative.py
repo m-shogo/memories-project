@@ -98,12 +98,19 @@ def registry(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def row(generation_id: str, environment_id: str, eligible: bool, supersedes: str | None = None) -> dict[str, Any]:
+def row(
+    generation_id: str,
+    environment_id: str,
+    eligible: bool,
+    supersedes: str | None = None,
+    review_ref: str | None = None,
+) -> dict[str, Any]:
     return {
         "generationId": generation_id,
         "environmentId": environment_id,
         "supersedesGenerationId": supersedes,
         "syntheticEligible": eligible,
+        "syntheticIndependentReviewRef": review_ref or f"{generation_id}.review.json",
     }
 
 
@@ -112,20 +119,26 @@ def derive(helper, rows: list[dict[str, Any]]) -> dict[str, Any]:
         path = Path(tmp) / "registry.json"
         path.write_text(json.dumps(registry(rows), indent=2) + "\n", encoding="utf-8")
         real_loader = helper.load_generation_writer
+        real_review_ref = helper.independent_review_ref_for_row
         helper.load_generation_writer = lambda: FakeWriter()
+        helper.independent_review_ref_for_row = lambda writer, item: item["syntheticIndependentReviewRef"]
         try:
             return helper.derive(path)
         finally:
             helper.load_generation_writer = real_loader
+            helper.independent_review_ref_for_row = real_review_ref
 
 
 def derive_registry(helper, value: dict[str, Any]) -> dict[str, Any]:
     real_loader = helper.load_generation_writer
+    real_review_ref = helper.independent_review_ref_for_row
     helper.load_generation_writer = lambda: FakeWriter()
+    helper.independent_review_ref_for_row = lambda writer, item: item["syntheticIndependentReviewRef"]
     try:
         return helper.derive_registry(value)
     finally:
         helper.load_generation_writer = real_loader
+        helper.independent_review_ref_for_row = real_review_ref
 
 
 def main() -> int:
@@ -219,6 +232,16 @@ def main() -> int:
     require(two_distinct["eligibleDirectedPairCount"] == 2, "two eligible environments must form two directed pairs")
     print("PASS: two eligible distinct environments form exactly two directed pairs")
 
+    reused_review = registry([
+        row("pegen-a-v1", "env-a", True, review_ref="shared-environment-review.json"),
+        row("pegen-b-v1", "env-b", True, review_ref="shared-environment-review.json"),
+    ])
+    expect_rejected(
+        "eligible generations reuse environment independent review evidence",
+        lambda: derive_registry(helper, reused_review),
+        helper.Fail,
+    )
+
     three_distinct = derive(helper, [
         row("pegen-a-v1", "env-a", True),
         row("pegen-b-v1", "env-b", True),
@@ -299,6 +322,7 @@ def main() -> int:
     print("ineligible generation counted as pair: false")
     print("superseded generation counted as current pair: false")
     print("same environment can restore-pair with itself: false")
+    print("eligible environment independent review reuse accepted: false")
     print("generation registry class drift accepted: false")
     print("cross-environment supersedes accepted: false")
     print("same-environment predecessor skip accepted: false")
