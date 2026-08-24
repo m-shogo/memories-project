@@ -110,6 +110,26 @@ def expect_helper_authority_substitution_rejected(
     raise Fail("runtime semantic eligibility helper substitution unexpectedly accepted")
 
 
+def expect_upstream_validator_substitutions_rejected(validator: Any) -> None:
+    substitute = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+    for attribute, label in (
+        ("GEN_VALIDATOR", "environment generation"),
+        ("OBJECTIVE_VALIDATOR", "recovery objectives"),
+        ("DRILL_VALIDATOR", "restore drill request"),
+    ):
+        original = getattr(validator, attribute)
+        setattr(validator, attribute, substitute)
+        try:
+            validator.run_validator(getattr(validator, attribute), label)
+        except validator.Fail as exc:
+            require("authority drift" in str(exc), f"{label} validator substitution rejected for unexpected reason")
+            print(f"PASS reject: runtime {label} validator substitution")
+        else:
+            raise Fail(f"runtime {label} validator substitution unexpectedly accepted")
+        finally:
+            setattr(validator, attribute, original)
+
+
 def expect_unexpected_helper_exception_preserved(
     validator: Any,
     generations: dict[str, Any],
@@ -268,6 +288,7 @@ def main() -> int:
         lambda _g, _o, d: d.__setitem__("currentExecutableRequestCount", False),
     )
     expect_helper_authority_substitution_rejected(validator, generations, objectives, drill_registry)
+    expect_upstream_validator_substitutions_rejected(validator)
     expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
@@ -275,6 +296,7 @@ def main() -> int:
     print("negative validator contract binding: true")
     print("shared semantic eligibility helper contract binding: true")
     print("runtime semantic eligibility helper substitution accepted: false")
+    print("runtime upstream validator substitution accepted: false")
     print("generation registry schema drift accepted: false")
     print("stable blocker ids require semantic preflight gates: true")
     print("registered generation count alone satisfies blocker: false")
