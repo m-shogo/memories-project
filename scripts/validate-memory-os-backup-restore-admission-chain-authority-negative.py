@@ -73,6 +73,18 @@ def validate_full_runner_authority() -> None:
     finally:
         runner.ROOT = root_before
 
+    self_before = runner.SELF_REL
+    runner.SELF_REL = Path("scripts/validate-memory-os-backup-restore-generation-binding.py")
+    try:
+        rejected = False
+        try:
+            runner.enforce_runtime_authority()
+        except runner.Fail:
+            rejected = True
+        require(rejected, "full admission-chain runner accepted substituted self path")
+    finally:
+        runner.SELF_REL = self_before
+
     steps_before = runner.STEPS
     runner.STEPS = ()
     try:
@@ -144,6 +156,7 @@ def main() -> int:
     print("canonical writer/blocker/validator/workflow substitution accepted: false")
     print("main bypasses runtime authority guard: false")
     print("full validation runner root substitution accepted: false")
+    print("full validation runner self path substitution accepted: false")
     print("full validation sequence substitution accepted: false")
     print("rejected probe mutated admission-chain authorities: false")
     print("production evidence: false")
