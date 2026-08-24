@@ -19,6 +19,7 @@ DRILL_CONTRACT_REL = Path("contracts/operations/backup-restore-drill-request-con
 DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
 GEN_BINDING_REL = Path("contracts/operations/backup-restore-generation-binding-contract.v1.json")
 WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+EXPECTED_LOCK_REL = Path("contracts/operations/.backup-restore-generation-evidence.lock")
 NEGATIVE_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-evidence-negative.py")
 SEMANTIC_NEGATIVE_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-semantic-generation-negative.py")
 CONTRACT = ROOT / CONTRACT_REL
@@ -29,6 +30,7 @@ DRILL_CONTRACT = ROOT / DRILL_CONTRACT_REL
 DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
 GEN_BINDING = ROOT / GEN_BINDING_REL
 WRITER = ROOT / WRITER_REL
+EXPECTED_LOCK = ROOT / EXPECTED_LOCK_REL
 NEGATIVE_VALIDATOR = ROOT / NEGATIVE_VALIDATOR_REL
 SEMANTIC_NEGATIVE_VALIDATOR = ROOT / SEMANTIC_NEGATIVE_VALIDATOR_REL
 
@@ -66,6 +68,25 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     return path
 
 
+def require_canonical_lock_path(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        parent = path.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} parent missing or escapes repository") from exc
+    require(lexical == expected_relative, f"{field} authority drift")
+    require(parent == expected_relative.parent, f"{field} parent authority drift")
+    require(not path.is_symlink(), f"{field} must not be symlink")
+    if path.exists():
+        require(path.is_file(), f"{field} must be a file when materialized")
+        try:
+            resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise Fail(f"{field} materialized path escapes repository") from exc
+        require(resolved == expected_relative, f"{field} materialized authority drift")
+    return path
+
+
 def enforce_runtime_authorities() -> None:
     for path, expected, field in (
         (CONTRACT, CONTRACT_REL, "generation evidence contract"),
@@ -80,6 +101,7 @@ def enforce_runtime_authorities() -> None:
         (SEMANTIC_NEGATIVE_VALIDATOR, SEMANTIC_NEGATIVE_VALIDATOR_REL, "semantic generation negative validator"),
     ):
         require_exact_repo_file(path, expected, field)
+    require_canonical_lock_path(EXPECTED_LOCK, EXPECTED_LOCK_REL, "generation evidence append lock")
 
 
 def canonical_contract_ref(ref: Any, field: str) -> Path:
@@ -183,6 +205,10 @@ def main() -> int:
     writer.canonical_repo_file(objectives_writer, "recovery objectives writer")
     writer.canonical_repo_file(non_resurrection_writer, "typed non-resurrection writer")
     writer.canonical_repo_file(drill_writer, "drill request writer")
+    writer_lock = getattr(writer, "LOCK", None)
+    require(writer_lock == EXPECTED_LOCK, "generation evidence writer append lock authority drift")
+    require_canonical_lock_path(writer_lock, EXPECTED_LOCK_REL, "writer generation evidence append lock")
+    require(writer_lock.parent == REGISTRY.parent, "generation evidence append lock must share registry authority directory")
     require(callable(getattr(writer, "validate_registry_for_append", None)), "generation writer append authority guard missing")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-generation-evidence.v1", "contract schema drift")
@@ -342,12 +368,14 @@ def main() -> int:
 
     print("Memory OS drill-bound generation backup/restore evidence validation PASS")
     print("generation evidence validator canonical runtime authorities enforced: true")
+    print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
     print(f"registered/drill-bound recovery evidence: {count}/{derived_bound}")
     print(f"complete generation-bound restores: {derived_restore}")
     print(f"production-equivalent recovery candidates: {derived_candidates}")
     print("generation writer canonical cross-authority binding without evidence rows: enforced")
     print("generation writer append authority guard executed: true")
+    print("generation writer append lock authority canonical: true")
     print("upstream writer identities canonical: true")
     print("boolean registry/contract/binding counts accepted: false")
     print("contract artifact refs canonical and repository-contained: true")
