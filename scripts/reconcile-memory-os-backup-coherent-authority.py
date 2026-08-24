@@ -7,9 +7,11 @@ import argparse
 import copy
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -151,6 +153,29 @@ def normalized(status: dict[str, Any]) -> dict[str, Any]:
     return status
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        temp_path = None
+    except OSError as exc:
+        raise Fail(f"atomic authority write failed: {path.name}") from exc
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
@@ -172,12 +197,13 @@ def main() -> int:
         return 0
     if changed:
         original_bytes = STATUS.read_bytes()
-        STATUS.write_text(json.dumps(candidate, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        payload = (json.dumps(candidate, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+        atomic_write_bytes(STATUS, payload)
         try:
             run_validator(BACKUP_VALIDATOR)
             run_validator(OPERABILITY_VALIDATOR)
         except Exception:
-            STATUS.write_bytes(original_bytes)
+            atomic_write_bytes(STATUS, original_bytes)
             raise
         print("Registered local coherent recovery-set evidence in OPS-P0-007")
     else:
