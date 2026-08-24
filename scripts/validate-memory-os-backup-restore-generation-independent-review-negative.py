@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+SUBSTITUTE = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class Fail(RuntimeError):
@@ -43,17 +44,38 @@ def expect_fail(module, registry: dict, label: str) -> None:
         path = Path(handle.name)
         json.dump(registry, handle)
         handle.write("\n")
-    original = module.REGISTRY
+    original_registry = module.REGISTRY
+    original_enforcer = module.enforce_runtime_authorities
     try:
         module.REGISTRY = path
+        module.enforce_runtime_authorities = lambda: None
         try:
             module.main()
         except module.Fail:
             return
         raise Fail(f"negative case unexpectedly passed: {label}")
     finally:
-        module.REGISTRY = original
+        module.enforce_runtime_authorities = original_enforcer
+        module.REGISTRY = original_registry
         path.unlink(missing_ok=True)
+
+
+def expect_authority_substitution_fail(module, field: str, substitute: Path) -> None:
+    canonical_contract = (ROOT / module.CONTRACT_REL).read_bytes()
+    canonical_registry = (ROOT / module.REGISTRY_REL).read_bytes()
+    original = getattr(module, field)
+    setattr(module, field, substitute)
+    try:
+        try:
+            module.main()
+        except module.Fail:
+            pass
+        else:
+            raise Fail(f"runtime authority substitution unexpectedly passed: {field}")
+        require((ROOT / module.CONTRACT_REL).read_bytes() == canonical_contract, f"canonical contract mutated while rejecting {field}")
+        require((ROOT / module.REGISTRY_REL).read_bytes() == canonical_registry, f"canonical registry mutated while rejecting {field}")
+    finally:
+        setattr(module, field, original)
 
 
 def base_row() -> dict:
@@ -174,21 +196,16 @@ def expect_material_delta_candidate_delegation(module) -> None:
         module.validate_review = original_validate_review
 
 
-def expect_material_delta_validator_substitution(module) -> None:
-    original = module.MATERIAL_DELTA_VALIDATOR
-    try:
-        module.MATERIAL_DELTA_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
-        try:
-            module.load_material_delta_validator()
-        except module.Fail:
-            return
-        raise Fail("substituted candidate material-delta validator was accepted")
-    finally:
-        module.MATERIAL_DELTA_VALIDATOR = original
-
-
 def main() -> int:
     module = load_validator()
+
+    for field, substitute in (
+        ("CONTRACT", module.REGISTRY),
+        ("REGISTRY", module.CONTRACT),
+        ("MATERIAL_DELTA_VALIDATOR", SUBSTITUTE),
+        ("VALIDATOR", SUBSTITUTE),
+    ):
+        expect_authority_substitution_fail(module, field, substitute)
 
     expect_fail(module, registry(base_row()), "generic repository review refs")
 
@@ -202,7 +219,6 @@ def main() -> int:
     expect_fail(module, production_boundary, "productionReady promotion")
 
     expect_material_delta_candidate_delegation(module)
-    expect_material_delta_validator_substitution(module)
 
     for field in module.BOUND_FIELDS:
         expect_bound_field_fail(module, field)
@@ -218,47 +234,19 @@ def main() -> int:
         expect_review_payload_fail(module, payload, f"non-canonical reviewedAt: {invalid_reviewed_at}")
 
     for invalid_reviewer in (
-        "ab",
-        "Security Reviewer",
-        "security@example.com",
-        "../security",
-        "SECURITY_REVIEWER",
-        " reviewer-security",
+        "ab", "Security Reviewer", "security@example.com", "../security",
+        "SECURITY_REVIEWER", " reviewer-security",
     ):
         payload = typed_payload(base_row(), "SECURITY")
         payload["reviewerPseudonym"] = invalid_reviewer
         expect_review_payload_fail(module, payload, f"unsafe reviewer pseudonym: {invalid_reviewer}")
 
-    expect_contract_fail(
-        module,
-        lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"),
-        "required review field removed",
-    )
-    expect_contract_fail(
-        module,
-        lambda contract: contract["recordRules"].__setitem__("independentReviewMustBindRecoveryObjectivesId", False),
-        "binding rule disabled",
-    )
-    expect_contract_fail(
-        module,
-        lambda contract: contract["recordRules"].__setitem__("candidateDerivationMustUseTypedIndependentReviewAuthority", False),
-        "candidate review authority delegation disabled",
-    )
-    expect_contract_fail(
-        module,
-        lambda contract: contract["promotionBoundary"].__setitem__("completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews", False),
-        "independent review promotion boundary disabled",
-    )
-    expect_contract_fail(
-        module,
-        lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"),
-        "candidate material-delta validator substituted",
-    )
-    expect_contract_fail(
-        module,
-        lambda contract: contract["independentReviewRoles"].__setitem__("securityReviewRef", "OPERABILITY"),
-        "review role map substituted",
-    )
+    expect_contract_fail(module, lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"), "required review field removed")
+    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("independentReviewMustBindRecoveryObjectivesId", False), "binding rule disabled")
+    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("candidateDerivationMustUseTypedIndependentReviewAuthority", False), "candidate review authority delegation disabled")
+    expect_contract_fail(module, lambda contract: contract["promotionBoundary"].__setitem__("completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews", False), "independent review promotion boundary disabled")
+    expect_contract_fail(module, lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"), "candidate material-delta validator substituted")
+    expect_contract_fail(module, lambda contract: contract["independentReviewRoles"].__setitem__("securityReviewRef", "OPERABILITY"), "review role map substituted")
 
     original_history = module.git_history
     try:
@@ -276,7 +264,10 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation candidate review negatives reject generic refs, review reuse, material-delta bypass/substitution, authority mismatch, malformed timestamps, unsafe reviewer identities, candidate/promotion contract drift, post-commit edits, and production promotion")
+    print("PASS: generation candidate review negatives reject runtime authority substitution, generic refs, review reuse, material-delta bypass, authority mismatch, malformed timestamps, unsafe reviewer identities, candidate/promotion contract drift, post-commit edits, and production promotion")
+    print("runtime data/executable authority substitution accepted: false")
+    print("canonical generation evidence authority mutated: false")
+    print("human production promotion remains separate: true")
     return 0
 
 
