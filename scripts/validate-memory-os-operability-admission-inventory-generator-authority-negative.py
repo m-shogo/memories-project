@@ -89,6 +89,20 @@ def expect_inventory_execution_rejected(module: Any, field: str, replacement: An
     require(rejected, f"inventory validator accepted substituted runtime authority {field}")
 
 
+def expect_generator_execution_rejected(module: Any, field: str, replacement: Any) -> None:
+    original = getattr(module, field)
+    setattr(module, field, replacement)
+    rejected = False
+    try:
+        module.main()
+    except SystemExit as exc:
+        require(exc.code not in (None, 0), f"substituted generator {field} produced successful SystemExit")
+        rejected = True
+    finally:
+        setattr(module, field, original)
+    require(rejected, f"inventory generator accepted substituted runtime authority {field}")
+
+
 def restore_input(input_before: bytes) -> None:
     INPUT.unlink(missing_ok=True)
     INPUT.write_bytes(input_before)
@@ -144,6 +158,26 @@ def main() -> int:
     expect_inventory_execution_rejected(inventory_validator, "SOURCE_AUTHORITY_VALIDATOR", INVENTORY_VALIDATOR)
     inventory_validator.enforce_runtime_authority()
 
+    expect_generator_execution_rejected(generator, "enforce_generator_execution_authority", lambda: None)
+    expect_generator_execution_rejected(generator, "require_generator_authority_identity", lambda: None)
+    expect_generator_execution_rejected(generator, "atomic_write_text", lambda *_args: None)
+    expect_generator_execution_rejected(generator, "load", lambda _relative: {})
+    expect_generator_execution_rejected(generator, "exists", lambda _relative: True)
+    expect_generator_execution_rejected(generator, "valid_count", lambda _value: True)
+    expect_generator_execution_rejected(generator, "exact_success", lambda *_args: None)
+    expect_generator_execution_rejected(generator, "canonical_registry_validator", lambda *_args: (lambda _registry: None))
+    expect_generator_execution_rejected(generator, "require_canonical_registry", lambda *_args: None)
+    expect_generator_execution_rejected(generator, "canonical_human_tabletop_count", lambda: 6)
+    expect_generator_execution_rejected(generator, "require_canonical_load_authority", lambda: None)
+    expect_generator_execution_rejected(generator, "require_canonical_command_authority", lambda *_args: None)
+    expect_generator_execution_rejected(generator, "validate_generated_inventory", lambda: None)
+    expect_generator_execution_rejected(generator, "p0_status", lambda *_args: {})
+    expect_generator_execution_rejected(generator, "ROOT", ROOT / "contracts")
+    expect_generator_execution_rejected(generator, "OUTPUT", generator.STATUS)
+    expect_generator_execution_rejected(generator, "STATUS", generator.OUTPUT)
+    expect_generator_execution_rejected(generator, "INVENTORY_VALIDATOR", SOURCE_AUTHORITY)
+    generator.enforce_generator_execution_authority()
+
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
     input_before = INPUT.read_bytes()
@@ -179,6 +213,8 @@ def main() -> int:
     print("inventory source execution helper substitution accepted: false")
     print("inventory validator execution helper substitution accepted: false")
     print("inventory validator canonical data authority substitution accepted: false")
+    print("inventory generator execution helper substitution accepted: false")
+    print("inventory generator canonical data authority substitution accepted: false")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
