@@ -149,6 +149,11 @@ def run_validator(path: Path) -> None:
             f"canonical validator rejected reconciled backup authority: {path.name}")
 
 
+def validate_projected_authority() -> None:
+    run_validator(BACKUP_VALIDATOR)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
 def validate_logical(result: dict[str, Any]) -> None:
     require(result.get("schemaVersion") == "memory-os-local-logical-restore-results.v1",
             "logical result schema drift")
@@ -298,9 +303,11 @@ def main() -> int:
 
     if args.check:
         require(not changed, "OPS-P0-007 backup authority is not normalized")
+        validate_projected_authority()
         print("Memory OS backup authority normalization check PASS")
         return 0
     if not changed:
+        validate_projected_authority()
         print("Memory OS backup authority already normalized")
         return 0
 
@@ -308,8 +315,7 @@ def main() -> int:
     payload = (json.dumps(candidate, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     atomic_write_bytes(STATUS_PATH, payload)
     try:
-        run_validator(BACKUP_VALIDATOR)
-        run_validator(OPERABILITY_VALIDATOR)
+        validate_projected_authority()
     except Exception:
         atomic_write_bytes(STATUS_PATH, original_bytes)
         raise
