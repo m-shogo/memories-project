@@ -6,7 +6,6 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
-import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -14,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
 HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 ELIGIBILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 ELIGIBILITY = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
@@ -42,85 +43,67 @@ def load_module(path: Path, name: str):
     return module
 
 
-def write_json(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
-
-
-def expect_semantic_rejection(
-    validator,
-    baseline: dict[str, dict[str, Any]],
-    name: str,
-    mutate: Callable[[dict[str, dict[str, Any]]], None],
-) -> None:
-    with tempfile.TemporaryDirectory(prefix="memory-os-preflight-consistency-negative-") as temp_dir:
-        temp = Path(temp_dir)
-        state = copy.deepcopy(baseline)
-        mutate(state)
-        paths = {
-            "preflight": temp / "preflight.json",
-            "eligibility": temp / "eligibility.json",
-            "objectives": temp / "objectives.json",
-            "drill": temp / "drill.json",
-        }
-        for key, path in paths.items():
-            write_json(path, state[key])
-
-        original_paths = (
-            validator.PREFLIGHT,
-            validator.ELIGIBILITY,
-            validator.OBJECTIVES,
-            validator.DRILL_REQUESTS,
-        )
-        original_enforcer = validator.enforce_runtime_authorities
-        original_drill_validator = validator.DRILL_VALIDATOR
-        validator.PREFLIGHT = paths["preflight"]
-        validator.ELIGIBILITY = paths["eligibility"]
-        validator.OBJECTIVES = paths["objectives"]
-        validator.DRILL_REQUESTS = paths["drill"]
-        validator.DRILL_VALIDATOR = SUBSTITUTE_SCRIPT
-        validator.enforce_runtime_authorities = lambda: None
-        original_load_module = validator.load_module
-
-        class FixtureDrillValidator:
-            class Fail(RuntimeError):
-                pass
-
-            @staticmethod
-            def main() -> int:
-                return 0
-
-        def fixture_load_module(path: Path, expected_relative: Path, name: str, field: str):
-            if field == "restore drill request validator":
-                return FixtureDrillValidator
-            return original_load_module(path, expected_relative, name, field)
-
-        validator.load_module = fixture_load_module
-        try:
-            try:
-                validator.main()
-            except validator.Fail:
-                pass
-            else:
-                raise Fail(f"negative case unexpectedly accepted: {name}")
-        finally:
-            validator.load_module = original_load_module
-            validator.enforce_runtime_authorities = original_enforcer
-            validator.DRILL_VALIDATOR = original_drill_validator
-            (
-                validator.PREFLIGHT,
-                validator.ELIGIBILITY,
-                validator.OBJECTIVES,
-                validator.DRILL_REQUESTS,
-            ) = original_paths
-
-
-def expect_authority_rejection(validator, field: str, substitute: Path) -> None:
-    canonical = {
+def canonical_bytes() -> dict[str, bytes]:
+    return {
         "PREFLIGHT": PREFLIGHT.read_bytes(),
         "ELIGIBILITY": ELIGIBILITY.read_bytes(),
         "OBJECTIVES": OBJECTIVES.read_bytes(),
         "DRILL_REQUESTS": DRILL_REQUESTS.read_bytes(),
     }
+
+
+def assert_canonical_unchanged(before: dict[str, bytes], label: str) -> None:
+    for field, path in (
+        ("PREFLIGHT", PREFLIGHT),
+        ("ELIGIBILITY", ELIGIBILITY),
+        ("OBJECTIVES", OBJECTIVES),
+        ("DRILL_REQUESTS", DRILL_REQUESTS),
+    ):
+        if path.read_bytes() != before[field]:
+            raise Fail(f"canonical {field} mutated while rejecting {label}")
+
+
+def expect_semantic_rejection(
+    validator,
+    helper,
+    eligibility_validator,
+    objectives_writer,
+    drill_writer,
+    baseline: dict[str, dict[str, Any]],
+    name: str,
+    mutate: Callable[[dict[str, dict[str, Any]]], None],
+) -> None:
+    state = copy.deepcopy(baseline)
+    mutate(state)
+
+    class FixtureDrillValidator:
+        class Fail(RuntimeError):
+            pass
+
+        @staticmethod
+        def main() -> int:
+            return 0
+
+    try:
+        validator.validate_state(
+            state["preflight"],
+            state["eligibility"],
+            state["objectives"],
+            state["drill"],
+            helper=helper,
+            eligibility_validator=eligibility_validator,
+            objectives_writer=objectives_writer,
+            drill_writer=drill_writer,
+            drill_validator=FixtureDrillValidator,
+        )
+    except validator.Fail:
+        pass
+    else:
+        raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def expect_authority_rejection(validator, field: str, substitute: Path) -> None:
+    before = canonical_bytes()
     original = getattr(validator, field)
     setattr(validator, field, substitute)
     try:
@@ -130,14 +113,23 @@ def expect_authority_rejection(validator, field: str, substitute: Path) -> None:
             pass
         else:
             raise Fail(f"authority substitution unexpectedly accepted: {field}")
-        if PREFLIGHT.read_bytes() != canonical["PREFLIGHT"]:
-            raise Fail(f"canonical preflight mutated while rejecting {field}")
-        if ELIGIBILITY.read_bytes() != canonical["ELIGIBILITY"]:
-            raise Fail(f"canonical eligibility mutated while rejecting {field}")
-        if OBJECTIVES.read_bytes() != canonical["OBJECTIVES"]:
-            raise Fail(f"canonical objectives mutated while rejecting {field}")
-        if DRILL_REQUESTS.read_bytes() != canonical["DRILL_REQUESTS"]:
-            raise Fail(f"canonical drill registry mutated while rejecting {field}")
+        assert_canonical_unchanged(before, field)
+    finally:
+        setattr(validator, field, original)
+
+
+def expect_helper_rejection(validator, field: str, replacement: Any) -> None:
+    before = canonical_bytes()
+    original = getattr(validator, field)
+    setattr(validator, field, replacement)
+    try:
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise Fail(f"execution helper substitution unexpectedly accepted: {field}")
+        assert_canonical_unchanged(before, field)
     finally:
         setattr(validator, field, original)
 
@@ -145,6 +137,9 @@ def expect_authority_rejection(validator, field: str, substitute: Path) -> None:
 def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_preflight_consistency_negative_target")
     helper = load_module(HELPER, "memory_os_preflight_consistency_negative_helper")
+    eligibility_validator = load_module(ELIGIBILITY_VALIDATOR, "memory_os_preflight_consistency_negative_eligibility")
+    objectives_writer = load_module(OBJECTIVES_WRITER, "memory_os_preflight_consistency_negative_objectives")
+    drill_writer = load_module(DRILL_WRITER, "memory_os_preflight_consistency_negative_drill_writer")
     strict = helper.derive()
     strict_pair_count = strict.get("eligibleDirectedPairCount")
     if not isinstance(strict_pair_count, int) or isinstance(strict_pair_count, bool) or strict_pair_count < 0:
@@ -177,7 +172,16 @@ def main() -> int:
         ("drill production readiness promotion", lambda state: state["drill"].__setitem__("productionReady", True)),
     ]
     for name, mutate in cases:
-        expect_semantic_rejection(validator, baseline, name, mutate)
+        expect_semantic_rejection(
+            validator,
+            helper,
+            eligibility_validator,
+            objectives_writer,
+            drill_writer,
+            baseline,
+            name,
+            mutate,
+        )
 
     authority_cases = (
         ("PREFLIGHT", ELIGIBILITY),
@@ -194,12 +198,27 @@ def main() -> int:
     for field, substitute in authority_cases:
         expect_authority_rejection(validator, field, substitute)
 
+    helper_cases = (
+        ("require", lambda condition, message: None),
+        ("require_exact_repo_file", lambda path, expected, field: path),
+        ("enforce_runtime_authorities", lambda: None),
+        ("display_path", lambda path: str(path)),
+        ("load", lambda path: {}),
+        ("load_module", lambda path, expected, name, field: object()),
+        ("validate_state", lambda *args, **kwargs: 0),
+        ("enforce_execution_identity", lambda: None),
+    )
+    for field, replacement in helper_cases:
+        expect_helper_rejection(validator, field, replacement)
+
     print("Memory OS restore preflight generation-eligibility consistency negative PASS")
     print(f"semantic authority corruption cases: {len(cases)}")
     print(f"direct data/executable substitution cases: {len(authority_cases)}")
+    print(f"direct execution helper substitution cases: {len(helper_cases)}")
     print("canonical semantic eligibility validator substitution accepted: false")
     print("canonical drill request full admission validator substitution accepted: false")
-    print("semantic fixtures bypass runtime authority only inside negative harness: true")
+    print("semantic fixtures bypass runtime authority: false")
+    print("semantic fixtures use pure state validation only: true")
     print("canonical authority mutated: false")
     print("production evidence created: false")
     print("production decision changed: false")
