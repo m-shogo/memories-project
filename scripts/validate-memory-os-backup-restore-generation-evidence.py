@@ -11,16 +11,26 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
-DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-GEN_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
-NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
-SEMANTIC_NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
+CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+OBJECTIVES_REGISTRY_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+DRILL_CONTRACT_REL = Path("contracts/operations/backup-restore-drill-request-contract.v1.json")
+DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+GEN_BINDING_REL = Path("contracts/operations/backup-restore-generation-binding-contract.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+NEGATIVE_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-evidence-negative.py")
+SEMANTIC_NEGATIVE_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-semantic-generation-negative.py")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+OBJECTIVES_REGISTRY = ROOT / OBJECTIVES_REGISTRY_REL
+DRILL_CONTRACT = ROOT / DRILL_CONTRACT_REL
+DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
+GEN_BINDING = ROOT / GEN_BINDING_REL
+WRITER = ROOT / WRITER_REL
+NEGATIVE_VALIDATOR = ROOT / NEGATIVE_VALIDATOR_REL
+SEMANTIC_NEGATIVE_VALIDATOR = ROOT / SEMANTIC_NEGATIVE_VALIDATOR_REL
 
 
 class Fail(RuntimeError):
@@ -41,6 +51,35 @@ def repo_relative(path: Path) -> Path:
         return path.resolve().relative_to(ROOT.resolve())
     except (OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "generation evidence contract"),
+        (REGISTRY, REGISTRY_REL, "generation evidence registry"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+        (OBJECTIVES_REGISTRY, OBJECTIVES_REGISTRY_REL, "recovery objectives registry"),
+        (DRILL_CONTRACT, DRILL_CONTRACT_REL, "drill request contract"),
+        (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+        (GEN_BINDING, GEN_BINDING_REL, "generation binding contract"),
+        (WRITER, WRITER_REL, "generation evidence writer"),
+        (NEGATIVE_VALIDATOR, NEGATIVE_VALIDATOR_REL, "generation evidence negative validator"),
+        (SEMANTIC_NEGATIVE_VALIDATOR, SEMANTIC_NEGATIVE_VALIDATOR_REL, "semantic generation negative validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def canonical_contract_ref(ref: Any, field: str) -> Path:
@@ -64,8 +103,8 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    writer_path = ROOT / repo_relative(WRITER)
-    require(writer_path.is_file(), "generation evidence writer missing")
+    require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
+    writer_path = WRITER
     spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_writer", writer_path)
     require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
     module = importlib.util.module_from_spec(spec)
@@ -73,9 +112,8 @@ def load_writer():
     return module
 
 
-def run_validator(path: Path, label: str) -> None:
-    repo_relative(path)
-    require(path.is_file(), f"{label} missing")
+def run_validator(path: Path, expected_relative: Path, label: str) -> None:
+    require_exact_repo_file(path, expected_relative, label)
     completed = subprocess.run(
         [sys.executable, str(path)],
         cwd=ROOT,
@@ -91,16 +129,16 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
-    expected_ref = str(repo_relative(NEGATIVE_VALIDATOR))
+    expected_ref = NEGATIVE_VALIDATOR_REL.as_posix()
     require(contract.get("negativeAdmissionValidator") == expected_ref, "negative admission validator ref drift")
-    require(NEGATIVE_VALIDATOR.is_file(), "negative admission validator missing")
     cases = contract.get("negativeAdmissionCases")
     require(isinstance(cases, list) and len(cases) >= 15 and len(cases) == len(set(cases)), "negative admission cases incomplete or duplicated")
-    run_validator(NEGATIVE_VALIDATOR, "negative admission suite")
-    run_validator(SEMANTIC_NEGATIVE_VALIDATOR, "semantic generation negative admission suite")
+    run_validator(NEGATIVE_VALIDATOR, NEGATIVE_VALIDATOR_REL, "negative admission suite")
+    run_validator(SEMANTIC_NEGATIVE_VALIDATOR, SEMANTIC_NEGATIVE_VALIDATOR_REL, "semantic generation negative admission suite")
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generations = load(GEN_REGISTRY)
@@ -161,7 +199,6 @@ def main() -> int:
     for field, path in expected_refs.items():
         require(contract.get(field) == str(repo_relative(path)), f"contract ref drift: {field}")
         require(path.is_file(), f"contract artifact missing: {field}")
-    require(SEMANTIC_NEGATIVE_VALIDATOR.is_file(), "semantic generation negative admission validator missing")
     for field in ("validator", "reconcile", "workflow"):
         canonical_contract_ref(contract.get(field), field)
 
@@ -304,6 +341,7 @@ def main() -> int:
     validate_negative_admission_suite(contract)
 
     print("Memory OS drill-bound generation backup/restore evidence validation PASS")
+    print("generation evidence validator canonical runtime authorities enforced: true")
     print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
     print(f"registered/drill-bound recovery evidence: {count}/{derived_bound}")
     print(f"complete generation-bound restores: {derived_restore}")
