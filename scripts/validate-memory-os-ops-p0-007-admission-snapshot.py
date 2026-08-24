@@ -130,7 +130,78 @@ def load_helper():
     return load_module(ELIGIBILITY_HELPER, "memory_os_generation_eligibility_ops_p0_007_snapshot_validator")
 
 
-def main() -> int:
+CANONICAL_REQUIRE = require
+CANONICAL_EXECUTION_HELPERS = (valid_count, load, load_module, validate_registry, load_helper)
+CANONICAL_SNAPSHOT_FIELDS = frozenset(SNAPSHOT_FIELDS)
+CANONICAL_DOWNSTREAM_REQUIREMENTS = tuple(DOWNSTREAM_REQUIREMENTS)
+CANONICAL_NEXT_ACTIONS = tuple(sorted(NEXT_ACTIONS.items()))
+
+
+def enforce_runtime_authority(
+    canonical_snapshot: Path = SNAPSHOT,
+    canonical_eligibility_helper: Path = ELIGIBILITY_HELPER,
+    canonical_blocker_helper: Path = BLOCKER_HELPER,
+    canonical_objectives: Path = OBJECTIVES,
+    canonical_drill_requests: Path = DRILL_REQUESTS,
+    canonical_generation_evidence: Path = GEN_EVIDENCE,
+    canonical_typed: Path = TYPED,
+    canonical_status: Path = STATUS,
+    canonical_objective_writer: Path = OBJECTIVE_WRITER,
+    canonical_drill_request_writer: Path = DRILL_REQUEST_WRITER,
+    canonical_generation_evidence_writer: Path = GEN_EVIDENCE_WRITER,
+    canonical_typed_writer: Path = TYPED_WRITER,
+    canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+    canonical_require=CANONICAL_REQUIRE,
+    canonical_snapshot_fields: frozenset[str] = CANONICAL_SNAPSHOT_FIELDS,
+    canonical_downstream_requirements: tuple[str, ...] = CANONICAL_DOWNSTREAM_REQUIREMENTS,
+    canonical_next_actions: tuple[tuple[str, str], ...] = CANONICAL_NEXT_ACTIONS,
+) -> None:
+    expected_root = Path(enforce_runtime_authority.__code__.co_filename).resolve().parents[1]
+    try:
+        actual_root = ROOT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("strict snapshot validator repository root missing") from exc
+    if actual_root != expected_root:
+        raise Fail("strict snapshot validator repository root drift")
+    authorities = (
+        (SNAPSHOT, canonical_snapshot, expected_root / "contracts/operations/ops-p0-007-admission-snapshot.v1.json", "snapshot"),
+        (ELIGIBILITY_HELPER, canonical_eligibility_helper, expected_root / "scripts/memory_os_environment_generation_eligibility.py", "eligibility helper"),
+        (BLOCKER_HELPER, canonical_blocker_helper, expected_root / "scripts/memory_os_backup_restore_blockers.py", "blocker helper"),
+        (OBJECTIVES, canonical_objectives, expected_root / "contracts/operations/recovery-objectives-registry.v1.json", "recovery objectives"),
+        (DRILL_REQUESTS, canonical_drill_requests, expected_root / "contracts/operations/backup-restore-drill-request-registry.v1.json", "drill requests"),
+        (GEN_EVIDENCE, canonical_generation_evidence, expected_root / "contracts/operations/backup-restore-generation-evidence-registry.v1.json", "generation evidence"),
+        (TYPED, canonical_typed, expected_root / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json", "typed non-resurrection"),
+        (STATUS, canonical_status, expected_root / "contracts/operations/production-operability-status.json", "production status"),
+        (OBJECTIVE_WRITER, canonical_objective_writer, expected_root / "scripts/register-memory-os-recovery-objectives.py", "objective writer"),
+        (DRILL_REQUEST_WRITER, canonical_drill_request_writer, expected_root / "scripts/request-memory-os-backup-restore-drill.py", "drill request writer"),
+        (GEN_EVIDENCE_WRITER, canonical_generation_evidence_writer, expected_root / "scripts/register-memory-os-backup-restore-generation-evidence.py", "generation evidence writer"),
+        (TYPED_WRITER, canonical_typed_writer, expected_root / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py", "typed writer"),
+    )
+    for current, canonical, expected, label in authorities:
+        if current != canonical or current != expected:
+            raise Fail(f"strict snapshot validator {label} authority drift")
+        try:
+            resolved = current.resolve(strict=True)
+        except (FileNotFoundError, OSError, RuntimeError) as exc:
+            raise Fail(f"strict snapshot validator {label} authority missing") from exc
+        if resolved != expected or not current.is_file() or current.is_symlink():
+            raise Fail(f"strict snapshot validator {label} authority path drift")
+    if require is not canonical_require:
+        raise Fail("strict snapshot validator require helper drift")
+    if (valid_count, load, load_module, validate_registry, load_helper) != canonical_helpers:
+        raise Fail("strict snapshot validator execution helper drift")
+    if frozenset(SNAPSHOT_FIELDS) != canonical_snapshot_fields:
+        raise Fail("strict snapshot validator field authority drift")
+    if tuple(DOWNSTREAM_REQUIREMENTS) != canonical_downstream_requirements:
+        raise Fail("strict snapshot validator downstream requirement authority drift")
+    if tuple(sorted(NEXT_ACTIONS.items())) != canonical_next_actions:
+        raise Fail("strict snapshot validator next-action authority drift")
+
+
+def main(canonical_execution_guard=enforce_runtime_authority) -> int:
+    if enforce_runtime_authority is not canonical_execution_guard:
+        raise Fail("strict snapshot validator execution guard drift")
+    enforce_runtime_authority()
     snapshot = load(SNAPSHOT)
     helper = load_helper()
     blocker_helper = load_module(BLOCKER_HELPER, "memory_os_backup_restore_blockers_ops_p0_007_snapshot_validator")
@@ -254,6 +325,7 @@ def main() -> int:
     print("snapshot exact field set enforced: true")
     print("snapshot count types enforced as integers excluding booleans: true")
     print("snapshot downstream requirement and next-action projection enforced: true")
+    print("snapshot validator runtime helper/data authority substitution accepted: false")
     print(f"stage: {expected_stage}")
     print(f"strict prerequisite blockers: {len(strict_blockers)}")
     print(f"eligible directed restore pairs: {eligibility['eligibleDirectedPairCount']}")
