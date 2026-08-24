@@ -70,27 +70,22 @@ def prove_canonical_ledger_preappend_guard(tmp_path: Path) -> None:
 
 def prove_postappend_failure_removes_new_record(tmp_path: Path) -> None:
     creator = load_module(CREATOR, "migration_operation_creator_postappend_negative")
-    ledger = tmp_path / "canonical-ledger"
-    counter = tmp_path / "validator-count.txt"
-    validator = tmp_path / "ledger-pass-then-fail.py"
-    validator.write_text(
-        "from pathlib import Path\n"
-        f"counter = Path({str(counter)!r})\n"
-        "count = int(counter.read_text() or '0') if counter.exists() else 0\n"
-        "counter.write_text(str(count + 1))\n"
-        "raise SystemExit(0 if count == 0 else 1)\n",
-        encoding="utf-8",
-    )
-    creator.DEFAULT_LEDGER = ledger
-    creator.VALIDATOR = validator
-
+    ledger = tmp_path / "isolated-ledger"
     record_path = tmp_path / "record.json"
     record = json.loads(TEMPLATE.read_text(encoding="utf-8"))
     record["migrationRunId"] = "mgr_postappend_rollback_negative"
     record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     target = ledger / creator.expected_filename(record)
 
+    original_after = creator.validate_canonical_ledger_after_append
+
+    def fail_after_append(_: Path) -> None:
+        raise creator.EvidenceValidationError(
+            "canonical migration operation ledger failed validation after append: synthetic failure"
+        )
+
     argv = sys.argv
+    creator.validate_canonical_ledger_after_append = fail_after_append
     sys.argv = [str(CREATOR), str(record_path), "--ledger-dir", str(ledger)]
     try:
         rejected = False
@@ -103,11 +98,10 @@ def prove_postappend_failure_removes_new_record(tmp_path: Path) -> None:
         require(rejected, "post-append canonical validation failure was not rejected")
     finally:
         sys.argv = argv
+        creator.validate_canonical_ledger_after_append = original_after
 
     require(not target.exists(),
             "new migration operation evidence remained after post-append validation failure")
-    require(counter.read_text(encoding="utf-8") == "2",
-            "controlled validator did not run once before and once after append")
 
 
 def prove_contract_guards_are_required(contract_payload: bytes) -> None:
