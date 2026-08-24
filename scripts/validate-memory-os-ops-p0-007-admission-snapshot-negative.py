@@ -340,7 +340,10 @@ def main() -> int:
         (
             "generator production decision promotion",
             mutate_field("productionDecision", "GO"),
-            "production decision must remain NO_GO",
+            (
+                "typed non-resurrection canonical admission authority invalid",
+                "production decision must remain NO_GO",
+            ),
         ),
     ]
 
