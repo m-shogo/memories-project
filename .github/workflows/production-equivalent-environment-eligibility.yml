@@ -7,6 +7,7 @@ on:
       - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
@@ -16,6 +17,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
       - "scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -24,6 +26,7 @@ on:
       - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
@@ -33,23 +36,66 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
       - "scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: production-equivalent-environment-eligibility-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate semantic eligibility authority read-only
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-environment-generation-eligibility-negative.py \
+            scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py \
+            scripts/validate-memory-os-production-equivalent-environment-eligibility.py \
+            scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-environment-generation-eligibility-negative.py
+          python scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py
+          python scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py
+          python scripts/validate-memory-os-production-equivalent-environment-eligibility.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- \
+            contracts/operations/production-equivalent-environment-eligibility-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  validate:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -57,11 +103,11 @@ jobs:
       - name: Capture exact semantic eligibility source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.sha }}"
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"
       - name: Derive and validate restore-preflight generation eligibility
         id: eligibility
         run: |
@@ -77,21 +123,18 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py \
             scripts/validate-memory-os-production-equivalent-environment-eligibility.py \
             scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-environment-generation-eligibility-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Reject stale semantic eligibility authority on pull requests
-        if: steps.eligibility.outputs.exit_code == '0' && github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- contracts/operations/production-equivalent-environment-eligibility-contract.v1.json
       - name: Commit bounded generation eligibility authority
-        if: steps.eligibility.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.eligibility.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           log=/tmp/production-equivalent-environment-eligibility.log
@@ -106,6 +149,7 @@ jobs:
             python scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1
             python scripts/validate-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1
           }
 
           for reconcile_attempt in 1 2; do
@@ -151,7 +195,7 @@ jobs:
           done
           exit 75
       - name: Record privacy-safe eligibility diagnostic
-        if: steps.eligibility.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.eligibility.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           ELIGIBILITY_EXIT_CODE: ${{ steps.eligibility.outputs.exit_code }}
         run: |
@@ -162,7 +206,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os
+          import json, os, tempfile
           from pathlib import Path
           text = Path('/tmp/production-equivalent-environment-eligibility.log').read_text(encoding='utf-8', errors='replace')
           value = {
@@ -180,7 +224,26 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          temp_path = None
+          try:
+              with tempfile.NamedTemporaryFile(
+                  mode='w',
+                  encoding='utf-8',
+                  dir=path.parent,
+                  prefix=f'.{path.name}.',
+                  suffix='.tmp',
+                  delete=False,
+              ) as handle:
+                  temp_path = Path(handle.name)
+                  json.dump(value, handle, indent=2)
+                  handle.write('\n')
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_path, path)
+              temp_path = None
+          finally:
+              if temp_path is not None and temp_path.exists():
+                  temp_path.unlink()
           PY
           git add docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json
           git config user.name "github-actions[bot]"
