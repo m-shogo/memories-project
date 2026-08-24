@@ -11,15 +11,24 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-GEN_RECOVERY_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-TYPED_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
-ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
-WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
-NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
+CONTRACT_REL = Path("contracts/operations/backup-restore-drill-request-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+OBJECTIVES_REGISTRY_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+GEN_RECOVERY_CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
+TYPED_CONTRACT_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json")
+ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+NEGATIVE_REL = Path("scripts/validate-memory-os-backup-restore-drill-request-negative.py")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+OBJECTIVES_REGISTRY = ROOT / OBJECTIVES_REGISTRY_REL
+GEN_RECOVERY_CONTRACT = ROOT / GEN_RECOVERY_CONTRACT_REL
+TYPED_CONTRACT = ROOT / TYPED_CONTRACT_REL
+ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
+WRITER = ROOT / WRITER_REL
+NEGATIVE = ROOT / NEGATIVE_REL
 
 
 class Fail(RuntimeError):
@@ -36,6 +45,34 @@ def repo_relative(path: Path) -> Path:
         return path.resolve(strict=False).relative_to(ROOT.resolve())
     except (OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "drill request contract"),
+        (REGISTRY, REGISTRY_REL, "drill request registry"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+        (OBJECTIVES_REGISTRY, OBJECTIVES_REGISTRY_REL, "recovery objectives registry"),
+        (GEN_RECOVERY_CONTRACT, GEN_RECOVERY_CONTRACT_REL, "generation recovery contract"),
+        (TYPED_CONTRACT, TYPED_CONTRACT_REL, "typed non-resurrection contract"),
+        (ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "semantic generation eligibility helper"),
+        (WRITER, WRITER_REL, "drill request writer"),
+        (NEGATIVE, NEGATIVE_REL, "drill request negative validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def require_repo_file(path: Path, message: str) -> Path:
@@ -67,7 +104,7 @@ def load_module(path: Path, name: str):
 
 
 def run_negative() -> None:
-    require_repo_file(NEGATIVE, "drill request negative validator missing")
+    require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "drill request negative validator")
     completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"drill request negative suite failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
 
@@ -91,6 +128,7 @@ def expected_decision(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generations = load(GEN_REGISTRY)
@@ -133,7 +171,6 @@ def main() -> int:
         candidate = path if path.is_absolute() else ROOT / path
         expected = str(require_repo_file(candidate, f"contract artifact missing: {path}"))
         require(contract.get(field) == expected, f"contract ref drift: {field}")
-    require_repo_file(ELIGIBILITY_HELPER, "semantic generation eligibility helper missing")
 
     required_fields = contract.get("requiredRequestFields")
     required_domains = contract.get("requiredEvidenceDomains")
@@ -268,6 +305,7 @@ def main() -> int:
 
     run_negative()
     print("Memory OS production-equivalent backup/restore drill request validation PASS")
+    print("drill request validator canonical runtime authorities enforced: true")
     print(f"registered environment generations: {generation_count}")
     print(f"semantic preflight-eligible generations: {eligible_count}")
     print(f"unsuperseded semantic preflight-eligible generations: {unsuperseded_eligible_count}")
