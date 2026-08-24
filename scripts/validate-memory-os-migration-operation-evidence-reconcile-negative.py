@@ -157,6 +157,41 @@ def prove_validator_chain_substitution_rejected(module, originals: dict[Path, by
                 f"{path.name} changed after rejected validator-chain substitution")
 
 
+def prove_atomic_replace_failure_rolls_back(module, originals: dict[Path, bytes]) -> None:
+    candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
+    for candidate in candidates:
+        candidate["atomicRollbackProbe"] = "must-not-persist"
+
+    original_replace = module.os.replace
+    calls = 0
+
+    def fail_second_replace(source, destination) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("synthetic atomic replace failure")
+        original_replace(source, destination)
+
+    module.os.replace = fail_second_replace
+    try:
+        rejected = False
+        try:
+            module.commit_validated_triple(*candidates)
+        except OSError as exc:
+            require("synthetic atomic replace failure" in str(exc), f"unexpected atomic replacement rejection: {exc}")
+            rejected = True
+        require(rejected, "migration operation authority accepted synthetic atomic replace failure")
+    finally:
+        module.os.replace = original_replace
+
+    require(calls >= 5, "migration operation rollback did not atomically restore all canonical authorities")
+    for path, payload in originals.items():
+        require(path.read_bytes() == payload,
+                f"{path.name} changed after synthetic atomic replace failure")
+        leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(not leftovers, f"temporary migration operation authority remained after replace failure: {leftovers}")
+
+
 def prove_post_write_failure_rolls_back(module, originals: dict[Path, bytes]) -> None:
     candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
     for candidate in candidates:
@@ -207,8 +242,9 @@ def main() -> int:
         prove_canonical_ledger_preappend_guard(tmp_path)
         prove_postappend_failure_removes_new_record(tmp_path)
 
+    prove_atomic_replace_failure_rolls_back(module, originals)
     prove_post_write_failure_rolls_back(module, originals)
-    print("PASS: migration operation append and reconcile are fail-closed and rollback-safe")
+    print("PASS: migration operation append and reconcile are fail-closed, atomic, and rollback-safe")
     print("migration operation validator-chain substitution accepted: false")
     return 0
 
