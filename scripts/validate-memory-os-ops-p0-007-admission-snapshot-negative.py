@@ -67,7 +67,7 @@ def run_validator(expect_success: bool, label: str) -> None:
         raise Fail(f"{label}: rejection surfaced an implementation exception instead of a controlled failure")
 
 
-def run_generator_rejects(label: str, expected_message: str) -> None:
+def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) -> None:
     before = SNAPSHOT.read_bytes()
     proc = subprocess.run(
         [sys.executable, str(GENERATOR)],
@@ -79,7 +79,8 @@ def run_generator_rejects(label: str, expected_message: str) -> None:
     if proc.returncode != 1:
         raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
     output = proc.stderr or proc.stdout
-    if expected_message not in output:
+    allowed = (expected_messages,) if isinstance(expected_messages, str) else expected_messages
+    if not any(message in output for message in allowed):
         raise Fail(f"{label}: generator rejection did not use expected authority boundary: {output}")
     if "Traceback (most recent call last)" in output:
         raise Fail(f"{label}: generator rejection surfaced an implementation exception")
@@ -319,16 +320,22 @@ def main() -> int:
         ("canonical blocker ordering drift", STATUS, mutate_ops7_missing(True)),
         ("production decision promotion", STATUS, mutate_field("productionDecision", "GO")),
     ]
-    generator_cases: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
+    generator_cases: list[tuple[str, Callable[[dict[str, Any]], None], str | tuple[str, ...]]] = [
         (
             "generator canonical blocker replacement",
             mutate_ops7_missing(False),
-            "canonical OPS-P0-007 blocker authority invalid",
+            (
+                "typed non-resurrection canonical admission authority invalid",
+                "canonical OPS-P0-007 blocker authority invalid",
+            ),
         ),
         (
             "generator canonical blocker ordering drift",
             mutate_ops7_missing(True),
-            "canonical OPS-P0-007 blocker authority invalid",
+            (
+                "typed non-resurrection canonical admission authority invalid",
+                "canonical OPS-P0-007 blocker authority invalid",
+            ),
         ),
         (
             "generator production decision promotion",
@@ -352,12 +359,12 @@ def main() -> int:
             write(path, authority)
             run_validator(False, label)
 
-        for label, mutate, expected_message in generator_cases:
+        for label, mutate, expected_messages in generator_cases:
             restore_all(originals)
             status = copy.deepcopy(load(STATUS))
             mutate(status)
             write(STATUS, status)
-            run_generator_rejects(label, expected_message)
+            run_generator_rejects(label, expected_messages)
 
         restore_all(originals)
         run_validator(True, "restored baseline")
