@@ -82,6 +82,7 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import tempfile
           from pathlib import Path
           value = {
               'schemaVersion': 'memory-os-production-equivalent-environment-schema-validation.v1',
@@ -97,7 +98,27 @@ jobs:
               'productionReady': False,
           }
           path = Path('docs/fixtures/memory-os-operability/production-equivalent-environment-schema-validation.v1.json')
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          temp_path = None
+          try:
+              with tempfile.NamedTemporaryFile(
+                  mode='w',
+                  encoding='utf-8',
+                  dir=path.parent,
+                  prefix=f'.{path.name}.',
+                  suffix='.tmp',
+                  delete=False,
+              ) as handle:
+                  temp_path = Path(handle.name)
+                  json.dump(value, handle, indent=2)
+                  handle.write('\n')
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_path, path)
+              temp_path = None
+          finally:
+              if temp_path is not None and temp_path.exists():
+                  temp_path.unlink()
           PY
           git add docs/fixtures/memory-os-operability/production-equivalent-environment-schema-validation.v1.json
           git config user.name "github-actions[bot]"
