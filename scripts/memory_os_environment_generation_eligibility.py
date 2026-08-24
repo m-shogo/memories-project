@@ -44,8 +44,8 @@ def canonical_repo_file(path: Path, field: str) -> Path:
 
 
 def require_canonical_registry(path: Path) -> None:
-    if path == CANONICAL_GEN_REGISTRY:
-        canonical_repo_file(path, "canonical environment generation registry")
+    require(path == CANONICAL_GEN_REGISTRY, "environment generation registry authority drift")
+    canonical_repo_file(path, "canonical environment generation registry")
 
 
 def load_generation_writer():
@@ -164,7 +164,8 @@ def main() -> int:
     print(f"unsuperseded preflight-eligible generations: {state['unsupersededPreflightEligibleGenerationCount']}")
     print(f"distinct preflight-eligible environments: {state['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {state['eligibleDirectedPairCount']}")
-    print("canonical generation registry identity required for default derivation: true")
+    print("canonical generation registry identity required for path-based derivation: true")
+    print("fixture derivation remains available through derive_registry: true")
     print("generation writer executable authority pinned: true")
     print("generation registry validation delegated to canonical writer: true")
     print("eligible environment independent review reuse accepted: false")
