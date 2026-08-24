@@ -12,16 +12,26 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
-INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
-GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
-EXPECTED_EVIDENCE_ROOT = ROOT / "docs/evidence/backup-restore"
-EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-promotion-review.lock"
-NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
+CONTRACT_REL = Path("contracts/operations/backup-restore-promotion-review-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-promotion-review-registry.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+TYPED_REGISTRY_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
+INVENTORY_REL = Path("contracts/operations/operability-admission-inventory.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-backup-restore-promotion-review.py")
+GEN_WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+EXPECTED_EVIDENCE_ROOT_REL = Path("docs/evidence/backup-restore")
+EXPECTED_LOCK_REL = Path("contracts/operations/.backup-restore-promotion-review.lock")
+NEGATIVE_REL = Path("scripts/validate-memory-os-backup-restore-promotion-review-negative.py")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+TYPED_REGISTRY = ROOT / TYPED_REGISTRY_REL
+INVENTORY = ROOT / INVENTORY_REL
+WRITER = ROOT / WRITER_REL
+GEN_WRITER = ROOT / GEN_WRITER_REL
+EXPECTED_EVIDENCE_ROOT = ROOT / EXPECTED_EVIDENCE_ROOT_REL
+EXPECTED_LOCK = ROOT / EXPECTED_LOCK_REL
+NEGATIVE = ROOT / NEGATIVE_REL
 EXPECTED_RECORD_SCHEMA = "memory-os-backup-restore-promotion-review-record.v2"
 EXPECTED_REVIEW_SCHEMA = "memory-os-backup-restore-promotion-review-evidence.v1"
 EXPECTED_REVIEW_FIELDS = {
@@ -56,6 +66,47 @@ def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def require_exact_repo_dir(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_dir() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "promotion review contract"),
+        (REGISTRY, REGISTRY_REL, "promotion review registry"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "generation recovery evidence registry"),
+        (TYPED_REGISTRY, TYPED_REGISTRY_REL, "typed non-resurrection registry"),
+        (INVENTORY, INVENTORY_REL, "operability admission inventory"),
+        (WRITER, WRITER_REL, "promotion review writer"),
+        (GEN_WRITER, GEN_WRITER_REL, "generation recovery evidence writer"),
+        (NEGATIVE, NEGATIVE_REL, "promotion review negative validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
+    require_exact_repo_dir(EXPECTED_EVIDENCE_ROOT, EXPECTED_EVIDENCE_ROOT_REL, "promotion review evidence namespace")
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -66,6 +117,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
+    require_exact_repo_file(WRITER, WRITER_REL, "promotion review writer")
     spec = importlib.util.spec_from_file_location("memory_os_promotion_review_writer_validator", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load promotion review writer")
     module = importlib.util.module_from_spec(spec)
@@ -115,6 +167,7 @@ def inventory_area(inventory: dict[str, Any], area_id: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generation = load(GEN_REGISTRY)
@@ -136,7 +189,7 @@ def main() -> int:
     writer.canonical_repo_file(REGISTRY, "promotion review registry")
     writer.canonical_repo_file(GEN_REGISTRY, "generation recovery evidence registry")
     writer.canonical_repo_file(GEN_WRITER, "generation recovery evidence writer")
-    require(EXPECTED_EVIDENCE_ROOT.is_dir(), "promotion review evidence namespace missing")
+    require_exact_repo_dir(EXPECTED_EVIDENCE_ROOT, EXPECTED_EVIDENCE_ROOT_REL, "promotion review evidence namespace")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-promotion-review-contract.v1", "promotion review contract schema drift")
     require(contract.get("recordSchemaVersion") == EXPECTED_RECORD_SCHEMA, "promotion review record schema authority drift")
@@ -218,9 +271,11 @@ def main() -> int:
     require(inventory.get("humanProductionPromotionAuthorized") is False, "promotion review cannot authorize production in operability inventory")
     require(backup_area.get("humanProductionPromotionAuthorized") is False, "promotion review cannot authorize production in OPS-P0-007 inventory")
 
+    require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "promotion review negative validator")
     completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"promotion review negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
     print("Memory OS backup/restore promotion review validation PASS")
+    print("promotion review validator canonical runtime authorities enforced: true")
     print(f"final recovery candidates: {candidate_count}")
     print(f"registered historical promotion reviews: {count}")
     print(f"GO/NO_GO/DEFER: {go_count}/{no_go_count}/{defer_count}")
