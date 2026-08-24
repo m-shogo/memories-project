@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+SELF_REL = Path("scripts/validate-memory-os-operability-admission-inventory-source-authorities.py")
 REQUEST = "contracts/operations/requests/operability-admission-inventory.v1.json"
 REQUEST_FIELDS = {
     "schemaVersion",
@@ -223,6 +224,25 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def enforce_runtime_authority() -> None:
+    expected_root = Path(enforce_runtime_authority.__code__.co_filename).resolve().parents[1]
+    try:
+        actual_root = ROOT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("inventory source-authority repository root missing") from exc
+    require(actual_root == expected_root, "inventory source-authority repository root drift")
+    self_path = expected_root / SELF_REL
+    try:
+        lexical = self_path.relative_to(expected_root)
+        resolved = self_path.resolve(strict=True).relative_to(expected_root)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("inventory source-authority validator missing or escapes repository") from exc
+    require(
+        lexical == SELF_REL and resolved == SELF_REL and self_path.is_file() and not self_path.is_symlink(),
+        "inventory source-authority validator identity drift",
+    )
+
+
 def exact_success(result: Any, label: str) -> None:
     require(
         isinstance(result, int) and not isinstance(result, bool) and result == 0,
@@ -244,7 +264,7 @@ def load(relative: str) -> dict[str, Any]:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"source authority missing or escapes repository: {relative}") from exc
-    require(resolved == Path(relative) and path.is_file(), f"source authority path drift: {relative}")
+    require(resolved == Path(relative) and path.is_file() and not path.is_symlink(), f"source authority path drift: {relative}")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -274,7 +294,7 @@ def load_validator(relative: str, module_name: str, function_name: str):
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"source validator missing or escapes repository: {relative}") from exc
-    require(resolved == Path(relative) and path.is_file(), f"source validator path drift: {relative}")
+    require(resolved == Path(relative) and path.is_file() and not path.is_symlink(), f"source validator path drift: {relative}")
     spec = importlib.util.spec_from_file_location(module_name, path)
     require(spec is not None and spec.loader is not None, f"cannot load source validator: {relative}")
     module = importlib.util.module_from_spec(spec)
@@ -346,6 +366,7 @@ def validate_command_source(relative: str, module_name: str, label: str) -> None
 
 
 def main() -> int:
+    enforce_runtime_authority()
     validate_inventory_request()
     human_tabletop_count = validate_human_tabletop_source()
     validate_load_source()
@@ -354,6 +375,7 @@ def main() -> int:
     for relative, validator_path, module_name, function_name, label in SOURCES:
         validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
+    print("inventory source-authority repository root substitution accepted: false")
     print("operability inventory generation request authority: PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
     print(f"validated backup/restore derived authorities: {len(COMMAND_SOURCES)}")
