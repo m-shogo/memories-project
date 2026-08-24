@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove environment-generation eligibility reconciliation is transactional and fail-closed."""
+"""Prove environment-generation eligibility reconciliation is canonical and transactionally fail-closed."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py"
@@ -15,7 +16,6 @@ TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
 GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-REPO_SUBSTITUTE = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class Fail(RuntimeError):
@@ -35,87 +35,184 @@ def load_reconciler():
     return module
 
 
+def expect_direct_authority_rejected(
+    reconciler: Any,
+    *,
+    name: str,
+    field: str,
+    attribute: str,
+    replacement: Path,
+    canonical_contract: bytes,
+    canonical_generation_contract: bytes,
+    canonical_generation_registry: bytes,
+) -> None:
+    original = getattr(reconciler, attribute)
+    setattr(reconciler, attribute, replacement)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(f"{field} authority drift" in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        else:
+            raise Fail(f"direct reconciler unexpectedly accepted: {name}")
+        require(CONTRACT.read_bytes() == canonical_contract, f"canonical eligibility contract mutated while rejecting {name}")
+        require(GEN_CONTRACT.read_bytes() == canonical_generation_contract, f"canonical generation contract mutated while rejecting {name}")
+        require(GEN_REGISTRY.read_bytes() == canonical_generation_registry, f"canonical generation registry mutated while rejecting {name}")
+    finally:
+        setattr(reconciler, attribute, original)
+
+
+def prove_direct_authority_identity(reconciler: Any) -> None:
+    canonical_contract = CONTRACT.read_bytes()
+    canonical_generation_contract = GEN_CONTRACT.read_bytes()
+    canonical_generation_registry = GEN_REGISTRY.read_bytes()
+    cases = (
+        ("eligibility contract substitution", "environment eligibility contract", "CONTRACT", reconciler.GEN_CONTRACT),
+        ("generation registry substitution", "environment generation registry", "GEN_REGISTRY", reconciler.CONTRACT),
+        ("generation contract substitution", "environment generation contract", "GEN_CONTRACT", reconciler.CONTRACT),
+        ("eligibility helper substitution", "environment generation eligibility helper", "HELPER", reconciler.VALIDATOR),
+        ("eligibility validator substitution", "environment eligibility validator", "VALIDATOR", reconciler.OPERABILITY_VALIDATOR),
+        ("operability validator substitution", "operability validator", "OPERABILITY_VALIDATOR", reconciler.VALIDATOR),
+    )
+    for name, field, attribute, replacement in cases:
+        expect_direct_authority_rejected(
+            reconciler,
+            name=name,
+            field=field,
+            attribute=attribute,
+            replacement=replacement,
+            canonical_contract=canonical_contract,
+            canonical_generation_contract=canonical_generation_contract,
+            canonical_generation_registry=canonical_generation_registry,
+        )
+    print(f"PASS boundary: direct eligibility data/executable substitutions rejected: {len(cases)}")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "generation eligibility reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
-    require(REPO_SUBSTITUTE.is_file(), "repo-contained executable substitute missing")
     reconciler = load_reconciler()
+    prove_direct_authority_identity(reconciler)
 
-    original_helper = reconciler.HELPER
-    reconciler.HELPER = REPO_SUBSTITUTE
+    original_enforcer = reconciler.enforce_runtime_authorities
+    original_contract_path = reconciler.CONTRACT
+    original_generation_contract_path = reconciler.GEN_CONTRACT
+    original_generation_registry_path = reconciler.GEN_REGISTRY
+    original_post_validator = reconciler.run_post_validator
+    original_os_replace = reconciler.os.replace
+
+    # Fixture mutation is deliberately below the production authority boundary:
+    # direct invocation remains canonical-only, while this suite proves semantic
+    # drift rejection, atomic replacement, and aggregate rollback internally.
+    reconciler.enforce_runtime_authorities = lambda: None
     try:
-        try:
-            reconciler.load_helper()
-        except reconciler.Fail:
-            print("PASS reject before write: eligibility reconciler helper substitution")
-        except Exception as exc:
-            raise Fail(f"helper substitution leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
-        else:
-            raise Fail("eligibility reconciler helper substitution unexpectedly accepted")
+        with tempfile.TemporaryDirectory(prefix=".tmp-environment-eligibility-reconcile-", dir=TMP_PARENT) as tmpdir:
+            tmp = Path(tmpdir)
+            contract_copy = tmp / CONTRACT.name
+            generation_contract_copy = tmp / GEN_CONTRACT.name
+            generation_registry_copy = tmp / GEN_REGISTRY.name
+            shutil.copyfile(CONTRACT, contract_copy)
+            shutil.copyfile(GEN_CONTRACT, generation_contract_copy)
+            shutil.copyfile(GEN_REGISTRY, generation_registry_copy)
+            original_contract = contract_copy.read_bytes()
+
+            reconciler.CONTRACT = contract_copy
+            reconciler.GEN_CONTRACT = generation_contract_copy
+            reconciler.GEN_REGISTRY = generation_registry_copy
+
+            drifted_generation_contract = json.loads(generation_contract_copy.read_text(encoding="utf-8"))
+            generation_boundary = drifted_generation_contract.get("currentBoundary")
+            require(isinstance(generation_boundary, dict), "generation fixture boundary missing")
+            generation_boundary["registeredGenerationCount"] = 1
+            generation_contract_copy.write_text(json.dumps(drifted_generation_contract, indent=2) + "\n", encoding="utf-8")
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                require("generation registered count drift" in str(exc), f"generation count drift rejected at wrong boundary: {exc}")
+            except Exception as exc:
+                raise Fail(f"generation count drift leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+            else:
+                raise Fail("generation contract count drift unexpectedly reconciled")
+            require(contract_copy.read_bytes() == original_contract, "generation count drift mutated eligibility contract")
+            print("PASS reject before write: generation contract count drift")
+
+            shutil.copyfile(GEN_CONTRACT, generation_contract_copy)
+
+            # A failed atomic replacement must preserve the eligibility contract
+            # and remove its temporary authority before control returns.
+            atomic_original = contract_copy.read_bytes()
+            replace_calls = 0
+
+            def fail_first_replace(source: str | Path, destination: str | Path) -> None:
+                nonlocal replace_calls
+                replace_calls += 1
+                if replace_calls == 1:
+                    raise OSError("synthetic atomic replacement failure")
+                original_os_replace(source, destination)
+
+            reconciler.os.replace = fail_first_replace
+            try:
+                try:
+                    reconciler.main()
+                except OSError as exc:
+                    require("synthetic atomic replacement failure" in str(exc), f"atomic replacement failed at wrong boundary: {exc}")
+                except Exception as exc:
+                    raise Fail(f"atomic replacement failure leaked unexpected exception: {type(exc).__name__}: {exc}") from exc
+                else:
+                    raise Fail("synthetic atomic replacement failure unexpectedly accepted")
+                require(replace_calls == 2, f"atomic replacement failure did not perform exactly one rollback replace: {replace_calls}")
+                require(contract_copy.read_bytes() == atomic_original, "failed atomic replacement mutated eligibility contract")
+                require(
+                    not list(contract_copy.parent.glob(f".{contract_copy.name}.*.tmp")),
+                    "failed atomic replacement left temporary eligibility authority behind",
+                )
+            finally:
+                reconciler.os.replace = original_os_replace
+            print("PASS atomic replacement failure: contract bytes preserved and temp cleaned")
+
+            # Make the contract byte-distinct but semantically equivalent so the
+            # validator hook proves publication occurred before aggregate failure.
+            parsed_contract = json.loads(contract_copy.read_text(encoding="utf-8"))
+            contract_copy.write_text(json.dumps(parsed_contract, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+            rollback_original = contract_copy.read_bytes()
+            observed: list[str] = []
+
+            def aggregate_failure_after_eligibility_success(path: Path, expected_relative: Path, field: str) -> None:
+                require(contract_copy.read_bytes() != rollback_original, "post-validator invoked before eligibility write")
+                observed.append(field)
+                if len(observed) == 1:
+                    require(field == "environment eligibility validator", "eligibility validator was not first post-write validator")
+                    return
+                require(len(observed) == 2, "unexpected extra post-write validator invocation")
+                require(field == "operability validator", "operability validator was not second post-write validator")
+                raise reconciler.Fail("synthetic aggregate operability rejection")
+
+            reconciler.run_post_validator = aggregate_failure_after_eligibility_success
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                require("synthetic aggregate operability rejection" in str(exc), f"post-validation failure rejected at wrong boundary: {exc}")
+            except Exception as exc:
+                raise Fail(f"post-validation failure leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+            else:
+                raise Fail("forced aggregate eligibility post-validation failure unexpectedly accepted")
+            require(observed == ["environment eligibility validator", "operability validator"], "canonical post-write validator order drift")
+            require(contract_copy.read_bytes() == rollback_original, "failed aggregate validation left eligibility contract mutation")
+            print("PASS rollback: aggregate rejection restored eligibility contract byte-for-byte")
     finally:
-        reconciler.HELPER = original_helper
-
-    original_validator = reconciler.VALIDATOR
-    reconciler.VALIDATOR = REPO_SUBSTITUTE
-    try:
-        try:
-            reconciler.validate_runtime_executable_authorities()
-        except reconciler.Fail:
-            print("PASS reject before write: eligibility reconciler validator substitution")
-        except Exception as exc:
-            raise Fail(f"validator substitution leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
-        else:
-            raise Fail("eligibility reconciler validator substitution unexpectedly accepted")
-    finally:
-        reconciler.VALIDATOR = original_validator
-
-    with tempfile.TemporaryDirectory(prefix=".tmp-environment-eligibility-reconcile-", dir=TMP_PARENT) as tmpdir:
-        tmp = Path(tmpdir)
-        contract_copy = tmp / CONTRACT.name
-        generation_contract_copy = tmp / GEN_CONTRACT.name
-        shutil.copyfile(CONTRACT, contract_copy)
-        shutil.copyfile(GEN_CONTRACT, generation_contract_copy)
-        original_contract = contract_copy.read_bytes()
-
-        reconciler.CONTRACT = contract_copy
-        reconciler.GEN_CONTRACT = generation_contract_copy
-        reconciler.GEN_REGISTRY = GEN_REGISTRY
-
-        drifted_generation_contract = json.loads(generation_contract_copy.read_text(encoding="utf-8"))
-        generation_boundary = drifted_generation_contract.get("currentBoundary")
-        require(isinstance(generation_boundary, dict), "generation fixture boundary missing")
-        generation_boundary["registeredGenerationCount"] = 1
-        generation_contract_copy.write_text(json.dumps(drifted_generation_contract, indent=2) + "\n", encoding="utf-8")
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("generation registered count drift" in str(exc), f"generation count drift rejected at wrong boundary: {exc}")
-        except Exception as exc:
-            raise Fail(f"generation count drift leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
-        else:
-            raise Fail("generation contract count drift unexpectedly reconciled")
-        require(contract_copy.read_bytes() == original_contract, "generation count drift mutated eligibility contract")
-        print("PASS reject before write: generation contract count drift")
-
-        shutil.copyfile(GEN_CONTRACT, generation_contract_copy)
-        failing_validator = tmp / "forced-validator-failure.py"
-        failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(37)\n", encoding="utf-8")
-        reconciler.VALIDATOR = failing_validator
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("post-reconcile eligibility validator failed" in str(exc), f"post-validation failure rejected at wrong boundary: {exc}")
-        except Exception as exc:
-            raise Fail(f"post-validation failure leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
-        else:
-            raise Fail("forced eligibility post-validation failure unexpectedly accepted")
-        require(contract_copy.read_bytes() == original_contract, "post-validation failure left eligibility contract mutation")
-        print("PASS rollback: eligibility contract restored byte-for-byte after post-validation failure")
+        reconciler.enforce_runtime_authorities = original_enforcer
+        reconciler.CONTRACT = original_contract_path
+        reconciler.GEN_CONTRACT = original_generation_contract_path
+        reconciler.GEN_REGISTRY = original_generation_registry_path
+        reconciler.run_post_validator = original_post_validator
+        reconciler.os.replace = original_os_replace
 
     print("Environment generation eligibility reconcile negative suite PASS")
-    print("reconciler helper substitution accepted: false")
-    print("canonical runtime validator substitution accepted: false")
+    print("direct data/executable authority substitutions accepted: false")
     print("generation contract drift can mutate eligibility authority: false")
+    print("atomic replacement failure preserves canonical authority: true")
+    print("atomic replacement temp cleanup: true")
+    print("aggregate operability failure rolls back eligibility authority: true")
     print("failed post-validation leaves eligibility authority mutation behind: false")
     print("production evidence: false")
     print("production ready: false")
