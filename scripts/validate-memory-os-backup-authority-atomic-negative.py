@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused crash-safety checks for local backup authority reconciliation."""
+"""Focused fail-closed checks for local backup authority reconciliation."""
 
 from __future__ import annotations
 
@@ -50,6 +50,35 @@ def changed_candidate(status, label: str):
     require(isinstance(existing, list), "OPS-P0-007 existing evidence missing")
     existing.append(f"synthetic local-only atomic {label} sentinel")
     return candidate
+
+
+def normalizer_noop_validation(module) -> None:
+    original = module.STATUS_PATH.read_bytes()
+    real_normalize = module.normalize
+    real_run_validator = module.run_validator
+    calls: list[Path] = []
+
+    def unchanged(status):
+        return copy.deepcopy(status)
+
+    def track(path: Path) -> None:
+        calls.append(path)
+
+    module.normalize = unchanged
+    module.run_validator = track
+    try:
+        require(module.main() == 0, "normalizer no-op path failed unexpectedly")
+        require(
+            calls == [module.BACKUP_VALIDATOR, module.OPERABILITY_VALIDATOR],
+            f"normalizer no-op validator order drift: {calls}",
+        )
+        require(module.STATUS_PATH.read_bytes() == original,
+                "normalizer no-op path mutated production status")
+    finally:
+        module.normalize = real_normalize
+        module.run_validator = real_run_validator
+        if module.STATUS_PATH.read_bytes() != original:
+            module.atomic_write_bytes(module.STATUS_PATH, original)
 
 
 def normalizer_atomic_replace_failure(module) -> None:
@@ -136,6 +165,35 @@ def normalizer_atomic_rollback(module) -> None:
         module.os.replace = real_replace
         if module.STATUS_PATH.read_bytes() != original:
             module.atomic_write_bytes(module.STATUS_PATH, original)
+
+
+def coherent_noop_validation(module) -> None:
+    original = module.STATUS.read_bytes()
+    real_normalized = module.normalized
+    real_run_validator = module.run_validator
+    calls: list[Path] = []
+
+    def unchanged(status):
+        return copy.deepcopy(status)
+
+    def track(path: Path) -> None:
+        calls.append(path)
+
+    module.normalized = unchanged
+    module.run_validator = track
+    try:
+        require(module.main() == 0, "coherent no-op path failed unexpectedly")
+        require(
+            calls == [module.VALIDATOR, module.BACKUP_VALIDATOR, module.OPERABILITY_VALIDATOR],
+            f"coherent no-op validator order drift: {calls}",
+        )
+        require(module.STATUS.read_bytes() == original,
+                "coherent no-op path mutated production status")
+    finally:
+        module.normalized = real_normalized
+        module.run_validator = real_run_validator
+        if module.STATUS.read_bytes() != original:
+            module.atomic_write_bytes(module.STATUS, original)
 
 
 def coherent_atomic_replace_failure(module) -> None:
@@ -237,12 +295,16 @@ def main() -> int:
     coherent = load_module(COHERENT, "memory_os_coherent_backup_authority_atomic_negative_target")
     normalizer.validate_runtime_authority()
     coherent.validate_runtime_authority()
+    normalizer_noop_validation(normalizer)
     normalizer_atomic_replace_failure(normalizer)
     normalizer_atomic_rollback(normalizer)
+    coherent_noop_validation(coherent)
     coherent_atomic_replace_failure(coherent)
     coherent_atomic_rollback(coherent)
     print("Memory OS backup authority atomic negative suite PASS")
+    print("normalizer no-op aggregate validation: enforced")
     print("normalizer atomic replacement/rollback: enforced")
+    print("coherent no-op aggregate validation: enforced")
     print("coherent atomic replacement/rollback: enforced")
     print("temporary authority cleanup: enforced")
     print("production evidence: false")
