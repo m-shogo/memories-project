@@ -15,14 +15,19 @@ import argparse
 import copy
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+STATUS_PATH = CANONICAL_STATUS_PATH
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 OBJECT_RESULT = ROOT / "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
 PARSER_RESULT = ROOT / "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
 DATABASE_RESULT = ROOT / "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
@@ -107,6 +112,26 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except OSError as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    require_exact_authority(STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status")
+    require_exact_authority(
+        OPERABILITY_VALIDATOR,
+        CANONICAL_OPERABILITY_VALIDATOR,
+        "operability validator",
+    )
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -116,6 +141,33 @@ def load(path: Path) -> dict[str, Any]:
         raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    require(path.parent.is_dir(), f"authority parent missing: {path.parent}")
+    temp_name: str | None = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
+    except OSError as exc:
+        raise ReconcileFailure(f"cannot atomically write authority: {path.relative_to(ROOT)}: {exc}") from exc
+    finally:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
 
 def run_canonical_validator(script_name: str) -> None:
@@ -139,6 +191,25 @@ def run_canonical_validator(script_name: str) -> None:
     require(result.returncode == 0, f"canonical chaos validator rejected authority: {script_name}")
 
 
+def run_operability_validator() -> None:
+    enforce_runtime_authorities()
+    try:
+        result = subprocess.run(
+            [sys.executable, str(OPERABILITY_VALIDATOR)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except OSError as exc:
+        raise ReconcileFailure("cannot execute canonical operability validator") from exc
+    require(
+        type(result.returncode) is int and result.returncode == 0,
+        f"canonical operability validator rejected authority\n{result.stdout[-4000:]}",
+    )
+
+
 def validate_canonical_source_authorities() -> None:
     run_canonical_validator(OBJECT_VALIDATOR)
     run_canonical_validator(PARSER_VALIDATOR)
@@ -147,6 +218,11 @@ def validate_canonical_source_authorities() -> None:
     require(isinstance(assertions, dict), "database outage assertions missing")
     if assertions.get("sameSpoolIdReused") is True:
         run_canonical_validator(DATABASE_VALIDATOR)
+
+
+def run_post_write_validators() -> None:
+    validate_canonical_source_authorities()
+    run_operability_validator()
 
 
 def source_is_ancestor(source_sha: Any) -> bool:
@@ -299,7 +375,20 @@ def normalized_status(status: dict[str, Any]) -> dict[str, Any]:
     return status
 
 
+def commit_candidate(candidate: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
+    original_status = STATUS_PATH.read_bytes()
+    payload = json.dumps(candidate, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+    atomic_write_bytes(STATUS_PATH, payload)
+    try:
+        run_post_write_validators()
+    except Exception:
+        atomic_write_bytes(STATUS_PATH, original_status)
+        raise
+
+
 def main() -> int:
+    enforce_runtime_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
@@ -307,6 +396,10 @@ def main() -> int:
     current = load(STATUS_PATH)
     candidate = normalized_status(copy.deepcopy(current))
     candidate["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+
+    # Direct invocation must validate the current aggregate boundary even when
+    # normalization is already a no-op or the caller uses --check.
+    run_operability_validator()
 
     current_compare = copy.deepcopy(current)
     candidate_compare = copy.deepcopy(candidate)
@@ -321,10 +414,7 @@ def main() -> int:
     if not changed:
         print("Memory OS chaos authority already normalized")
         return 0
-    STATUS_PATH.write_text(
-        json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    commit_candidate(candidate)
     print("Normalized OPS-P0-009 across object, parser, database and completed parser-control evidence")
     return 0
 
