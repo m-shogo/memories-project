@@ -106,8 +106,11 @@ jobs:
       MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
 
     steps:
-      - name: Checkout
+      - name: Checkout exact source with ancestry
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Start MinIO
         run: >-
