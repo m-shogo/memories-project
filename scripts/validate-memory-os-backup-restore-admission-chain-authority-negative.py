@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py"
 FULL_RUNNER = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain-full.py"
 ALTERNATE_DATA = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+SECONDARY_ALTERNATE_DATA = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 ALTERNATE_SCRIPT = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
 ALTERNATE_WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-binding.yml"
 
@@ -45,6 +46,7 @@ def load_full_runner():
 
 def expect_guard_rejected(module: Any, field: str, replacement: Path) -> None:
     original = getattr(module, field)
+    require(replacement != original, f"authority substitution fixture is not distinct: {field}")
     setattr(module, field, replacement)
     try:
         rejected = False
@@ -55,6 +57,14 @@ def expect_guard_rejected(module: Any, field: str, replacement: Path) -> None:
         require(rejected, f"admission-chain authority substitution accepted: {field}")
     finally:
         setattr(module, field, original)
+
+
+def alternate_data_for(module: Any, field: str) -> Path:
+    original = getattr(module, field)
+    if original != ALTERNATE_DATA:
+        return ALTERNATE_DATA
+    require(original != SECONDARY_ALTERNATE_DATA, f"no distinct authority fixture available: {field}")
+    return SECONDARY_ALTERNATE_DATA
 
 
 def validate_full_runner_authority() -> None:
@@ -164,7 +174,7 @@ def main() -> int:
         "SELF",
     )
     for field in data_fields:
-        expect_guard_rejected(module, field, ALTERNATE_DATA)
+        expect_guard_rejected(module, field, alternate_data_for(module, field))
     for field in script_fields:
         expect_guard_rejected(module, field, ALTERNATE_SCRIPT)
     expect_guard_rejected(module, "WORKFLOW", ALTERNATE_WORKFLOW)
@@ -190,6 +200,7 @@ def main() -> int:
     print("Memory OS backup/restore admission-chain authority negative PASS")
     print("canonical data authority substitution accepted: false")
     print("canonical writer/blocker/validator/workflow substitution accepted: false")
+    print("authority substitution fixtures are distinct from probed authorities: true")
     print("main bypasses runtime authority guard: false")
     print("full validation runner root substitution accepted: false")
     print("full validation runner self path substitution accepted: false")
