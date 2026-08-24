@@ -200,3 +200,10 @@ jobs:
 
       - name: Validate production authority remains fail-closed
         run: python scripts/validate-memory-os-operability.py
+
+      - name: Prove backup/restore contract gate is read-only
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
