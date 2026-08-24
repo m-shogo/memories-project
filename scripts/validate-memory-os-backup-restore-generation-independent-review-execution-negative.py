@@ -142,12 +142,30 @@ def main() -> int:
         "required review field removal",
     )
 
+    original_bound_fields = module.BOUND_FIELDS
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: setattr(module, "BOUND_FIELDS", tuple(field for field in original_bound_fields if field != "recoveryObjectivesId")),
+        lambda: setattr(module, "BOUND_FIELDS", original_bound_fields),
+        "review binding field removal",
+    )
+
     original_roles = module.ROLE_BY_REF
     expect_candidate_mutation_rejected(
         module,
         lambda: setattr(module, "ROLE_BY_REF", {"securityReviewRef": "OPERABILITY", "operabilityReviewRef": "SECURITY"}),
         lambda: setattr(module, "ROLE_BY_REF", original_roles),
         "review role map substitution",
+    )
+
+    original_bound_rules = module.BOUND_RULE_BY_FIELD
+    weakened_rules = dict(original_bound_rules)
+    weakened_rules["recoveryObjectivesId"] = "independentReviewMustBindEvidenceId"
+    expect_candidate_mutation_rejected(
+        module,
+        lambda: setattr(module, "BOUND_RULE_BY_FIELD", weakened_rules),
+        lambda: setattr(module, "BOUND_RULE_BY_FIELD", original_bound_rules),
+        "review binding rule map substitution",
     )
 
     original_reviewer = module.REVIEWER_ID
@@ -197,6 +215,7 @@ def main() -> int:
     print("Memory OS generation independent-review execution authority negative PASS")
     print("candidate execution helper substitution accepted: false")
     print("paired semantic authority substitution accepted: false")
+    print("review binding semantic substitution accepted: false")
     print("main execution guard substitution accepted: false")
     print("main candidate helper substitution accepted: false")
     print("main double substitution accepted: false")
