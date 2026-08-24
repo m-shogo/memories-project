@@ -48,7 +48,7 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(
-        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
         f"{field} authority drift",
     )
     return path
@@ -95,43 +95,18 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
     return module
 
 
-def main() -> int:
-    enforce_runtime_authorities()
-    preflight_contract = load(PREFLIGHT)
-    eligibility_contract = load(ELIGIBILITY)
-    objectives = load(OBJECTIVES)
-    drill_registry = load(DRILL_REQUESTS)
-    helper = load_module(
-        HELPER,
-        HELPER_REL,
-        "memory_os_generation_eligibility_for_preflight_consistency",
-        "generation eligibility helper",
-    )
-    eligibility_validator = load_module(
-        ELIGIBILITY_VALIDATOR,
-        ELIGIBILITY_VALIDATOR_REL,
-        "memory_os_environment_eligibility_for_preflight_consistency",
-        "environment eligibility validator",
-    )
-    objectives_writer = load_module(
-        OBJECTIVES_WRITER,
-        OBJECTIVES_WRITER_REL,
-        "memory_os_recovery_objectives_for_preflight_consistency",
-        "recovery objectives writer",
-    )
-    drill_writer = load_module(
-        DRILL_WRITER,
-        DRILL_WRITER_REL,
-        "memory_os_restore_drill_request_for_preflight_consistency",
-        "restore drill request writer",
-    )
-    drill_validator = load_module(
-        DRILL_VALIDATOR,
-        DRILL_VALIDATOR_REL,
-        "memory_os_restore_drill_request_validator_for_preflight_consistency",
-        "restore drill request validator",
-    )
-
+def validate_state(
+    preflight_contract: dict[str, Any],
+    eligibility_contract: dict[str, Any],
+    objectives: dict[str, Any],
+    drill_registry: dict[str, Any],
+    *,
+    helper,
+    eligibility_validator,
+    objectives_writer,
+    drill_writer,
+    drill_validator,
+) -> int:
     try:
         eligibility_validator.main()
     except eligibility_validator.Fail as exc:
@@ -222,6 +197,89 @@ def main() -> int:
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
+
+
+CANONICAL_REQUIRE = require
+CANONICAL_RUNTIME_ENFORCER = enforce_runtime_authorities
+CANONICAL_EXECUTION_HELPERS = (
+    require_exact_repo_file,
+    display_path,
+    load,
+    load_module,
+    validate_state,
+)
+
+
+def enforce_execution_identity(
+    canonical_enforcer=CANONICAL_RUNTIME_ENFORCER,
+    canonical_require=CANONICAL_REQUIRE,
+    canonical_helpers=CANONICAL_EXECUTION_HELPERS,
+) -> None:
+    if enforce_runtime_authorities is not canonical_enforcer:
+        raise Fail("preflight consistency runtime authority enforcer drift")
+    if require is not canonical_require:
+        raise Fail("preflight consistency require helper drift")
+    current_helpers = (
+        require_exact_repo_file,
+        display_path,
+        load,
+        load_module,
+        validate_state,
+    )
+    if current_helpers != canonical_helpers:
+        raise Fail("preflight consistency execution helper drift")
+
+
+def main(canonical_execution_guard=enforce_execution_identity) -> int:
+    if enforce_execution_identity is not canonical_execution_guard:
+        raise Fail("preflight consistency execution guard drift")
+    enforce_execution_identity()
+    enforce_runtime_authorities()
+    preflight_contract = load(PREFLIGHT)
+    eligibility_contract = load(ELIGIBILITY)
+    objectives = load(OBJECTIVES)
+    drill_registry = load(DRILL_REQUESTS)
+    helper = load_module(
+        HELPER,
+        HELPER_REL,
+        "memory_os_generation_eligibility_for_preflight_consistency",
+        "generation eligibility helper",
+    )
+    eligibility_validator = load_module(
+        ELIGIBILITY_VALIDATOR,
+        ELIGIBILITY_VALIDATOR_REL,
+        "memory_os_environment_eligibility_for_preflight_consistency",
+        "environment eligibility validator",
+    )
+    objectives_writer = load_module(
+        OBJECTIVES_WRITER,
+        OBJECTIVES_WRITER_REL,
+        "memory_os_recovery_objectives_for_preflight_consistency",
+        "recovery objectives writer",
+    )
+    drill_writer = load_module(
+        DRILL_WRITER,
+        DRILL_WRITER_REL,
+        "memory_os_restore_drill_request_for_preflight_consistency",
+        "restore drill request writer",
+    )
+    drill_validator = load_module(
+        DRILL_VALIDATOR,
+        DRILL_VALIDATOR_REL,
+        "memory_os_restore_drill_request_validator_for_preflight_consistency",
+        "restore drill request validator",
+    )
+    return validate_state(
+        preflight_contract,
+        eligibility_contract,
+        objectives,
+        drill_registry,
+        helper=helper,
+        eligibility_validator=eligibility_validator,
+        objectives_writer=objectives_writer,
+        drill_writer=drill_writer,
+        drill_validator=drill_validator,
+    )
 
 
 if __name__ == "__main__":
