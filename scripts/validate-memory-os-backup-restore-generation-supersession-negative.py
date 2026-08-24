@@ -147,21 +147,33 @@ def main() -> int:
             drill_registry = tmp_path / "drill-requests.json"
             overlay_registry = tmp_path / "typed-overlay.json"
 
+            source_review = env_tmp_path / "source-independent-review.valid.md"
+            target_review = env_tmp_path / "target-independent-review.valid.md"
+            source_review.write_text("Synthetic source successor independent review fixture.\n", encoding="utf-8")
+            target_review.write_text("Synthetic target successor independent review fixture.\n", encoding="utf-8")
+            source_review_ref = source_review.relative_to(ROOT).as_posix()
+            target_review_ref = target_review.relative_to(ROOT).as_posix()
+
             source_successor_env = successor_environment_record(
                 fixture.SOURCE_ENV_FIXTURE,
                 "pegen_source_v2",
                 env_tmp_path / "source-environment-record.v2.valid.json",
-                independent_review_ref="SECURITY.md",
+                independent_review_ref=source_review_ref,
             )
             target_successor_env = successor_environment_record(
                 fixture.TARGET_ENV_FIXTURE,
                 "pegen_target_v2",
                 env_tmp_path / "target-environment-record.v2.valid.json",
-                independent_review_ref="README.md",
+                independent_review_ref=target_review_ref,
             )
-            successor_commit = temporary_source_commit(original_head, [source_successor_env, target_successor_env])
+            successor_commit = temporary_source_commit(
+                original_head,
+                [source_successor_env, target_successor_env, source_review, target_review],
+            )
             source_successor_env.unlink()
             target_successor_env.unlink()
+            source_review.unlink()
+            target_review.unlink()
             run_git("checkout", "--quiet", "--detach", successor_commit)
 
             source = fixture.generation_record(
@@ -288,6 +300,7 @@ def main() -> int:
         print("historical evidence remains auditable after valid supersession: true")
         print("synthetic successor sourceCommitSha ancestor validation exercised: true")
         print("eligible generation independent review reuse accepted: false")
+        print("successor review evidence reused as implementation/restore evidence: false")
         print("branch or ref updated by synthetic source commits: false")
         print("production evidence: false")
         print("production decision: NO_GO")
