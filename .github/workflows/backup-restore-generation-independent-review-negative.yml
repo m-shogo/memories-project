@@ -1,0 +1,65 @@
+name: Backup Restore Generation Independent Review Negative
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-generation-independent-review-negative.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "docs/evidence/backup-restore/**"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-generation-independent-review-negative.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "docs/evidence/backup-restore/**"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-generation-independent-review-negative-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact clean independent-review authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Validate final-candidate independent-review authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-independent-review.py
+          test -z "$(git status --porcelain)"
