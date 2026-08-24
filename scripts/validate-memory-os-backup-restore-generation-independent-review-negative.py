@@ -78,6 +78,33 @@ def expect_authority_substitution_fail(module, field: str, substitute: Path) -> 
         setattr(module, field, original)
 
 
+def expect_execution_substitution_fail(module, field: str, replacement) -> None:
+    original = getattr(module, field)
+    setattr(module, field, replacement)
+    try:
+        try:
+            module.candidate_reviews_approved(base_row())
+        except module.Fail:
+            return
+        raise Fail(f"independent-review execution helper substitution unexpectedly passed: {field}")
+    finally:
+        setattr(module, field, original)
+
+
+def expect_main_candidate_substitution_fail(module) -> None:
+    original = module.candidate_reviews_approved
+    module.candidate_reviews_approved = lambda _row: True
+    try:
+        try:
+            module.main()
+        except module.Fail as exc:
+            require("candidate authority drift" in str(exc), f"candidate substitution rejected at wrong boundary: {exc}")
+            return
+        raise Fail("main accepted substituted independent-review candidate authority")
+    finally:
+        module.candidate_reviews_approved = original
+
+
 def base_row() -> dict:
     return {
         "evidenceId": "brge_negative_review_authority",
@@ -171,31 +198,6 @@ def expect_contract_fail(module, mutate, label: str) -> None:
         module.load_json = original_load_json
 
 
-def expect_material_delta_candidate_delegation(module) -> None:
-    class RejectMaterialDelta:
-        @staticmethod
-        def material_delta_review_approved(_row):
-            raise module.Fail("synthetic material-delta rejection")
-
-    original_loader = module.load_material_delta_validator
-    original_validate_review = module.validate_review
-    try:
-        module.load_material_delta_validator = lambda: RejectMaterialDelta()
-        module.validate_review = lambda _row, ref_field, _role: (
-            f"docs/evidence/backup-restore/{ref_field}.json",
-            "reviewer-security" if ref_field == "securityReviewRef" else "reviewer-operability",
-        )
-        try:
-            module.candidate_reviews_approved(base_row())
-        except module.Fail as exc:
-            require("material-delta review authority invalid" in str(exc), f"unexpected material-delta delegation rejection: {exc}")
-            return
-        raise Fail("candidate review authority bypassed material-delta rejection")
-    finally:
-        module.load_material_delta_validator = original_loader
-        module.validate_review = original_validate_review
-
-
 def main() -> int:
     module = load_validator()
 
@@ -207,6 +209,23 @@ def main() -> int:
     ):
         expect_authority_substitution_fail(module, field, substitute)
 
+    for field, replacement in (
+        ("enforce_execution_authority", lambda: None),
+        ("enforce_runtime_authorities", lambda: None),
+        ("require", lambda *_args: None),
+        ("require_exact_repo_file", lambda path, *_args: path),
+        ("load_json", lambda *_args: {}),
+        ("validate_contract_authority", lambda: None),
+        ("canonical_ref", lambda *_args: ("docs/evidence/backup-restore/fake.json", Path("/tmp/fake-review.json"))),
+        ("git_history", lambda *_args: ["a" * 40]),
+        ("require_append_only_review", lambda *_args: None),
+        ("require_utc_rfc3339", lambda value, _field: value),
+        ("validate_review", lambda *_args: ("docs/evidence/backup-restore/fake.json", "reviewer-fake")),
+        ("load_material_delta_validator", lambda: object()),
+    ):
+        expect_execution_substitution_fail(module, field, replacement)
+    expect_main_candidate_substitution_fail(module)
+
     expect_fail(module, registry(base_row()), "generic repository review refs")
 
     same_ref = base_row()
@@ -217,8 +236,6 @@ def main() -> int:
     production_boundary = registry(base_row())
     production_boundary["productionReady"] = True
     expect_fail(module, production_boundary, "productionReady promotion")
-
-    expect_material_delta_candidate_delegation(module)
 
     for field in module.BOUND_FIELDS:
         expect_bound_field_fail(module, field)
@@ -264,8 +281,10 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation candidate review negatives reject runtime authority substitution, generic refs, review reuse, material-delta bypass, authority mismatch, malformed timestamps, unsafe reviewer identities, candidate/promotion contract drift, post-commit edits, and production promotion")
+    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, candidate/promotion contract drift, post-commit edits, and production promotion")
     print("runtime data/executable authority substitution accepted: false")
+    print("runtime execution helper substitution accepted: false")
+    print("main candidate authority substitution accepted: false")
     print("canonical generation evidence authority mutated: false")
     print("human production promotion remains separate: true")
     return 0
