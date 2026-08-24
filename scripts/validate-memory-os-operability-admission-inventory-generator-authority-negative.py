@@ -8,9 +8,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
+SOURCE_AUTHORITY = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
 INPUT_REL = Path("contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json")
 INPUT = ROOT / INPUT_REL
 ALIAS_TARGET = INPUT.parent / ".inventory-generator-input-authority-target.json"
+ENV_GENERATION_VALIDATOR = "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+ADMISSION_CHAIN_VALIDATOR = "scripts/validate-memory-os-backup-restore-admission-chain.py"
 
 
 class Fail(RuntimeError):
@@ -22,15 +25,23 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_generator():
-    require(GENERATOR.is_file() and not GENERATOR.is_symlink(), "inventory generator missing or symlinked")
-    resolved = GENERATOR.resolve(strict=True).relative_to(ROOT.resolve())
-    require(resolved == Path("scripts/generate-memory-os-operability-admission-inventory.py"), "inventory generator authority drift")
-    spec = importlib.util.spec_from_file_location("memory_os_inventory_generator_input_authority_negative", GENERATOR)
-    require(spec is not None and spec.loader is not None, "cannot load inventory generator")
+def load_module(path: Path, module_name: str):
+    require(path.is_file() and not path.is_symlink(), f"authority missing or symlinked: {path.relative_to(ROOT)}")
+    resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    require(resolved == path.relative_to(ROOT), f"authority path drift: {path.relative_to(ROOT)}")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load authority: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_generator():
+    return load_module(GENERATOR, "memory_os_inventory_generator_input_authority_negative")
+
+
+def load_source_authority():
+    return load_module(SOURCE_AUTHORITY, "memory_os_inventory_source_authority_order_negative")
 
 
 def restore_input(input_before: bytes) -> None:
@@ -41,6 +52,17 @@ def restore_input(input_before: bytes) -> None:
 
 def main() -> int:
     generator = load_generator()
+    source_authority = load_source_authority()
+    command_paths = [row[0] for row in source_authority.COMMAND_SOURCES]
+    require(
+        command_paths.count(ENV_GENERATION_VALIDATOR) == 1,
+        "inventory source authority must validate the full environment-generation admission authority exactly once",
+    )
+    require(
+        ADMISSION_CHAIN_VALIDATOR not in command_paths,
+        "pre-generation source authority must not validate the inventory-dependent end-to-end admission chain",
+    )
+
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
     input_before = INPUT.read_bytes()
@@ -68,6 +90,8 @@ def main() -> int:
     require(generator.OUTPUT.read_bytes() == output_before, "negative probe mutated canonical inventory")
 
     print("Memory OS operability inventory generator authority negative PASS")
+    print("full environment-generation admission authority validated before inventory generation: true")
+    print("inventory-dependent end-to-end admission chain validated before inventory generation: false")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
