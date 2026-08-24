@@ -15,6 +15,7 @@ ELIGIBILITY_REL = Path("contracts/operations/production-equivalent-environment-e
 OBJECTIVES_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
 DRILL_REQUESTS_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
 HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+ELIGIBILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-eligibility.py")
 OBJECTIVES_WRITER_REL = Path("scripts/register-memory-os-recovery-objectives.py")
 DRILL_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
 VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py")
@@ -23,6 +24,7 @@ ELIGIBILITY = ROOT / ELIGIBILITY_REL
 OBJECTIVES = ROOT / OBJECTIVES_REL
 DRILL_REQUESTS = ROOT / DRILL_REQUESTS_REL
 HELPER = ROOT / HELPER_REL
+ELIGIBILITY_VALIDATOR = ROOT / ELIGIBILITY_VALIDATOR_REL
 OBJECTIVES_WRITER = ROOT / OBJECTIVES_WRITER_REL
 DRILL_WRITER = ROOT / DRILL_WRITER_REL
 VALIDATOR = ROOT / VALIDATOR_REL
@@ -57,6 +59,7 @@ def enforce_runtime_authorities() -> None:
         (OBJECTIVES, OBJECTIVES_REL, "recovery objectives registry"),
         (DRILL_REQUESTS, DRILL_REQUESTS_REL, "restore drill request registry"),
         (HELPER, HELPER_REL, "generation eligibility helper"),
+        (ELIGIBILITY_VALIDATOR, ELIGIBILITY_VALIDATOR_REL, "environment eligibility validator"),
         (OBJECTIVES_WRITER, OBJECTIVES_WRITER_REL, "recovery objectives writer"),
         (DRILL_WRITER, DRILL_WRITER_REL, "restore drill request writer"),
         (VALIDATOR, VALIDATOR_REL, "preflight generation eligibility consistency validator"),
@@ -101,6 +104,12 @@ def main() -> int:
         "memory_os_generation_eligibility_for_preflight_consistency",
         "generation eligibility helper",
     )
+    eligibility_validator = load_module(
+        ELIGIBILITY_VALIDATOR,
+        ELIGIBILITY_VALIDATOR_REL,
+        "memory_os_environment_eligibility_for_preflight_consistency",
+        "environment eligibility validator",
+    )
     objectives_writer = load_module(
         OBJECTIVES_WRITER,
         OBJECTIVES_WRITER_REL,
@@ -113,6 +122,11 @@ def main() -> int:
         "memory_os_restore_drill_request_for_preflight_consistency",
         "restore drill request writer",
     )
+
+    try:
+        eligibility_validator.main()
+    except eligibility_validator.Fail as exc:
+        raise Fail(f"environment eligibility authority invalid: {exc}") from exc
 
     try:
         objective_rows = objectives_writer.validate_registry_for_append(objectives)
@@ -185,6 +199,7 @@ def main() -> int:
     print(f"strict/preflight directed restore pairs: {strict_pair_count}/{preflight_pair_count}")
     print(f"strict submission eligible: {str(strict_submission_eligible).lower()}")
     print("canonical data/executable authorities enforced: true")
+    print("canonical semantic eligibility validator delegated: true")
     print("recovery objective append-only authority delegated: true")
     print("drill request append-only authority delegated: true")
     print("boolean authority counters accepted: false")
