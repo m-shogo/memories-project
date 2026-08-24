@@ -19,6 +19,7 @@ GEN_RECOVERY_CONTRACT_REL = Path("contracts/operations/backup-restore-generation
 TYPED_CONTRACT_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json")
 ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
 WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+EXPECTED_LOCK_REL = Path("contracts/operations/.backup-restore-drill-request.lock")
 NEGATIVE_REL = Path("scripts/validate-memory-os-backup-restore-drill-request-negative.py")
 CONTRACT = ROOT / CONTRACT_REL
 REGISTRY = ROOT / REGISTRY_REL
@@ -28,6 +29,7 @@ GEN_RECOVERY_CONTRACT = ROOT / GEN_RECOVERY_CONTRACT_REL
 TYPED_CONTRACT = ROOT / TYPED_CONTRACT_REL
 ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
 WRITER = ROOT / WRITER_REL
+EXPECTED_LOCK = ROOT / EXPECTED_LOCK_REL
 NEGATIVE = ROOT / NEGATIVE_REL
 
 
@@ -60,6 +62,25 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     return path
 
 
+def require_canonical_lock_path(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        parent = path.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} parent missing or escapes repository") from exc
+    require(lexical == expected_relative, f"{field} authority drift")
+    require(parent == expected_relative.parent, f"{field} parent authority drift")
+    require(not path.is_symlink(), f"{field} must not be symlink")
+    if path.exists():
+        require(path.is_file(), f"{field} must be a file when materialized")
+        try:
+            resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise Fail(f"{field} materialized path escapes repository") from exc
+        require(resolved == expected_relative, f"{field} materialized authority drift")
+    return path
+
+
 def enforce_runtime_authorities() -> None:
     for path, expected, field in (
         (CONTRACT, CONTRACT_REL, "drill request contract"),
@@ -73,6 +94,7 @@ def enforce_runtime_authorities() -> None:
         (NEGATIVE, NEGATIVE_REL, "drill request negative validator"),
     ):
         require_exact_repo_file(path, expected, field)
+    require_canonical_lock_path(EXPECTED_LOCK, EXPECTED_LOCK_REL, "drill request append lock")
 
 
 def require_repo_file(path: Path, message: str) -> Path:
@@ -150,6 +172,10 @@ def main() -> int:
         require(runtime_path == expected_path, f"writer runtime authority drift: {runtime_name}")
         require(canonical_path == expected_path, f"writer canonical authority drift: {canonical_name}")
         writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
+    writer_lock = getattr(writer, "LOCK", None)
+    require(writer_lock == EXPECTED_LOCK, "drill request writer append lock authority drift")
+    require_canonical_lock_path(writer_lock, EXPECTED_LOCK_REL, "writer drill request append lock")
+    require(writer_lock.parent == REGISTRY.parent, "drill request append lock must share registry authority directory")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-drill-request-contract.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-backup-restore-drill-request.v1", "record schema drift")
@@ -306,6 +332,7 @@ def main() -> int:
     run_negative()
     print("Memory OS production-equivalent backup/restore drill request validation PASS")
     print("drill request validator canonical runtime authorities enforced: true")
+    print("ephemeral append lock may be absent but path authority remains canonical: true")
     print(f"registered environment generations: {generation_count}")
     print(f"semantic preflight-eligible generations: {eligible_count}")
     print(f"unsuperseded semantic preflight-eligible generations: {unsuperseded_eligible_count}")
@@ -317,6 +344,7 @@ def main() -> int:
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {decision}")
     print("writer canonical runtime authorities validated without evidence rows: true")
+    print("writer append lock authority canonical: true")
     print("boolean registry/contract aggregate counts accepted: false")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("historical admitted requests survive later generation/objective supersession: true")
