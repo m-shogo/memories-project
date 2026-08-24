@@ -41,6 +41,33 @@ def expect_rejected(name: str, action: Callable[[], object], failure_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def prove_validator_runtime_authorities(validator) -> None:
+    cases = (
+        ("CONTRACT", validator.REGISTRY),
+        ("REGISTRY", validator.CONTRACT),
+        ("ENV_SCHEMA", validator.GEN_SCHEMA),
+        ("GEN_SCHEMA", validator.ENV_SCHEMA),
+        ("ENV_VALIDATOR", validator.WRITER),
+        ("WRITER", validator.ENV_VALIDATOR),
+        ("NEGATIVE", validator.SOURCE_BINDING_NEGATIVE),
+        ("SOURCE_BINDING_NEGATIVE", validator.LINEAGE_NEGATIVE),
+        ("LINEAGE_NEGATIVE", validator.NEGATIVE),
+    )
+    for attribute, replacement in cases:
+        original = getattr(validator, attribute)
+        try:
+            setattr(validator, attribute, replacement)
+            expect_rejected(
+                f"generation validator {attribute} substitution",
+                validator.enforce_runtime_authorities,
+                validator.Fail,
+            )
+        finally:
+            setattr(validator, attribute, original)
+    validator.enforce_runtime_authorities()
+    print(f"PASS boundary: generation validator exact authority substitutions rejected: {len(cases)}")
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation writer missing")
     require(VALIDATOR.is_file(), "generation validator missing")
@@ -49,6 +76,7 @@ def main() -> int:
     require(writer.canonical_repo_file(writer.ENV_VALIDATOR, "environment record semantic validator") == writer.ENV_VALIDATOR, "canonical environment validator rejected")
     writer.require_canonical_runtime_authorities()
     writer.require_actual_cli_authorities()
+    prove_validator_runtime_authorities(validator)
 
     original_root = validator.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-external-") as external_tmp:
@@ -159,6 +187,7 @@ def main() -> int:
     print("absolute authority refs accepted: false")
     print("parent-traversal authority refs accepted: false")
     print("repo-local symlink to external authority accepted: false")
+    print("validator exact data/schema/executable substitutions accepted: false")
     print("writer invalid UTF-8/I/O accepted: false")
     print("writer executable semantic validator escape accepted: false")
     print("writer CLI data/executable/lock substitution accepted: false")
