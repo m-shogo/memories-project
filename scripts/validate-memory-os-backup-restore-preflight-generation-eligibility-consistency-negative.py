@@ -17,7 +17,7 @@ PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract
 ELIGIBILITY = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-SUBSTITUTE = ROOT / "scripts/validate-memory-os-operability.py"
+SUBSTITUTE_SCRIPT = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class Fail(RuntimeError):
@@ -44,7 +44,7 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def expect_rejection(
+def expect_semantic_rejection(
     validator,
     baseline: dict[str, dict[str, Any]],
     name: str,
@@ -54,7 +54,6 @@ def expect_rejection(
         temp = Path(temp_dir)
         state = copy.deepcopy(baseline)
         mutate(state)
-
         paths = {
             "preflight": temp / "preflight.json",
             "eligibility": temp / "eligibility.json",
@@ -64,16 +63,18 @@ def expect_rejection(
         for key, path in paths.items():
             write_json(path, state[key])
 
-        original = (
+        original_paths = (
             validator.PREFLIGHT,
             validator.ELIGIBILITY,
             validator.OBJECTIVES,
             validator.DRILL_REQUESTS,
         )
+        original_enforcer = validator.enforce_runtime_authorities
         validator.PREFLIGHT = paths["preflight"]
         validator.ELIGIBILITY = paths["eligibility"]
         validator.OBJECTIVES = paths["objectives"]
         validator.DRILL_REQUESTS = paths["drill"]
+        validator.enforce_runtime_authorities = lambda: None
         try:
             try:
                 validator.main()
@@ -82,15 +83,22 @@ def expect_rejection(
             else:
                 raise Fail(f"negative case unexpectedly accepted: {name}")
         finally:
+            validator.enforce_runtime_authorities = original_enforcer
             (
                 validator.PREFLIGHT,
                 validator.ELIGIBILITY,
                 validator.OBJECTIVES,
                 validator.DRILL_REQUESTS,
-            ) = original
+            ) = original_paths
 
 
-def expect_executable_rejection(validator, field: str, substitute: Path) -> None:
+def expect_authority_rejection(validator, field: str, substitute: Path) -> None:
+    canonical = {
+        "PREFLIGHT": PREFLIGHT.read_bytes(),
+        "ELIGIBILITY": ELIGIBILITY.read_bytes(),
+        "OBJECTIVES": OBJECTIVES.read_bytes(),
+        "DRILL_REQUESTS": DRILL_REQUESTS.read_bytes(),
+    }
     original = getattr(validator, field)
     setattr(validator, field, substitute)
     try:
@@ -99,7 +107,15 @@ def expect_executable_rejection(validator, field: str, substitute: Path) -> None
         except validator.Fail:
             pass
         else:
-            raise Fail(f"executable authority substitution unexpectedly accepted: {field}")
+            raise Fail(f"authority substitution unexpectedly accepted: {field}")
+        if PREFLIGHT.read_bytes() != canonical["PREFLIGHT"]:
+            raise Fail(f"canonical preflight mutated while rejecting {field}")
+        if ELIGIBILITY.read_bytes() != canonical["ELIGIBILITY"]:
+            raise Fail(f"canonical eligibility mutated while rejecting {field}")
+        if OBJECTIVES.read_bytes() != canonical["OBJECTIVES"]:
+            raise Fail(f"canonical objectives mutated while rejecting {field}")
+        if DRILL_REQUESTS.read_bytes() != canonical["DRILL_REQUESTS"]:
+            raise Fail(f"canonical drill registry mutated while rejecting {field}")
     finally:
         setattr(validator, field, original)
 
@@ -120,85 +136,44 @@ def main() -> int:
     }
 
     cases: list[tuple[str, Callable[[dict[str, dict[str, Any]]], None]]] = [
-        (
-            "boolean preflight pair count",
-            lambda state: state["preflight"]["currentState"].__setitem__("eligibleDirectedSourceTargetPairCount", True),
-        ),
-        (
-            "preflight pair count exceeds strict semantic authority",
-            lambda state: state["preflight"]["currentState"].__setitem__("eligibleDirectedSourceTargetPairCount", strict_pair_count + 1),
-        ),
-        (
-            "preflight production readiness promotion",
-            lambda state: state["preflight"]["currentState"].__setitem__("productionReady", True),
-        ),
-        (
-            "preflight production decision promotion",
-            lambda state: state["preflight"]["currentState"].__setitem__("productionDecision", "GO"),
-        ),
-        (
-            "eligibility production decision promotion",
-            lambda state: state["eligibility"]["currentBoundary"].__setitem__("productionDecision", "GO"),
-        ),
-        (
-            "boolean approved objective count",
-            lambda state: state["objectives"].__setitem__("approvedObjectiveCount", True),
-        ),
-        (
-            "objective schema drift",
-            lambda state: state["objectives"].__setitem__("schemaVersion", "memory-os-recovery-objectives-registry.corrupt"),
-        ),
-        (
-            "objective append-only disabled",
-            lambda state: state["objectives"].__setitem__("appendOnly", False),
-        ),
-        (
-            "objective production evidence promotion",
-            lambda state: state["objectives"].__setitem__("productionEvidence", True),
-        ),
-        (
-            "objective production readiness promotion",
-            lambda state: state["objectives"].__setitem__("productionReady", True),
-        ),
-        (
-            "boolean registered request count",
-            lambda state: state["drill"].__setitem__("registeredRequestCount", True),
-        ),
-        (
-            "boolean current executable request count",
-            lambda state: state["drill"].__setitem__("currentExecutableRequestCount", True),
-        ),
-        (
-            "drill schema drift",
-            lambda state: state["drill"].__setitem__("schemaVersion", "memory-os-backup-restore-drill-request-registry.corrupt"),
-        ),
-        (
-            "drill registry class drift",
-            lambda state: state["drill"].__setitem__("registryClass", "CORRUPT"),
-        ),
-        (
-            "drill append-only disabled",
-            lambda state: state["drill"].__setitem__("appendOnly", False),
-        ),
-        (
-            "drill production evidence promotion",
-            lambda state: state["drill"].__setitem__("productionEvidence", True),
-        ),
-        (
-            "drill production readiness promotion",
-            lambda state: state["drill"].__setitem__("productionReady", True),
-        ),
+        ("boolean preflight pair count", lambda state: state["preflight"]["currentState"].__setitem__("eligibleDirectedSourceTargetPairCount", True)),
+        ("preflight pair count exceeds strict semantic authority", lambda state: state["preflight"]["currentState"].__setitem__("eligibleDirectedSourceTargetPairCount", strict_pair_count + 1)),
+        ("preflight production readiness promotion", lambda state: state["preflight"]["currentState"].__setitem__("productionReady", True)),
+        ("preflight production decision promotion", lambda state: state["preflight"]["currentState"].__setitem__("productionDecision", "GO")),
+        ("eligibility production decision promotion", lambda state: state["eligibility"]["currentBoundary"].__setitem__("productionDecision", "GO")),
+        ("boolean approved objective count", lambda state: state["objectives"].__setitem__("approvedObjectiveCount", True)),
+        ("objective schema drift", lambda state: state["objectives"].__setitem__("schemaVersion", "memory-os-recovery-objectives-registry.corrupt")),
+        ("objective append-only disabled", lambda state: state["objectives"].__setitem__("appendOnly", False)),
+        ("objective production evidence promotion", lambda state: state["objectives"].__setitem__("productionEvidence", True)),
+        ("objective production readiness promotion", lambda state: state["objectives"].__setitem__("productionReady", True)),
+        ("boolean registered request count", lambda state: state["drill"].__setitem__("registeredRequestCount", True)),
+        ("boolean current executable request count", lambda state: state["drill"].__setitem__("currentExecutableRequestCount", True)),
+        ("drill schema drift", lambda state: state["drill"].__setitem__("schemaVersion", "memory-os-backup-restore-drill-request-registry.corrupt")),
+        ("drill registry class drift", lambda state: state["drill"].__setitem__("registryClass", "CORRUPT")),
+        ("drill append-only disabled", lambda state: state["drill"].__setitem__("appendOnly", False)),
+        ("drill production evidence promotion", lambda state: state["drill"].__setitem__("productionEvidence", True)),
+        ("drill production readiness promotion", lambda state: state["drill"].__setitem__("productionReady", True)),
     ]
-
     for name, mutate in cases:
-        expect_rejection(validator, baseline, name, mutate)
+        expect_semantic_rejection(validator, baseline, name, mutate)
 
-    for field in ("HELPER", "OBJECTIVES_WRITER", "DRILL_WRITER"):
-        expect_executable_rejection(validator, field, SUBSTITUTE)
+    authority_cases = (
+        ("PREFLIGHT", ELIGIBILITY),
+        ("ELIGIBILITY", PREFLIGHT),
+        ("OBJECTIVES", DRILL_REQUESTS),
+        ("DRILL_REQUESTS", OBJECTIVES),
+        ("HELPER", SUBSTITUTE_SCRIPT),
+        ("OBJECTIVES_WRITER", SUBSTITUTE_SCRIPT),
+        ("DRILL_WRITER", SUBSTITUTE_SCRIPT),
+        ("VALIDATOR", SUBSTITUTE_SCRIPT),
+    )
+    for field, substitute in authority_cases:
+        expect_authority_rejection(validator, field, substitute)
 
     print("Memory OS restore preflight generation-eligibility consistency negative PASS")
-    print(f"authority corruption cases: {len(cases)}")
-    print("executable substitution cases: 3")
+    print(f"semantic authority corruption cases: {len(cases)}")
+    print(f"direct data/executable substitution cases: {len(authority_cases)}")
+    print("semantic fixtures bypass runtime authority only inside negative harness: true")
     print("canonical authority mutated: false")
     print("production evidence created: false")
     print("production decision changed: false")
