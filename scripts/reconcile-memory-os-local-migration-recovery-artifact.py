@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +52,21 @@ def parse_args() -> argparse.Namespace:
 def append_once(values: list[Any], value: str) -> None:
     if value not in values:
         values.append(value)
+
+
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
 
 
 def validate_runtime_authority() -> None:
@@ -162,17 +179,15 @@ def main() -> int:
         append_once(refs, str(path.relative_to(ROOT)))
 
     original_contract = CONTRACT_PATH.read_bytes()
-    CONTRACT_PATH.write_text(
-        json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    payload = (json.dumps(contract, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    atomic_replace_bytes(CONTRACT_PATH, payload)
     try:
         run_validator(VALIDATOR_PATH)
         run_validator(REGISTRY_VALIDATOR_PATH)
         run_validator(LIFECYCLE_VALIDATOR_PATH)
         run_validator(OPERABILITY_VALIDATOR_PATH)
     except Exception:
-        CONTRACT_PATH.write_bytes(original_contract)
+        atomic_replace_bytes(CONTRACT_PATH, original_contract)
         raise
 
     print("Memory OS local migration recovery-artifact reconciliation PASS")
