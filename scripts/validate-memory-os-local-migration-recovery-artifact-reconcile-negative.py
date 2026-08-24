@@ -70,6 +70,31 @@ def authority_identity_negative(module) -> None:
         module.OPERABILITY_VALIDATOR_PATH = real_operability
 
 
+def atomic_replace_negative(module) -> None:
+    original_contract = module.CONTRACT_PATH.read_bytes()
+    original_replace = module.os.replace
+
+    def fail_replace(source, destination) -> None:
+        raise OSError("synthetic local recovery atomic replace failure")
+
+    module.os.replace = fail_replace
+    try:
+        try:
+            module.atomic_replace_bytes(module.CONTRACT_PATH, b'{"invalid":"must-not-persist"}\n')
+        except OSError as exc:
+            require("synthetic local recovery atomic replace failure" in str(exc),
+                    f"unexpected atomic replacement rejection: {exc}")
+        else:
+            raise Fail("local recovery authority accepted synthetic atomic replace failure")
+    finally:
+        module.os.replace = original_replace
+
+    require(module.CONTRACT_PATH.read_bytes() == original_contract,
+            "local recovery-artifact contract changed after atomic replace failure")
+    leftovers = list(module.CONTRACT_PATH.parent.glob(f".{module.CONTRACT_PATH.name}.*.tmp"))
+    require(not leftovers, f"local recovery atomic replace left temporary authority files: {leftovers}")
+
+
 def rollback_negative(module) -> None:
     run_id = select_local_run(module)
     original_contract = module.CONTRACT_PATH.read_bytes()
@@ -129,9 +154,11 @@ def main() -> int:
     )
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
+    atomic_replace_negative(reconciler)
     rollback_negative(reconciler)
     print("Memory OS local migration recovery-artifact reconcile negative suite PASS")
     print("canonical validator identity: enforced")
+    print("atomic publication failure preserves canonical authority: enforced")
     print("post-write aggregate rollback: enforced")
     print("production-equivalent recovery artifact restore: false")
     print("production ready: false")
