@@ -41,6 +41,13 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def exact_success(result: Any, label: str) -> None:
+    require(
+        isinstance(result, int) and not isinstance(result, bool) and result == 0,
+        f"{label} returned nonzero/invalid result: {result}",
+    )
+
+
 def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
     try:
         lexical = path.relative_to(ROOT)
@@ -108,14 +115,16 @@ def validate_state(
     drill_validator,
 ) -> int:
     try:
-        eligibility_validator.main()
+        eligibility_result = eligibility_validator.main()
     except eligibility_validator.Fail as exc:
         raise Fail(f"environment eligibility authority invalid: {exc}") from exc
+    exact_success(eligibility_result, "environment eligibility authority")
 
     try:
-        drill_validator.main()
+        drill_result = drill_validator.main()
     except drill_validator.Fail as exc:
         raise Fail(f"drill request admission authority invalid: {exc}") from exc
+    exact_success(drill_result, "drill request admission authority")
 
     try:
         objective_rows = objectives_writer.validate_registry_for_append(objectives)
@@ -192,6 +201,7 @@ def validate_state(
     print("recovery objective append-only authority delegated: true")
     print("drill request append-only authority delegated: true")
     print("drill request full admission validator delegated: true")
+    print("nonzero validator success accepted: false")
     print("boolean authority counters accepted: false")
     print("noneligible generation can make preflight READY: false")
     print("production evidence: false")
@@ -202,6 +212,7 @@ def validate_state(
 CANONICAL_REQUIRE = require
 CANONICAL_RUNTIME_ENFORCER = enforce_runtime_authorities
 CANONICAL_EXECUTION_HELPERS = (
+    exact_success,
     require_exact_repo_file,
     display_path,
     load,
@@ -220,6 +231,7 @@ def enforce_execution_identity(
     if require is not canonical_require:
         raise Fail("preflight consistency require helper drift")
     current_helpers = (
+        exact_success,
         require_exact_repo_file,
         display_path,
         load,
