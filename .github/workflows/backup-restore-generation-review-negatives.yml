@@ -1,0 +1,75 @@
+name: Backup Restore Generation Review Negatives
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-generation-review-negatives.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "docs/evidence/backup-restore/**"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-generation-review-negatives.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "docs/evidence/backup-restore/**"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-generation-review-negatives-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: true
+
+jobs:
+  review-negatives:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact read-only source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Compile generation review authority suite
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
+            scripts/validate-memory-os-operability.py
+      - name: Validate independent review authority
+        run: python scripts/validate-memory-os-backup-restore-generation-independent-review.py
+      - name: Prove independent review authority is fail-closed
+        run: python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
+      - name: Validate typed material-delta review authority
+        run: python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
+      - name: Prove material-delta review authority is fail-closed
+        run: python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
+      - name: Validate aggregate operability remains fail-closed
+        run: python scripts/validate-memory-os-operability.py
+      - name: Verify review suite is read-only
+        run: test -z "$(git status --porcelain)"
