@@ -83,7 +83,13 @@ def load(relative: str) -> dict[str, Any]:
 
 
 def exists(relative: str) -> bool:
-    return (ROOT / relative).is_file()
+    path = ROOT / relative
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return False
+    return lexical == Path(relative) and resolved == Path(relative) and path.is_file() and not path.is_symlink()
 
 
 def valid_count(value: Any) -> bool:
