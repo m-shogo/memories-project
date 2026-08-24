@@ -224,6 +224,9 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+CANONICAL_REQUIRE = require
+
+
 def enforce_runtime_authority(
     canonical_self_rel: Path = SELF_REL,
     canonical_request: str = REQUEST,
@@ -393,12 +396,17 @@ CANONICAL_EXECUTION_HELPERS = (
     validate_load_source,
     validate_command_source,
     validate_source,
+    exact_success,
+    validate_registry_result,
 )
 
 
 def enforce_execution_authority(
     canonical_helpers: tuple[Any, ...] = CANONICAL_EXECUTION_HELPERS,
+    canonical_require=CANONICAL_REQUIRE,
 ) -> None:
+    if require is not canonical_require:
+        raise Fail("inventory source-authority require helper drift")
     current_helpers = (
         enforce_runtime_authority,
         load,
@@ -408,15 +416,16 @@ def enforce_execution_authority(
         validate_load_source,
         validate_command_source,
         validate_source,
+        exact_success,
+        validate_registry_result,
     )
-    require(current_helpers == canonical_helpers, "inventory source-authority execution helper drift")
+    if current_helpers != canonical_helpers:
+        raise Fail("inventory source-authority execution helper drift")
 
 
 def main(canonical_execution_guard=enforce_execution_authority) -> int:
-    require(
-        enforce_execution_authority is canonical_execution_guard,
-        "inventory source-authority execution guard drift",
-    )
+    if enforce_execution_authority is not canonical_execution_guard:
+        raise Fail("inventory source-authority execution guard drift")
     enforce_execution_authority()
     enforce_runtime_authority()
     validate_inventory_request()
