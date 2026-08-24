@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -115,18 +114,8 @@ def row(
 
 
 def derive(helper, rows: list[dict[str, Any]]) -> dict[str, Any]:
-    with tempfile.TemporaryDirectory(prefix="memory-os-generation-eligibility-negative-") as tmp:
-        path = Path(tmp) / "registry.json"
-        path.write_text(json.dumps(registry(rows), indent=2) + "\n", encoding="utf-8")
-        real_loader = helper.load_generation_writer
-        real_review_ref = helper.independent_review_ref_for_row
-        helper.load_generation_writer = lambda: FakeWriter()
-        helper.independent_review_ref_for_row = lambda writer, item: item["syntheticIndependentReviewRef"]
-        try:
-            return helper.derive(path)
-        finally:
-            helper.load_generation_writer = real_loader
-            helper.independent_review_ref_for_row = real_review_ref
+    """Use the explicit in-memory fixture API; path-based derivation is canonical-only."""
+    return derive_registry(helper, registry(rows))
 
 
 def derive_registry(helper, value: dict[str, Any]) -> dict[str, Any]:
@@ -178,16 +167,16 @@ def main() -> int:
                 except FileNotFoundError:
                     pass
 
-    with tempfile.TemporaryDirectory(prefix="memory-os-generation-eligibility-io-negative-") as tmp:
-        malformed = Path(tmp) / "registry-invalid-utf8.json"
-        malformed.write_bytes(b"{\xff}")
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-eligibility-path-negative-") as tmp:
+        alternate = Path(tmp) / "registry.json"
+        alternate.write_text("{}\n", encoding="utf-8")
         expect_rejected(
-            "malformed UTF-8 generation registry",
-            lambda: helper.derive(malformed),
+            "noncanonical generation registry path",
+            lambda: helper.derive(alternate),
             helper.Fail,
         )
         expect_rejected(
-            "missing generation registry",
+            "missing noncanonical generation registry path",
             lambda: helper.derive(Path(tmp) / "missing.json"),
             helper.Fail,
         )
@@ -328,7 +317,7 @@ def main() -> int:
     print("same-environment predecessor skip accepted: false")
     print("current generation pointer drift accepted: false")
     print("boolean registered generation counts accepted: false")
-    print("malformed or missing generation registries accepted: false")
+    print("noncanonical path-based registry derivation accepted: false")
     print("generation writer repo-contained substitution accepted: false")
     print("generation writer import escape accepted: false")
     print("generation writer symlink loop accepted: false")
