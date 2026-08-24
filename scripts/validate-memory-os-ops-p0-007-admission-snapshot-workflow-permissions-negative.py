@@ -9,6 +9,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PR_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-pr.yml"
 PUBLISH_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot.yml"
+FULL_ADMISSION_VALIDATORS = (
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-backup-restore-drill-request.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
+)
 
 
 class Fail(RuntimeError):
@@ -37,6 +43,15 @@ def validate_atomic_diagnostic_publication(publish: str) -> None:
     )
 
 
+def require_full_admission_chain(workflow: str, label: str) -> None:
+    for validator in FULL_ADMISSION_VALIDATORS:
+        require(validator in workflow, f"{label} missing full admission validator: {validator}")
+        require(
+            f"python {validator}" in workflow,
+            f"{label} does not execute full admission validator: {validator}",
+        )
+
+
 def main() -> int:
     pr = PR_WORKFLOW.read_text(encoding="utf-8")
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
@@ -48,6 +63,7 @@ def main() -> int:
     require("github.event.pull_request.head.sha" in pr, "strict snapshot PR workflow must bind checkout to exact PR head")
     require("git diff --exit-code -- contracts/operations/ops-p0-007-admission-snapshot.v1.json" in pr, "strict snapshot PR workflow must reject deterministic authority drift")
     require("git push" not in pr, "strict snapshot PR workflow must not publish authority")
+    require_full_admission_chain(pr, "strict snapshot PR workflow")
 
     require("contents: write" in publish, "strict snapshot publication workflow requires explicit contents: write")
     require("pull_request:" not in publish, "strict snapshot publication workflow must not run on pull requests")
@@ -58,11 +74,16 @@ def main() -> int:
     require("refusing stale strict snapshot" in publish, "strict snapshot publication workflow must fail closed on stale authority")
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
     require("revalidate_latest_snapshot" in publish, "strict snapshot publication workflow must retain bounded full revalidation")
+    require_full_admission_chain(publish, "strict snapshot publication workflow")
     validate_atomic_diagnostic_publication(publish)
 
     print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
     print("pull request write token exposed: false")
     print("pull request authority publication allowed: false")
+    print("full recovery objective admission validation required: true")
+    print("full reviewed drill request admission validation required: true")
+    print("full request-bound generation evidence validation required: true")
+    print("full typed eight-domain admission validation required: true")
     print("exact-source publication CAS required: true")
     print("crash-safe diagnostic publication required: true")
     print("production evidence created: false")
