@@ -354,6 +354,11 @@ def main() -> int:
     require_canonical_load_authority()
     for script_name, module_name, label in (
         (
+            "validate-memory-os-recovery-objectives.py",
+            "memory_os_recovery_objectives_inventory_generator_authority",
+            "backup/restore recovery objective admission authority",
+        ),
+        (
             "validate-memory-os-backup-restore-generation-binding.py",
             "memory_os_backup_generation_binding_inventory_generator_authority",
             "backup/restore generation binding authority",
@@ -369,9 +374,19 @@ def main() -> int:
             "backup/restore drill preflight authority",
         ),
         (
+            "validate-memory-os-backup-restore-generation-evidence.py",
+            "memory_os_backup_generation_evidence_inventory_generator_authority",
+            "backup/restore generation recovery evidence admission authority",
+        ),
+        (
             "validate-memory-os-backup-restore-non-resurrection-admission.py",
             "memory_os_backup_non_resurrection_inventory_generator_authority",
             "backup/restore typed non-resurrection authority",
+        ),
+        (
+            "validate-memory-os-backup-restore-promotion-review.py",
+            "memory_os_backup_promotion_review_inventory_generator_authority",
+            "backup/restore human promotion review authority",
         ),
     ):
         require_canonical_command_authority(script_name, module_name, label)
@@ -729,7 +744,7 @@ def main() -> int:
         "sustainedSoakLeakProof": soak_leak_proof,
         "backupRestorePreflightEligibleEnvironmentGenerationCount": preflight_eligible_generation_count,
         "backupRestoreUnsupersededEnvironmentGenerationCount": unsuperseded_generation_count,
-        "backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount": unsuperseded_preflight_eligible_generation_count,
+        "backupRestoreUnsupersedPreflightEligibleEnvironmentGenerationCount": unsuperseded_preflight_eligible_generation_count,
         "backupRestoreDistinctUnsupersededPreflightEligibleEnvironmentCount": distinct_unsuperseded_preflight_eligible_environment_count,
         "backupRestoreEligibleDirectedPairCount": eligible_pair_count,
         "backupRestoreDrillPreflightEligible": preflight_eligible,
