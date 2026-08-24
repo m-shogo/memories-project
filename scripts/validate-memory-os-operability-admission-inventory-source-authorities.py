@@ -209,11 +209,6 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "memory_os_inventory_source_backup_promotion_review",
         "backup/restore human promotion review authority",
     ),
-    (
-        "scripts/validate-memory-os-backup-restore-admission-chain.py",
-        "memory_os_inventory_source_backup_admission_chain",
-        "backup/restore end-to-end admission chain authority",
-    ),
 )
 
 DOMAIN_REJECTIONS = {"Fail", "Failure", "RegistrationFailure"}
