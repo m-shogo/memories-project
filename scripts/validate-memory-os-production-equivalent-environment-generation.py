@@ -11,16 +11,26 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-ENV_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-record.v1.schema.json"
-GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
-ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
-WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-EXPECTED_LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
-NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
-SOURCE_BINDING_NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py"
-LINEAGE_NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py"
+CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-generation-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+ENV_SCHEMA_REL = Path("contracts/operations/production-equivalent-environment-record.v1.schema.json")
+GEN_SCHEMA_REL = Path("contracts/operations/production-equivalent-environment-generation-record.v1.schema.json")
+ENV_VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-record.py")
+WRITER_REL = Path("scripts/register-memory-os-production-equivalent-environment-generation.py")
+EXPECTED_LOCK_REL = Path("contracts/operations/.production-equivalent-environment-generation.lock")
+NEGATIVE_REL = Path("scripts/validate-memory-os-production-equivalent-environment-generation-negative.py")
+SOURCE_BINDING_NEGATIVE_REL = Path("scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py")
+LINEAGE_NEGATIVE_REL = Path("scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+ENV_SCHEMA = ROOT / ENV_SCHEMA_REL
+GEN_SCHEMA = ROOT / GEN_SCHEMA_REL
+ENV_VALIDATOR = ROOT / ENV_VALIDATOR_REL
+WRITER = ROOT / WRITER_REL
+EXPECTED_LOCK = ROOT / EXPECTED_LOCK_REL
+NEGATIVE = ROOT / NEGATIVE_REL
+SOURCE_BINDING_NEGATIVE = ROOT / SOURCE_BINDING_NEGATIVE_REL
+LINEAGE_NEGATIVE = ROOT / LINEAGE_NEGATIVE_REL
 EXPECTED_NEGATIVE_CASES = {
     "environment record missing required nested section",
     "environment record unknown nested field",
@@ -48,6 +58,34 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "environment generation contract"),
+        (REGISTRY, REGISTRY_REL, "environment generation registry"),
+        (ENV_SCHEMA, ENV_SCHEMA_REL, "environment record schema"),
+        (GEN_SCHEMA, GEN_SCHEMA_REL, "generation record schema"),
+        (ENV_VALIDATOR, ENV_VALIDATOR_REL, "environment record semantic validator"),
+        (WRITER, WRITER_REL, "environment generation writer"),
+        (NEGATIVE, NEGATIVE_REL, "environment generation negative validator"),
+        (SOURCE_BINDING_NEGATIVE, SOURCE_BINDING_NEGATIVE_REL, "environment generation source-binding negative validator"),
+        (LINEAGE_NEGATIVE, LINEAGE_NEGATIVE_REL, "environment generation source-lineage negative validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def repo_file(ref: Any, field: str) -> Path:
@@ -79,7 +117,8 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    writer_path = repo_file(str(WRITER.relative_to(ROOT)), "writer")
+    require_exact_repo_file(WRITER, WRITER_REL, "environment generation writer")
+    writer_path = WRITER
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_validator", writer_path)
     require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
     module = importlib.util.module_from_spec(spec)
@@ -87,13 +126,14 @@ def load_writer():
     return module
 
 
-def run_suite(path: Path, label: str) -> None:
-    repo_file(str(path.relative_to(ROOT)), label)
+def run_suite(path: Path, expected_relative: Path, label: str) -> None:
+    require_exact_repo_file(path, expected_relative, label)
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     env_schema = load(ENV_SCHEMA)
@@ -133,8 +173,8 @@ def main() -> int:
     for field, path in expected_refs.items():
         require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
         require(repo_file(str(path.relative_to(ROOT)), field) == path.resolve(), f"generation artifact canonical path drift: {field}")
-    repo_file(str(SOURCE_BINDING_NEGATIVE.relative_to(ROOT)), "source-binding negative validator")
-    repo_file(str(LINEAGE_NEGATIVE.relative_to(ROOT)), "source-lineage negative validator")
+    require_exact_repo_file(SOURCE_BINDING_NEGATIVE, SOURCE_BINDING_NEGATIVE_REL, "source-binding negative validator")
+    require_exact_repo_file(LINEAGE_NEGATIVE, LINEAGE_NEGATIVE_REL, "source-lineage negative validator")
     for field in ("validator", "workflow"):
         repo_file(contract.get(field), field)
     require(env_schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema", "environment schema draft drift")
@@ -245,11 +285,12 @@ def main() -> int:
     require(readiness.get("productionEquivalentDependencies") is derived_equivalent, "readiness productionEquivalentDependencies drift")
     require(readiness.get("productionReady") is False, "generation authority cannot make application production ready")
 
-    run_suite(NEGATIVE, "environment generation negative admission suite")
-    run_suite(SOURCE_BINDING_NEGATIVE, "environment generation source-binding negative suite")
-    run_suite(LINEAGE_NEGATIVE, "environment generation source-lineage negative suite")
+    run_suite(NEGATIVE, NEGATIVE_REL, "environment generation negative admission suite")
+    run_suite(SOURCE_BINDING_NEGATIVE, SOURCE_BINDING_NEGATIVE_REL, "environment generation source-binding negative suite")
+    run_suite(LINEAGE_NEGATIVE, LINEAGE_NEGATIVE_REL, "environment generation source-lineage negative suite")
 
     print("Memory OS production-equivalent environment generation validation PASS")
+    print("environment generation validator canonical runtime authorities enforced: true")
     print(f"registered generations: {count}")
     print(f"preflight-eligible generations: {preflight_eligible_count}")
     print(f"current generation: {current_id or 'none'}")
