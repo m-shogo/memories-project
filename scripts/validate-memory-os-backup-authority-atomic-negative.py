@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 NORMALIZER = ROOT / "scripts/reconcile-memory-os-backup-authority.py"
 COHERENT = ROOT / "scripts/reconcile-memory-os-backup-coherent-authority.py"
+SEMANTIC = ROOT / "scripts/reconcile-memory-os-backup-semantic-overlay.py"
 
 
 class Fail(RuntimeError):
@@ -50,6 +51,19 @@ def changed_candidate(status, label: str):
     require(isinstance(existing, list), "OPS-P0-007 existing evidence missing")
     existing.append(f"synthetic local-only atomic {label} sentinel")
     return candidate
+
+
+def semantic_authority_identity(module) -> None:
+    original = module.STATUS_PATH
+    module.STATUS_PATH = ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json"
+    try:
+        expect_rejected(
+            "semantic overlay rejects repository-contained production status substitution",
+            module.validate_runtime_authority,
+        )
+    finally:
+        module.STATUS_PATH = original
+    module.validate_runtime_authority()
 
 
 def normalizer_noop_validation(module) -> None:
@@ -293,8 +307,11 @@ def coherent_atomic_rollback(module) -> None:
 def main() -> int:
     normalizer = load_module(NORMALIZER, "memory_os_backup_authority_atomic_negative_target")
     coherent = load_module(COHERENT, "memory_os_coherent_backup_authority_atomic_negative_target")
+    semantic = load_module(SEMANTIC, "memory_os_backup_semantic_authority_negative_target")
     normalizer.validate_runtime_authority()
     coherent.validate_runtime_authority()
+    semantic.validate_runtime_authority()
+    semantic_authority_identity(semantic)
     normalizer_noop_validation(normalizer)
     normalizer_atomic_replace_failure(normalizer)
     normalizer_atomic_rollback(normalizer)
@@ -302,6 +319,7 @@ def main() -> int:
     coherent_atomic_replace_failure(coherent)
     coherent_atomic_rollback(coherent)
     print("Memory OS backup authority atomic negative suite PASS")
+    print("semantic production status identity: enforced")
     print("normalizer no-op aggregate validation: enforced")
     print("normalizer atomic replacement/rollback: enforced")
     print("coherent no-op aggregate validation: enforced")
