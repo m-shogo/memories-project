@@ -18,6 +18,7 @@ on:
       - "scripts/register-memory-os-backup-restore-*.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/reconcile-memory-os-backup-restore-*.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-*.py"
@@ -60,6 +61,7 @@ jobs:
             scripts/validate-memory-os-operability-admission-inventory-generator-authority-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-operability-status-hygiene.py
           python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py
           python scripts/validate-memory-os-operability-admission-inventory-generator-authority-negative.py
