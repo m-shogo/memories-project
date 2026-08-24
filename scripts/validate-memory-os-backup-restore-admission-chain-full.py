@@ -73,6 +73,7 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-generation-evidence.py", "generation evidence authority"),
     ("scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py", "generation candidate mutation negative"),
     ("scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py", "generation candidate registry-row mutation negative"),
+    ("scripts/validate-memory-os-backup-restore-generation-supersession-negative.py", "generation supersession negative"),
     ("scripts/validate-memory-os-backup-restore-generation-binding.py", "generation binding authority"),
     ("scripts/validate-memory-os-backup-restore-generation-binding-negative.py", "generation binding negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py", "typed non-resurrection registry aggregate negative"),
