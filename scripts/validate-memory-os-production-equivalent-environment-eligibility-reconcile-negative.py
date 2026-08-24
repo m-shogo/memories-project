@@ -153,6 +153,38 @@ def prove_direct_authority_identity(reconciler: Any) -> None:
     print(f"PASS boundary: direct eligibility data/executable substitutions rejected: {len(cases)}")
 
 
+def expect_reconcile_helper_substitution_rejected(reconciler: Any, field: str, replacement: Any) -> None:
+    before = canonical_bytes()
+    original = getattr(reconciler, field)
+    setattr(reconciler, field, replacement)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail:
+            pass
+        else:
+            raise Fail(f"eligibility reconciler unexpectedly accepted execution helper substitution: {field}")
+        assert_canonical_unchanged(before, f"reconciler {field}")
+    finally:
+        setattr(reconciler, field, original)
+
+
+def prove_reconciler_execution_identity(reconciler: Any) -> None:
+    helper_cases = (
+        ("require", lambda condition, message: None),
+        ("require_exact_repo_file", lambda path, expected, field: path),
+        ("enforce_runtime_authorities", lambda: None),
+        ("load", lambda path: {}),
+        ("load_helper", lambda: object()),
+        ("run_post_validator", lambda path, expected, field: None),
+        ("atomic_write_text", lambda path, text: None),
+        ("enforce_execution_identity", lambda: None),
+    )
+    for field, replacement in helper_cases:
+        expect_reconcile_helper_substitution_rejected(reconciler, field, replacement)
+    print(f"PASS boundary: direct eligibility reconcile execution helper substitutions rejected: {len(helper_cases)}")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "generation eligibility validator missing")
     require(RECONCILER.is_file(), "generation eligibility reconciler missing")
@@ -160,8 +192,8 @@ def main() -> int:
     prove_validator_execution_identity()
     reconciler = load_reconciler()
     prove_direct_authority_identity(reconciler)
+    prove_reconciler_execution_identity(reconciler)
 
-    original_enforcer = reconciler.enforce_runtime_authorities
     original_contract_path = reconciler.CONTRACT
     original_generation_contract_path = reconciler.GEN_CONTRACT
     original_generation_registry_path = reconciler.GEN_REGISTRY
@@ -169,10 +201,9 @@ def main() -> int:
     original_post_validator = reconciler.run_post_validator
     original_os_replace = reconciler.os.replace
 
-    # Fixture mutation is deliberately below the production authority boundary:
-    # direct invocation remains canonical-only, while this suite proves semantic
-    # drift rejection, atomic replacement, and aggregate rollback internally.
-    reconciler.enforce_runtime_authorities = lambda: None
+    # Fixture mutation is deliberately below the production CLI authority boundary:
+    # direct main() remains canonical-only, while the internal reconcile core proves
+    # semantic drift rejection, atomic replacement, and aggregate rollback.
     try:
         with tempfile.TemporaryDirectory(prefix=".tmp-environment-eligibility-reconcile-", dir=TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
@@ -205,7 +236,7 @@ def main() -> int:
             generation_boundary["registeredGenerationCount"] = 1
             generation_contract_copy.write_text(json.dumps(drifted_generation_contract, indent=2) + "\n", encoding="utf-8")
             try:
-                reconciler.main()
+                reconciler._reconcile()
             except reconciler.Fail as exc:
                 require("generation registered count drift" in str(exc), f"generation count drift rejected at wrong boundary: {exc}")
             except Exception as exc:
@@ -230,7 +261,7 @@ def main() -> int:
             reconciler.os.replace = fail_first_replace
             try:
                 try:
-                    reconciler.main()
+                    reconciler._reconcile()
                 except OSError as exc:
                     require("synthetic atomic replacement failure" in str(exc), f"atomic replacement failed at wrong boundary: {exc}")
                 except Exception as exc:
@@ -264,7 +295,7 @@ def main() -> int:
 
             reconciler.run_post_validator = aggregate_failure_after_eligibility_success
             try:
-                reconciler.main()
+                reconciler._reconcile()
             except reconciler.Fail as exc:
                 require("synthetic aggregate operability rejection" in str(exc), f"post-validation failure rejected at wrong boundary: {exc}")
             except Exception as exc:
@@ -275,7 +306,6 @@ def main() -> int:
             require(contract_copy.read_bytes() == rollback_original, "failed aggregate validation left eligibility contract mutation")
             print("PASS rollback: aggregate rejection restored eligibility contract byte-for-byte")
     finally:
-        reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.CONTRACT = original_contract_path
         reconciler.GEN_CONTRACT = original_generation_contract_path
         reconciler.GEN_REGISTRY = original_generation_registry_path
@@ -288,7 +318,8 @@ def main() -> int:
     print("validator execution helper substitutions accepted: false")
     print("symlinked canonical validator authority accepted: false")
     print("direct reconciler data/executable authority substitutions accepted: false")
-    print("path-based helper authority weakened for fixtures: false")
+    print("direct reconciler execution helper substitutions accepted: false")
+    print("production CLI authority weakened for fixtures: false")
     print("generation contract drift can mutate eligibility authority: false")
     print("atomic replacement failure preserves canonical authority: true")
     print("atomic replacement temp cleanup: true")
