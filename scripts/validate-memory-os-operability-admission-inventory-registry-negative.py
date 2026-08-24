@@ -67,25 +67,20 @@ def expect_validator_rejected(
     name: str,
     mutate: Callable[[dict[str, Any]], None],
 ) -> None:
+    original = path.read_bytes()
     bad = copy.deepcopy(load(path))
     mutate(bad)
-    original_load = validator.load
-
-    def patched_load(candidate: str) -> dict[str, Any]:
-        relative = path.relative_to(ROOT).as_posix()
-        if candidate == relative:
-            return copy.deepcopy(bad)
-        return original_load(candidate)
-
-    validator.load = patched_load
+    path.write_text(json.dumps(bad, indent=2) + "\n", encoding="utf-8")
+    rejected = False
     try:
         validator.main()
     except validator.Fail:
-        print(f"PASS validator reject: {name}")
-        return
+        rejected = True
     finally:
-        validator.load = original_load
-    raise Fail(f"corrupt append-only authority unexpectedly accepted by validator: {name}")
+        path.write_bytes(original)
+    require(rejected, f"corrupt append-only authority unexpectedly accepted by validator: {name}")
+    require(path.read_bytes() == original, f"validator fixture did not restore canonical authority: {name}")
+    print(f"PASS validator reject: {name}")
 
 
 def expect_generator_rejected(
@@ -94,29 +89,24 @@ def expect_generator_rejected(
     name: str,
     mutate: Callable[[dict[str, Any]], None],
 ) -> None:
+    original = path.read_bytes()
     bad = copy.deepcopy(load(path))
     mutate(bad)
-    original_load = generator.load
-    relative = path.relative_to(ROOT).as_posix()
     output_before = generator.OUTPUT.read_bytes()
-
-    def patched_load(candidate: str) -> dict[str, Any]:
-        if candidate == relative:
-            return copy.deepcopy(bad)
-        return original_load(candidate)
-
-    generator.load = patched_load
+    path.write_text(json.dumps(bad, indent=2) + "\n", encoding="utf-8")
     rejected = False
     try:
         generator.main()
-    except SystemExit:
+    except SystemExit as exc:
+        require(exc.code not in (None, 0), f"corrupt authority produced successful SystemExit: {name}")
         rejected = True
     except RuntimeError as exc:
         require(exc.__class__.__name__ in DOMAIN_REJECTIONS, f"unexpected generator RuntimeError for {name}: {exc}")
         rejected = True
     finally:
-        generator.load = original_load
+        path.write_bytes(original)
     require(rejected, f"corrupt append-only authority unexpectedly accepted by generator: {name}")
+    require(path.read_bytes() == original, f"generator fixture did not restore canonical authority: {name}")
     require(generator.OUTPUT.read_bytes() == output_before, f"generator mutated inventory after rejecting corrupt authority: {name}")
     print(f"PASS generator reject: {name}")
 
@@ -252,12 +242,9 @@ def expect_untracked_tabletop_rejected(validator: Any, generator: Any) -> None:
 
 def expect_generator_load_authority_rejected(generator: Any) -> None:
     inventory_before = generator.OUTPUT.read_bytes()
-    original = generator.require_canonical_load_authority
-
-    def reject_load_authority() -> None:
-        raise SystemExit("synthetic canonical load authority rejection")
-
-    generator.require_canonical_load_authority = reject_load_authority
+    validator_path = ROOT / "scripts/validate-memory-os-load.py"
+    validator_before = validator_path.read_bytes()
+    validator_path.write_text("def main():\n    return 1\n", encoding="utf-8")
     rejected = False
     try:
         generator.main()
@@ -265,22 +252,18 @@ def expect_generator_load_authority_rejected(generator: Any) -> None:
         require(exc.code not in (None, 0), "inventory generator exited successfully after canonical load authority rejection")
         rejected = True
     finally:
-        generator.require_canonical_load_authority = original
+        validator_path.write_bytes(validator_before)
     require(rejected, "inventory generator bypassed canonical load authority validation")
+    require(validator_path.read_bytes() == validator_before, "load authority fixture was not restored")
     require(generator.OUTPUT.read_bytes() == inventory_before, "load authority rejection mutated canonical inventory")
     print("PASS generator reject: canonical load authority validation cannot be bypassed")
 
 
 def expect_generator_backup_derived_authority_rejected(generator: Any) -> None:
     inventory_before = generator.OUTPUT.read_bytes()
-    original = generator.require_canonical_command_authority
-    calls: list[str] = []
-
-    def reject_backup_authority(script_name: str, module_name: str, label: str) -> None:
-        calls.append(script_name)
-        raise SystemExit(f"synthetic canonical backup derived authority rejection: {label}")
-
-    generator.require_canonical_command_authority = reject_backup_authority
+    validator_path = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
+    validator_before = validator_path.read_bytes()
+    validator_path.write_text("def main():\n    return 1\n", encoding="utf-8")
     rejected = False
     try:
         generator.main()
@@ -288,12 +271,9 @@ def expect_generator_backup_derived_authority_rejected(generator: Any) -> None:
         require(exc.code not in (None, 0), "inventory generator exited successfully after backup derived authority rejection")
         rejected = True
     finally:
-        generator.require_canonical_command_authority = original
+        validator_path.write_bytes(validator_before)
     require(rejected, "inventory generator bypassed canonical backup derived authority validation")
-    require(
-        calls == ["validate-memory-os-backup-restore-generation-binding.py"],
-        "inventory generator did not enter backup derived authority validation at the first canonical boundary",
-    )
+    require(validator_path.read_bytes() == validator_before, "backup derived authority fixture was not restored")
     require(generator.OUTPUT.read_bytes() == inventory_before, "backup derived authority rejection mutated canonical inventory")
     print("PASS generator reject: canonical backup derived authority validation cannot be bypassed")
 
@@ -328,15 +308,9 @@ def expect_generator_authority_substitutions_rejected(generator: Any) -> None:
 
 def expect_generator_post_write_validation_rollback(generator: Any) -> None:
     inventory_before = generator.OUTPUT.read_bytes()
-    original = generator.validate_generated_inventory
-    calls = 0
-
-    def reject_generated_inventory() -> None:
-        nonlocal calls
-        calls += 1
-        raise SystemExit("synthetic post-write inventory validation failure")
-
-    generator.validate_generated_inventory = reject_generated_inventory
+    validator_path = generator.INVENTORY_VALIDATOR
+    validator_before = validator_path.read_bytes()
+    validator_path.write_text("def main():\n    return 1\n", encoding="utf-8")
     rejected = False
     try:
         generator.main()
@@ -344,9 +318,9 @@ def expect_generator_post_write_validation_rollback(generator: Any) -> None:
         require(exc.code not in (None, 0), "inventory generator exited successfully after post-write validation failure")
         rejected = True
     finally:
-        generator.validate_generated_inventory = original
+        validator_path.write_bytes(validator_before)
     require(rejected, "inventory generator accepted synthetic post-write validation failure")
-    require(calls == 1, f"post-write inventory validator call count drift: {calls}")
+    require(validator_path.read_bytes() == validator_before, "post-write validator fixture was not restored")
     require(generator.OUTPUT.read_bytes() == inventory_before, "post-write validation failure did not restore canonical inventory bytes")
     print("PASS generator transaction: post-write validation failure rolls back canonical inventory")
 
