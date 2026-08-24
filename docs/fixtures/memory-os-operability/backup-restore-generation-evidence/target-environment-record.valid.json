@@ -51,7 +51,7 @@
     "productionEvidence": false,
     "productionEquivalentDependencies": true,
     "independentReviewCompleted": true,
-    "independentReviewRef": "AGENTS.md",
+    "independentReviewRef": "CLAUDE.md",
     "productionReady": false
   }
 }
