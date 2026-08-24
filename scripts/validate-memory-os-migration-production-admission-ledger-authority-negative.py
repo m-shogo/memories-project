@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject migration admission ledger writer/validator/lock authority substitution."""
+"""Reject migration admission ledger data, writer, validator and lock authority substitution."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "scripts/memory_os_migration_production_admission_ledger.py"
+ALTERNATE_LEDGER = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+ALTERNATE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 ALTERNATE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 ALTERNATE_VALIDATOR = ROOT / "scripts/validate-memory-os-release-baseline-registry.py"
 ALTERNATE_LOCK = ROOT / "contracts/operations/.migration-production-admission-ledger-negative.lock"
@@ -79,12 +81,16 @@ def expect_symlink_escape_rejected(label: str, target_kind: str) -> None:
 
 
 def main() -> int:
+    expect_ledger_rejected("ledger data", lambda helper: setattr(helper, "LEDGER", ALTERNATE_LEDGER))
+    expect_ledger_rejected("ledger contract", lambda helper: setattr(helper, "LEDGER_CONTRACT", ALTERNATE_CONTRACT))
     expect_writer_rejected("writer executable", lambda helper: setattr(helper, "LEDGER_WRITER", ALTERNATE_WRITER))
     expect_ledger_rejected("validator executable", lambda helper: setattr(helper, "LEDGER_VALIDATOR", ALTERNATE_VALIDATOR))
     expect_writer_rejected("append lock", lambda helper: setattr(helper, "LEDGER_LOCK", ALTERNATE_LOCK))
     expect_symlink_escape_rejected("writer executable", "writer")
     expect_symlink_escape_rejected("validator executable", "validator")
-    print("PASS: migration production admission ledger writer, validator and append-lock substitutions are rejected")
+    print("PASS: migration production admission ledger data, writer, validator and append-lock substitutions are rejected")
+    print("ledger data substitution accepted: false")
+    print("ledger contract substitution accepted: false")
     print("writer symlink escape accepted: false")
     print("validator symlink escape accepted: false")
     print("production evidence generated: false")
