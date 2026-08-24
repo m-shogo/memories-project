@@ -9,6 +9,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
+INVENTORY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory.py"
 SOURCE_AUTHORITY = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
 INPUT_REL = Path("contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json")
 INPUT = ROOT / INPUT_REL
@@ -41,6 +42,10 @@ def load_generator():
     return load_module(GENERATOR, "memory_os_inventory_generator_input_authority_negative")
 
 
+def load_inventory_validator():
+    return load_module(INVENTORY_VALIDATOR, "memory_os_inventory_validator_execution_authority_negative")
+
+
 def load_source_authority():
     return load_module(SOURCE_AUTHORITY, "memory_os_inventory_source_authority_order_negative")
 
@@ -71,6 +76,19 @@ def expect_source_execution_rejected(module: Any, field: str, replacement: Any) 
     require(rejected, f"inventory source-authority validator accepted substituted execution helper {field}")
 
 
+def expect_inventory_execution_rejected(module: Any, field: str, replacement: Any) -> None:
+    original = getattr(module, field)
+    setattr(module, field, replacement)
+    rejected = False
+    try:
+        module.main()
+    except module.Fail:
+        rejected = True
+    finally:
+        setattr(module, field, original)
+    require(rejected, f"inventory validator accepted substituted runtime authority {field}")
+
+
 def restore_input(input_before: bytes) -> None:
     INPUT.unlink(missing_ok=True)
     INPUT.write_bytes(input_before)
@@ -79,6 +97,7 @@ def restore_input(input_before: bytes) -> None:
 
 def main() -> int:
     generator = load_generator()
+    inventory_validator = load_inventory_validator()
     source_authority = load_source_authority()
     command_paths = [row[0] for row in source_authority.COMMAND_SOURCES]
     require(
@@ -110,6 +129,20 @@ def main() -> int:
     expect_source_execution_rejected(source_authority, "validate_source", lambda *_args: None)
     expect_source_execution_rejected(source_authority, "exact_success", lambda *_args: None)
     expect_source_execution_rejected(source_authority, "validate_registry_result", lambda *_args: None)
+
+    expect_inventory_execution_rejected(inventory_validator, "enforce_runtime_authority", lambda: None)
+    expect_inventory_execution_rejected(inventory_validator, "require", lambda *_args: None)
+    expect_inventory_execution_rejected(inventory_validator, "valid_count", lambda _value: True)
+    expect_inventory_execution_rejected(inventory_validator, "require_count_match", lambda *_args: None)
+    expect_inventory_execution_rejected(inventory_validator, "repo_relative", lambda _path: Path("contracts/operations/production-operability-status.json"))
+    expect_inventory_execution_rejected(inventory_validator, "load", lambda _path: {})
+    expect_inventory_execution_rejected(inventory_validator, "canonical_registry_validator", lambda *_args: (lambda _registry: None))
+    expect_inventory_execution_rejected(inventory_validator, "require_canonical_registry", lambda *_args: None)
+    expect_inventory_execution_rejected(inventory_validator, "validate_source_authorities", lambda: None)
+    expect_inventory_execution_rejected(inventory_validator, "INVENTORY", inventory_validator.STATUS)
+    expect_inventory_execution_rejected(inventory_validator, "STATUS", inventory_validator.INVENTORY)
+    expect_inventory_execution_rejected(inventory_validator, "SOURCE_AUTHORITY_VALIDATOR", INVENTORY_VALIDATOR)
+    inventory_validator.enforce_runtime_authority()
 
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
@@ -144,6 +177,8 @@ def main() -> int:
     print("inventory source-authority self/request shape substitution accepted: false")
     print("inventory source registry/command sequence substitution accepted: false")
     print("inventory source execution helper substitution accepted: false")
+    print("inventory validator execution helper substitution accepted: false")
+    print("inventory validator canonical data authority substitution accepted: false")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
