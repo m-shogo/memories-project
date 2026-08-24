@@ -25,12 +25,18 @@ from typing import Any
 from memory_os_migration_recovery_point import RecoveryPointFailure, validate_recovery_point
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
-LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-LOCK = ROOT / "contracts/operations/.migration-evidence-registry.lock"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
+CANONICAL_LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+CANONICAL_LOCK = ROOT / "contracts/operations/.migration-evidence-registry.lock"
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+LIFECYCLE = CANONICAL_LIFECYCLE
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+GEN_WRITER = CANONICAL_GEN_WRITER
+LOCK = CANONICAL_LOCK
 CONFIRMATION = "REGISTER NON-PRODUCTION MIGRATION REHEARSAL"
 RUN_ID = re.compile(r"^mig_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -67,6 +73,30 @@ class Failure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Failure(message)
+
+
+def require_actual_cli_authorities() -> None:
+    for label, actual, canonical in (
+        ("contract", CONTRACT, CANONICAL_CONTRACT),
+        ("registry", REGISTRY, CANONICAL_REGISTRY),
+        ("lifecycle", LIFECYCLE, CANONICAL_LIFECYCLE),
+        ("environment generation registry", GEN_REGISTRY, CANONICAL_GEN_REGISTRY),
+        ("environment generation writer", GEN_WRITER, CANONICAL_GEN_WRITER),
+    ):
+        require(actual == canonical, f"migration rehearsal CLI {label} authority substitution rejected")
+        require(not actual.is_symlink(), f"migration rehearsal CLI {label} authority must be symlink-free")
+        try:
+            resolved = actual.resolve(strict=True)
+            expected = canonical.resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise Failure(f"migration rehearsal CLI canonical {label} authority missing") from exc
+        require(resolved == expected, f"migration rehearsal CLI {label} authority drift")
+    require(LOCK == CANONICAL_LOCK, "migration rehearsal CLI append lock authority substitution rejected")
+    require(not LOCK.is_symlink(), "migration rehearsal CLI append lock authority must be symlink-free")
+    require(
+        LOCK.parent.resolve(strict=True) == CANONICAL_LOCK.parent.resolve(strict=True),
+        "migration rehearsal CLI append lock parent authority drift",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -298,6 +328,7 @@ def write_registry_transactionally(updated: dict[str, Any], previous: dict[str, 
 
 
 def main() -> int:
+    require_actual_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
     parser.add_argument("--confirm", required=True)
