@@ -98,6 +98,7 @@ def main() -> int:
     original_contract_path = reconciler.CONTRACT
     original_generation_contract_path = reconciler.GEN_CONTRACT
     original_generation_registry_path = reconciler.GEN_REGISTRY
+    original_load_helper = reconciler.load_helper
     original_post_validator = reconciler.run_post_validator
     original_os_replace = reconciler.os.replace
 
@@ -119,6 +120,20 @@ def main() -> int:
             reconciler.CONTRACT = contract_copy
             reconciler.GEN_CONTRACT = generation_contract_copy
             reconciler.GEN_REGISTRY = generation_registry_copy
+
+            # The shared helper's path-based API is intentionally canonical-only.
+            # Reconciler fixtures therefore adapt the helper to its explicit
+            # in-memory derive_registry API instead of weakening runtime authority.
+            canonical_helper = original_load_helper()
+
+            def load_fixture_helper():
+                helper = canonical_helper
+                helper.derive = lambda _registry_path: helper.derive_registry(
+                    json.loads(generation_registry_copy.read_text(encoding="utf-8"))
+                )
+                return helper
+
+            reconciler.load_helper = load_fixture_helper
 
             drifted_generation_contract = json.loads(generation_contract_copy.read_text(encoding="utf-8"))
             generation_boundary = drifted_generation_contract.get("currentBoundary")
@@ -204,11 +219,13 @@ def main() -> int:
         reconciler.CONTRACT = original_contract_path
         reconciler.GEN_CONTRACT = original_generation_contract_path
         reconciler.GEN_REGISTRY = original_generation_registry_path
+        reconciler.load_helper = original_load_helper
         reconciler.run_post_validator = original_post_validator
         reconciler.os.replace = original_os_replace
 
     print("Environment generation eligibility reconcile negative suite PASS")
     print("direct data/executable authority substitutions accepted: false")
+    print("path-based helper authority weakened for fixtures: false")
     print("generation contract drift can mutate eligibility authority: false")
     print("atomic replacement failure preserves canonical authority: true")
     print("atomic replacement temp cleanup: true")
