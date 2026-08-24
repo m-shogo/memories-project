@@ -99,6 +99,21 @@ def safe_relative_ref(value: Any, field: str) -> Path:
     return relative
 
 
+def require_clean_repo_evidence_file(relative: Path, label: str) -> Path:
+    path = ROOT / relative
+    require(not path.is_symlink(), f"{label} cannot be a symlink")
+    try:
+        resolved = path.resolve(strict=True)
+        resolved_relative = resolved.relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise RecoveryPointFailure(f"{label} missing or escapes repository root: {relative}") from exc
+    require(path.is_file(), f"{label} must be a repository file: {relative}")
+    require(resolved_relative == relative, f"{label} path authority drift: {relative}")
+    status = git_text("status", "--porcelain", "--", relative.as_posix())
+    require(status == "", f"{label} must be committed and unmodified: {relative}")
+    return path
+
+
 def validate_actual_recovery_artifact_result(
     record: dict[str, Any],
     environment_class: str,
@@ -214,13 +229,10 @@ def validate_recovery_point(
             f"restore capability authority missing for {environment_class}")
     require(authority.get("configured") is True,
             f"restore capability is not configured for {environment_class}")
-    evidence_ref = authority.get("evidenceRef")
-    require(isinstance(evidence_ref, str) and evidence_ref,
-            f"restore capability evidenceRef missing for {environment_class}")
-    require(record.get("restoreCapabilityEvidenceRef") == evidence_ref,
+    evidence_ref = safe_relative_ref(authority.get("evidenceRef"), "restore capability evidenceRef")
+    require(record.get("restoreCapabilityEvidenceRef") == evidence_ref.as_posix(),
             "restoreCapabilityEvidenceRef does not match environment authority")
-    evidence_path = ROOT / evidence_ref
-    require(evidence_path.is_file(), f"restore capability evidence missing: {evidence_ref}")
+    evidence_path = require_clean_repo_evidence_file(evidence_ref, "restore capability evidence")
     evidence = load(evidence_path, "restore capability evidence")
 
     expected_schema = authority.get("schemaVersion")
