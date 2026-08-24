@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-admission-chain",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "2f154c44b4eb7ce95459730b9cef7aa0f2be8009",
+  "output": "BACKUP RESTORE ADMISSION CHAIN FULL VALIDATION FAILED: environment generation authority failed with exit code 1: scripts/validate-memory-os-production-equivalent-environment-generation.py\nBackup/restore admission-chain workflow permission boundary PASS\nPR contents write authority: false\nPR exact-head validation: true\nnon-PR publication write authority: isolated\nbounded latest-so revalidation and stale-source refusal: preserved\ncrash-safe failure diagnostic publication: required\nproduction evidence created: false\nproduction decision: NO_GO\nPASS chain step: admission-chain workflow permission boundary\nBackup/restore admission-chain workflow permission negative PASS\nforbidden workflow mutations rejected: 9\ncrash-safe failure diagnostic publication required: true\nproduction evidence created: false\nproduction traffic changed: false\nproduction decision: NO_GO\nPASS chain step: admission-chain workflow permission negative\nPRODUCTION-EQUIVALENT GENERATION FAILED: environment generation negative admission suite failed:\nPASS non-eligible: PLANNED generation environment\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-generation-negative.py\", line 373, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-generation-negative.py\", line 191, in main\n    require(env_validator.validate_environment_record(equivalent) is True, \"complete equivalent environment must satisfy semantic preflight predicate\")\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-record.py\", line 182, in validate_environment_record\n    require(\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-record.py\", line 30, in require\n    raise Fail(message)\nmemory_os_environment_semantic_negative.Fail: environment independent review evidence must not be reused as implementation/restore evidence\n\n",
+  "containsSecrets": false,
+  "preflightCreatedPrerequisite": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "typedEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
