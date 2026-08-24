@@ -12,6 +12,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTHORITY_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+EXPECTED_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+EXPECTED_NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
 EXPECTED_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 EXPECTED_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 EXPECTED_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
@@ -111,6 +114,37 @@ def reject_writer_cli_substitutions() -> None:
         raise Fail(f"canonical generation-evidence writer CLI authority rejected: {exc}") from exc
 
 
+def reject_generation_validator_substitutions() -> None:
+    module = load_authority_validator("generation_evidence_validator_boundary")
+    validator = module.load_generation_validator()
+    require(EXPECTED_VALIDATOR.is_file(), "generation-evidence validator missing")
+    require(getattr(validator, "NEGATIVE_VALIDATOR", None) == EXPECTED_NEGATIVE_VALIDATOR, "canonical negative validator authority drift")
+    require(
+        getattr(validator, "SEMANTIC_NEGATIVE_VALIDATOR", None) == EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR,
+        "canonical semantic negative validator authority drift",
+    )
+    substitutions = {
+        "NEGATIVE_VALIDATOR": EXPECTED_SEMANTIC_NEGATIVE_VALIDATOR,
+        "SEMANTIC_NEGATIVE_VALIDATOR": EXPECTED_NEGATIVE_VALIDATOR,
+    }
+    for name, alternate in substitutions.items():
+        original = getattr(validator, name)
+        setattr(validator, name, alternate)
+        try:
+            try:
+                module.require_generation_validator_authorities(validator)
+            except module.Fail:
+                print(f"PASS reject: generation-evidence validator {name} substitution")
+            else:
+                raise Fail(f"generation-evidence validator {name} substitution was accepted")
+        finally:
+            setattr(validator, name, original)
+    try:
+        module.require_generation_validator_authorities(validator)
+    except module.Fail as exc:
+        raise Fail(f"canonical generation-evidence validator authority rejected: {exc}") from exc
+
+
 def repo_temp_module(prefix: str, overrides: dict[str, str]) -> Path:
     values = {
         "CONTRACT": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
@@ -192,6 +226,7 @@ def expect_contract_ref_rejection(field: str, replacement: str, expected_message
 def main() -> int:
     require(AUTHORITY_VALIDATOR.is_file(), "authority validator missing")
     reject_writer_cli_substitutions()
+    reject_generation_validator_substitutions()
 
     cases = (
         ("contract", {"CONTRACT": "contracts/operations/backup-restore-drill-request-contract.v1.json"}, "generation-evidence contract authority drift"),
@@ -238,6 +273,7 @@ def main() -> int:
 
     print("PASS: complete generation-evidence executable/data/lock/review authority substitution matrix is rejected")
     print("generation-evidence writer CLI authority substitutions accepted: false")
+    print("generation-evidence validator negative authority substitutions accepted: false")
     return 0
 
 
