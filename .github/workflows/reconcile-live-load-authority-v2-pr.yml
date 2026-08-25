@@ -1,0 +1,105 @@
+name: Validate Live Load Authority V2 PR
+
+on:
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-live-load-authority-v2.yml"
+      - ".github/workflows/reconcile-live-load-authority-v2-pr.yml"
+      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
+      - "contracts/operations/live-object-load-scenario-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json"
+      - "scripts/validate-memory-os-live-load.py"
+      - "scripts/validate-memory-os-live-object-load.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/reconcile-memory-os-live-load-status.py"
+      - "scripts/validate-memory-os-live-load-reconcile-rollback-negative.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-live-load-authority-v2-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact clean PR source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+
+      - name: Compile authority tools
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-live-load.py \
+            scripts/validate-memory-os-live-object-load.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-live-load-status.py \
+            scripts/validate-memory-os-live-load-reconcile-rollback-negative.py
+
+      - name: Validate reconcile rollback
+        run: python scripts/validate-memory-os-live-load-reconcile-rollback-negative.py
+
+      - name: Validate committed live evidence
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-live-load.py
+          python scripts/validate-memory-os-live-object-load.py
+
+      - name: Reconcile validated evidence read-only
+        run: |
+          set -euo pipefail
+          evidence_sha="$(python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          paths = (
+              Path('docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json'),
+              Path('docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json'),
+          )
+          shas = []
+          for path in paths:
+              document = json.loads(path.read_text(encoding='utf-8'))
+              sha = document.get('commitSha')
+              if not isinstance(sha, str) or re.fullmatch(r'[0-9a-f]{40}', sha) is None:
+                  raise SystemExit(f'{path}: commitSha must be a full lowercase SHA')
+              shas.append(sha)
+          if len(set(shas)) != 1:
+              raise SystemExit('live PostgreSQL and object-load evidence must bind to one source commit')
+          print(shas[0])
+          PY
+          )"
+          git cat-file -e "${evidence_sha}^{commit}"
+          EXPECTED_COMMIT_SHA="$evidence_sha" python scripts/reconcile-memory-os-live-load-status.py
+          python scripts/validate-memory-os-live-load.py
+          python scripts/validate-memory-os-live-object-load.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Reject any deterministic worktree drift
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
