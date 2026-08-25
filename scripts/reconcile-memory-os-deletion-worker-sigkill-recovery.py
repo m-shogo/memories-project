@@ -16,6 +16,7 @@ ROOT = CANONICAL_ROOT
 CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json"
 CANONICAL_RESULT_PATH = CANONICAL_ROOT / "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json"
 CANONICAL_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-worker-sigkill-recovery.py"
+CANONICAL_SUBPROCESS_RUN = subprocess.run
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR = CANONICAL_VALIDATOR
@@ -55,9 +56,12 @@ def validate_authority_identity() -> None:
     _require_exact_path("SIGKILL recovery contract", CONTRACT_PATH, CANONICAL_CONTRACT_PATH)
     _require_exact_path("SIGKILL recovery result", RESULT_PATH, CANONICAL_RESULT_PATH, must_exist=False)
     _require_exact_path("SIGKILL recovery validator", VALIDATOR, CANONICAL_VALIDATOR)
+    if subprocess.run is not CANONICAL_SUBPROCESS_RUN:
+        raise ReconcileFailure("validator execution transport is not canonical")
 
 
 def run_validator(expected_sha: str) -> None:
+    validate_authority_identity()
     subprocess.run(
         [sys.executable, str(VALIDATOR), "--require-result", "--expected-commit-sha", expected_sha],
         cwd=ROOT,
@@ -80,6 +84,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
 
 
 def write_contract_transactionally(contract: dict[str, Any], expected_sha: str) -> None:
+    validate_authority_identity()
     original = CONTRACT_PATH.read_bytes()
     candidate = (json.dumps(contract, indent=2) + "\n").encode("utf-8")
     atomic_write_bytes(CONTRACT_PATH, candidate)
