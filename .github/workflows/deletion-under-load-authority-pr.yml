@@ -12,6 +12,7 @@ on:
       - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
       - "scripts/reconcile-memory-os-deletion-under-load-status.py"
+      - "scripts/validate-memory-os-deletion-under-load-reconcile-negative.py"
       - "scripts/validate-memory-os-deletion-under-load.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
@@ -26,6 +27,7 @@ on:
       - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
       - "scripts/reconcile-memory-os-deletion-under-load-status.py"
+      - "scripts/validate-memory-os-deletion-under-load-reconcile-negative.py"
       - "scripts/validate-memory-os-deletion-under-load.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
@@ -66,9 +68,15 @@ jobs:
           set -euo pipefail
           python -m py_compile \
             scripts/reconcile-memory-os-deletion-under-load-status.py \
+            scripts/validate-memory-os-deletion-under-load-reconcile-negative.py \
             scripts/validate-memory-os-deletion-under-load.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py
+
+      - name: Validate fail-closed authority transaction
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-deletion-under-load-reconcile-negative.py
 
       - name: Reconcile recorded local evidence read-only
         run: |
