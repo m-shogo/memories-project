@@ -120,7 +120,40 @@ def validate_authority(
         raise SystemExit("operation evidence record changed during authority validation")
 
 
+_CANONICAL_ROOT = ROOT
+_CANONICAL_DEFAULT_LEDGER = DEFAULT_LEDGER
+_CANONICAL_VALIDATOR_PATH = VALIDATOR_PATH
+_CANONICAL_LOAD = load
+_CANONICAL_LOAD_VALIDATOR = load_validator
+_CANONICAL_TIMESTAMP = timestamp
+_CANONICAL_RESOLVE_LEDGER = resolve_ledger
+_CANONICAL_RESOLVE_OPERATION_RECORD = resolve_operation_record
+_CANONICAL_VALIDATE_AUTHORITY = validate_authority
+
+
+def enforce_runtime_authorities() -> None:
+    if ROOT != _CANONICAL_ROOT:
+        raise SystemExit("emergency evaluator repository authority drift")
+    if DEFAULT_LEDGER != _CANONICAL_DEFAULT_LEDGER:
+        raise SystemExit("emergency evaluator ledger authority drift")
+    if VALIDATOR_PATH != _CANONICAL_VALIDATOR_PATH:
+        raise SystemExit("emergency evaluator validator authority drift")
+    helpers = (
+        (load, _CANONICAL_LOAD, "load"),
+        (load_validator, _CANONICAL_LOAD_VALIDATOR, "validator loader"),
+        (timestamp, _CANONICAL_TIMESTAMP, "timestamp"),
+        (resolve_ledger, _CANONICAL_RESOLVE_LEDGER, "ledger resolver"),
+        (resolve_operation_record, _CANONICAL_RESOLVE_OPERATION_RECORD, "record resolver"),
+        (validate_authority, _CANONICAL_VALIDATE_AUTHORITY, "record validator"),
+    )
+    for current, canonical, label in helpers:
+        if current is not canonical:
+            raise SystemExit(f"emergency evaluator {label} execution authority drift")
+    load_validator()
+
+
 def main() -> int:
+    enforce_runtime_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--at", required=True, help="UTC RFC3339 evaluation time")
     parser.add_argument("--operation-id", required=True)
