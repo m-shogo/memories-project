@@ -62,23 +62,35 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(canonical.resolve(strict=True) == canonical, f"canonical {label} resolved path drift")
 
 
-def enforce_runtime_authorities() -> None:
-    require(ROOT == CANONICAL_ROOT, "repository root authority drift")
-    require(Path(__file__).resolve().parents[1] == CANONICAL_ROOT, "canonical repository root drift")
-    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "subprocess execution transport authority drift")
-    require(os.replace is CANONICAL_OS_REPLACE, "atomic replacement transport authority drift")
-    require(globals().get("atomic_write_bytes") is CANONICAL_ATOMIC_WRITE_BYTES,
-            "atomic writer authority drift")
-    for path, canonical, label in (
-        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "deletion-under-load contract"),
-        (LOAD_PATH, CANONICAL_LOAD_PATH, "load contract"),
-        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
-        (RESULT_PATH, CANONICAL_RESULT_PATH, "deletion-under-load result"),
-        (DELETION_VALIDATOR, CANONICAL_DELETION_VALIDATOR, "deletion-under-load validator"),
-        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator"),
-        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+def enforce_runtime_authorities(
+    _root: Path = CANONICAL_ROOT,
+    _contract: Path = CANONICAL_CONTRACT_PATH,
+    _load: Path = CANONICAL_LOAD_PATH,
+    _status: Path = CANONICAL_STATUS_PATH,
+    _result: Path = CANONICAL_RESULT_PATH,
+    _deletion_validator: Path = CANONICAL_DELETION_VALIDATOR,
+    _load_validator: Path = CANONICAL_LOAD_VALIDATOR,
+    _operability_validator: Path = CANONICAL_OPERABILITY_VALIDATOR,
+    _subprocess_run: Any = CANONICAL_SUBPROCESS_RUN,
+    _os_replace: Any = CANONICAL_OS_REPLACE,
+) -> None:
+    require(CANONICAL_ROOT == _root and ROOT == _root, "repository root authority drift")
+    require(Path(__file__).resolve().parents[1] == _root, "canonical repository root drift")
+    require(CANONICAL_SUBPROCESS_RUN is _subprocess_run and subprocess.run is _subprocess_run,
+            "subprocess execution transport authority drift")
+    require(CANONICAL_OS_REPLACE is _os_replace and os.replace is _os_replace,
+            "atomic replacement transport authority drift")
+    for path, canonical, expected, label in (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, _contract, "deletion-under-load contract"),
+        (LOAD_PATH, CANONICAL_LOAD_PATH, _load, "load contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, _status, "production status"),
+        (RESULT_PATH, CANONICAL_RESULT_PATH, _result, "deletion-under-load result"),
+        (DELETION_VALIDATOR, CANONICAL_DELETION_VALIDATOR, _deletion_validator, "deletion-under-load validator"),
+        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, _load_validator, "load validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, _operability_validator, "operability validator"),
     ):
-        require_exact_authority(path, canonical, label)
+        require(canonical == expected, f"canonical {label} constant drift")
+        require_exact_authority(path, expected, label)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -127,7 +139,13 @@ def stronger_deletion_authority_present(load_readiness: dict[str, Any]) -> bool:
     )
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(
+    path: Path,
+    payload: bytes,
+    _replace: Any = CANONICAL_OS_REPLACE,
+) -> None:
+    require(CANONICAL_OS_REPLACE is _replace and os.replace is _replace,
+            "atomic replacement transport authority drift")
     path.parent.mkdir(parents=True, exist_ok=True)
     existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     tmp_path: Path | None = None
@@ -145,7 +163,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             os.fsync(handle.fileno())
         if existing_mode is not None:
             os.chmod(tmp_path, existing_mode)
-        CANONICAL_OS_REPLACE(tmp_path, path)
+        _replace(tmp_path, path)
         tmp_path = None
     finally:
         if tmp_path is not None:
@@ -158,7 +176,13 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
 CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 
 
+def enforce_atomic_writer_authority(_writer: Any = atomic_write_bytes) -> None:
+    require(CANONICAL_ATOMIC_WRITE_BYTES is _writer and atomic_write_bytes is _writer,
+            "atomic writer authority drift")
+
+
 def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    enforce_atomic_writer_authority()
     CANONICAL_ATOMIC_WRITE_BYTES(
         path,
         (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
@@ -171,6 +195,7 @@ def write_and_validate_transactionally(
     status: dict[str, Any],
 ) -> None:
     enforce_runtime_authorities()
+    enforce_atomic_writer_authority()
     originals = {
         CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
         LOAD_PATH: LOAD_PATH.read_bytes(),
@@ -181,6 +206,7 @@ def write_and_validate_transactionally(
         atomic_write_json(LOAD_PATH, load_contract)
         atomic_write_json(STATUS_PATH, status)
         enforce_runtime_authorities()
+        enforce_atomic_writer_authority()
         run_validator(DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
         run_validator(LOAD_VALIDATOR, "load")
         run_validator(OPERABILITY_VALIDATOR, "operability")
@@ -199,6 +225,7 @@ def write_and_validate_transactionally(
 
 def main() -> int:
     enforce_runtime_authorities()
+    enforce_atomic_writer_authority()
     expected_sha = os.getenv("EXPECTED_COMMIT_SHA", "")
     require(expected_sha, "EXPECTED_COMMIT_SHA is required")
     run_validator(DELETION_VALIDATOR, "deletion-under-load", "--expected-commit-sha", expected_sha)
