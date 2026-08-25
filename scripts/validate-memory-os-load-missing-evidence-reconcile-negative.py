@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Prove load missing-evidence reconciliation rolls status back fail-closed."""
+"""Prove load missing-evidence reconciliation is atomic, mode-preserving and fail-closed."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import stat
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -63,10 +65,44 @@ def authority_substitution_rejected(module: ModuleType) -> None:
             setattr(module, attr, original)
 
 
+def atomic_replacement_is_fail_closed(module: ModuleType) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-load-missing-atomic-") as temp_dir:
+        root = Path(temp_dir)
+        authority = root / "authority.json"
+        authority.write_bytes(b"before\n")
+        authority.chmod(0o640)
+        original_mode = stat.S_IMODE(authority.stat().st_mode)
+        original_replace = module.os.replace
+
+        def reject_replace(_source, _target):
+            raise OSError("synthetic missing-evidence atomic replacement failure")
+
+        module.os.replace = reject_replace
+        try:
+            try:
+                module.atomic_write_bytes(authority, b"after\n")
+            except OSError as exc:
+                require("synthetic missing-evidence atomic replacement failure" in str(exc), f"unexpected atomic failure: {exc}")
+            else:
+                raise NegativeFailure("missing-evidence atomic replacement failure was accepted")
+        finally:
+            module.os.replace = original_replace
+
+        require(authority.read_bytes() == b"before\n", "failed atomic replacement changed authority bytes")
+        require(stat.S_IMODE(authority.stat().st_mode) == original_mode, "failed atomic replacement changed authority mode")
+        require(not list(root.glob(f".{authority.name}.*.tmp")), "failed atomic replacement left temp residue")
+
+        module.atomic_write_bytes(authority, b"after\n")
+        require(authority.read_bytes() == b"after\n", "successful atomic replacement did not update authority")
+        require(stat.S_IMODE(authority.stat().st_mode) == original_mode, "successful atomic replacement changed authority mode")
+
+
 def main() -> int:
     module = load_module()
     canonical_bytes = STATUS.read_bytes()
+    canonical_mode = stat.S_IMODE(STATUS.stat().st_mode)
     authority_substitution_rejected(module)
+    atomic_replacement_is_fail_closed(module)
     status = load_json(STATUS)
     area = next(
         (row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-006"),
@@ -89,7 +125,7 @@ def main() -> int:
 
     module.validate = controlled_validate
     try:
-        STATUS.write_bytes(input_bytes)
+        module.atomic_write_bytes(STATUS, input_bytes)
         try:
             module.main()
         except RuntimeError as exc:
@@ -101,12 +137,15 @@ def main() -> int:
             f"validator ordering drift: {calls}",
         )
         require(STATUS.read_bytes() == input_bytes, "status was not rolled back after post-write validation failure")
+        require(stat.S_IMODE(STATUS.stat().st_mode) == canonical_mode, "status mode drifted during rollback")
+        require(not list(STATUS.parent.glob(f".{STATUS.name}.*.tmp")), "status rollback left temp residue")
     finally:
         module.validate = original_validate
-        STATUS.write_bytes(canonical_bytes)
+        module.atomic_write_bytes(STATUS, canonical_bytes)
 
     require(STATUS.read_bytes() == canonical_bytes, "canonical production status was not restored")
-    print("PASS: load missing-evidence reconcile pins canonical authorities and is transactional fail-closed")
+    require(stat.S_IMODE(STATUS.stat().st_mode) == canonical_mode, "canonical production status mode was not restored")
+    print("PASS: load missing-evidence reconcile pins authorities, publishes atomically, preserves mode, and rolls back fail-closed")
     return 0
 
 
