@@ -122,14 +122,31 @@ def expect_import_transport_rejection(reconciler) -> None:
         reconciler.importlib.util.module_from_spec = original_module
 
 
+def expect_atomic_transport_rejection(reconciler) -> None:
+    original_replace = reconciler.os.replace
+    reconciler.os.replace = lambda *args, **kwargs: None
+    try:
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.Fail as exc:
+            if "atomic replacement transport is not canonical" not in str(exc):
+                raise
+        else:
+            raise AssertionError("atomic replacement transport substitution was accepted")
+    finally:
+        reconciler.os.replace = original_replace
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER_PATH, "memory_os_deletion_worker_saturation_reconciler_negative")
     expect_authority_rejection(reconciler, "CONTRACT_PATH", reconciler.RESULT_PATH)
     expect_authority_rejection(reconciler, "RESULT_PATH", reconciler.CONTRACT_PATH)
     expect_authority_rejection(reconciler, "VALIDATOR_PATH", reconciler.CONTRACT_PATH)
+    expect_callable_rejection(reconciler, "atomic_write_bytes", lambda *args, **kwargs: None)
     expect_callable_rejection(reconciler, "load_validator", lambda: None)
     expect_callable_rejection(reconciler, "validate_canonical", lambda *args, **kwargs: None)
     expect_import_transport_rejection(reconciler)
+    expect_atomic_transport_rejection(reconciler)
 
     source = RECONCILER_PATH.read_text(encoding="utf-8")
     if "CONTRACT_PATH.write_text(" in source or "CONTRACT_PATH.write_bytes(" in source:
@@ -206,7 +223,7 @@ def main() -> int:
         if list(target.parent.glob(f".{target.name}.*.tmp")):
             raise AssertionError("atomic replacement failure left a temp file")
 
-    print("PASS: deletion-worker saturation authority, loader transport, atomic publication and rollback are fail-closed")
+    print("PASS: deletion-worker saturation authority, loader transport, atomic writer transport, atomic publication and rollback are fail-closed")
     return 0
 
 
