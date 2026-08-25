@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject corrupted generation/load/executable authority before host-failure admission."""
+"""Reject corrupted generation/load/data/executable/transport authority before host-failure admission."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -201,6 +202,50 @@ def executable_authority_rejected() -> None:
             setattr(reconciler, attr, original)
 
 
+def transport_authority_rejected() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_host_failure_reconciler_transport_negative")
+    contract_bytes = CONTRACT.read_bytes()
+    status_bytes = STATUS.read_bytes()
+    original = reconciler.subprocess.run
+    reconciler.subprocess.run = lambda *args, **kwargs: None
+    try:
+        try:
+            reconciler.validate_executable_authorities()
+        except reconciler.Fail as exc:
+            require("host-failure subprocess transport is not canonical" in str(exc), f"unexpected transport rejection: {exc}")
+        else:
+            raise Fail("host-failure reconciler accepted substituted subprocess transport")
+        require(CONTRACT.read_bytes() == contract_bytes, "transport rejection mutated host-failure contract")
+        require(STATUS.read_bytes() == status_bytes, "transport rejection mutated production status")
+    finally:
+        reconciler.subprocess.run = original
+
+
+def atomic_replacement_rejected() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_host_failure_reconciler_atomic_negative")
+    with tempfile.TemporaryDirectory(prefix="memory-os-host-failure-atomic-") as tmp:
+        target = Path(tmp) / "authority.json"
+        target.write_bytes(b"before\n")
+        original_replace = reconciler.os.replace
+
+        def reject_replace(_source, _destination):
+            raise OSError("synthetic host-failure atomic replacement failure")
+
+        reconciler.os.replace = reject_replace
+        try:
+            try:
+                reconciler.atomic_write_bytes(target, b"after\n")
+            except OSError as exc:
+                require("synthetic host-failure atomic replacement failure" in str(exc), f"unexpected atomic rejection: {exc}")
+            else:
+                raise Fail("host-failure atomic writer accepted replacement failure")
+        finally:
+            reconciler.os.replace = original_replace
+
+        require(target.read_bytes() == b"before\n", "atomic replacement failure mutated target bytes")
+        require(not list(target.parent.glob(f".{target.name}.*.tmp")), "atomic replacement failure left temp residue")
+
+
 def rollback_rejected() -> None:
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
@@ -245,10 +290,12 @@ def main() -> int:
         load_authority_rejected()
         data_authority_rejected()
         executable_authority_rejected()
+        transport_authority_rejected()
+        atomic_replacement_rejected()
         rollback_rejected()
     finally:
         REGISTRY.write_bytes(baseline_bytes)
-    print("PASS: deletion host-failure admission rejects corrupt generation/load/data/executable authority, permits registered generation inventory without promotion, and rolls back post-write failures")
+    print("PASS: deletion host-failure admission rejects corrupt generation/load/data/executable/transport authority, preserves atomic publication, permits registered generation inventory without promotion, and rejects partial writes")
     return 0
 
 
