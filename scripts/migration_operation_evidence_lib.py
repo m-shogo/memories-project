@@ -9,9 +9,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/migration-operation-evidence-contract.v1.json"
-LIFECYCLE_PATH = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
+_CANONICAL_ROOT = Path(__file__).resolve().parents[1]
+_CANONICAL_CONTRACT_PATH = _CANONICAL_ROOT / "contracts/operations/migration-operation-evidence-contract.v1.json"
+_CANONICAL_LIFECYCLE_PATH = _CANONICAL_ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
+
+ROOT = _CANONICAL_ROOT
+CONTRACT_PATH = _CANONICAL_CONTRACT_PATH
+LIFECYCLE_PATH = _CANONICAL_LIFECYCLE_PATH
 
 
 class EvidenceValidationError(RuntimeError):
@@ -21,6 +25,30 @@ class EvidenceValidationError(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise EvidenceValidationError(message)
+
+
+def require_library_authorities(
+    _canonical_root: Path = _CANONICAL_ROOT,
+    _canonical_contract: Path = _CANONICAL_CONTRACT_PATH,
+    _canonical_lifecycle: Path = _CANONICAL_LIFECYCLE_PATH,
+) -> None:
+    if ROOT != _canonical_root:
+        raise EvidenceValidationError("migration operation validation repository authority substitution rejected")
+    for current, canonical, label in (
+        (CONTRACT_PATH, _canonical_contract, "contract"),
+        (LIFECYCLE_PATH, _canonical_lifecycle, "lifecycle"),
+    ):
+        if current != canonical:
+            raise EvidenceValidationError(f"migration operation validation {label} authority substitution rejected")
+        if current.is_symlink():
+            raise EvidenceValidationError(f"migration operation validation {label} authority must be symlink-free")
+        try:
+            resolved = current.resolve(strict=True)
+            canonical_resolved = canonical.resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise EvidenceValidationError(f"migration operation validation canonical {label} authority missing") from exc
+        if resolved != canonical_resolved:
+            raise EvidenceValidationError(f"migration operation validation {label} authority drift")
 
 
 def display_path(path: Path) -> str:
@@ -87,9 +115,17 @@ def validate_privacy(record: dict[str, Any]) -> None:
                 "openRisks cannot contain email addresses or URLs")
 
 
-def validate_record(record: dict[str, Any], *, now: dt.datetime | None = None) -> None:
-    contract = load_json(CONTRACT_PATH)
-    lifecycle = load_json(LIFECYCLE_PATH)
+def validate_record(
+    record: dict[str, Any],
+    *,
+    now: dt.datetime | None = None,
+    _canonical_guard=require_library_authorities,
+) -> None:
+    if require_library_authorities is not _canonical_guard:
+        raise EvidenceValidationError("migration operation validation authority guard substitution rejected")
+    _canonical_guard()
+    contract = load_json(_CANONICAL_CONTRACT_PATH)
+    lifecycle = load_json(_CANONICAL_LIFECYCLE_PATH)
     required_fields = set(contract["requiredFields"])
     optional_fields = {"productionConfirmation"}
     require(set(record) >= required_fields,
