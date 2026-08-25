@@ -54,14 +54,34 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def validate_runtime_authority() -> None:
+def validate_runtime_authority(
+    canonical_root=ROOT,
+    canonical_status=STATUS,
+    canonical_index=INDEX,
+    canonical_result=RESULT,
+    canonical_validator=VALIDATOR,
+    canonical_backup_validator=BACKUP_VALIDATOR,
+    canonical_operability_validator=OPERABILITY_VALIDATOR,
+    canonical_blocker_validator=require_canonical_gaps,
+    canonical_subprocess_run=subprocess.run,
+) -> None:
+    require(ROOT == canonical_root, "canonical coherent repository root authority drift")
+    require(STATUS == canonical_status, "canonical coherent production status authority drift")
+    require(INDEX == canonical_index, "canonical coherent foundation index authority drift")
+    require(RESULT == canonical_result, "canonical coherent result authority drift")
+    require(VALIDATOR == canonical_validator, "canonical coherent validator authority drift")
+    require(BACKUP_VALIDATOR == canonical_backup_validator, "canonical backup validator authority drift")
+    require(OPERABILITY_VALIDATOR == canonical_operability_validator, "canonical operability validator authority drift")
+    require(require_canonical_gaps is canonical_blocker_validator, "canonical blocker validator execution authority drift")
+    require(subprocess.run is canonical_subprocess_run, "coherent subprocess execution transport drift")
+
     for path, expected, label in (
-        (STATUS, ROOT / "contracts/operations/production-operability-status.json", "production status"),
-        (INDEX, ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json", "backup local foundation index"),
-        (RESULT, ROOT / "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json", "coherent recovery result"),
-        (VALIDATOR, ROOT / "scripts/validate-memory-os-local-coherent-recovery-set.py", "coherent restore validator"),
-        (BACKUP_VALIDATOR, ROOT / "scripts/validate-memory-os-backup-restore.py", "backup restore validator"),
-        (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
+        (canonical_status, canonical_root / "contracts/operations/production-operability-status.json", "production status"),
+        (canonical_index, canonical_root / "contracts/operations/backup-local-foundation-evidence.v1.json", "backup local foundation index"),
+        (canonical_result, canonical_root / "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json", "coherent recovery result"),
+        (canonical_validator, canonical_root / "scripts/validate-memory-os-local-coherent-recovery-set.py", "coherent restore validator"),
+        (canonical_backup_validator, canonical_root / "scripts/validate-memory-os-backup-restore.py", "backup restore validator"),
+        (canonical_operability_validator, canonical_root / "scripts/validate-memory-os-operability.py", "operability validator"),
     ):
         require(path == expected, f"canonical {label} identity drift")
         require(path.is_file(), f"canonical {label} missing")
@@ -181,7 +201,13 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             temp_path.unlink()
 
 
-def main() -> int:
+CANONICAL_RUNTIME_AUTHORITY_GUARD = validate_runtime_authority
+
+
+def main(canonical_runtime_authority_guard=CANONICAL_RUNTIME_AUTHORITY_GUARD) -> int:
+    if validate_runtime_authority is not canonical_runtime_authority_guard:
+        raise Fail("coherent runtime authority guard drift")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
