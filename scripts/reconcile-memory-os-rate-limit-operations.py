@@ -172,8 +172,49 @@ def transactional_write(policy: dict[str, Any], status: dict[str, Any]) -> None:
         raise
 
 
-def main() -> int:
+_CANONICAL_ROOT = ROOT
+_CANONICAL_REQUIRE = require
+_CANONICAL_REQUIRE_EXACT_REPO_FILE = require_exact_repo_file
+_CANONICAL_ENFORCE_RUNTIME_AUTHORITIES = enforce_runtime_authorities
+_CANONICAL_LOAD = load
+_CANONICAL_APPEND_ONCE = append_once
+_CANONICAL_RUN_VALIDATOR = run_validator
+_CANONICAL_VALIDATE_SOURCE_AUTHORITY = validate_source_authority
+_CANONICAL_VALIDATE_WRITTEN_AUTHORITY = validate_written_authority
+_CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+_CANONICAL_ATOMIC_WRITE_JSON = atomic_write_json
+_CANONICAL_TRANSACTIONAL_WRITE = transactional_write
+_CANONICAL_SUBPROCESS_RUN = subprocess.run
+
+
+def enforce_execution_authorities() -> None:
+    require(ROOT == _CANONICAL_ROOT, "rate-limit operations repository execution authority drift")
+    helpers = (
+        (require, _CANONICAL_REQUIRE, "require"),
+        (require_exact_repo_file, _CANONICAL_REQUIRE_EXACT_REPO_FILE, "path checker"),
+        (enforce_runtime_authorities, _CANONICAL_ENFORCE_RUNTIME_AUTHORITIES, "runtime guard"),
+        (load, _CANONICAL_LOAD, "loader"),
+        (append_once, _CANONICAL_APPEND_ONCE, "append helper"),
+        (run_validator, _CANONICAL_RUN_VALIDATOR, "validator runner"),
+        (validate_source_authority, _CANONICAL_VALIDATE_SOURCE_AUTHORITY, "source validator"),
+        (validate_written_authority, _CANONICAL_VALIDATE_WRITTEN_AUTHORITY, "post-write validator"),
+        (atomic_write_bytes, _CANONICAL_ATOMIC_WRITE_BYTES, "atomic byte writer"),
+        (atomic_write_json, _CANONICAL_ATOMIC_WRITE_JSON, "atomic JSON writer"),
+        (transactional_write, _CANONICAL_TRANSACTIONAL_WRITE, "transaction writer"),
+        (subprocess.run, _CANONICAL_SUBPROCESS_RUN, "subprocess transport"),
+    )
+    for current, canonical, label in helpers:
+        require(current is canonical, f"rate-limit operations {label} execution authority drift")
     enforce_runtime_authorities()
+
+
+_CANONICAL_ENFORCE_EXECUTION_AUTHORITIES = enforce_execution_authorities
+
+
+def main() -> int:
+    if enforce_execution_authorities is not _CANONICAL_ENFORCE_EXECUTION_AUTHORITIES:
+        raise ReconcileFailure("rate-limit operations execution guard authority drift")
+    enforce_execution_authorities()
     validate_source_authority()
     policy = load(POLICY_PATH)
     operations = load(OPERATIONS_PATH)
