@@ -157,9 +157,69 @@ def expect_substitution_rejection(
         CANONICAL_STATUS_PATH.write_bytes(original_status)
 
 
+def expect_execution_substitution_rejection(
+    reconciler: Any, attribute: str, substitute: Any, expected: str
+) -> None:
+    original_attribute = getattr(reconciler, attribute)
+    original_policy = CANONICAL_POLICY_PATH.read_bytes()
+    original_status = CANONICAL_STATUS_PATH.read_bytes()
+    setattr(reconciler, attribute, substitute)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.ReconcileFailure as exc:
+            require(expected in str(exc),
+                    f"{attribute} rejected for unrelated reason: {exc}")
+        else:
+            raise NegativeFailure(
+                f"rate-limit operations reconciler accepted execution substitution: {attribute}"
+            )
+        require(CANONICAL_POLICY_PATH.read_bytes() == original_policy,
+                f"canonical policy mutated after execution substitution: {attribute}")
+        require(CANONICAL_STATUS_PATH.read_bytes() == original_status,
+                f"canonical status mutated after execution substitution: {attribute}")
+    finally:
+        setattr(reconciler, attribute, original_attribute)
+        CANONICAL_POLICY_PATH.write_bytes(original_policy)
+        CANONICAL_STATUS_PATH.write_bytes(original_status)
+
+
+def prove_execution_authority_identity(reconciler: Any) -> None:
+    cases = (
+        ("require", lambda *_args, **_kwargs: None, "require execution authority drift"),
+        ("require_exact_repo_file", lambda path, *_args: path, "path checker execution authority drift"),
+        ("enforce_runtime_authorities", lambda: None, "runtime guard execution authority drift"),
+        ("load", lambda _path: {}, "loader execution authority drift"),
+        ("append_once", lambda *_args: False, "append helper execution authority drift"),
+        ("run_validator", lambda *_args: None, "validator runner execution authority drift"),
+        ("validate_source_authority", lambda: None, "source validator execution authority drift"),
+        ("validate_written_authority", lambda: None, "post-write validator execution authority drift"),
+        ("atomic_write_bytes", lambda *_args: None, "atomic byte writer execution authority drift"),
+        ("atomic_write_json", lambda *_args: None, "atomic JSON writer execution authority drift"),
+        ("transactional_write", lambda *_args: None, "transaction writer execution authority drift"),
+        ("enforce_execution_authorities", lambda: None, "execution guard authority drift"),
+    )
+    for attribute, substitute, expected in cases:
+        expect_execution_substitution_rejection(reconciler, attribute, substitute, expected)
+
+    original_run = reconciler.subprocess.run
+    reconciler.subprocess.run = lambda *_args, **_kwargs: None
+    try:
+        try:
+            reconciler.main()
+        except reconciler.ReconcileFailure as exc:
+            require("subprocess transport execution authority drift" in str(exc),
+                    f"subprocess transport rejected for unrelated reason: {exc}")
+        else:
+            raise NegativeFailure("rate-limit operations reconciler accepted subprocess transport substitution")
+    finally:
+        reconciler.subprocess.run = original_run
+
+
 def main() -> int:
     reconciler = load_module()
     reconciler.enforce_runtime_authorities()
+    reconciler.enforce_execution_authorities()
     prove_atomic_replace_failure(reconciler)
     prove_transaction_rollback(reconciler)
     prove_validator_chain(reconciler)
@@ -173,8 +233,9 @@ def main() -> int:
     )
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
+    prove_execution_authority_identity(reconciler)
 
-    print("PASS: rate-limit operations exact authorities, atomic publication and post-write rollback are fail-closed")
+    print("PASS: rate-limit operations exact authorities, execution guard, atomic publication and post-write rollback are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
