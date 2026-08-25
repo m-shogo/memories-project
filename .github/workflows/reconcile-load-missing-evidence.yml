@@ -24,40 +24,67 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: reconcile-load-missing-evidence-${{ github.event.pull_request.number || 'so' }}
+  group: reconcile-load-missing-evidence-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact PR authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Normalize read-only PR blocker authority
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/reconcile-memory-os-load-missing-evidence.py \
+            scripts/validate-memory-os-load-missing-evidence-reconcile-negative.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-load-missing-evidence-reconcile-negative.py
+          python scripts/reconcile-memory-os-load-missing-evidence.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
   reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Confirm exact clean source
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EVENT_SHA: ${{ github.sha }}
+      - name: Capture exact clean source
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "$EVENT_SHA"
-          fi
-
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Normalize and validate unresolved blockers from proof flags
         run: |
           set -euo pipefail
@@ -70,19 +97,9 @@ jobs:
           python scripts/reconcile-memory-os-load-missing-evidence.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
-
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- contracts/operations/production-operability-status.json
-
       - name: Commit canonical blocker cleanup
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
           git add contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Load missing-evidence authority is already current."
@@ -92,9 +109,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(load): remove resolved stale blockers"
-          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-          if [[ "$remote_sha" != "$source_sha" ]]; then
-            echo "Load missing-evidence authority source is stale: validated $source_sha but so is $remote_sha" >&2
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Load missing-evidence authority source is stale: validated $SOURCE_SHA but so advanced" >&2
             exit 75
           fi
           git push origin HEAD:so
