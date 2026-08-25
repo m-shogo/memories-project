@@ -41,6 +41,36 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def prove_atomic_replace_failure(reconciler: Any) -> None:
+    original = CANONICAL_POLICY_PATH.read_bytes()
+    original_replace = reconciler.os.replace
+    pattern = f".{CANONICAL_POLICY_PATH.name}.*.tmp"
+    before = {path.name for path in CANONICAL_POLICY_PATH.parent.glob(pattern)}
+
+    def reject_replace(source: Any, destination: Any) -> None:
+        if Path(destination) == CANONICAL_POLICY_PATH:
+            raise OSError("synthetic atomic replace rejection")
+        original_replace(source, destination)
+
+    reconciler.os.replace = reject_replace
+    try:
+        try:
+            reconciler.atomic_write_bytes(CANONICAL_POLICY_PATH, b"synthetic operations authority\n")
+        except OSError as exc:
+            require("synthetic atomic replace rejection" in str(exc),
+                    "atomic replacement failed for unrelated reason")
+        else:
+            raise NegativeFailure("atomic writer accepted synthetic replacement failure")
+        require(CANONICAL_POLICY_PATH.read_bytes() == original,
+                "canonical policy changed after failed atomic replacement")
+        after = {path.name for path in CANONICAL_POLICY_PATH.parent.glob(pattern)}
+        require(after == before,
+                f"atomic replacement left temporary residue: {sorted(after - before)}")
+    finally:
+        reconciler.os.replace = original_replace
+        CANONICAL_POLICY_PATH.write_bytes(original)
+
+
 def prove_transaction_rollback(reconciler: Any) -> None:
     originals = {
         CANONICAL_POLICY_PATH: CANONICAL_POLICY_PATH.read_bytes(),
@@ -130,6 +160,7 @@ def expect_substitution_rejection(
 def main() -> int:
     reconciler = load_module()
     reconciler.enforce_runtime_authorities()
+    prove_atomic_replace_failure(reconciler)
     prove_transaction_rollback(reconciler)
     prove_validator_chain(reconciler)
     cases = (
@@ -143,7 +174,7 @@ def main() -> int:
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
 
-    print("PASS: rate-limit operations exact authorities and post-write rollback are fail-closed")
+    print("PASS: rate-limit operations exact authorities, atomic publication and post-write rollback are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
