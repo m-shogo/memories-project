@@ -138,9 +138,37 @@ def main() -> int:
 
         require(status_path.read_bytes() == before_status, "status was not rolled back byte-for-byte")
         require(load_path.read_bytes() == before_load, "load contract was not rolled back byte-for-byte")
+        require(not list(tmp_root.glob(".*.tmp")), "transaction rollback left an atomic temp file")
+
+        atomic_target = tmp_root / "atomic-target.json"
+        atomic_target.write_bytes(b"before\n")
+        original_replace = module.os.replace
+        failed = False
+
+        def fail_replace(source, destination):
+            nonlocal failed
+            if Path(destination) == atomic_target and not failed:
+                failed = True
+                raise OSError("synthetic atomic replace failure")
+            return original_replace(source, destination)
+
+        module.os.replace = fail_replace
+        try:
+            try:
+                module.atomic_write_bytes(atomic_target, b"after\n")
+            except OSError as exc:
+                require("synthetic atomic replace failure" in str(exc), f"unexpected atomic failure: {exc}")
+            else:
+                raise Fail("atomic writer accepted a synthetic replacement failure")
+        finally:
+            module.os.replace = original_replace
+
+        require(failed, "synthetic atomic replacement failure was not exercised")
+        require(atomic_target.read_bytes() == b"before\n", "atomic replacement failure mutated target bytes")
+        require(not list(tmp_root.glob(".*.tmp")), "atomic replacement failure left a temp file")
 
     print(
-        "PASS: live-load reconcile pins canonical authorities and rolls back both derived authorities after post-write validation failure"
+        "PASS: live-load reconcile pins canonical authorities, publishes atomically, and rolls back both derived authorities after post-write validation failure"
     )
     return 0
 
