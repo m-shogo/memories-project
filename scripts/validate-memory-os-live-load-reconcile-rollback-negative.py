@@ -51,13 +51,17 @@ def expect_runtime_rejection(mutator, expected_text: str) -> None:
     before_status = STATUS.read_bytes()
     before_load = LOAD.read_bytes()
     module = load_module()
+    original_run = module.subprocess.run
     mutator(module)
     try:
-        module.enforce_runtime_authorities()
-    except module.ReconcileFailure as exc:
-        require(expected_text in str(exc), f"unexpected runtime rejection: {exc}")
-    else:
-        raise Fail(f"live-load reconciler accepted runtime substitution: {expected_text}")
+        try:
+            module.enforce_runtime_authorities()
+        except module.ReconcileFailure as exc:
+            require(expected_text in str(exc), f"unexpected runtime rejection: {exc}")
+        else:
+            raise Fail(f"live-load reconciler accepted runtime substitution: {expected_text}")
+    finally:
+        module.subprocess.run = original_run
     require(STATUS.read_bytes() == before_status, "runtime rejection mutated canonical production status")
     require(LOAD.read_bytes() == before_load, "runtime rejection mutated canonical load contract")
 
