@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -19,6 +20,20 @@ def load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def git_head() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(f"git rev-parse HEAD failed: {completed.stderr.strip()}")
+    return completed.stdout.strip()
 
 
 def expect_failure(call, error_type, expected: str) -> None:
@@ -78,6 +93,7 @@ def post_append_rollback_negative(writer) -> None:
 
     class RejectAfterAppend:
         ValidationFailure = FakeValidationFailure
+        calls = 0
 
         @staticmethod
         def load_contract_context():
@@ -92,9 +108,12 @@ def post_append_rollback_negative(writer) -> None:
         def expected_evidence_digests(record):
             return {}
 
-        @staticmethod
-        def main() -> int:
-            raise FakeValidationFailure("synthetic canonical validation rejection")
+        @classmethod
+        def main(cls) -> int:
+            cls.calls += 1
+            if cls.calls == 1:
+                return 0
+            raise FakeValidationFailure("synthetic post-append authority rejection")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
@@ -103,13 +122,21 @@ def post_append_rollback_negative(writer) -> None:
         operation_id = "RLOP-20260101T000000Z-postappend"
         input_path.write_text(f'{{"operationId":"{operation_id}"}}\n', encoding="utf-8")
 
-        # Fixture paths exercise the pure append helper. Actual CLI authority is
-        # separately pinned by validate-memory-os-rate-limit-operation-writer-authority-negative.py.
+        expect_failure(
+            lambda: writer.append_record(
+                input_path,
+                ledger,
+                RejectAfterAppend,
+                _canonical_default_ledger=ledger,
+            ),
+            writer.WriterFailure,
+            "failed validation after append",
+        )
         target = ledger / f"{operation_id}.json"
-        writer.append_record(input_path, ledger, RejectAfterAppend)
-        if not target.exists():
-            raise AssertionError("alternate fixture append did not create the expected record")
-        target.unlink()
+        if target.exists():
+            raise AssertionError("invalid operation append was not rolled back")
+        if RejectAfterAppend.calls != 2:
+            raise AssertionError("fixture canonical authority was not checked before and after append")
 
 
 def digest_binding_negative(validator) -> None:
@@ -119,7 +146,7 @@ def digest_binding_negative(validator) -> None:
         "schemaVersion": contract["recordSchemaVersion"],
         "operationId": "RLOP-20260101T000000Z-digesttest",
         "incidentReference": "DRILL-DIGEST_BINDING",
-        "sourceCommitSha": "HEAD",
+        "sourceCommitSha": git_head(),
         "environment": "CI",
         "operator": "ci_operator",
         "reviewer": "ci_reviewer",
@@ -141,7 +168,6 @@ def digest_binding_negative(validator) -> None:
         "evidenceRefs": ["contracts/operations/rate-limit-operation-evidence-contract.v1.json"],
         "evidenceDigestsByRef": {},
     }
-    # Writer inputs cannot self-claim digests. Stored records must match current bytes.
     validator.validate_record(record, contract, policy_ids, writer_input=True)
     computed = validator.expected_evidence_digests(record)
     if not computed:
@@ -152,6 +178,20 @@ def digest_binding_negative(validator) -> None:
         lambda: validator.validate_record(claimed, contract, policy_ids, writer_input=True),
         validator.ValidationFailure,
         "writer input evidenceDigestsByRef must be empty",
+    )
+
+    stored = dict(record)
+    stored["evidenceDigestsByRef"] = dict(computed)
+    validator.validate_record(stored, contract, policy_ids)
+    first_ref = sorted(computed)[0]
+    tampered = dict(stored)
+    tampered_digests = dict(computed)
+    tampered_digests[first_ref] = "0" * 64
+    tampered["evidenceDigestsByRef"] = tampered_digests
+    expect_failure(
+        lambda: validator.validate_record(tampered, contract, policy_ids),
+        validator.ValidationFailure,
+        "does not match current evidence bytes",
     )
 
 
@@ -201,9 +241,9 @@ def main() -> int:
         raise AssertionError("rate-limit operation negatives left residue")
 
     print("PASS: canonical rate-limit operation ledger is validated before append")
-    print("PASS: append rollback authority is separated from CLI authority fixtures")
+    print("PASS: post-append validation rejection removes the new record")
     print("PASS: rate-limit operation reconcile delegates to append authority")
-    print("PASS: operation evidence digests remain writer-computed")
+    print("PASS: operation evidence digests remain writer-computed and tamper-evident")
     return 0
 
 
