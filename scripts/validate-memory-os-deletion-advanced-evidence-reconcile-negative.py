@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -26,8 +28,47 @@ def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def atomic_writer_is_fail_closed(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-advanced-deletion-atomic-") as tmp:
+        root = Path(tmp)
+        target = root / "authority.json"
+        target.write_bytes(b"before\n")
+        os.chmod(target, 0o640)
+
+        module.atomic_write_bytes(target, b"after\n")
+        if target.read_bytes() != b"after\n":
+            raise AssertionError("advanced deletion atomic writer payload drift")
+        if stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise AssertionError("advanced deletion atomic writer changed existing file mode")
+        if list(root.glob(f".{target.name}.*.tmp")):
+            raise AssertionError("advanced deletion atomic writer left temp residue")
+
+        target.write_bytes(b"before\n")
+        original_replace = module.os.replace
+
+        def fail_replace(_source, _destination):
+            raise OSError("synthetic advanced deletion atomic replacement failure")
+
+        module.os.replace = fail_replace
+        try:
+            try:
+                module.atomic_write_bytes(target, b"after\n")
+            except OSError as exc:
+                if "synthetic advanced deletion atomic replacement failure" not in str(exc):
+                    raise AssertionError(f"unexpected atomic failure: {exc}") from exc
+            else:
+                raise AssertionError("advanced deletion atomic writer accepted replacement failure")
+        finally:
+            module.os.replace = original_replace
+        if target.read_bytes() != b"before\n":
+            raise AssertionError("atomic replacement failure mutated advanced deletion authority")
+        if list(root.glob(f".{target.name}.*.tmp")):
+            raise AssertionError("atomic replacement failure left advanced deletion temp residue")
+
+
 def main() -> int:
     module = load_module()
+    atomic_writer_is_fail_closed(module)
     with tempfile.TemporaryDirectory(prefix="memory-os-advanced-deletion-reconcile-") as tmp:
         root = Path(tmp)
         prefence_contract = root / "prefence-contract.json"
@@ -126,6 +167,8 @@ def main() -> int:
         module.subprocess.run = fake_run
         before_load = load_contract.read_bytes()
         before_status = status.read_bytes()
+        load_mode = stat.S_IMODE(load_contract.stat().st_mode)
+        status_mode = stat.S_IMODE(status.stat().st_mode)
 
         try:
             module.main()
@@ -138,6 +181,12 @@ def main() -> int:
             raise AssertionError("load authority changed after rejected advanced deletion reconcile")
         if status.read_bytes() != before_status:
             raise AssertionError("production status changed after rejected advanced deletion reconcile")
+        if stat.S_IMODE(load_contract.stat().st_mode) != load_mode:
+            raise AssertionError("load authority mode changed after advanced deletion rollback")
+        if stat.S_IMODE(status.stat().st_mode) != status_mode:
+            raise AssertionError("production status mode changed after advanced deletion rollback")
+        if list(root.glob(".*.tmp")):
+            raise AssertionError("advanced deletion rollback left temporary residue")
         expected = [
             str(prefence_validator),
             str(worker_validator),
@@ -148,7 +197,7 @@ def main() -> int:
         if calls != expected:
             raise AssertionError(f"validator order drift: {calls!r} != {expected!r}")
 
-    print("PASS: advanced deletion evidence reconcile rolls back after aggregate rejection")
+    print("PASS: advanced deletion evidence reconcile uses atomic mode-preserving publication and rolls back after aggregate rejection")
     return 0
 
 
