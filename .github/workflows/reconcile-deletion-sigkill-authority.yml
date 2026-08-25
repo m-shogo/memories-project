@@ -114,22 +114,76 @@ jobs:
           set -euo pipefail
           python scripts/validate-memory-os-load.py
       - name: Reconcile actual process-kill evidence
+        id: reconcile
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python scripts/reconcile-memory-os-deletion-sigkill-authority.py 2>&1 | tee /tmp/sigkill-reconcile-output.txt
+      - name: Publish exact-source SIGKILL reconcile failure diagnostic
+        if: steps.reconcile.outcome == 'failure'
         run: |
           set -euo pipefail
-          python scripts/reconcile-memory-os-deletion-sigkill-authority.py
+          python - <<'PY'
+          import json
+          import os
+          import tempfile
+          from pathlib import Path
+
+          path = Path("docs/fixtures/memory-os-operability/deletion-sigkill-authority-diagnostic.last.json")
+          output = Path("/tmp/sigkill-reconcile-output.txt").read_text(encoding="utf-8", errors="replace")[-16000:]
+          payload = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "reconcile-deletion-sigkill-authority",
+              "result": "FAIL",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "output": output,
+              "containsSecrets": False,
+              "productionEvidence": False,
+              "productionReady": False,
+              "productionDecision": "NO_GO",
+          }
+          data = (json.dumps(payload, indent=2) + "\n").encode("utf-8")
+          fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+          tmp = Path(name)
+          try:
+              with os.fdopen(fd, "wb") as handle:
+                  handle.write(data)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(tmp, path)
+          finally:
+              if tmp.exists():
+                  tmp.unlink()
+          PY
+          git add docs/fixtures/memory-os-operability/deletion-sigkill-authority-diagnostic.last.json
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(deletion): record SIGKILL authority diagnostic"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced during SIGKILL failure diagnostic; refusing stale diagnostic."
+            exit 75
+          fi
+          git push origin HEAD:so
+          exit 1
       - name: Validate SIGKILL reconcile negative suite
+        if: steps.reconcile.outcome == 'success'
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-deletion-sigkill-authority-reconcile-negative.py
       - name: Validate canonical load authority
+        if: steps.reconcile.outcome == 'success'
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-load.py
       - name: Validate aggregate operability authority
+        if: steps.reconcile.outcome == 'success'
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-operability.py
       - name: Commit canonical authority update
+        if: steps.reconcile.outcome == 'success'
         run: |
           set -euo pipefail
           git add \
