@@ -60,6 +60,127 @@ def prove_atomic_replace_failure(module) -> None:
             module.os.replace = original_replace
 
 
+def expect_guard_rejection(module, attribute: str, substitute, expected: str) -> None:
+    original = getattr(module, attribute)
+    setattr(module, attribute, substitute)
+    try:
+        try:
+            module.enforce_execution_authorities()
+        except module.ReconcileFailure as exc:
+            require(expected in str(exc), f"{attribute} rejected for unrelated reason: {exc}")
+        else:
+            raise Fail(f"upload-route reconciler accepted execution substitution: {attribute}")
+    finally:
+        setattr(module, attribute, original)
+
+
+def prove_execution_authority(module) -> None:
+    module.enforce_execution_authorities()
+    cases = (
+        ("METRICS_VALIDATOR", module.RATE_LIMIT_VALIDATOR, "metrics validator authority drift"),
+        ("OLD_LABEL", module.NEW_LABEL, "old label semantic authority drift"),
+        ("require", lambda *_args, **_kwargs: None, "require execution authority drift"),
+        ("read", lambda _path: "", "reader execution authority drift"),
+        ("atomic_write_bytes", lambda *_args: None, "atomic byte writer execution authority drift"),
+        ("atomic_write_text", lambda *_args: None, "atomic text writer execution authority drift"),
+        ("write_if_changed", lambda *_args: False, "conditional writer execution authority drift"),
+        ("replace_once", lambda value, *_args: (value, False), "replacement helper execution authority drift"),
+        ("current_authority_files", lambda: [], "authority scanner execution authority drift"),
+        ("snapshot_authority_files", lambda: None, "snapshot helper execution authority drift"),
+        ("rollback_authority_files", lambda: None, "rollback helper execution authority drift"),
+        ("validate_canonical_authorities", lambda: None, "validator chain execution authority drift"),
+    )
+    for attribute, substitute, expected in cases:
+        expect_guard_rejection(module, attribute, substitute, expected)
+
+    original_run = module.subprocess.run
+    module.subprocess.run = lambda *_args, **_kwargs: None
+    try:
+        try:
+            module.enforce_execution_authorities()
+        except module.ReconcileFailure as exc:
+            require("subprocess transport execution authority drift" in str(exc),
+                    f"subprocess transport rejected for unrelated reason: {exc}")
+        else:
+            raise Fail("upload-route reconciler accepted subprocess transport substitution")
+    finally:
+        module.subprocess.run = original_run
+
+    original_guard = module.enforce_execution_authorities
+    module.enforce_execution_authorities = lambda: None
+    try:
+        try:
+            module.main()
+        except module.ReconcileFailure as exc:
+            require("execution guard authority drift" in str(exc),
+                    f"runtime guard rejected for unrelated reason: {exc}")
+        else:
+            raise Fail("upload-route reconciler accepted runtime guard substitution")
+    finally:
+        module.enforce_execution_authorities = original_guard
+
+
+def prove_validator_delegation(module) -> None:
+    expected = [
+        module.METRICS_VALIDATOR,
+        module.RATE_LIMIT_VALIDATOR,
+        module.OBSERVABILITY_VALIDATOR,
+        module.OPERABILITY_VALIDATOR,
+    ]
+    calls: list[Path] = []
+
+    class Result:
+        def __init__(self, returncode):
+            self.returncode = returncode
+
+    original_run = module.subprocess.run
+
+    def passing_run(command, *, cwd, check):
+        require(cwd == module.ROOT, "validator did not run from repository root")
+        require(check is False, "validator subprocess must return its explicit status")
+        calls.append(Path(command[1]))
+        return Result(0)
+
+    try:
+        module.subprocess.run = passing_run
+        module.validate_canonical_authorities()
+    finally:
+        module.subprocess.run = original_run
+    require(calls == expected, "canonical aggregate validators ran in the wrong order")
+
+    calls.clear()
+
+    def failing_run(command, *, cwd, check):
+        calls.append(Path(command[1]))
+        return Result(1 if len(calls) == 2 else 0)
+
+    try:
+        module.subprocess.run = failing_run
+        try:
+            module.validate_canonical_authorities()
+        except module.ReconcileFailure as exc:
+            require("validate-memory-os-rate-limit.py" in str(exc), "wrong validator failure was reported")
+        else:
+            raise Fail("canonical validator rejection was accepted")
+    finally:
+        module.subprocess.run = original_run
+    require(calls == expected[:2], "validator chain continued after fail-closed rejection")
+
+    def boolean_run(command, *, cwd, check):
+        return Result(False)
+
+    try:
+        module.subprocess.run = boolean_run
+        try:
+            module.validate_canonical_authorities()
+        except module.ReconcileFailure:
+            pass
+        else:
+            raise Fail("boolean validator exit status was accepted as integer zero")
+    finally:
+        module.subprocess.run = original_run
+
+
 def main() -> int:
     module = load_module()
     prove_atomic_replace_failure(module)
@@ -83,55 +204,10 @@ def main() -> int:
         require(existing.read_bytes() == original, "existing authority was not restored byte-for-byte")
         require(not created.exists(), "new partial authority was not removed during rollback")
 
-    expected = [
-        module.METRICS_VALIDATOR,
-        module.RATE_LIMIT_VALIDATOR,
-        module.OBSERVABILITY_VALIDATOR,
-        module.OPERABILITY_VALIDATOR,
-    ]
-    calls: list[Path] = []
+    prove_validator_delegation(module)
+    prove_execution_authority(module)
 
-    class Result:
-        def __init__(self, returncode):
-            self.returncode = returncode
-
-    def passing_run(command, *, cwd, check):
-        require(cwd == module.ROOT, "validator did not run from repository root")
-        require(check is False, "validator subprocess must return its explicit status")
-        calls.append(Path(command[1]))
-        return Result(0)
-
-    module.subprocess.run = passing_run
-    module.validate_canonical_authorities()
-    require(calls == expected, "canonical aggregate validators ran in the wrong order")
-
-    calls.clear()
-
-    def failing_run(command, *, cwd, check):
-        calls.append(Path(command[1]))
-        return Result(1 if len(calls) == 2 else 0)
-
-    module.subprocess.run = failing_run
-    try:
-        module.validate_canonical_authorities()
-    except module.ReconcileFailure as exc:
-        require("validate-memory-os-rate-limit.py" in str(exc), "wrong validator failure was reported")
-    else:
-        raise Fail("canonical validator rejection was accepted")
-    require(calls == expected[:2], "validator chain continued after fail-closed rejection")
-
-    def boolean_run(command, *, cwd, check):
-        return Result(False)
-
-    module.subprocess.run = boolean_run
-    try:
-        module.validate_canonical_authorities()
-    except module.ReconcileFailure:
-        pass
-    else:
-        raise Fail("boolean validator exit status was accepted as integer zero")
-
-    print("PASS: upload-route reconcile atomic publication, rollback and canonical validator delegation are fail-closed")
+    print("PASS: upload-route reconcile atomic publication, rollback, execution authority and canonical validator delegation are fail-closed")
     return 0
 
 
