@@ -188,7 +188,8 @@ _CANONICAL_SUBPROCESS_RUN = subprocess.run
 
 
 def enforce_execution_authorities() -> None:
-    require(ROOT == _CANONICAL_ROOT, "rate-limit operations repository execution authority drift")
+    if ROOT != _CANONICAL_ROOT:
+        raise ReconcileFailure("rate-limit operations repository execution authority drift")
     helpers = (
         (require, _CANONICAL_REQUIRE, "require"),
         (require_exact_repo_file, _CANONICAL_REQUIRE_EXACT_REPO_FILE, "path checker"),
@@ -204,7 +205,8 @@ def enforce_execution_authorities() -> None:
         (subprocess.run, _CANONICAL_SUBPROCESS_RUN, "subprocess transport"),
     )
     for current, canonical, label in helpers:
-        require(current is canonical, f"rate-limit operations {label} execution authority drift")
+        if current is not canonical:
+            raise ReconcileFailure(f"rate-limit operations {label} execution authority drift")
     enforce_runtime_authorities()
 
 
