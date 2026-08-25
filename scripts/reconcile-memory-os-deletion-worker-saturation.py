@@ -33,14 +33,18 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+def require_exact_authority(path: Path, canonical: Path, label: str, *, must_exist: bool = True) -> None:
     require(path == canonical, f"{label} authority drift")
+    require(not canonical.is_symlink(), f"canonical {label} must not be a symlink")
+    if not canonical.exists():
+        require(not must_exist, f"canonical {label} missing")
+        return
     try:
         resolved = canonical.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"canonical {label} missing or escapes repository") from exc
     require(resolved == canonical.relative_to(ROOT), f"canonical {label} path drift")
-    require(canonical.is_file() and not canonical.is_symlink(), f"canonical {label} must be regular file")
+    require(canonical.is_file(), f"canonical {label} must be regular file")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -99,7 +103,12 @@ CANONICAL_VALIDATE_CANONICAL = validate_canonical
 
 def enforce_runtime_authorities() -> None:
     require_exact_authority(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "deletion-worker saturation contract")
-    require_exact_authority(RESULT_PATH, CANONICAL_RESULT_PATH, "deletion-worker saturation result")
+    require_exact_authority(
+        RESULT_PATH,
+        CANONICAL_RESULT_PATH,
+        "deletion-worker saturation result",
+        must_exist=False,
+    )
     require_exact_authority(VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, "deletion-worker saturation validator")
     require(importlib.util.spec_from_file_location is CANONICAL_SPEC_FROM_FILE_LOCATION, "validator spec loader transport is not canonical")
     require(importlib.util.module_from_spec is CANONICAL_MODULE_FROM_SPEC, "validator module loader transport is not canonical")
