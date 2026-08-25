@@ -81,11 +81,8 @@ def replace_if_present(values: list[Any], old: str, new: str) -> None:
 
 
 def normalize_and_validate_authority() -> None:
-    # Normalize blocker text before a readiness normalizer invokes aggregate
-    # Operability. This keeps deterministic duplicate/stale blocker text from
-    # preventing the canonical normalizer that is responsible for repairing it.
-    subprocess.run(["python", str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
     subprocess.run(["python", str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run(["python", str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
     subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
     subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
 
@@ -117,8 +114,6 @@ def main() -> int:
     load_readiness = load_contract.setdefault("readiness", {})
     if load_readiness.get("deletionLeaseExpiryRecoverySimulationProven") is not True:
         raise SystemExit("lease-expiry simulation evidence must remain proven")
-    # Keep the current aggregate readiness boundary: the exact local SIGKILL result is evidence,
-    # but raw process-kill readiness remains deliberately unpromoted.
     load_readiness["deletionActualProcessKillProven"] = False
     load_readiness["deletionHostFailureRecoveryProven"] = False
     for ref in PROOF_REFS:
