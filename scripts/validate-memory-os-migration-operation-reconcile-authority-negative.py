@@ -46,10 +46,16 @@ def load_writer() -> Any:
 
 def expect_writer_cli_authority_rejection(writer: Any) -> None:
     main_source = inspect.getsource(writer.main)
-    guard_index = main_source.find("require_actual_cli_authorities()")
+    identity_index = main_source.find("require_actual_cli_authorities is not _canonical_guard")
+    guard_index = main_source.find("_canonical_guard()")
     parser_index = main_source.find("argparse.ArgumentParser()")
-    require(guard_index >= 0 and parser_index >= 0 and guard_index < parser_index,
-            "migration operation writer CLI authority guard must run before argument parsing")
+    require(
+        identity_index >= 0
+        and guard_index >= 0
+        and parser_index >= 0
+        and identity_index < guard_index < parser_index,
+        "migration operation writer CLI immutable authority guard must run before argument parsing",
+    )
     canonical_status = STATUS_PATH.read_bytes()
     substitutions = (
         ("DEFAULT_LEDGER", ROOT / "docs/evidence"),
