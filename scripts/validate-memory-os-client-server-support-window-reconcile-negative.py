@@ -36,6 +36,45 @@ def temp_residue(path: Path) -> list[Path]:
     return list(path.parent.glob(f".{path.name}.*.tmp"))
 
 
+def verify_support_runtime_authority_substitutions() -> None:
+    canonical = {
+        SUPPORT_CONTRACT: SUPPORT_CONTRACT.read_bytes(),
+        STATUS: STATUS.read_bytes(),
+    }
+    cases = (
+        ("ROOT", ROOT / "scripts"),
+        ("CONTRACT", CLIENT_CONTRACT),
+        ("STATUS", SUPPORT_CONTRACT),
+        ("require", lambda condition, message: None),
+        ("require_exact_repo_file", lambda path, expected_relative, field, **kwargs: path),
+        ("enforce_runtime_authorities", lambda: None),
+    )
+    for index, (attribute, replacement) in enumerate(cases):
+        reconciler = load_module(
+            SUPPORT_RECONCILER,
+            f"memory_os_support_window_authority_negative_{index}",
+        )
+        original = getattr(reconciler, attribute)
+        setattr(reconciler, attribute, replacement)
+        try:
+            rejected = False
+            try:
+                if attribute == "enforce_runtime_authorities":
+                    reconciler.main()
+                else:
+                    reconciler.enforce_runtime_authorities()
+            except Exception:
+                rejected = True
+            require(rejected, f"support-window reconciler accepted {attribute} authority substitution")
+            for path, payload in canonical.items():
+                require(
+                    path.read_bytes() == payload,
+                    f"support-window {attribute} rejection mutated {path.relative_to(ROOT)}",
+                )
+        finally:
+            setattr(reconciler, attribute, original)
+
+
 def verify_support_atomic_replace_failure() -> None:
     reconciler = load_module(SUPPORT_RECONCILER, "memory_os_support_window_atomic_negative")
     reconciler.enforce_runtime_authorities()
@@ -154,10 +193,12 @@ def verify_support_order_preservation() -> None:
 
 
 def main() -> int:
+    verify_support_runtime_authority_substitutions()
     verify_support_atomic_replace_failure()
     verify_client_atomic_replace_failure()
     verify_support_order_preservation()
     print("Memory OS client compatibility reconcile negative PASS")
+    print("support-window runtime authority substitutions: rejected")
     print("support-window atomic replacement failure: rejected without authority mutation")
     print("client-baseline atomic replacement failure: rejected without authority mutation")
     print("temporary authority residue: none")
