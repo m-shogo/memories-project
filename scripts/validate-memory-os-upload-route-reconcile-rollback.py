@@ -28,8 +28,42 @@ def load_module():
     return module
 
 
+def prove_atomic_replace_failure(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-atomic-") as temp_dir:
+        target = Path(temp_dir) / "authority.txt"
+        original = b"exact-original-bytes\n"
+        target.write_bytes(original)
+        original_replace = module.os.replace
+        pattern = f".{target.name}.*.tmp"
+        before = {item.name for item in target.parent.glob(pattern)}
+
+        def reject_replace(source, destination) -> None:
+            if Path(destination) == target:
+                raise OSError("synthetic atomic replace rejection")
+            original_replace(source, destination)
+
+        module.os.replace = reject_replace
+        try:
+            try:
+                module.atomic_write_bytes(target, b"partial-mutation\n")
+            except OSError as exc:
+                require("synthetic atomic replace rejection" in str(exc),
+                        "atomic replacement failed for unrelated reason")
+            else:
+                raise Fail("upload-route atomic writer accepted replacement failure")
+            require(target.read_bytes() == original,
+                    "upload-route canonical bytes changed after failed atomic replacement")
+            after = {item.name for item in target.parent.glob(pattern)}
+            require(after == before,
+                    f"upload-route atomic writer left temporary residue: {sorted(after - before)}")
+        finally:
+            module.os.replace = original_replace
+
+
 def main() -> int:
     module = load_module()
+    prove_atomic_replace_failure(module)
+
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-rollback-") as temp_dir:
         root = Path(temp_dir)
         existing = root / "existing.txt"
@@ -97,7 +131,7 @@ def main() -> int:
     else:
         raise Fail("boolean validator exit status was accepted as integer zero")
 
-    print("PASS: upload-route reconcile rollback and canonical validator delegation are fail-closed")
+    print("PASS: upload-route reconcile atomic publication, rollback and canonical validator delegation are fail-closed")
     return 0
 
 
