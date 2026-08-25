@@ -46,24 +46,109 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-controlled-saturation-repeatability-authority-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  reconcile:
-    if: >-
-      github.event_name != 'push' ||
-      (!contains(github.event.head_commit.message, 'docs(load): reconcile saturation repeatability authority') &&
-       !contains(github.event.head_commit.message, 'test(load): record saturation repeatability authority diagnostic'))
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Revalidate repeatability authority read-only
+        id: authority
+        run: |
+          set +e
+          log=/tmp/memory-os-controlled-saturation-repeatability-authority.log
+          : > "$log"
+          code=0
+          stage=compile
+          echo "STAGE: compile" >> "$log"
+          python -m py_compile \
+            scripts/validate-memory-os-controlled-saturation-ramp.py \
+            scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py \
+            scripts/reconcile-memory-os-controlled-saturation-ramp-status.py \
+            scripts/validate-memory-os-controlled-saturation-repeatability.py \
+            scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py \
+            scripts/reconcile-memory-os-controlled-saturation-repeatability.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-load-evidence-index.py \
+            scripts/validate-memory-os-operability.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            stage=controlled-ramp-authority-negative
+            echo "STAGE: controlled-ramp-authority-negative" >> "$log"
+            python scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=repeatability-validation
+            echo "STAGE: repeatability-validation" >> "$log"
+            python scripts/validate-memory-os-controlled-saturation-repeatability.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=reconcile-negative
+            echo "STAGE: reconcile-negative" >> "$log"
+            python scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=authority-reconcile
+            echo "STAGE: authority-reconcile" >> "$log"
+            python scripts/reconcile-memory-os-controlled-saturation-repeatability.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=combined-validation
+            echo "STAGE: combined-validation" >> "$log"
+            python scripts/validate-memory-os-controlled-saturation-repeatability.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "failure_stage=$stage" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Reject any PR worktree drift
+        if: steps.authority.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+      - name: Enforce repeatability authority
+        run: test "${{ steps.authority.outputs.exit_code }}" = "0"
+
+  reconcile:
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+       (!contains(github.event.head_commit.message, 'docs(load): reconcile saturation repeatability authority') &&
+        !contains(github.event.head_commit.message, 'test(load): record saturation repeatability authority diagnostic')))
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -72,11 +157,7 @@ jobs:
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          else
-            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           if [[ "${{ github.event_name }}" == "push" ]]; then
             git fetch origin so
@@ -133,15 +214,6 @@ jobs:
           echo "failure_stage=$stage" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Enforce deterministic PR authority
-        if: github.event_name == 'pull_request' && steps.authority.outputs.exit_code == '0'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/controlled-saturation-repeatability-contract.v1.json \
-            contracts/operations/load-test-scenario-contract.v1.json \
-            contracts/operations/production-operability-status.json
       - name: Commit reconciled repeatability authority
         if: github.event_name == 'push' && steps.authority.outputs.exit_code == '0'
         run: |
@@ -179,7 +251,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os, re
+          import json, os, re, tempfile
           from pathlib import Path
           text = Path('/tmp/memory-os-controlled-saturation-repeatability-authority.log').read_text(encoding='utf-8', errors='replace')
           text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
@@ -201,7 +273,20 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/controlled-saturation-repeatability-authority-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          tmp_path = None
+          try:
+              with tempfile.NamedTemporaryFile(mode='wb', dir=path.parent, prefix=f'.{path.name}.', suffix='.tmp', delete=False) as handle:
+                  tmp_path = Path(handle.name)
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(tmp_path, path)
+              tmp_path = None
+          finally:
+              if tmp_path is not None:
+                  try: tmp_path.unlink()
+                  except FileNotFoundError: pass
           PY
           git add docs/fixtures/memory-os-operability/controlled-saturation-repeatability-authority-diagnostic.last.json
           git config user.name "github-actions[bot]"
