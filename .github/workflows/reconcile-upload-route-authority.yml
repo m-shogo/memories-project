@@ -1,24 +1,12 @@
 name: Reconcile Upload Route Authority
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/reconcile-upload-route-authority.yml"
-      - "scripts/reconcile-memory-os-upload-route-authority.py"
-      - "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
-      - "services/import-api/internal/httpserver/**"
-      - "services/import-api/internal/httpapi/upload_handler.go"
-      - "contracts/operations/metrics-contract.v1.json"
-      - "contracts/operations/rate-limit*.json"
-      - "scripts/validate-memory-os-metrics.py"
-      - "scripts/validate-memory-os-rate-limit*.py"
-      - "scripts/validate-memory-os-observability.py"
-      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
     paths:
       - ".github/workflows/reconcile-upload-route-authority.yml"
+      - ".github/workflows/reconcile-upload-route-authority-pr.yml"
       - "scripts/reconcile-memory-os-upload-route-authority.py"
       - "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
       - "services/import-api/internal/httpserver/**"
@@ -35,7 +23,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-upload-route-authority-${{ github.event.pull_request.number || 'so' }}
+  group: reconcile-upload-route-authority-so
   cancel-in-progress: true
 
 jobs:
@@ -69,7 +57,7 @@ jobs:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Capture validation source
@@ -109,16 +97,10 @@ jobs:
           exit 1
 
       - name: Confirm exact clean source
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           python -m py_compile \
             scripts/reconcile-memory-os-upload-route-authority.py \
             scripts/validate-memory-os-upload-route-reconcile-rollback.py \
@@ -159,22 +141,14 @@ jobs:
           python scripts/reconcile-memory-os-upload-route-authority.py
           test -z "$(gofmt -l services/import-api/internal/httpserver/observability.go services/import-api/internal/httpserver/server.go services/import-api/internal/httpserver/server_live_test.go services/import-api/internal/httpserver/route_authority_test.go)"
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code
-          test -z "$(git status --porcelain)"
-
       - name: Commit reconciled route authority
-        if: github.event_name != 'pull_request'
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
           git add \
             .github/workflows/reconcile-upload-route-authority.yml \
+            .github/workflows/reconcile-upload-route-authority-pr.yml \
             scripts/reconcile-memory-os-upload-route-authority.py \
             scripts/validate-memory-os-upload-route-reconcile-rollback.py \
             services/import-api/internal/httpserver \
