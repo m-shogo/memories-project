@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -74,8 +75,33 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
 
 
 def append_unique(values: list[Any], item: Any) -> None:
@@ -134,8 +160,15 @@ def write_transactionally(
         write(STATUS_PATH, status)
         validate_post_write(expected_sha)
     except BaseException:
+        rollback_error: BaseException | None = None
         for path, content in originals.items():
-            path.write_bytes(content)
+            try:
+                atomic_write_bytes(path, content)
+            except BaseException as exc:
+                if rollback_error is None:
+                    rollback_error = exc
+        if rollback_error is not None:
+            raise RuntimeError(f"controlled saturation authority rollback failed: {rollback_error}") from rollback_error
         raise
 
 
