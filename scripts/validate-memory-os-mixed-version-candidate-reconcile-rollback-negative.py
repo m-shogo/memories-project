@@ -103,7 +103,45 @@ def main() -> int:
         CONTRACT.write_bytes(contract_before)
         STATUS.write_bytes(status_before)
 
-    print("PASS: mixed-version candidate authority identity and reconcile rollback are fail-closed")
+    temp_before = set(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    original_replace = reconciler.os.replace
+    replace_calls = 0
+
+    def fail_first_replace(src: Any, dst: Any) -> None:
+        nonlocal replace_calls
+        replace_calls += 1
+        if replace_calls == 1:
+            raise OSError("synthetic atomic replacement failure")
+        original_replace(src, dst)
+
+    atomic_contract = json.loads(contract_before.decode("utf-8"))
+    atomic_readiness = atomic_contract.get("readiness")
+    if not isinstance(atomic_readiness, dict):
+        raise RuntimeError("candidate readiness missing in atomic fixture")
+    atomic_readiness["exactSourcePassResultCommitted"] = False
+    reconciler.os.replace = fail_first_replace
+    try:
+        try:
+            reconciler.commit_outputs_transactionally({CONTRACT: atomic_contract})
+        except reconciler.ReconcileFailure as exc:
+            if "synthetic atomic replacement failure" not in str(exc):
+                raise RuntimeError(f"unexpected atomic replacement rejection: {exc}") from exc
+        else:
+            raise RuntimeError("candidate reconciler accepted failed atomic replacement")
+    finally:
+        reconciler.os.replace = original_replace
+
+    if CONTRACT.read_bytes() != contract_before:
+        raise RuntimeError("candidate atomic replacement failure changed canonical contract bytes")
+    if STATUS.read_bytes() != status_before:
+        raise RuntimeError("candidate atomic replacement failure changed production status bytes")
+    temp_after = set(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    if temp_after != temp_before:
+        raise RuntimeError("candidate atomic replacement failure left temporary authority residue")
+    if replace_calls < 2:
+        raise RuntimeError("candidate atomic replacement failure did not exercise atomic rollback")
+
+    print("PASS: mixed-version candidate authority identity, atomic replacement, and reconcile rollback are fail-closed")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
