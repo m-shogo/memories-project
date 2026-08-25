@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "client-server-support-window",
+  "result": "FAIL",
+  "sourceCommitSha": "f908ca07b1f99e2ccf6b548984fd1dd0d18eaeb8",
+  "exitCode": 1,
+  "output": "Memory OS client/server support-window status reconciliation PASS\napproved backend releases: 0\napproved client baselines: 0\nadmissible skew pairs: 0\nruntime support window: false\nOPS-P0-008: PARTIAL\nproductionDecision: NO_GO\nMemory OS client/server support-window validation PASS\napproved backend releases: 0\napproved client baselines: 0\nadmissible skew pairs: 0\nclient/server skew evidence: false\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS client/server support-window validation PASS\napproved backend releases: 0\napproved client baselines: 0\nadmissible skew pairs: 0\nclient/server skew evidence: false\nproduction evidence: false\nproduction decision: NO_GO\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-client-server-support-window-negative.py\", line 418, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-client-server-support-window-negative.py\", line 389, in main\n    verify_client_reconcile_allows_approved_pair_progression()\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-client-server-support-window-negative.py\", line 348, in verify_client_reconcile_allows_approved_pair_progression\n    reconciler.main()\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-client-baseline-registry.py\", line 226, in main\n    require(enforce_runtime_authorities is _guard, \"runtime authority guard drift\")\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-client-baseline-registry.py\", line 65, in require\n    raise Fail(message)\nmemory_os_client_reconcile_pair_progression_negative.Fail: runtime authority guard drift\n",
+  "containsSecrets": false,
+  "clientServerSkewEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
