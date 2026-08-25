@@ -191,8 +191,59 @@ def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> N
         raise
 
 
-def main() -> int:
+_CANONICAL_ROOT = ROOT
+_CANONICAL_REQUIRE = require
+_CANONICAL_REQUIRE_EXACT_REPO_FILE = require_exact_repo_file
+_CANONICAL_ENFORCE_RUNTIME_AUTHORITIES = enforce_runtime_authorities
+_CANONICAL_LOAD = load
+_CANONICAL_LOAD_WRITER = load_writer
+_CANONICAL_APPEND_ONCE = append_once
+_CANONICAL_RUN_VALIDATOR = run_validator
+_CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+_CANONICAL_ATOMIC_WRITE_JSON = atomic_write_json
+_CANONICAL_VALIDATE_EVIDENCE_AUTHORITY = validate_evidence_authority
+_CANONICAL_VALIDATE_WRITTEN_AUTHORITY = validate_written_authority
+_CANONICAL_TRANSACTIONAL_WRITE = transactional_write
+_CANONICAL_SUBPROCESS_RUN = subprocess.run
+_CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+_CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
+
+
+def enforce_execution_authorities() -> None:
+    if ROOT != _CANONICAL_ROOT:
+        raise ReconcileFailure("rate-limit operation evidence repository execution authority drift")
+    helpers = (
+        (require, _CANONICAL_REQUIRE, "require"),
+        (require_exact_repo_file, _CANONICAL_REQUIRE_EXACT_REPO_FILE, "path checker"),
+        (enforce_runtime_authorities, _CANONICAL_ENFORCE_RUNTIME_AUTHORITIES, "runtime guard"),
+        (load, _CANONICAL_LOAD, "loader"),
+        (load_writer, _CANONICAL_LOAD_WRITER, "writer loader"),
+        (append_once, _CANONICAL_APPEND_ONCE, "append helper"),
+        (run_validator, _CANONICAL_RUN_VALIDATOR, "validator runner"),
+        (atomic_write_bytes, _CANONICAL_ATOMIC_WRITE_BYTES, "atomic byte writer"),
+        (atomic_write_json, _CANONICAL_ATOMIC_WRITE_JSON, "atomic JSON writer"),
+        (validate_evidence_authority, _CANONICAL_VALIDATE_EVIDENCE_AUTHORITY, "evidence validator"),
+        (validate_written_authority, _CANONICAL_VALIDATE_WRITTEN_AUTHORITY, "post-write validator"),
+        (transactional_write, _CANONICAL_TRANSACTIONAL_WRITE, "transaction writer"),
+        (subprocess.run, _CANONICAL_SUBPROCESS_RUN, "subprocess transport"),
+        (importlib.util.spec_from_file_location, _CANONICAL_SPEC_FROM_FILE_LOCATION, "module spec loader"),
+        (importlib.util.module_from_spec, _CANONICAL_MODULE_FROM_SPEC, "module constructor"),
+    )
+    for current, canonical, label in helpers:
+        if current is not canonical:
+            raise ReconcileFailure(
+                f"rate-limit operation evidence {label} execution authority drift"
+            )
     enforce_runtime_authorities()
+
+
+_CANONICAL_ENFORCE_EXECUTION_AUTHORITIES = enforce_execution_authorities
+
+
+def main() -> int:
+    if enforce_execution_authorities is not _CANONICAL_ENFORCE_EXECUTION_AUTHORITIES:
+        raise ReconcileFailure("rate-limit operation evidence execution guard authority drift")
+    enforce_execution_authorities()
     evidence = load(EVIDENCE_PATH)
     validate_evidence_authority(evidence)
     evidence_readiness = evidence.get("readiness")
