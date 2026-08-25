@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove deletion-worker saturation authority identity and rollback are fail-closed."""
+"""Prove deletion-worker saturation authority identity, loader transport and rollback are fail-closed."""
 
 from __future__ import annotations
 
@@ -80,11 +80,56 @@ def expect_authority_rejection(reconciler, attr: str, replacement: Path) -> None
         setattr(reconciler, attr, original)
 
 
+def expect_callable_rejection(reconciler, attr: str, replacement) -> None:
+    original = getattr(reconciler, attr)
+    setattr(reconciler, attr, replacement)
+    try:
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.Fail:
+            pass
+        else:
+            raise AssertionError(f"{attr} execution substitution must be rejected")
+    finally:
+        setattr(reconciler, attr, original)
+
+
+def expect_import_transport_rejection(reconciler) -> None:
+    original_spec = reconciler.importlib.util.spec_from_file_location
+    original_module = reconciler.importlib.util.module_from_spec
+    try:
+        reconciler.importlib.util.spec_from_file_location = lambda *args, **kwargs: None
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.Fail as exc:
+            if "validator spec loader transport is not canonical" not in str(exc):
+                raise
+        else:
+            raise AssertionError("validator spec loader transport substitution was accepted")
+    finally:
+        reconciler.importlib.util.spec_from_file_location = original_spec
+
+    try:
+        reconciler.importlib.util.module_from_spec = lambda *args, **kwargs: None
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.Fail as exc:
+            if "validator module loader transport is not canonical" not in str(exc):
+                raise
+        else:
+            raise AssertionError("validator module loader transport substitution was accepted")
+    finally:
+        reconciler.importlib.util.module_from_spec = original_module
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER_PATH, "memory_os_deletion_worker_saturation_reconciler_negative")
     expect_authority_rejection(reconciler, "CONTRACT_PATH", reconciler.RESULT_PATH)
     expect_authority_rejection(reconciler, "RESULT_PATH", reconciler.CONTRACT_PATH)
     expect_authority_rejection(reconciler, "VALIDATOR_PATH", reconciler.CONTRACT_PATH)
+    expect_callable_rejection(reconciler, "load_validator", lambda: None)
+    expect_callable_rejection(reconciler, "validate_canonical", lambda *args, **kwargs: None)
+    expect_import_transport_rejection(reconciler)
 
     source = RECONCILER_PATH.read_text(encoding="utf-8")
     if "CONTRACT_PATH.write_text(" in source or "CONTRACT_PATH.write_bytes(" in source:
@@ -92,31 +137,15 @@ def main() -> int:
 
     original_contract = reconciler.CONTRACT_PATH.read_bytes()
     original_result = reconciler.RESULT_PATH.read_bytes() if reconciler.RESULT_PATH.exists() else None
+    original_validator = reconciler.VALIDATOR_PATH.read_bytes()
     contract = json.loads(original_contract.decode("utf-8"))
     expected = "0" * 40
     reconciler.RESULT_PATH.write_text(json.dumps(synthetic_result(contract, expected), indent=2) + "\n", encoding="utf-8")
 
-    reconciler.enforce_runtime_authorities()
-    real_validator = reconciler.load_validator()
-
-    class Fail(RuntimeError):
-        pass
-
-    class FailingValidator:
-        def __init__(self) -> None:
-            self.contract_calls = 0
-
-        def validate_contract(self, candidate) -> None:
-            self.contract_calls += 1
-            real_validator.validate_contract(candidate)
-            if self.contract_calls == 2:
-                raise Fail("synthetic post-write validation failure")
-
-        def validate_result(self, candidate, expected_sha) -> None:
-            real_validator.validate_result(candidate, expected_sha)
+    failing_validator = '''class Fail(RuntimeError):\n    pass\n\n_contract_calls = 0\n\ndef validate_contract(candidate):\n    global _contract_calls\n    _contract_calls += 1\n    if _contract_calls == 2:\n        raise Fail("synthetic post-write validation failure")\n\ndef validate_result(candidate, expected_sha):\n    return None\n'''
+    reconciler.VALIDATOR_PATH.write_text(failing_validator, encoding="utf-8")
 
     old_expected = os.environ.get("EXPECTED_COMMIT_SHA")
-    reconciler.load_validator = lambda: FailingValidator()
     os.environ["EXPECTED_COMMIT_SHA"] = expected
     try:
         try:
@@ -133,6 +162,7 @@ def main() -> int:
             raise AssertionError("reconciler left atomic temp authority after rollback")
     finally:
         reconciler.atomic_write_bytes(reconciler.CONTRACT_PATH, original_contract)
+        reconciler.VALIDATOR_PATH.write_bytes(original_validator)
         if original_result is None:
             reconciler.RESULT_PATH.unlink(missing_ok=True)
         else:
@@ -141,6 +171,8 @@ def main() -> int:
             os.environ.pop("EXPECTED_COMMIT_SHA", None)
         else:
             os.environ["EXPECTED_COMMIT_SHA"] = old_expected
+
+    reconciler.enforce_runtime_authorities()
 
     with tempfile.TemporaryDirectory(prefix="memory-os-deletion-worker-saturation-atomic-") as tmp:
         target = Path(tmp) / "authority.json"
@@ -174,7 +206,7 @@ def main() -> int:
         if list(target.parent.glob(f".{target.name}.*.tmp")):
             raise AssertionError("atomic replacement failure left a temp file")
 
-    print("PASS: deletion-worker saturation authority identity, atomic publication and reconcile rollback are fail-closed")
+    print("PASS: deletion-worker saturation authority, loader transport, atomic publication and rollback are fail-closed")
     return 0
 
 
