@@ -1,7 +1,21 @@
-name: Deletion Under Load Authority PR
+name: Deletion Under Load Authority Gate
 
 on:
   pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-under-load.yml"
+      - ".github/workflows/deletion-under-load-authority-pr.yml"
+      - "contracts/operations/deletion-under-load-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
+      - "scripts/reconcile-memory-os-deletion-under-load-status.py"
+      - "scripts/validate-memory-os-deletion-under-load.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
+  push:
     branches:
       - so
     paths:
@@ -20,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deletion-under-load-authority-pr-${{ github.event.pull_request.number }}
+  group: deletion-under-load-authority-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -28,10 +42,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout exact pull request head
+      - name: Checkout exact event source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -40,9 +54,11 @@ jobs:
           python-version: "3.12"
 
       - name: Validate exact source and clean worktree
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           test -z "$(git status --porcelain)"
 
       - name: Compile deterministic authority scripts
