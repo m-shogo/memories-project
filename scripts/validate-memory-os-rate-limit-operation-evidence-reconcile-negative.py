@@ -94,6 +94,37 @@ def prove_validator_chain(reconciler) -> None:
         raise RuntimeError(f"post-write validator chain drift: {observed!r} != {expected!r}")
 
 
+def prove_atomic_replace_failure(reconciler) -> None:
+    path = reconciler.OPERATIONS_PATH
+    original = path.read_bytes()
+    original_replace = reconciler.os.replace
+    pattern = f".{path.name}.*.tmp"
+    before = {item.name for item in path.parent.glob(pattern)}
+
+    def reject_replace(source, destination) -> None:
+        if Path(destination) == path:
+            raise OSError("synthetic atomic replace rejection")
+        original_replace(source, destination)
+
+    reconciler.os.replace = reject_replace
+    try:
+        try:
+            reconciler.atomic_write_bytes(path, b"synthetic operation authority\n")
+        except OSError as exc:
+            if "synthetic atomic replace rejection" not in str(exc):
+                raise RuntimeError(f"atomic replacement failed for unrelated reason: {exc}") from exc
+        else:
+            raise RuntimeError("atomic writer accepted synthetic replacement failure")
+        if path.read_bytes() != original:
+            raise RuntimeError("operations contract changed after failed atomic replacement")
+        after = {item.name for item in path.parent.glob(pattern)}
+        if after != before:
+            raise RuntimeError(f"atomic replacement left temporary residue: {sorted(after - before)}")
+    finally:
+        reconciler.os.replace = original_replace
+        path.write_bytes(original)
+
+
 def prove_transaction_rollback(reconciler) -> None:
     originals = {
         reconciler.OPERATIONS_PATH: reconciler.OPERATIONS_PATH.read_bytes(),
@@ -130,10 +161,12 @@ def main() -> int:
     reconciler = load_module()
     expect_authority_identity(reconciler)
     prove_validator_chain(reconciler)
+    prove_atomic_replace_failure(reconciler)
     prove_transaction_rollback(reconciler)
 
     print("PASS: rate-limit operation evidence exact data/executable authorities reject substitution")
     print("PASS: post-write validation includes operations, aggregate rate-limit, operability and entry-doc authorities")
+    print("PASS: atomic replacement failure preserves canonical authority without temporary residue")
     print("PASS: post-write failure restores operations contract and production status byte-for-byte")
     print("production evidence generated: false")
     print("production decision changed: false")
