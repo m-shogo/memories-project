@@ -235,16 +235,14 @@ def validate_canonical_authorities() -> None:
 
 
 _CANONICAL_ROOT = ROOT
-_CANONICAL_PATHS = (
-    (OBSERVABILITY, ROOT / "services/import-api/internal/httpserver/observability.go", "observability source"),
-    (SERVER, ROOT / "services/import-api/internal/httpserver/server.go", "server source"),
-    (LIVE_TEST, ROOT / "services/import-api/internal/httpserver/server_live_test.go", "live test source"),
-    (ROUTE_TEST, ROOT / "services/import-api/internal/httpserver/route_authority_test.go", "route test source"),
-    (METRICS_VALIDATOR, ROOT / "scripts/validate-memory-os-metrics.py", "metrics validator"),
-    (RATE_LIMIT_VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit.py", "rate-limit validator"),
-    (OBSERVABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-observability.py", "observability validator"),
-    (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
-)
+_CANONICAL_OBSERVABILITY = OBSERVABILITY
+_CANONICAL_SERVER = SERVER
+_CANONICAL_LIVE_TEST = LIVE_TEST
+_CANONICAL_ROUTE_TEST = ROUTE_TEST
+_CANONICAL_METRICS_VALIDATOR = METRICS_VALIDATOR
+_CANONICAL_RATE_LIMIT_VALIDATOR = RATE_LIMIT_VALIDATOR
+_CANONICAL_OBSERVABILITY_VALIDATOR = OBSERVABILITY_VALIDATOR
+_CANONICAL_OPERABILITY_VALIDATOR = OPERABILITY_VALIDATOR
 _CANONICAL_OLD_LABEL = OLD_LABEL
 _CANONICAL_NEW_LABEL = NEW_LABEL
 _CANONICAL_OLD_ROUTE_BLOCK = OLD_ROUTE_BLOCK
@@ -269,7 +267,16 @@ _CANONICAL_MKSTEMP = tempfile.mkstemp
 def enforce_execution_authorities() -> None:
     if ROOT != _CANONICAL_ROOT:
         raise ReconcileFailure("upload route repository execution authority drift")
-    for current, canonical, label in _CANONICAL_PATHS:
+    for current, canonical, label in (
+        (OBSERVABILITY, _CANONICAL_OBSERVABILITY, "observability source"),
+        (SERVER, _CANONICAL_SERVER, "server source"),
+        (LIVE_TEST, _CANONICAL_LIVE_TEST, "live test source"),
+        (ROUTE_TEST, _CANONICAL_ROUTE_TEST, "route test source"),
+        (METRICS_VALIDATOR, _CANONICAL_METRICS_VALIDATOR, "metrics validator"),
+        (RATE_LIMIT_VALIDATOR, _CANONICAL_RATE_LIMIT_VALIDATOR, "rate-limit validator"),
+        (OBSERVABILITY_VALIDATOR, _CANONICAL_OBSERVABILITY_VALIDATOR, "observability validator"),
+        (OPERABILITY_VALIDATOR, _CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
         if current != canonical or current.is_symlink() or not current.is_file():
             raise ReconcileFailure(f"upload route {label} authority drift")
         try:
