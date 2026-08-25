@@ -35,13 +35,20 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def validate_runtime_authority() -> None:
-    canonical = ROOT / "contracts/operations/production-operability-status.json"
-    require(STATUS_PATH == canonical, "canonical production status identity drift")
-    require(STATUS_PATH.is_file(), "canonical production status missing")
-    require(not STATUS_PATH.is_symlink(), "canonical production status must not be a symlink")
+def validate_runtime_authority(
+    canonical_root=ROOT,
+    canonical_status_path=STATUS_PATH,
+    canonical_blocker_validator=require_canonical_gaps,
+) -> None:
+    require(ROOT == canonical_root, "backup semantic repository root authority drift")
+    require(STATUS_PATH == canonical_status_path, "canonical production status identity drift")
+    require(require_canonical_gaps is canonical_blocker_validator, "canonical blocker validator execution authority drift")
+    canonical = canonical_root / "contracts/operations/production-operability-status.json"
+    require(canonical_status_path == canonical, "canonical production status identity drift")
+    require(canonical_status_path.is_file(), "canonical production status missing")
+    require(not canonical_status_path.is_symlink(), "canonical production status must not be a symlink")
     try:
-        require(STATUS_PATH.resolve(strict=True) == canonical,
+        require(canonical_status_path.resolve(strict=True) == canonical,
                 "canonical production status path drift")
     except OSError as exc:
         raise ReconcileFailure("cannot resolve canonical production status") from exc
@@ -62,7 +69,23 @@ def validate(status: dict[str, Any]) -> None:
             "production decision changed unexpectedly")
 
 
-def main() -> int:
+CANONICAL_RUNTIME_AUTHORITY_GUARD = validate_runtime_authority
+CANONICAL_LOADER = load
+CANONICAL_SEMANTIC_VALIDATOR = validate
+
+
+def main(
+    canonical_authority_guard=CANONICAL_RUNTIME_AUTHORITY_GUARD,
+    canonical_loader=CANONICAL_LOADER,
+    canonical_semantic_validator=CANONICAL_SEMANTIC_VALIDATOR,
+) -> int:
+    if validate_runtime_authority is not canonical_authority_guard:
+        raise ReconcileFailure("backup semantic runtime authority guard drift")
+    if load is not canonical_loader:
+        raise ReconcileFailure("backup semantic status loader execution authority drift")
+    if validate is not canonical_semantic_validator:
+        raise ReconcileFailure("backup semantic validator execution authority drift")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     parser.parse_args()
