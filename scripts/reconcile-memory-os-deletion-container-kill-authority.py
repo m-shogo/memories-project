@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -23,16 +24,18 @@ LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 CANONICAL_AUTHORITIES = {
-    "proof contract": ROOT / "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json",
-    "proof result": ROOT / "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json",
-    "proof validator": ROOT / "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py",
-    "load contract": ROOT / "contracts/operations/load-test-scenario-contract.v1.json",
-    "production status": ROOT / "contracts/operations/production-operability-status.json",
-    "readiness normalizer": ROOT / "scripts/reconcile-memory-os-load-readiness-note.py",
-    "missing-evidence normalizer": ROOT / "scripts/reconcile-memory-os-load-missing-evidence.py",
-    "load validator": ROOT / "scripts/validate-memory-os-load.py",
-    "operability validator": ROOT / "scripts/validate-memory-os-operability.py",
+    "proof contract": PROOF_CONTRACT,
+    "proof result": PROOF_RESULT,
+    "proof validator": PROOF_VALIDATOR,
+    "load contract": LOAD_CONTRACT,
+    "production status": STATUS,
+    "readiness normalizer": READINESS_NORMALIZER,
+    "missing-evidence normalizer": MISSING_EVIDENCE_NORMALIZER,
+    "load validator": LOAD_VALIDATOR,
+    "operability validator": OPERABILITY_VALIDATOR,
 }
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 
 PROOF_REFS = [
     "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json",
@@ -70,9 +73,11 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
+        os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
             handle.flush()
@@ -81,6 +86,9 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     finally:
         if temporary_path.exists():
             temporary_path.unlink()
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 
 
 def write(path: Path, value: dict[str, Any]) -> None:
@@ -114,11 +122,15 @@ def require_canonical_authorities() -> None:
     for label, expected in CANONICAL_AUTHORITIES.items():
         path = actual[label]
         require(path == expected, f"{label} authority substitution")
-        require(path.is_file(), f"{label} authority missing")
+        require(path.is_file() and not path.is_symlink(), f"{label} authority missing or non-canonical")
         require(path.resolve() == expected, f"{label} authority escapes canonical path")
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "container-kill subprocess transport is not canonical")
+    require(os.replace is CANONICAL_OS_REPLACE, "container-kill atomic replacement transport is not canonical")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "container-kill atomic writer authority is not canonical")
 
 
 def normalize_and_validate_authority() -> None:
+    require_canonical_authorities()
     subprocess.run([sys.executable, str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
     subprocess.run([sys.executable, str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
     subprocess.run([sys.executable, str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
