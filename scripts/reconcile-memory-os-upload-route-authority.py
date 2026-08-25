@@ -9,9 +9,11 @@ idempotent exact replacements and preserves historical fixture evidence.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -151,11 +153,31 @@ def read(path: Path) -> str:
         raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_write_text(path: Path, value: str) -> None:
+    atomic_write_bytes(path, value.encode("utf-8"))
+
+
 def write_if_changed(path: Path, value: str) -> bool:
     current = read(path) if path.exists() else ""
     if current == value:
         return False
-    path.write_text(value, encoding="utf-8")
+    atomic_write_text(path, value)
     return True
 
 
@@ -201,7 +223,7 @@ def rollback_authority_files() -> None:
             if path.exists():
                 path.unlink()
             continue
-        path.write_bytes(original)
+        atomic_write_bytes(path, original)
 
 
 def validate_canonical_authorities() -> None:
@@ -263,7 +285,7 @@ def main() -> int:
         if OLD_LABEL not in value:
             continue
         value = value.replace(OLD_LABEL, NEW_LABEL)
-        path.write_text(value, encoding="utf-8")
+        atomic_write_text(path, value)
         relative = str(path.relative_to(ROOT))
         if relative not in changed:
             changed.append(relative)
