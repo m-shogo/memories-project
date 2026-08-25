@@ -1,0 +1,81 @@
+name: Deletion Under Load Authority PR
+
+on:
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-under-load.yml"
+      - ".github/workflows/deletion-under-load-authority-pr.yml"
+      - "contracts/operations/deletion-under-load-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
+      - "scripts/reconcile-memory-os-deletion-under-load-status.py"
+      - "scripts/validate-memory-os-deletion-under-load.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deletion-under-load-authority-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate exact source and clean worktree
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+
+      - name: Compile deterministic authority scripts
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/reconcile-memory-os-deletion-under-load-status.py \
+            scripts/validate-memory-os-deletion-under-load.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+
+      - name: Reconcile recorded local evidence read-only
+        run: |
+          set -euo pipefail
+          RESULT_SHA="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json').read_text())
+          value = result.get('commitSha')
+          if not isinstance(value, str) or len(value) != 40:
+              raise SystemExit('canonical deletion-under-load result commitSha missing')
+          print(value)
+          PY
+          )"
+          EXPECTED_COMMIT_SHA="$RESULT_SHA" python scripts/validate-memory-os-deletion-under-load.py
+          EXPECTED_COMMIT_SHA="$RESULT_SHA" python scripts/reconcile-memory-os-deletion-under-load-status.py
+          python scripts/validate-memory-os-deletion-under-load.py --require-reconciled
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Reject deterministic or temporary worktree drift
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
