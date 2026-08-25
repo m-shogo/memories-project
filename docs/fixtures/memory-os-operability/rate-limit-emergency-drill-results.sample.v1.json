@@ -1,15 +1,15 @@
 {
   "schemaVersion": "memory-os-rate-limit-emergency-drill-results.v1",
-  "commitSha": "0030e378be4b34457b5ac0624584ae0c2f463607",
-  "generatedAt": "2026-08-25T02:37:38Z",
+  "commitSha": "b049ce39b23eaf28a1590f5bc70bc1d571478bed",
+  "generatedAt": "2026-08-25T02:39:56Z",
   "classification": "LOCAL_CI_DECISION_MODEL",
   "scenarioId": "apple-exchange-emergency-expiry-and-recovery-local-ci",
   "policyId": "apple-exchange",
   "timeline": {
-    "startedAt": "2026-08-25T02:37:38Z",
-    "expiresAt": "2026-08-25T03:37:38Z",
-    "preExpiryProbeAt": "2026-08-25T03:37:37Z",
-    "expiryProbeAt": "2026-08-25T03:37:39Z"
+    "startedAt": "2026-08-25T02:39:56Z",
+    "expiresAt": "2026-08-25T03:39:56Z",
+    "preExpiryProbeAt": "2026-08-25T03:39:55Z",
+    "expiryProbeAt": "2026-08-25T03:39:57Z"
   },
   "modeSequence": [
     "NORMAL_CONFIGURED",
