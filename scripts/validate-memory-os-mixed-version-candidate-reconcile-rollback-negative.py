@@ -50,6 +50,14 @@ def main() -> int:
     expect_authority_rejection(reconciler, "VERSION_VALIDATOR", reconciler.OPERABILITY_VALIDATOR)
     expect_authority_rejection(reconciler, "OPERABILITY_VALIDATOR", reconciler.CANDIDATE_VALIDATOR)
 
+    try:
+        reconciler.main(_guard=lambda: None)
+    except reconciler.ReconcileFailure as exc:
+        if "runtime guard substitution" not in str(exc):
+            raise RuntimeError(f"unexpected runtime guard rejection: {exc}") from exc
+    else:
+        raise RuntimeError("candidate runtime guard substitution must be rejected")
+
     original_run = reconciler.subprocess.run
     reconciler.subprocess.run = lambda *args, **kwargs: None
     try:
@@ -138,7 +146,7 @@ def main() -> int:
     if replace_calls < 2:
         raise RuntimeError("candidate atomic replacement failure did not exercise atomic rollback")
 
-    print("PASS: mixed-version candidate authority identity, execution transport, atomic replacement, and reconcile rollback are fail-closed")
+    print("PASS: mixed-version candidate authority identity, runtime guard, execution transport, atomic replacement, and reconcile rollback are fail-closed")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
