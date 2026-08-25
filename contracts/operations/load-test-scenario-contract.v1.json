@@ -360,7 +360,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker saturation, lease-expiry attempt-2 recovery including partial object erasure, Docker worker-container SIGKILL plus independent replacement-container attempt-2 convergence, and repeated 60-minute-or-longer LOCAL_LONG_SOAK execution with descriptive trend review. The current canonical readiness flags do not claim raw process-kill recovery, and the local evidence still does not establish leak proof, a production capacity boundary, physical host/node/AZ failure recovery, production-equivalent dependency behavior, production-shaped sustained-soak evidence or independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO.",
+    "note": "Mock and local dependency checkpoints include bounded ramp, short CI stability, post-fence deletion load, Preview pre-fence linearization, Apply/upload-authorization zero-mutation pre-fence linearization, post-HEAD upload-completion pre-fence linearization, and bounded multi-account deletion-worker saturation. They still establish neither production capacity, sustained-soak/leak proof, host/process failure recovery, production-equivalent behavior nor independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
