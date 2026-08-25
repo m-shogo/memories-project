@@ -48,26 +48,92 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: client-server-support-window-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact clean PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Reconcile and validate fail-closed skew admission read-only
+        id: validate
+        run: |
+          set +e
+          log=/tmp/client-server-support-window.log
+          : > "$log"
+          code=0
+          python -m py_compile \
+            scripts/register-memory-os-client-baseline.py \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
+            scripts/reconcile-memory-os-client-baseline-registry.py \
+            scripts/validate-memory-os-client-server-support-window.py \
+            scripts/validate-memory-os-client-server-support-window-negative.py \
+            scripts/reconcile-memory-os-client-server-support-window-status.py \
+            scripts/validate-memory-os-operability.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/reconcile-memory-os-client-server-support-window-status.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-client-server-support-window.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-client-server-support-window-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Reject any PR worktree drift
+        if: steps.validate.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+      - name: Enforce validation
+        run: test "${{ steps.validate.outputs.exit_code }}" = "0"
+
+  reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Capture exact client skew authority source
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -107,15 +173,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Reject auto-healed support-window authority on pull requests
-        if: steps.validate.outputs.exit_code == '0' && github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code
-          test -z "$(git status --porcelain)"
       - name: Commit bounded foundation authority
-        if: steps.validate.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validate.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -141,7 +200,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe failure diagnostic
-        if: steps.validate.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validate.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           VALIDATE_EXIT_CODE: ${{ steps.validate.outputs.exit_code }}
         run: |
