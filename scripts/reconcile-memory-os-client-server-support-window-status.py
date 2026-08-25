@@ -30,6 +30,7 @@ OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 STATUS = ROOT / STATUS_REL
 WORKFLOW = ROOT / WORKFLOW_REL
 
+EVIDENCE_PREFIX = "client/server support-window admission foundation is machine-readable and fail-closed:"
 EVIDENCE = (
     "client/server support-window admission foundation is machine-readable and fail-closed: approved backend release and approved client artifact "
     "digests are both mandatory, candidate/branch/CI evidence cannot manufacture support, and approved inventory may accumulate without creating "
@@ -123,6 +124,19 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def replace_prefixed_once(values: list[Any], prefix: str, value: str) -> None:
+    indexes = [
+        index
+        for index, item in enumerate(values)
+        if isinstance(item, str) and item.startswith(prefix)
+    ]
+    require(len(indexes) <= 1, f"duplicate evidence authority for prefix: {prefix}")
+    if indexes:
+        values[indexes[0]] = value
+    else:
+        values.append(value)
+
+
 def load_validator() -> Any:
     spec = importlib.util.spec_from_file_location("memory_os_support_window_reconcile_validator", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load support-window validator")
@@ -210,8 +224,7 @@ def main() -> int:
     refs = gate.get("evidenceRefs")
     missing = gate.get("missingEvidence")
     require(isinstance(existing, list) and isinstance(refs, list) and isinstance(missing, list), "OPS-P0-008 authority arrays missing")
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith("client/server support-window admission foundation is machine-readable and fail-closed:"))]
-    append_once(existing, EVIDENCE)
+    replace_prefixed_once(existing, EVIDENCE_PREFIX, EVIDENCE)
     for ref in REFS:
         require((ROOT / ref).is_file(), f"support-window evidence ref missing: {ref}")
         append_once(refs, ref)
