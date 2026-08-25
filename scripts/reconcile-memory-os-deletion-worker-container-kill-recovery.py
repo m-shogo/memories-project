@@ -17,6 +17,7 @@ CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-worker
 CANONICAL_RESULT_PATH = CANONICAL_ROOT / "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
 CANONICAL_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py"
 CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR = CANONICAL_VALIDATOR
@@ -55,6 +56,8 @@ def validate_authority_identity() -> None:
     require_exact_path("container-kill result", RESULT_PATH, CANONICAL_RESULT_PATH)
     require_exact_path("container-kill validator", VALIDATOR, CANONICAL_VALIDATOR)
     require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "validator execution transport is not canonical")
+    require(os.replace is CANONICAL_OS_REPLACE, "atomic replacement transport is not canonical")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "atomic writer authority is not canonical")
 
 
 def run_validator(expected_sha: str) -> None:
@@ -78,6 +81,9 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     finally:
         if temporary_path.exists():
             temporary_path.unlink()
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 
 
 def write_contract_transactionally(contract: dict[str, Any], expected_sha: str) -> None:
