@@ -203,7 +203,64 @@ def run_writer_and_evaluator_self_test(
         )
 
 
+_CANONICAL_ROOT = ROOT
+_CANONICAL_CONTRACT_PATH = CONTRACT_PATH
+_CANONICAL_OPERATIONS_PATH = OPERATIONS_PATH
+_CANONICAL_POLICY_PATH = POLICY_PATH
+_CANONICAL_WRITER_PATH = WRITER_PATH
+_CANONICAL_EVALUATOR_PATH = EVALUATOR_PATH
+_CANONICAL_VALIDATOR_PATH = VALIDATOR_PATH
+_CANONICAL_SUBPROCESS_RUN = subprocess.run
+_CANONICAL_REQUIRE = require
+_CANONICAL_LOAD = load
+_CANONICAL_PARSE_ARGS = parse_args
+_CANONICAL_UTC_TEXT = utc_text
+_CANONICAL_VALIDATE_FOUNDATION_AUTHORITY = validate_foundation_authority
+_CANONICAL_POLICY_BY_ID = policy_by_id
+_CANONICAL_OPERATIONAL_MODE_IDS = operational_mode_ids
+_CANONICAL_RUN_EVALUATOR = run_evaluator
+_CANONICAL_EVALUATE_TEMP_OPERATION = evaluate_temp_operation
+_CANONICAL_RUN_WRITER_AND_EVALUATOR_SELF_TEST = run_writer_and_evaluator_self_test
+
+
+def enforce_runtime_authorities() -> None:
+    paths = (
+        (ROOT, _CANONICAL_ROOT, "repository"),
+        (CONTRACT_PATH, _CANONICAL_CONTRACT_PATH, "contract"),
+        (OPERATIONS_PATH, _CANONICAL_OPERATIONS_PATH, "operations contract"),
+        (POLICY_PATH, _CANONICAL_POLICY_PATH, "policy contract"),
+        (WRITER_PATH, _CANONICAL_WRITER_PATH, "operation evidence writer"),
+        (EVALUATOR_PATH, _CANONICAL_EVALUATOR_PATH, "expiry evaluator"),
+        (VALIDATOR_PATH, _CANONICAL_VALIDATOR_PATH, "drill validator"),
+    )
+    for current, canonical, label in paths:
+        if current != canonical:
+            raise DrillFailure(f"emergency drill {label} authority drift")
+    helpers = (
+        (subprocess.run, _CANONICAL_SUBPROCESS_RUN, "subprocess transport"),
+        (require, _CANONICAL_REQUIRE, "require"),
+        (load, _CANONICAL_LOAD, "load"),
+        (parse_args, _CANONICAL_PARSE_ARGS, "argument parser"),
+        (utc_text, _CANONICAL_UTC_TEXT, "timestamp formatter"),
+        (validate_foundation_authority, _CANONICAL_VALIDATE_FOUNDATION_AUTHORITY, "foundation validator"),
+        (policy_by_id, _CANONICAL_POLICY_BY_ID, "policy resolver"),
+        (operational_mode_ids, _CANONICAL_OPERATIONAL_MODE_IDS, "operational mode resolver"),
+        (run_evaluator, _CANONICAL_RUN_EVALUATOR, "evaluator runner"),
+        (evaluate_temp_operation, _CANONICAL_EVALUATE_TEMP_OPERATION, "evaluator decoder"),
+        (run_writer_and_evaluator_self_test, _CANONICAL_RUN_WRITER_AND_EVALUATOR_SELF_TEST, "writer/evaluator self-test"),
+    )
+    for current, canonical, label in helpers:
+        if current is not canonical:
+            raise DrillFailure(f"emergency drill {label} execution authority drift")
+
+
+_CANONICAL_ENFORCE_RUNTIME_AUTHORITIES = enforce_runtime_authorities
+
+
 def main() -> int:
+    if enforce_runtime_authorities is not _CANONICAL_ENFORCE_RUNTIME_AUTHORITIES:
+        raise DrillFailure("emergency drill runtime guard execution authority drift")
+    enforce_runtime_authorities()
     args = parse_args()
     require(len(args.source_sha) == 40 and all(ch in "0123456789abcdef" for ch in args.source_sha),
             "--source-sha must be a full lowercase commit SHA")
