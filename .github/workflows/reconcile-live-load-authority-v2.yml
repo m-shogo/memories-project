@@ -6,21 +6,7 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-live-load-authority-v2.yml"
-      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
-      - "contracts/operations/live-object-load-scenario-contract.v1.json"
-      - "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
-      - "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json"
-      - "scripts/validate-memory-os-live-load.py"
-      - "scripts/validate-memory-os-live-object-load.py"
-      - "scripts/validate-memory-os-load.py"
-      - "scripts/validate-memory-os-operability.py"
-      - "scripts/reconcile-memory-os-live-load-status.py"
-      - "scripts/validate-memory-os-live-load-reconcile-rollback-negative.py"
-  pull_request:
-    branches:
-      - so
-    paths:
-      - ".github/workflows/reconcile-live-load-authority-v2.yml"
+      - ".github/workflows/reconcile-live-load-authority-v2-pr.yml"
       - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
       - "contracts/operations/live-object-load-scenario-contract.v1.json"
       - "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
@@ -53,7 +39,7 @@ jobs:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -65,11 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          else
-            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Compile authority tools
@@ -103,6 +85,7 @@ jobs:
           import json
           import os
           import re
+          import tempfile
           from pathlib import Path
 
           output = Path('/tmp/live-load-authority.log').read_text(
@@ -116,24 +99,37 @@ jobs:
               (r'(?:acct|job|prv|spl|upl)_[A-Za-z0-9._:-]+', '<redacted-synthetic-id>'),
           ):
               output = re.sub(pattern, replacement, output, flags=re.IGNORECASE)
-          if os.environ.get('GITHUB_EVENT_NAME') != 'pull_request':
-              diagnostic = {
-                  'schemaVersion': 'memory-os-validator-diagnostic.v1',
-                  'workflow': 'reconcile-live-load-authority-v2',
-                  'sourceCommitSha': os.environ['SOURCE_SHA'],
-                  'result': 'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL',
-                  'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
-                  'output': output,
-                  'containsSecrets': False,
-                  'productionEvidence': False,
-              }
-              path = Path('docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json')
-              path.parent.mkdir(parents=True, exist_ok=True)
-              path.write_text(json.dumps(diagnostic, indent=2) + '\n', encoding='utf-8')
+          diagnostic = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'reconcile-live-load-authority-v2',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          payload = json.dumps(diagnostic, indent=2) + '\n'
+          temp_path = None
+          try:
+              with tempfile.NamedTemporaryFile(
+                  mode='w', encoding='utf-8', dir=path.parent,
+                  prefix=f'.{path.name}.', suffix='.tmp', delete=False,
+              ) as handle:
+                  temp_path = Path(handle.name)
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_path, path)
+              temp_path = None
+          finally:
+              if temp_path is not None:
+                  temp_path.unlink(missing_ok=True)
           PY
 
       - name: Commit bounded diagnostic
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -165,14 +161,10 @@ jobs:
         run: |
           set -euo pipefail
           source_head="$(git rev-parse HEAD)"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            test "$source_head" = "${{ github.event.pull_request.head.sha }}"
-          else
-            # A diagnostic commit may now be the branch HEAD. Revalidate that exact
-            # authority before deriving status; never carry validation across HEADs.
-            git fetch origin so
-            test "$source_head" = "$(git rev-parse origin/so)"
-          fi
+          # A diagnostic commit may now be the branch HEAD. Revalidate that exact
+          # authority before deriving status; never carry validation across HEADs.
+          git fetch origin so
+          test "$source_head" = "$(git rev-parse origin/so)"
           python scripts/validate-memory-os-live-load.py
           python scripts/validate-memory-os-live-object-load.py
           evidence_sha="$(python - <<'PY'
@@ -202,12 +194,6 @@ jobs:
           python scripts/validate-memory-os-live-object-load.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git diff --exit-code -- \
-              contracts/operations/production-operability-status.json \
-              contracts/operations/load-test-scenario-contract.v1.json
-            exit 0
-          fi
           git fetch origin so
           if [ "$(git rev-parse origin/so)" != "$source_head" ]; then
             echo "so advanced after validation; refusing stale derived authority write" >&2
