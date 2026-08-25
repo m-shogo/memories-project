@@ -40,21 +40,142 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: rate-limit-operation-evidence-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact PR authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean PR source state
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Compile and validate ledger
+        run: |
+          python -m py_compile \
+            scripts/create-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-writer-negative.py \
+            scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py \
+            scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-operation-writer-negative.py
+          python scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py
+
+      - name: Self-prove exclusive writer and duplicate rejection
+        run: |
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          SOURCE_SHA="$SOURCE_SHA" TMP_RECORD="$tmpdir/record.json" python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+
+          started = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+          expires = started + dt.timedelta(minutes=30)
+          checks = [
+              "shared_store_atomicity",
+              "policy_generation_exact_source",
+              "trusted_proxy_boundary",
+              "rejected_requests_no_account_session_replay_mutation",
+              "rejected_requests_no_upload_apply_memory_mutation",
+              "metrics_and_events_present",
+              "bounded_canary",
+              "temporary_mode_expired",
+          ]
+          record = {
+              "schemaVersion": "memory-os-rate-limit-operation-record.v2",
+              "operationId": started.strftime("RLOP-%Y%m%dT%H%M%SZ-ciwriter"),
+              "incidentReference": "DRILL-CI_WRITER",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "environment": "CI",
+              "operator": "ci_operator",
+              "reviewer": "ci_reviewer",
+              "previousMode": "NORMAL_CONFIGURED",
+              "newMode": "ROUTE_FAIL_CLOSED",
+              "proxyMode": "TRUSTED_PROXY_DISABLED",
+              "affectedPolicyIds": ["apple-exchange"],
+              "startedAt": started.isoformat().replace("+00:00", "Z"),
+              "expiresAt": expires.isoformat().replace("+00:00", "Z"),
+              "activationReason": "DRILL",
+              "lifecycle": "PLANNED",
+              "productionConfirmation": None,
+              "verificationResults": [
+                  {"checkId": check, "result": "NOT_RUN", "evidenceRefs": []}
+                  for check in checks
+              ],
+              "restoredAt": None,
+              "openRisks": ["drill_not_executed"],
+              "evidenceRefs": [],
+              "evidenceDigestsByRef": {},
+          }
+          Path(os.environ["TMP_RECORD"]).write_text(
+              json.dumps(record, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          python scripts/create-memory-os-rate-limit-operation-evidence.py \
+            --input "$tmpdir/record.json" --ledger-dir "$tmpdir/ledger"
+          if python scripts/create-memory-os-rate-limit-operation-evidence.py \
+            --input "$tmpdir/record.json" --ledger-dir "$tmpdir/ledger"; then
+            echo "duplicate operationId was incorrectly accepted" >&2
+            exit 1
+          fi
+          test "$(find "$tmpdir/ledger" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')" = "1"
+
+      - name: Reconcile ledger foundation read-only
+        run: |
+          python scripts/reconcile-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Require whole-worktree deterministic authority
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
   validate-and-reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -63,18 +184,12 @@ jobs:
           python-version: "3.12"
 
       - name: Confirm exact clean source state
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-            git fetch origin so
-            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Compile and validate ledger
@@ -161,16 +276,7 @@ jobs:
           python scripts/validate-memory-os-rate-limit.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/rate-limit-operations-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit reconciled authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           source_sha="$SOURCE_SHA"
