@@ -22,6 +22,20 @@ MISSING_EVIDENCE_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-missing-e
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
+CANONICAL_AUTHORITIES = {
+    "proof contract": PROOF_CONTRACT,
+    "proof result": PROOF_RESULT,
+    "proof validator": PROOF_VALIDATOR,
+    "load contract": LOAD_CONTRACT,
+    "production status": STATUS,
+    "readiness normalizer": READINESS_NORMALIZER,
+    "missing-evidence normalizer": MISSING_EVIDENCE_NORMALIZER,
+    "load validator": LOAD_VALIDATOR,
+    "operability validator": OPERABILITY_VALIDATOR,
+}
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
+
 PROOF_REFS = [
     "contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json",
     "services/import-api/internal/httpserver/deletion_worker_sigkill_recovery_linux_test.go",
@@ -44,6 +58,11 @@ CHAOS_EVIDENCE = (
 )
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise SystemExit(message)
+
+
 def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -64,6 +83,9 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             temporary_path.unlink()
 
 
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
     atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
 
@@ -80,7 +102,30 @@ def replace_if_present(values: list[Any], old: str, new: str) -> None:
             return
 
 
+def require_canonical_authorities() -> None:
+    actual = {
+        "proof contract": PROOF_CONTRACT,
+        "proof result": PROOF_RESULT,
+        "proof validator": PROOF_VALIDATOR,
+        "load contract": LOAD_CONTRACT,
+        "production status": STATUS,
+        "readiness normalizer": READINESS_NORMALIZER,
+        "missing-evidence normalizer": MISSING_EVIDENCE_NORMALIZER,
+        "load validator": LOAD_VALIDATOR,
+        "operability validator": OPERABILITY_VALIDATOR,
+    }
+    for label, expected in CANONICAL_AUTHORITIES.items():
+        path = actual[label]
+        require(path == expected, f"{label} authority substitution")
+        require(path.is_file() and not path.is_symlink(), f"{label} authority missing or non-canonical")
+        require(path.resolve() == expected, f"{label} authority escapes canonical path")
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "SIGKILL subprocess transport is not canonical")
+    require(os.replace is CANONICAL_OS_REPLACE, "SIGKILL atomic replacement transport is not canonical")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "SIGKILL atomic writer authority is not canonical")
+
+
 def normalize_and_validate_authority() -> None:
+    require_canonical_authorities()
     subprocess.run(["python", str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
     subprocess.run(["python", str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
     subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
@@ -88,6 +133,7 @@ def normalize_and_validate_authority() -> None:
 
 
 def main() -> int:
+    require_canonical_authorities()
     subprocess.run(["python", str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
     contract = load(PROOF_CONTRACT)
     result = load(PROOF_RESULT)
@@ -145,8 +191,8 @@ def main() -> int:
         write(STATUS, status)
         normalize_and_validate_authority()
     except BaseException:
-        atomic_write_bytes(LOAD_CONTRACT, original_load)
-        atomic_write_bytes(STATUS, original_status)
+        CANONICAL_ATOMIC_WRITE_BYTES(LOAD_CONTRACT, original_load)
+        CANONICAL_ATOMIC_WRITE_BYTES(STATUS, original_status)
         raise
 
     print("Memory OS deletion SIGKILL canonical reconciliation PASS")
