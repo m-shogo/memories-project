@@ -40,7 +40,7 @@ EVIDENCE = (
 
 REFS = (
     "contracts/operations/client-server-support-window-contract.v1.json",
-    "contracts/operations/client-baseline-registry.v1.json",
+    "contracts/operations/client-baseline-registry-contract.v1.json",
     "contracts/operations/client-server-skew-registry.v1.json",
     "scripts/validate-memory-os-client-server-support-window.py",
     ".github/workflows/client-server-support-window.yml",
@@ -56,31 +56,57 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+def require_exact_repo_file(
+    path: Path,
+    expected_relative: Path,
+    field: str,
+    *,
+    _root: Path = ROOT,
+) -> Path:
     try:
-        lexical = path.relative_to(ROOT)
-        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+        lexical = path.relative_to(_root)
+        resolved = path.resolve(strict=True).relative_to(_root.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(
-        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
         f"{field} authority drift",
     )
     return path
 
 
-def enforce_runtime_authorities() -> None:
-    for path, relative, field in (
-        (CONTRACT, CONTRACT_REL, "support-window contract"),
-        (RELEASES, RELEASES_REL, "release baseline registry"),
-        (CLIENTS, CLIENTS_REL, "client baseline registry"),
-        (SKEW, SKEW_REL, "client/server skew registry"),
-        (VALIDATOR, VALIDATOR_REL, "support-window validator"),
-        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
-        (STATUS, STATUS_REL, "production operability status"),
-        (WORKFLOW, WORKFLOW_REL, "support-window workflow"),
+def enforce_runtime_authorities(
+    *,
+    _root: Path = ROOT,
+    _contract: Path = CONTRACT,
+    _releases: Path = RELEASES,
+    _clients: Path = CLIENTS,
+    _skew: Path = SKEW,
+    _validator: Path = VALIDATOR,
+    _operability_validator: Path = OPERABILITY_VALIDATOR,
+    _status: Path = STATUS,
+    _workflow: Path = WORKFLOW,
+    _require: Any = require,
+    _require_exact_repo_file: Any = require_exact_repo_file,
+) -> None:
+    _require(ROOT == _root, "repository root authority drift")
+    _require(require is _require, "require helper authority drift")
+    _require(
+        require_exact_repo_file is _require_exact_repo_file,
+        "repository file authority helper drift",
+    )
+    for current, expected, relative, field in (
+        (CONTRACT, _contract, CONTRACT_REL, "support-window contract"),
+        (RELEASES, _releases, RELEASES_REL, "release baseline registry"),
+        (CLIENTS, _clients, CLIENTS_REL, "client baseline registry"),
+        (SKEW, _skew, SKEW_REL, "client/server skew registry"),
+        (VALIDATOR, _validator, VALIDATOR_REL, "support-window validator"),
+        (OPERABILITY_VALIDATOR, _operability_validator, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, _status, STATUS_REL, "production operability status"),
+        (WORKFLOW, _workflow, WORKFLOW_REL, "support-window workflow"),
     ):
-        require_exact_repo_file(path, relative, field)
+        _require(current == expected, f"{field} runtime authority drift")
+        _require_exact_repo_file(current, relative, field, _root=_root)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -155,7 +181,14 @@ def run_validator(path: Path, label: str) -> None:
     )
 
 
-def write_and_validate_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> None:
+def write_and_validate_transactionally(
+    contract: dict[str, Any],
+    status: dict[str, Any],
+    *,
+    _guard: Any = enforce_runtime_authorities,
+) -> None:
+    require(enforce_runtime_authorities is _guard, "runtime authority guard drift")
+    _guard()
     originals = {CONTRACT: CONTRACT.read_bytes(), STATUS: STATUS.read_bytes()}
     try:
         write(CONTRACT, contract)
@@ -175,8 +208,9 @@ def write_and_validate_transactionally(contract: dict[str, Any], status: dict[st
         raise
 
 
-def main() -> int:
-    enforce_runtime_authorities()
+def main(*, _guard: Any = enforce_runtime_authorities) -> int:
+    require(enforce_runtime_authorities is _guard, "runtime authority guard drift")
+    _guard()
     validator = load_validator()
     releases = load(RELEASES)
     clients = load(CLIENTS)
