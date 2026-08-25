@@ -92,7 +92,7 @@ jobs:
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Reconcile actual process-kill evidence
+      - name: Compile SIGKILL authority chain
         run: |
           set -euo pipefail
           python -m py_compile \
@@ -103,9 +103,21 @@ jobs:
             scripts/reconcile-memory-os-load-missing-evidence.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py
+      - name: Reconcile actual process-kill evidence
+        run: |
+          set -euo pipefail
           python scripts/reconcile-memory-os-deletion-sigkill-authority.py
+      - name: Validate SIGKILL reconcile negative suite
+        run: |
+          set -euo pipefail
           python scripts/validate-memory-os-deletion-sigkill-authority-reconcile-negative.py
+      - name: Validate canonical load authority
+        run: |
+          set -euo pipefail
           python scripts/validate-memory-os-load.py
+      - name: Validate aggregate operability authority
+        run: |
+          set -euo pipefail
           python scripts/validate-memory-os-operability.py
       - name: Commit canonical authority update
         run: |
