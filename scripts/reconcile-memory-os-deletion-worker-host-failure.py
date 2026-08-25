@@ -7,19 +7,24 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-CANONICAL_CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
-CANONICAL_HOST_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
-CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-CANONICAL_WORKFLOW = ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
-CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
-CANONICAL_LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_ROOT = Path(__file__).resolve().parents[1]
+ROOT = CANONICAL_ROOT
+CANONICAL_CONTRACT = CANONICAL_ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
+CANONICAL_HOST_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
+CANONICAL_LOAD_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_WORKFLOW = CANONICAL_ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
+CANONICAL_STATUS = CANONICAL_ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_LOAD = CANONICAL_ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
+CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
 CONTRACT = CANONICAL_CONTRACT
 VALIDATOR = CANONICAL_HOST_VALIDATOR
 LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
@@ -65,37 +70,74 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
     require(canonical.is_file(), f"canonical {label} missing")
     require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    require(canonical.resolve(strict=True) == canonical, f"canonical {label} resolved path drift")
 
 
-def validate_data_authorities() -> None:
-    require_exact_authority(CONTRACT, CANONICAL_CONTRACT, "host-failure contract")
-    require_exact_authority(WORKFLOW, CANONICAL_WORKFLOW, "host-failure workflow")
-    require_exact_authority(STATUS, CANONICAL_STATUS, "production status")
-    require_exact_authority(LOAD, CANONICAL_LOAD, "load contract")
+def validate_data_authorities(
+    _root: Path = CANONICAL_ROOT,
+    _contract: Path = CANONICAL_CONTRACT,
+    _workflow: Path = CANONICAL_WORKFLOW,
+    _status: Path = CANONICAL_STATUS,
+    _load: Path = CANONICAL_LOAD,
+) -> None:
+    require(CANONICAL_ROOT == _root and ROOT == _root, "repository root authority drift")
+    require(Path(__file__).resolve().parents[1] == _root, "canonical repository root drift")
+    for path, canonical, expected, label in (
+        (CONTRACT, CANONICAL_CONTRACT, _contract, "host-failure contract"),
+        (WORKFLOW, CANONICAL_WORKFLOW, _workflow, "host-failure workflow"),
+        (STATUS, CANONICAL_STATUS, _status, "production status"),
+        (LOAD, CANONICAL_LOAD, _load, "load contract"),
+    ):
+        require(canonical == expected, f"canonical {label} constant drift")
+        require_exact_authority(path, expected, label)
 
 
-def validate_executable_authorities() -> None:
+def validate_executable_authorities(
+    _host_validator: Path = CANONICAL_HOST_VALIDATOR,
+    _load_validator: Path = CANONICAL_LOAD_VALIDATOR,
+    _operability_validator: Path = CANONICAL_OPERABILITY_VALIDATOR,
+    _subprocess_run: Any = CANONICAL_SUBPROCESS_RUN,
+    _os_replace: Any = CANONICAL_OS_REPLACE,
+    _spec_from_file_location: Any = CANONICAL_SPEC_FROM_FILE_LOCATION,
+    _module_from_spec: Any = CANONICAL_MODULE_FROM_SPEC,
+) -> None:
     validate_data_authorities()
-    require_exact_authority(VALIDATOR, CANONICAL_HOST_VALIDATOR, "host-failure validator")
-    require_exact_authority(LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator")
-    require_exact_authority(
-        OPERABILITY_VALIDATOR,
-        CANONICAL_OPERABILITY_VALIDATOR,
-        "operability validator",
-    )
-    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "host-failure subprocess transport is not canonical")
+    for path, canonical, expected, label in (
+        (VALIDATOR, CANONICAL_HOST_VALIDATOR, _host_validator, "host-failure validator"),
+        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, _load_validator, "load validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, _operability_validator, "operability validator"),
+    ):
+        require(canonical == expected, f"canonical {label} constant drift")
+        require_exact_authority(path, expected, label)
+    require(CANONICAL_SUBPROCESS_RUN is _subprocess_run and subprocess.run is _subprocess_run,
+            "host-failure subprocess transport is not canonical")
+    require(CANONICAL_OS_REPLACE is _os_replace and os.replace is _os_replace,
+            "host-failure atomic replacement transport is not canonical")
+    require(CANONICAL_SPEC_FROM_FILE_LOCATION is _spec_from_file_location and
+            importlib.util.spec_from_file_location is _spec_from_file_location,
+            "host-failure module spec loader is not canonical")
+    require(CANONICAL_MODULE_FROM_SPEC is _module_from_spec and
+            importlib.util.module_from_spec is _module_from_spec,
+            "host-failure module loader is not canonical")
 
 
-def load_host_validator():
+def load_host_validator(
+    _spec_from_file_location: Any = CANONICAL_SPEC_FROM_FILE_LOCATION,
+    _module_from_spec: Any = CANONICAL_MODULE_FROM_SPEC,
+):
     validate_executable_authorities()
     try:
-        resolved = VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve())
+        resolved = VALIDATOR.resolve(strict=True).relative_to(CANONICAL_ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail("canonical host-failure validator missing or escapes repository") from exc
-    require(resolved == CANONICAL_HOST_VALIDATOR.relative_to(ROOT), "host-failure validator authority drift")
-    spec = importlib.util.spec_from_file_location("memory_os_host_failure_validator_for_reconcile", VALIDATOR)
+    require(resolved == CANONICAL_HOST_VALIDATOR.relative_to(CANONICAL_ROOT), "host-failure validator authority drift")
+    require(importlib.util.spec_from_file_location is _spec_from_file_location,
+            "host-failure module spec loader is not canonical")
+    require(importlib.util.module_from_spec is _module_from_spec,
+            "host-failure module loader is not canonical")
+    spec = _spec_from_file_location("memory_os_host_failure_validator_for_reconcile", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load canonical host-failure validator")
-    module = importlib.util.module_from_spec(spec)
+    module = _module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
     except Exception as exc:  # noqa: BLE001 - convert dependency failures into domain failure
@@ -139,12 +181,13 @@ def reconcile_generation_projection(contract: dict[str, Any]) -> int:
 def validate_load_authority() -> None:
     validate_executable_authorities()
     try:
-        subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+        CANONICAL_SUBPROCESS_RUN([sys.executable, str(LOAD_VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
     except subprocess.CalledProcessError as exc:
         raise Fail(f"canonical load authority validation failed: {exc}") from exc
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
@@ -152,26 +195,38 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        if existing_mode is not None:
+            os.chmod(temporary_path, existing_mode)
         os.replace(temporary_path, path)
     finally:
         if temporary_path.exists():
             temporary_path.unlink()
 
 
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
+def validate_atomic_writer_authority(_writer: Any = atomic_write_bytes) -> None:
+    require(CANONICAL_ATOMIC_WRITE_BYTES is _writer and atomic_write_bytes is _writer,
+            "host-failure atomic writer is not canonical")
+
+
 def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> None:
     validate_executable_authorities()
+    validate_atomic_writer_authority()
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
     try:
-        atomic_write_bytes(CONTRACT, (json.dumps(contract, indent=2) + "\n").encode("utf-8"))
-        atomic_write_bytes(STATUS, (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+        CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT, (json.dumps(contract, indent=2) + "\n").encode("utf-8"))
+        CANONICAL_ATOMIC_WRITE_BYTES(STATUS, (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
         validate_executable_authorities()
-        subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
-        subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
-        subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+        validate_atomic_writer_authority()
+        CANONICAL_SUBPROCESS_RUN([sys.executable, str(VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
+        CANONICAL_SUBPROCESS_RUN([sys.executable, str(LOAD_VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
+        CANONICAL_SUBPROCESS_RUN([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
     except Exception as exc:
-        atomic_write_bytes(CONTRACT, contract_bytes)
-        atomic_write_bytes(STATUS, status_bytes)
+        CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT, contract_bytes)
+        CANONICAL_ATOMIC_WRITE_BYTES(STATUS, status_bytes)
         if isinstance(exc, Fail):
             raise
         raise Fail(f"host-failure post-write authority validation failed: {exc}") from exc
@@ -179,6 +234,7 @@ def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 def main() -> int:
     validate_executable_authorities()
+    validate_atomic_writer_authority()
     validate_load_authority()
 
     contract = load(CONTRACT)
@@ -201,7 +257,7 @@ def main() -> int:
         require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), f"{gate_id} authority arrays missing")
         append_once(existing, EVIDENCE)
         for ref in REFS:
-            require((ROOT / ref).is_file(), f"host-failure evidence ref missing: {ref}")
+            require((CANONICAL_ROOT / ref).is_file(), f"host-failure evidence ref missing: {ref}")
             append_once(refs, ref)
         joined = "\n".join(str(item).lower() for item in missing)
         require("host" in joined or "node" in joined, f"{gate_id} must retain physical host/node blocker")
