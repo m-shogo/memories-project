@@ -180,7 +180,16 @@ jobs:
               "containsSecrets": False,
               "productionEvidence": False,
           }
-          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          payload = (json.dumps(value, indent=2) + "\n").encode("utf-8")
+          temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+          try:
+              with temp_path.open("wb") as handle:
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_path, path)
+          finally:
+              temp_path.unlink(missing_ok=True)
           PY
 
       - name: Commit failure diagnostic
