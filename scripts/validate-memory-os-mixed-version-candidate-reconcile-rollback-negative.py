@@ -58,6 +58,7 @@ def main() -> int:
         raise RuntimeError("candidate readiness missing in fixture")
     readiness["exactSourcePassResultCommitted"] = False
     CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    transaction_before = CONTRACT.read_bytes()
 
     original_run = reconciler.subprocess.run
     calls: list[Path] = []
@@ -93,8 +94,8 @@ def main() -> int:
             raise RuntimeError("candidate reconciler did not invoke version aggregate validator")
         if reconciler.OPERABILITY_VALIDATOR.resolve() in calls:
             raise RuntimeError("candidate reconciler continued after version aggregate rejection")
-        if CONTRACT.read_bytes() != contract_before:
-            raise RuntimeError("candidate reconciler retained contract mutation after aggregate rejection")
+        if CONTRACT.read_bytes() != transaction_before:
+            raise RuntimeError("candidate reconciler did not restore the pre-transaction contract bytes after aggregate rejection")
         if STATUS.read_bytes() != status_before:
             raise RuntimeError("candidate reconciler mutated production status after aggregate rejection")
     finally:
