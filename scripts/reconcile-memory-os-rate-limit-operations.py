@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -133,24 +135,40 @@ def validate_written_authority() -> None:
         run_validator(validator, label)
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    atomic_write_bytes(
+        path,
+        (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+    )
+
+
 def transactional_write(policy: dict[str, Any], status: dict[str, Any]) -> None:
     originals = {
         POLICY_PATH: POLICY_PATH.read_bytes(),
         STATUS_PATH: STATUS_PATH.read_bytes(),
     }
     try:
-        POLICY_PATH.write_text(
-            json.dumps(policy, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        STATUS_PATH.write_text(
-            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_json(POLICY_PATH, policy)
+        atomic_write_json(STATUS_PATH, status)
         validate_written_authority()
     except Exception:
         for path, original in originals.items():
-            path.write_bytes(original)
+            atomic_write_bytes(path, original)
         raise
 
 
