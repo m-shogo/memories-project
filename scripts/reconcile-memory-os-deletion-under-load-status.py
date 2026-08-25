@@ -12,14 +12,17 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/deletion-under-load-contract.v1.json"
-CANONICAL_LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
-CANONICAL_DELETION_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
-CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_ROOT = Path(__file__).resolve().parents[1]
+ROOT = CANONICAL_ROOT
+CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-under-load-contract.v1.json"
+CANONICAL_LOAD_PATH = CANONICAL_ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_STATUS_PATH = CANONICAL_ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RESULT_PATH = CANONICAL_ROOT / "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
+CANONICAL_DELETION_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+CANONICAL_LOAD_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 LOAD_PATH = CANONICAL_LOAD_PATH
 STATUS_PATH = CANONICAL_STATUS_PATH
@@ -56,9 +59,16 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
     require(canonical.is_file(), f"canonical {label} missing")
     require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    require(canonical.resolve(strict=True) == canonical, f"canonical {label} resolved path drift")
 
 
 def enforce_runtime_authorities() -> None:
+    require(ROOT == CANONICAL_ROOT, "repository root authority drift")
+    require(Path(__file__).resolve().parents[1] == CANONICAL_ROOT, "canonical repository root drift")
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "subprocess execution transport authority drift")
+    require(os.replace is CANONICAL_OS_REPLACE, "atomic replacement transport authority drift")
+    require(globals().get("atomic_write_bytes") is CANONICAL_ATOMIC_WRITE_BYTES,
+            "atomic writer authority drift")
     for path, canonical, label in (
         (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "deletion-under-load contract"),
         (LOAD_PATH, CANONICAL_LOAD_PATH, "load contract"),
@@ -91,9 +101,9 @@ def append_once(items: list[Any], value: Any) -> bool:
 
 def run_validator(path: Path, label: str, *args: str) -> None:
     enforce_runtime_authorities()
-    completed = subprocess.run(
+    completed = CANONICAL_SUBPROCESS_RUN(
         [sys.executable, str(path), *args],
-        cwd=ROOT,
+        cwd=CANONICAL_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -119,6 +129,7 @@ def stronger_deletion_authority_present(load_readiness: dict[str, Any]) -> bool:
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -132,7 +143,9 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp_path, path)
+        if existing_mode is not None:
+            os.chmod(tmp_path, existing_mode)
+        CANONICAL_OS_REPLACE(tmp_path, path)
         tmp_path = None
     finally:
         if tmp_path is not None:
@@ -142,8 +155,11 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 pass
 
 
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
-    atomic_write_bytes(
+    CANONICAL_ATOMIC_WRITE_BYTES(
         path,
         (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
     )
@@ -164,6 +180,7 @@ def write_and_validate_transactionally(
         atomic_write_json(CONTRACT_PATH, contract)
         atomic_write_json(LOAD_PATH, load_contract)
         atomic_write_json(STATUS_PATH, status)
+        enforce_runtime_authorities()
         run_validator(DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
         run_validator(LOAD_VALIDATOR, "load")
         run_validator(OPERABILITY_VALIDATOR, "operability")
@@ -171,7 +188,7 @@ def write_and_validate_transactionally(
         rollback_error: BaseException | None = None
         for path, data in originals.items():
             try:
-                atomic_write_bytes(path, data)
+                CANONICAL_ATOMIC_WRITE_BYTES(path, data)
             except BaseException as exc:
                 if rollback_error is None:
                     rollback_error = exc
@@ -268,7 +285,7 @@ def main() -> int:
         "scripts/validate-memory-os-deletion-under-load.py",
         "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
     ):
-        require((ROOT / ref).is_file(), f"deletion-under-load evidence missing: {ref}")
+        require((CANONICAL_ROOT / ref).is_file(), f"deletion-under-load evidence missing: {ref}")
         changed_load = append_once(load_refs, ref) or changed_load
 
     status = load(STATUS_PATH)
@@ -301,7 +318,7 @@ def main() -> int:
         "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
         ".github/workflows/deletion-under-load.yml",
     ):
-        require((ROOT / ref).is_file(), f"deletion-under-load status evidence missing: {ref}")
+        require((CANONICAL_ROOT / ref).is_file(), f"deletion-under-load status evidence missing: {ref}")
         changed_status = append_once(refs, ref) or changed_status
 
     if not (changed_contract or changed_load or changed_status):
