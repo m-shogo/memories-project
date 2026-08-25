@@ -57,6 +57,40 @@ def expect_transport_rejection(module: ModuleType, original_contract: bytes) -> 
         module.subprocess.run = original
 
 
+def expect_atomic_writer_rejection(module: ModuleType, original_contract: bytes) -> None:
+    original = module.atomic_write_bytes
+    module.atomic_write_bytes = lambda _path, _data: None
+    try:
+        try:
+            module.validate_authority_identity()
+        except module.Fail as exc:
+            if "atomic writer authority is not canonical" not in str(exc):
+                raise
+        else:
+            raise AssertionError("atomic writer substitution was accepted")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            raise AssertionError("atomic writer rejection mutated canonical contract")
+    finally:
+        module.atomic_write_bytes = original
+
+
+def expect_atomic_replace_rejection(module: ModuleType, original_contract: bytes) -> None:
+    original = module.os.replace
+    module.os.replace = lambda _source, _target: None
+    try:
+        try:
+            module.validate_authority_identity()
+        except module.Fail as exc:
+            if "atomic replacement transport is not canonical" not in str(exc):
+                raise
+        else:
+            raise AssertionError("os.replace substitution was accepted")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            raise AssertionError("atomic replacement rejection mutated canonical contract")
+    finally:
+        module.os.replace = original
+
+
 def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> None:
     candidate = json.loads(original_contract.decode("utf-8"))
     readiness = candidate.setdefault("readiness", {})
@@ -80,10 +114,12 @@ def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> 
             raise AssertionError("post-write validator rejection was accepted")
         if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
             raise AssertionError("post-write validator rejection did not restore canonical contract bytes")
+        if list(module.CANONICAL_CONTRACT_PATH.parent.glob(f".{module.CANONICAL_CONTRACT_PATH.name}.*.tmp")):
+            raise AssertionError("container-kill rollback left atomic temp residue")
     finally:
         module.run_validator = original_run_validator
         if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
-            module.atomic_write_bytes(module.CANONICAL_CONTRACT_PATH, original_contract)
+            module.CANONICAL_ATOMIC_WRITE_BYTES(module.CANONICAL_CONTRACT_PATH, original_contract)
 
 
 def main() -> int:
@@ -95,9 +131,11 @@ def main() -> int:
     expect_identity_rejection(module, "RESULT_PATH", ALTERNATE_RESULT, original_contract)
     expect_identity_rejection(module, "VALIDATOR", ALTERNATE_VALIDATOR, original_contract)
     expect_transport_rejection(module, original_contract)
+    expect_atomic_writer_rejection(module, original_contract)
+    expect_atomic_replace_rejection(module, original_contract)
     expect_post_write_rollback(module, original_contract)
 
-    print("PASS: container-kill reconcile authority, execution transport, and rollback are fail-closed")
+    print("PASS: container-kill reconcile authority, execution transport, atomic writer, and rollback are fail-closed")
     return 0
 
 
