@@ -18,6 +18,7 @@ CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-prefen
 CANONICAL_RESULT_PATH = CANONICAL_ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
 CANONICAL_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
 CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR = CANONICAL_VALIDATOR
@@ -58,6 +59,8 @@ def validate_authority_identity() -> None:
     _require_exact_path("pre-fence mutation result", RESULT_PATH, CANONICAL_RESULT_PATH, must_exist=False)
     _require_exact_path("pre-fence mutation validator", VALIDATOR, CANONICAL_VALIDATOR)
     require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "validator execution transport is not canonical")
+    require(os.replace is CANONICAL_OS_REPLACE, "atomic replacement transport is not canonical")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "atomic writer authority is not canonical")
 
 
 def run_validator(expected: str) -> None:
@@ -81,6 +84,9 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     finally:
         if temporary_path.exists():
             temporary_path.unlink()
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 
 
 def write_contract_transactionally(contract: dict[str, Any], expected: str) -> None:
