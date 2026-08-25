@@ -30,7 +30,7 @@ def load_module(path: Path, name: str):
 def expect_rejection(callback, expected: str) -> None:
     try:
         callback()
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         if expected not in str(exc):
             raise AssertionError(f"unexpected authority rejection: {exc}") from exc
     else:
