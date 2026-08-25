@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-deletion-worker-sigkill-recovery-results.v1",
-  "commitSha": "0aa600341398b73e654a7dfebe80118b5066705a",
-  "generatedAt": "2026-08-25T07:41:59Z",
+  "commitSha": "b308cd198975ce4640bd2c1f60dd0b4dec03b328",
+  "generatedAt": "2026-08-25T08:24:02Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
