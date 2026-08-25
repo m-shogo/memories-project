@@ -47,6 +47,21 @@ def expect_authority_rejection(mutator, expected_text: str) -> None:
         raise Fail(f"live-load reconciler accepted authority substitution: {expected_text}")
 
 
+def expect_runtime_rejection(mutator, expected_text: str) -> None:
+    before_status = STATUS.read_bytes()
+    before_load = LOAD.read_bytes()
+    module = load_module()
+    mutator(module)
+    try:
+        module.enforce_runtime_authorities()
+    except module.ReconcileFailure as exc:
+        require(expected_text in str(exc), f"unexpected runtime rejection: {exc}")
+    else:
+        raise Fail(f"live-load reconciler accepted runtime substitution: {expected_text}")
+    require(STATUS.read_bytes() == before_status, "runtime rejection mutated canonical production status")
+    require(LOAD.read_bytes() == before_load, "runtime rejection mutated canonical load contract")
+
+
 def main() -> int:
     expect_authority_rejection(
         lambda module: setattr(
@@ -60,6 +75,34 @@ def main() -> int:
         lambda module: setattr(module, "STATUS_PATH", LOAD),
         "canonical production status authority drift",
     )
+    expect_runtime_rejection(
+        lambda module: setattr(module.subprocess, "run", lambda *args, **kwargs: None),
+        "live-load subprocess transport substitution",
+    )
+
+    module = load_module()
+    before_status = STATUS.read_bytes()
+    before_load = LOAD.read_bytes()
+    try:
+        module.main(_guard=lambda: None)
+    except module.ReconcileFailure as exc:
+        require("live-load runtime guard substitution" in str(exc), f"unexpected guard rejection: {exc}")
+    else:
+        raise Fail("live-load reconciler accepted runtime guard substitution")
+    require(STATUS.read_bytes() == before_status, "guard rejection mutated canonical production status")
+    require(LOAD.read_bytes() == before_load, "guard rejection mutated canonical load contract")
+
+    module = load_module()
+    try:
+        module.run_validator(
+            ROOT / "scripts/validate-memory-os-load.py",
+            "load",
+            _guard=lambda: None,
+        )
+    except module.ReconcileFailure as exc:
+        require("live-load runtime guard substitution" in str(exc), f"unexpected validator guard rejection: {exc}")
+    else:
+        raise Fail("live-load validator accepted runtime guard substitution")
 
     module = load_module()
     expected_sha = "1" * 40
@@ -168,7 +211,7 @@ def main() -> int:
         require(not list(tmp_root.glob(".*.tmp")), "atomic replacement failure left a temp file")
 
     print(
-        "PASS: live-load reconcile pins canonical authorities, publishes atomically, and rolls back both derived authorities after post-write validation failure"
+        "PASS: live-load reconcile pins canonical data, execution transport and runtime guard authorities, publishes atomically, and rolls back both derived authorities after post-write validation failure"
     )
     return 0
 
