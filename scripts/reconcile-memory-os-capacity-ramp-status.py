@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +85,36 @@ def run_validator(path: Path, label: str, *args: str) -> None:
     require(completed.returncode == 0, f"{label} failed")
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    atomic_write_bytes(path, payload)
+
+
 def write_and_validate_transactionally(
     contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any]
 ) -> None:
@@ -91,24 +122,22 @@ def write_and_validate_transactionally(
     paths = (CONTRACT_PATH, LOAD_PATH, STATUS_PATH)
     original_bytes = {path: path.read_bytes() for path in paths}
     try:
-        CONTRACT_PATH.write_text(
-            json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        LOAD_PATH.write_text(
-            json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        STATUS_PATH.write_text(
-            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_json(CONTRACT_PATH, contract)
+        atomic_write_json(LOAD_PATH, load_contract)
+        atomic_write_json(STATUS_PATH, status)
         run_validator(CAPACITY_VALIDATOR, "post-write capacity ramp validator", "--require-reconciled")
         run_validator(LOAD_VALIDATOR, "post-write load validator")
         run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
     except BaseException:
+        rollback_error: BaseException | None = None
         for path in paths:
-            path.write_bytes(original_bytes[path])
+            try:
+                atomic_write_bytes(path, original_bytes[path])
+            except BaseException as exc:
+                if rollback_error is None:
+                    rollback_error = exc
+        if rollback_error is not None:
+            raise ReconcileFailure(f"capacity ramp authority rollback failed: {rollback_error}") from rollback_error
         raise
 
 
