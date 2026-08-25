@@ -182,18 +182,21 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-operability.py
-      - name: Commit canonical authority update
+      - name: Commit canonical authority update and clear stale diagnostic
         if: steps.reconcile.outcome == 'success'
         run: |
           set -euo pipefail
           git add \
             contracts/operations/load-test-scenario-contract.v1.json \
             contracts/operations/production-operability-status.json
+          if [[ -f docs/fixtures/memory-os-operability/deletion-sigkill-authority-diagnostic.last.json ]]; then
+            git rm docs/fixtures/memory-os-operability/deletion-sigkill-authority-diagnostic.last.json
+          fi
           if ! git diff --cached --quiet; then
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "docs(deletion): register SIGKILL in canonical authority"
+            git commit -m "docs(deletion): reconcile SIGKILL canonical authority"
             git fetch origin so
             if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
               echo "Branch advanced during SIGKILL authority reconcile; refusing stale derived authority."
