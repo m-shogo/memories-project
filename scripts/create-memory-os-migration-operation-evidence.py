@@ -55,18 +55,18 @@ def require_actual_cli_authorities(
     if expected_filename is not _canonical_expected_filename:
         raise EvidenceValidationError("migration operation CLI filename authority substitution rejected")
 
-    for path, label in (
-        (DEFAULT_LEDGER, "default ledger"),
-        (VALIDATOR, "validator"),
+    for path, expected, label in (
+        (DEFAULT_LEDGER, _canonical_default_ledger, "default ledger"),
+        (VALIDATOR, _canonical_validator, "validator"),
     ):
         if path.is_symlink():
             raise EvidenceValidationError(f"migration operation CLI {label} authority must be symlink-free")
         try:
             resolved = path.resolve(strict=True)
+            expected_resolved = expected.resolve(strict=True)
         except FileNotFoundError as exc:
             raise EvidenceValidationError(f"migration operation CLI canonical {label} authority missing") from exc
-        expected = (_canonical_default_ledger if label == "default ledger" else _canonical_validator).resolve(strict=True)
-        if resolved != expected:
+        if resolved != expected_resolved:
             raise EvidenceValidationError(f"migration operation CLI {label} authority drift")
 
 
@@ -95,11 +95,16 @@ def run_canonical_validator(
         )
 
 
-def validate_canonical_ledger_before_append(ledger: Path) -> None:
+def validate_canonical_ledger_before_append(
+    ledger: Path,
+    _canonical_runner=run_canonical_validator,
+) -> None:
     if ledger.resolve() != _CANONICAL_DEFAULT_LEDGER.resolve():
         return
+    if run_canonical_validator is not _canonical_runner:
+        raise EvidenceValidationError("migration operation pre-append runner authority substitution rejected")
     try:
-        run_canonical_validator()
+        _canonical_runner()
     except EvidenceValidationError as exc:
         detail = str(exc).removeprefix("canonical migration operation ledger failed validation")
         raise EvidenceValidationError(
@@ -107,11 +112,16 @@ def validate_canonical_ledger_before_append(ledger: Path) -> None:
         ) from exc
 
 
-def validate_canonical_ledger_after_append(ledger: Path) -> None:
+def validate_canonical_ledger_after_append(
+    ledger: Path,
+    _canonical_runner=run_canonical_validator,
+) -> None:
     if ledger.resolve() != _CANONICAL_DEFAULT_LEDGER.resolve():
         return
+    if run_canonical_validator is not _canonical_runner:
+        raise EvidenceValidationError("migration operation post-append runner authority substitution rejected")
     try:
-        run_canonical_validator()
+        _canonical_runner()
     except EvidenceValidationError as exc:
         detail = str(exc).removeprefix("canonical migration operation ledger failed validation")
         raise EvidenceValidationError(
@@ -156,6 +166,7 @@ def main(
     _canonical_append=append_record,
     _canonical_before=validate_canonical_ledger_before_append,
     _canonical_after=validate_canonical_ledger_after_append,
+    _canonical_runner=run_canonical_validator,
 ) -> int:
     if require_actual_cli_authorities is not _canonical_guard:
         raise EvidenceValidationError("migration operation CLI guard authority substitution rejected")
@@ -165,6 +176,8 @@ def main(
         raise EvidenceValidationError("migration operation pre-append validator authority substitution rejected")
     if validate_canonical_ledger_after_append is not _canonical_after:
         raise EvidenceValidationError("migration operation post-append validator authority substitution rejected")
+    if run_canonical_validator is not _canonical_runner:
+        raise EvidenceValidationError("migration operation canonical runner authority substitution rejected")
     _canonical_guard()
 
     parser = argparse.ArgumentParser()
