@@ -14,6 +14,7 @@ from migration_operation_evidence_lib import (
     ROOT,
     expected_filename,
     load_json,
+    require_library_authorities,
     validate_record,
 )
 
@@ -35,6 +36,7 @@ def require_actual_cli_authorities(
     _canonical_load_json=load_json,
     _canonical_validate_record=validate_record,
     _canonical_expected_filename=expected_filename,
+    _canonical_library_guard=require_library_authorities,
 ) -> None:
     if ROOT != _canonical_root:
         raise EvidenceValidationError("migration operation CLI repository authority substitution rejected")
@@ -54,6 +56,9 @@ def require_actual_cli_authorities(
         raise EvidenceValidationError("migration operation CLI record validator authority substitution rejected")
     if expected_filename is not _canonical_expected_filename:
         raise EvidenceValidationError("migration operation CLI filename authority substitution rejected")
+    if require_library_authorities is not _canonical_library_guard:
+        raise EvidenceValidationError("migration operation CLI shared validation authority guard substitution rejected")
+    _canonical_library_guard()
 
     for path, expected, label in (
         (DEFAULT_LEDGER, _canonical_default_ledger, "default ledger"),
