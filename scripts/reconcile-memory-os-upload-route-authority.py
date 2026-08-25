@@ -234,7 +234,87 @@ def validate_canonical_authorities() -> None:
                 f"canonical validator failed: {validator.relative_to(ROOT)}")
 
 
+_CANONICAL_ROOT = ROOT
+_CANONICAL_PATHS = (
+    (OBSERVABILITY, ROOT / "services/import-api/internal/httpserver/observability.go", "observability source"),
+    (SERVER, ROOT / "services/import-api/internal/httpserver/server.go", "server source"),
+    (LIVE_TEST, ROOT / "services/import-api/internal/httpserver/server_live_test.go", "live test source"),
+    (ROUTE_TEST, ROOT / "services/import-api/internal/httpserver/route_authority_test.go", "route test source"),
+    (METRICS_VALIDATOR, ROOT / "scripts/validate-memory-os-metrics.py", "metrics validator"),
+    (RATE_LIMIT_VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit.py", "rate-limit validator"),
+    (OBSERVABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-observability.py", "observability validator"),
+    (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
+)
+_CANONICAL_OLD_LABEL = OLD_LABEL
+_CANONICAL_NEW_LABEL = NEW_LABEL
+_CANONICAL_OLD_ROUTE_BLOCK = OLD_ROUTE_BLOCK
+_CANONICAL_NEW_ROUTE_BLOCK = NEW_ROUTE_BLOCK
+_CANONICAL_KNOWN_SHAPE_FUNCTION = KNOWN_SHAPE_FUNCTION
+_CANONICAL_ROUTE_TEST_CONTENT = ROUTE_TEST_CONTENT
+_CANONICAL_REQUIRE = require
+_CANONICAL_READ = read
+_CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+_CANONICAL_ATOMIC_WRITE_TEXT = atomic_write_text
+_CANONICAL_WRITE_IF_CHANGED = write_if_changed
+_CANONICAL_REPLACE_ONCE = replace_once
+_CANONICAL_CURRENT_AUTHORITY_FILES = current_authority_files
+_CANONICAL_SNAPSHOT_AUTHORITY_FILES = snapshot_authority_files
+_CANONICAL_ROLLBACK_AUTHORITY_FILES = rollback_authority_files
+_CANONICAL_VALIDATE_AUTHORITIES = validate_canonical_authorities
+_CANONICAL_SUBPROCESS_RUN = subprocess.run
+_CANONICAL_OS_REPLACE = os.replace
+_CANONICAL_MKSTEMP = tempfile.mkstemp
+
+
+def enforce_execution_authorities() -> None:
+    if ROOT != _CANONICAL_ROOT:
+        raise ReconcileFailure("upload route repository execution authority drift")
+    for current, canonical, label in _CANONICAL_PATHS:
+        if current != canonical or current.is_symlink() or not current.is_file():
+            raise ReconcileFailure(f"upload route {label} authority drift")
+        try:
+            if current.resolve(strict=True) != canonical.resolve(strict=True):
+                raise ReconcileFailure(f"upload route {label} authority drift")
+        except (FileNotFoundError, OSError, RuntimeError) as exc:
+            raise ReconcileFailure(f"upload route {label} authority drift") from exc
+    constants = (
+        (OLD_LABEL, _CANONICAL_OLD_LABEL, "old label"),
+        (NEW_LABEL, _CANONICAL_NEW_LABEL, "new label"),
+        (OLD_ROUTE_BLOCK, _CANONICAL_OLD_ROUTE_BLOCK, "old route block"),
+        (NEW_ROUTE_BLOCK, _CANONICAL_NEW_ROUTE_BLOCK, "new route block"),
+        (KNOWN_SHAPE_FUNCTION, _CANONICAL_KNOWN_SHAPE_FUNCTION, "known route shape"),
+        (ROUTE_TEST_CONTENT, _CANONICAL_ROUTE_TEST_CONTENT, "route test template"),
+    )
+    for current, canonical, label in constants:
+        if current != canonical:
+            raise ReconcileFailure(f"upload route {label} semantic authority drift")
+    helpers = (
+        (require, _CANONICAL_REQUIRE, "require"),
+        (read, _CANONICAL_READ, "reader"),
+        (atomic_write_bytes, _CANONICAL_ATOMIC_WRITE_BYTES, "atomic byte writer"),
+        (atomic_write_text, _CANONICAL_ATOMIC_WRITE_TEXT, "atomic text writer"),
+        (write_if_changed, _CANONICAL_WRITE_IF_CHANGED, "conditional writer"),
+        (replace_once, _CANONICAL_REPLACE_ONCE, "replacement helper"),
+        (current_authority_files, _CANONICAL_CURRENT_AUTHORITY_FILES, "authority scanner"),
+        (snapshot_authority_files, _CANONICAL_SNAPSHOT_AUTHORITY_FILES, "snapshot helper"),
+        (rollback_authority_files, _CANONICAL_ROLLBACK_AUTHORITY_FILES, "rollback helper"),
+        (validate_canonical_authorities, _CANONICAL_VALIDATE_AUTHORITIES, "validator chain"),
+        (subprocess.run, _CANONICAL_SUBPROCESS_RUN, "subprocess transport"),
+        (os.replace, _CANONICAL_OS_REPLACE, "atomic replace transport"),
+        (tempfile.mkstemp, _CANONICAL_MKSTEMP, "temporary file transport"),
+    )
+    for current, canonical, label in helpers:
+        if current is not canonical:
+            raise ReconcileFailure(f"upload route {label} execution authority drift")
+
+
+_CANONICAL_ENFORCE_EXECUTION_AUTHORITIES = enforce_execution_authorities
+
+
 def main() -> int:
+    if enforce_execution_authorities is not _CANONICAL_ENFORCE_EXECUTION_AUTHORITIES:
+        raise ReconcileFailure("upload route execution guard authority drift")
+    enforce_execution_authorities()
     snapshot_authority_files()
     changed: list[str] = []
 
