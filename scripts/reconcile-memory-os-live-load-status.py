@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -25,6 +25,7 @@ POSTGRES_VALIDATOR = ROOT / "scripts/validate-memory-os-live-load.py"
 OBJECT_VALIDATOR = ROOT / "scripts/validate-memory-os-live-object-load.py"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_SUBPROCESS_RUN = subprocess.run
 POSTGRES_RESULT = (
     ROOT
     / "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
@@ -132,7 +133,22 @@ def validate_authority_identity() -> None:
         require_exact_authority(actual, relative, label)
 
 
-def run_validator(validator: Path, label: str, env: dict[str, str] | None = None) -> None:
+def enforce_runtime_authorities() -> None:
+    validate_authority_identity()
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "live-load subprocess transport substitution")
+
+
+CANONICAL_RUNTIME_GUARD: Callable[[], None] = enforce_runtime_authorities
+
+
+def run_validator(
+    validator: Path,
+    label: str,
+    env: dict[str, str] | None = None,
+    _guard: Callable[[], None] = enforce_runtime_authorities,
+) -> None:
+    require(_guard is CANONICAL_RUNTIME_GUARD, "live-load runtime guard substitution")
+    _guard()
     require(validator.is_file(), f"canonical {label} validator missing")
     completed = subprocess.run(
         [sys.executable, str(validator)],
@@ -144,7 +160,7 @@ def run_validator(validator: Path, label: str, env: dict[str, str] | None = None
         check=False,
     )
     require(
-        completed.returncode == 0,
+        type(completed.returncode) is int and completed.returncode == 0,
         f"canonical {label} validation failed: {completed.stdout[-2000:]}",
     )
 
@@ -203,8 +219,9 @@ def json_bytes(document: dict[str, Any]) -> bytes:
     return (json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def main() -> int:
-    validate_authority_identity()
+def main(_guard: Callable[[], None] = enforce_runtime_authorities) -> int:
+    require(_guard is CANONICAL_RUNTIME_GUARD, "live-load runtime guard substitution")
+    _guard()
 
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA", "")
     require(len(expected_sha) == 40, "EXPECTED_COMMIT_SHA must be a full commit SHA")
