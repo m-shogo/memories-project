@@ -208,13 +208,16 @@ jobs:
             echo "Rate-limit drill source is stale: executed $SOURCE_SHA but so is $remote_sha" >&2
             exit 75
           fi
-          cp "$RESULT_PATH" docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json
+          result_file=docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json
+          diagnostic_file=docs/fixtures/memory-os-operability/rate-limit-emergency-drill-diagnostic.last.json
+          cp "$RESULT_PATH" "$result_file"
           python scripts/validate-memory-os-rate-limit-emergency-drill.py \
             --expected-commit-sha "$SOURCE_SHA" --require-result
-          rm -f docs/fixtures/memory-os-operability/rate-limit-emergency-drill-diagnostic.last.json
-          git add -A -- \
-            docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json \
-            docs/fixtures/memory-os-operability/rate-limit-emergency-drill-diagnostic.last.json
+          rm -f "$diagnostic_file"
+          git add -- "$result_file"
+          if git ls-files --error-unmatch -- "$diagnostic_file" >/dev/null 2>&1; then
+            git add -u -- "$diagnostic_file"
+          fi
           git diff --cached --check
           remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
           if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
