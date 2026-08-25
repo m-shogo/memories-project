@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove upload-completion load reconcile pins authorities, converges missing evidence, and rolls back aggregate rejection."""
+"""Prove upload-completion load reconcile pins authorities, converges missing evidence, and rolls back atomically."""
 
 from __future__ import annotations
 
@@ -63,6 +63,35 @@ def expect_missing_evidence_convergence(module) -> None:
         raise AssertionError("duplicate source missing-evidence entries must fail closed")
 
 
+def expect_atomic_replace_failure(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-completion-atomic-") as tmp:
+        root = Path(tmp)
+        authority = root / "authority.json"
+        authority.write_bytes(b"before\n")
+        original_replace = module.os.replace
+
+        def reject_replace(_source, _target):
+            raise OSError("synthetic atomic replacement failure")
+
+        module.os.replace = reject_replace
+        try:
+            try:
+                module.atomic_write_bytes(authority, b"after\n")
+            except OSError as exc:
+                if "synthetic atomic replacement failure" not in str(exc):
+                    raise
+            else:
+                raise AssertionError("atomic replacement failure was accepted")
+        finally:
+            module.os.replace = original_replace
+
+        if authority.read_bytes() != b"before\n":
+            raise AssertionError("failed atomic replacement changed canonical authority")
+        residue = list(root.glob(f".{authority.name}.*.tmp"))
+        if residue:
+            raise AssertionError(f"failed atomic replacement left temp residue: {residue!r}")
+
+
 def main() -> int:
     module = load_module()
 
@@ -79,6 +108,7 @@ def main() -> int:
         expect_authority_rejection(module, attr, replacement)
     module.enforce_runtime_authorities()
     expect_missing_evidence_convergence(module)
+    expect_atomic_replace_failure(module)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-completion-rollback-") as tmp:
         root = Path(tmp)
@@ -179,7 +209,7 @@ def main() -> int:
         if calls != expected_calls:
             raise AssertionError(f"validator order drift: {calls!r} != {expected_calls!r}")
 
-    print("PASS: upload-completion authority identity, missing-evidence convergence, and aggregate rollback are fail-closed")
+    print("PASS: upload-completion authority identity, evidence convergence, atomic replacement, and aggregate rollback are fail-closed")
     return 0
 
 
