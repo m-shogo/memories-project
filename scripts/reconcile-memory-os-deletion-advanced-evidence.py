@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -63,8 +65,26 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if existing_mode is not None:
+            os.chmod(temporary_path, existing_mode)
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
 
 
 def run_validator(path: Path, *args: str) -> None:
@@ -253,8 +273,8 @@ def main() -> int:
         run_validator(LOAD_VALIDATOR)
         run_validator(OPERABILITY_VALIDATOR)
     except BaseException:
-        LOAD_PATH.write_bytes(original_load)
-        STATUS_PATH.write_bytes(original_status)
+        atomic_write_bytes(LOAD_PATH, original_load)
+        atomic_write_bytes(STATUS_PATH, original_status)
         raise
 
     print("Memory OS advanced deletion evidence reconciled")
