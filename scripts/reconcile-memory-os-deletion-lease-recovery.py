@@ -17,6 +17,7 @@ CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-lease-
 CANONICAL_RESULT_PATH = CANONICAL_ROOT / "docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json"
 CANONICAL_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-lease-recovery.py"
 CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR = CANONICAL_VALIDATOR
@@ -62,6 +63,10 @@ def enforce_runtime_authorities() -> None:
     validate_authority_identity()
     if subprocess.run is not CANONICAL_SUBPROCESS_RUN:
         raise ReconcileFailure("lease recovery subprocess transport is not canonical")
+    if os.replace is not CANONICAL_OS_REPLACE:
+        raise ReconcileFailure("lease recovery atomic replacement transport is not canonical")
+    if atomic_write_bytes is not CANONICAL_ATOMIC_WRITE_BYTES:
+        raise ReconcileFailure("lease recovery atomic writer authority is not canonical")
 
 
 def run_validator(expected_sha: str) -> None:
@@ -91,6 +96,9 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     finally:
         if temporary_path.exists():
             temporary_path.unlink()
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 
 
 def write_contract_transactionally(contract: dict[str, Any], expected_sha: str) -> None:
