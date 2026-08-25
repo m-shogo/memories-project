@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-deletion-worker-saturation-results.v1",
-  "commitSha": "7d4b77e35b1c45ca18c7c408f1703fc9cb24052d",
-  "generatedAt": "2026-08-25T07:56:36Z",
+  "commitSha": "a1b80db99d399f1f72303e222ac43c1b54c325c5",
+  "generatedAt": "2026-08-25T08:03:52Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
