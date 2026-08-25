@@ -90,10 +90,17 @@ def append_unique(values: list[Any], item: str) -> None:
 
 
 def replace_exact(values: list[Any], old: str, new: str) -> None:
-    for index, value in enumerate(values):
-        if value == old:
-            values[index] = new
-            return
+    old_indexes = [index for index, value in enumerate(values) if value == old]
+    require(len(old_indexes) <= 1, f"duplicate source missing-evidence entry: {old}")
+    if not old_indexes:
+        return
+    old_index = old_indexes[0]
+    if new == old:
+        return
+    if new in values:
+        values.pop(old_index)
+        return
+    values[old_index] = new
 
 
 def main() -> int:
