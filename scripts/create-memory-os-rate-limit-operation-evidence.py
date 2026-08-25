@@ -117,8 +117,17 @@ def validate_canonical_authority(
         )
 
 
-def validate_existing_canonical_authority(validator: ModuleType, ledger: Path) -> None:
-    validate_canonical_authority(validator, ledger, phase="before append")
+def validate_existing_canonical_authority(
+    validator: ModuleType,
+    ledger: Path,
+    _canonical_default_ledger: Path = _CANONICAL_DEFAULT_LEDGER,
+) -> None:
+    validate_canonical_authority(
+        validator,
+        ledger,
+        phase="before append",
+        _canonical_default_ledger=_canonical_default_ledger,
+    )
 
 
 def append_record(
@@ -144,7 +153,11 @@ def append_record(
         temp_root = Path(os.environ.get("TMPDIR", "/tmp")).resolve()
         if not (ledger.is_relative_to(allowed_root) or ledger.is_relative_to(temp_root)):
             raise WriterFailure("ledger directory is outside approved roots")
-    validate_existing_canonical_authority(validator, ledger)
+    validate_existing_canonical_authority(
+        validator,
+        ledger,
+        _canonical_default_ledger=_canonical_default_ledger,
+    )
     ledger.mkdir(parents=True, exist_ok=True)
 
     operation_id = record["operationId"]
@@ -160,7 +173,12 @@ def append_record(
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        validate_canonical_authority(validator, ledger, phase="after append")
+        validate_canonical_authority(
+            validator,
+            ledger,
+            phase="after append",
+            _canonical_default_ledger=_canonical_default_ledger,
+        )
     except Exception:
         try:
             target.unlink()
