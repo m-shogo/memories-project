@@ -4,7 +4,11 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +22,20 @@ READINESS_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-readiness-note.p
 MISSING_EVIDENCE_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-missing-evidence.py"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+
+CANONICAL_AUTHORITIES = {
+    "proof contract": PROOF_CONTRACT,
+    "proof result": PROOF_RESULT,
+    "proof validator": PROOF_VALIDATOR,
+    "load contract": LOAD_CONTRACT,
+    "production status": STATUS,
+    "readiness normalizer": READINESS_NORMALIZER,
+    "missing-evidence normalizer": MISSING_EVIDENCE_NORMALIZER,
+    "load validator": LOAD_VALIDATOR,
+    "operability validator": OPERABILITY_VALIDATOR,
+}
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 
 PROOF_REFS = [
     "contracts/operations/deletion-lease-recovery-contract.v1.json",
@@ -46,8 +64,27 @@ def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(fd, existing_mode)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
 
 
 def append_unique(values: list[Any], item: str) -> None:
@@ -62,20 +99,45 @@ def replace_if_present(values: list[Any], old: str, new: str) -> None:
             return
 
 
+def require_canonical_authorities() -> None:
+    actual = {
+        "proof contract": PROOF_CONTRACT,
+        "proof result": PROOF_RESULT,
+        "proof validator": PROOF_VALIDATOR,
+        "load contract": LOAD_CONTRACT,
+        "production status": STATUS,
+        "readiness normalizer": READINESS_NORMALIZER,
+        "missing-evidence normalizer": MISSING_EVIDENCE_NORMALIZER,
+        "load validator": LOAD_VALIDATOR,
+        "operability validator": OPERABILITY_VALIDATOR,
+    }
+    for label, expected in CANONICAL_AUTHORITIES.items():
+        path = actual[label]
+        if path != expected:
+            raise SystemExit(f"{label} authority substitution")
+        if not path.is_file() or path.is_symlink():
+            raise SystemExit(f"{label} authority missing or non-canonical")
+        if path.resolve() != expected:
+            raise SystemExit(f"{label} authority escapes canonical path")
+    if subprocess.run is not CANONICAL_SUBPROCESS_RUN:
+        raise SystemExit("lease authority subprocess transport is not canonical")
+    if os.replace is not CANONICAL_OS_REPLACE:
+        raise SystemExit("lease authority atomic replacement transport is not canonical")
+    if atomic_write_bytes is not CANONICAL_ATOMIC_WRITE_BYTES:
+        raise SystemExit("lease authority atomic writer is not canonical")
+
+
 def normalize_and_validate_authority() -> None:
-    # Normalize the human-readable missing-evidence projection first. It is
-    # allowed to deduplicate stale deterministic blocker text while deriving
-    # only from already-validated load readiness flags; running the readiness
-    # normalizer first would ask aggregate Operability to accept stale duplicate
-    # blocker text before the canonical dedupe had a chance to repair it.
-    subprocess.run(["python", str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
-    subprocess.run(["python", str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
-    subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
-    subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+    require_canonical_authorities()
+    subprocess.run([sys.executable, str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
 
 
 def main() -> int:
-    subprocess.run(["python", str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
+    require_canonical_authorities()
+    subprocess.run([sys.executable, str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
     contract = load(PROOF_CONTRACT)
     result = load(PROOF_RESULT)
     readiness = contract.get("readiness", {})
@@ -163,8 +225,8 @@ def main() -> int:
         write(STATUS, status)
         normalize_and_validate_authority()
     except BaseException:
-        LOAD_CONTRACT.write_bytes(original_load)
-        STATUS.write_bytes(original_status)
+        atomic_write_bytes(LOAD_CONTRACT, original_load)
+        atomic_write_bytes(STATUS, original_status)
         raise
 
     print("Memory OS deletion lease recovery canonical reconciliation PASS")
