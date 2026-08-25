@@ -20,6 +20,7 @@ on:
       - "scripts/reconcile-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/validate-memory-os-client-server-support-window-negative.py"
+      - "scripts/validate-memory-os-client-server-support-window-reconcile-negative.py"
       - "scripts/reconcile-memory-os-client-server-support-window-status.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -43,6 +44,7 @@ on:
       - "scripts/reconcile-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/validate-memory-os-client-server-support-window-negative.py"
+      - "scripts/validate-memory-os-client-server-support-window-reconcile-negative.py"
       - "scripts/reconcile-memory-os-client-server-support-window-status.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -91,6 +93,7 @@ jobs:
             scripts/reconcile-memory-os-client-baseline-registry.py \
             scripts/validate-memory-os-client-server-support-window.py \
             scripts/validate-memory-os-client-server-support-window-negative.py \
+            scripts/validate-memory-os-client-server-support-window-reconcile-negative.py \
             scripts/reconcile-memory-os-client-server-support-window-status.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
@@ -102,6 +105,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-client-server-support-window-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-client-server-support-window-reconcile-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
@@ -155,6 +161,7 @@ jobs:
             scripts/reconcile-memory-os-client-baseline-registry.py \
             scripts/validate-memory-os-client-server-support-window.py \
             scripts/validate-memory-os-client-server-support-window-negative.py \
+            scripts/validate-memory-os-client-server-support-window-reconcile-negative.py \
             scripts/reconcile-memory-os-client-server-support-window-status.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
@@ -166,6 +173,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-client-server-support-window-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-client-server-support-window-reconcile-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
