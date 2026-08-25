@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +86,10 @@ def main() -> int:
     expect_authority_rejection(reconciler, "RESULT_PATH", reconciler.CONTRACT_PATH)
     expect_authority_rejection(reconciler, "VALIDATOR_PATH", reconciler.CONTRACT_PATH)
 
+    source = RECONCILER_PATH.read_text(encoding="utf-8")
+    if "CONTRACT_PATH.write_text(" in source or "CONTRACT_PATH.write_bytes(" in source:
+        raise AssertionError("deletion-worker saturation authority regressed to direct contract publication")
+
     original_contract = reconciler.CONTRACT_PATH.read_bytes()
     original_result = reconciler.RESULT_PATH.read_bytes() if reconciler.RESULT_PATH.exists() else None
     contract = json.loads(original_contract.decode("utf-8"))
@@ -124,8 +129,10 @@ def main() -> int:
 
         if reconciler.CONTRACT_PATH.read_bytes() != original_contract:
             raise AssertionError("reconciler failed to restore contract bytes after post-write validation failure")
+        if list(reconciler.CONTRACT_PATH.parent.glob(f".{reconciler.CONTRACT_PATH.name}.*.tmp")):
+            raise AssertionError("reconciler left atomic temp authority after rollback")
     finally:
-        reconciler.CONTRACT_PATH.write_bytes(original_contract)
+        reconciler.atomic_write_bytes(reconciler.CONTRACT_PATH, original_contract)
         if original_result is None:
             reconciler.RESULT_PATH.unlink(missing_ok=True)
         else:
@@ -135,7 +142,39 @@ def main() -> int:
         else:
             os.environ["EXPECTED_COMMIT_SHA"] = old_expected
 
-    print("PASS: deletion-worker saturation authority identity and reconcile rollback are fail-closed")
+    with tempfile.TemporaryDirectory(prefix="memory-os-deletion-worker-saturation-atomic-") as tmp:
+        target = Path(tmp) / "authority.json"
+        target.write_bytes(b"before\n")
+        original_replace = reconciler.os.replace
+        failed = False
+
+        def fail_replace(source_path, destination_path):
+            nonlocal failed
+            if Path(destination_path) == target and not failed:
+                failed = True
+                raise OSError("synthetic atomic replace failure")
+            return original_replace(source_path, destination_path)
+
+        reconciler.os.replace = fail_replace
+        try:
+            try:
+                reconciler.atomic_write_bytes(target, b"after\n")
+            except OSError as exc:
+                if "synthetic atomic replace failure" not in str(exc):
+                    raise AssertionError(f"unexpected atomic replacement failure: {exc}") from exc
+            else:
+                raise AssertionError("atomic writer accepted synthetic replacement failure")
+        finally:
+            reconciler.os.replace = original_replace
+
+        if not failed:
+            raise AssertionError("synthetic atomic replacement failure was not exercised")
+        if target.read_bytes() != b"before\n":
+            raise AssertionError("atomic replacement failure mutated canonical target bytes")
+        if list(target.parent.glob(f".{target.name}.*.tmp")):
+            raise AssertionError("atomic replacement failure left a temp file")
+
+    print("PASS: deletion-worker saturation authority identity, atomic publication and reconcile rollback are fail-closed")
     return 0
 
 
