@@ -93,11 +93,6 @@ def enforce_runtime_authorities() -> None:
 CANONICAL_RUNTIME_GUARD: Callable[[], None] = enforce_runtime_authorities
 
 
-def require_canonical_guard(guard: Callable[[], None]) -> None:
-    require(guard is CANONICAL_RUNTIME_GUARD, "candidate runtime guard substitution")
-    guard()
-
-
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -132,7 +127,8 @@ def run_validator(
     failure_label: str,
     _guard: Callable[[], None] = enforce_runtime_authorities,
 ) -> None:
-    require_canonical_guard(_guard)
+    require(_guard is CANONICAL_RUNTIME_GUARD, "candidate runtime guard substitution")
+    _guard()
     completed = subprocess.run(
         [sys.executable, str(path)],
         cwd=ROOT,
@@ -176,7 +172,8 @@ def is_ancestor(
     head: str,
     _guard: Callable[[], None] = enforce_runtime_authorities,
 ) -> bool:
-    require_canonical_guard(_guard)
+    require(_guard is CANONICAL_RUNTIME_GUARD, "candidate runtime guard substitution")
+    _guard()
     try:
         return subprocess.run(
             ["git", "merge-base", "--is-ancestor", base, head],
@@ -190,7 +187,8 @@ def is_ancestor(
 
 
 def main(_guard: Callable[[], None] = enforce_runtime_authorities) -> int:
-    require_canonical_guard(_guard)
+    require(_guard is CANONICAL_RUNTIME_GUARD, "candidate runtime guard substitution")
+    _guard()
     result = load(RESULT_PATH)
     require(result.get("schemaVersion") ==
             "memory-os-mixed-version-candidate-results.v1",
