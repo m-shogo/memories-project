@@ -18,6 +18,7 @@ CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-prefen
 CANONICAL_RESULT_PATH = CANONICAL_ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json"
 CANONICAL_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
 CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR = CANONICAL_VALIDATOR
@@ -57,6 +58,8 @@ def validate_authority_identity() -> None:
     _require_exact_path("upload completion result", RESULT_PATH, CANONICAL_RESULT_PATH)
     _require_exact_path("upload completion validator", VALIDATOR, CANONICAL_VALIDATOR)
     require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "validator execution transport is not canonical")
+    require(os.replace is CANONICAL_OS_REPLACE, "atomic replacement transport is not canonical")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "atomic writer authority is not canonical")
 
 
 def run_validator(expected: str) -> None:
@@ -82,7 +85,11 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             temporary_path.unlink()
 
 
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def write_contract_transactionally(contract: dict[str, Any], expected: str) -> None:
+    validate_authority_identity()
     original = CONTRACT_PATH.read_bytes()
     candidate = (json.dumps(contract, indent=2) + "\n").encode("utf-8")
     atomic_write_bytes(CONTRACT_PATH, candidate)
