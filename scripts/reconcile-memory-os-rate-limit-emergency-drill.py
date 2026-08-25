@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -121,6 +123,28 @@ def validate_written_authority(source_sha: str) -> None:
     run_validator(OPERABILITY_VALIDATOR)
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    atomic_write_bytes(
+        path,
+        (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+    )
+
+
 def transactional_write(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
     enforce_runtime_authorities()
     originals = {
@@ -128,18 +152,12 @@ def transactional_write(contract: dict[str, Any], status: dict[str, Any], source
         STATUS_PATH: STATUS_PATH.read_bytes(),
     }
     try:
-        CONTRACT_PATH.write_text(
-            json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        STATUS_PATH.write_text(
-            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_json(CONTRACT_PATH, contract)
+        atomic_write_json(STATUS_PATH, status)
         validate_written_authority(source_sha)
     except BaseException:
         for path, original in originals.items():
-            path.write_bytes(original)
+            atomic_write_bytes(path, original)
         raise
 
 
