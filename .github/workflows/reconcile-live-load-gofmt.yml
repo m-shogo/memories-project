@@ -16,24 +16,60 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-live-load-gofmt-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  format:
-    if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'style(load): format live checkpoint tests')
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout exact source
+      - name: Checkout exact pull request head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: false
+
+      - name: Validate canonical formatting read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          gofmt -w \
+            services/import-api/internal/httpserver/live_load_test.go \
+            services/import-api/internal/httpserver/live_object_load_test.go
+          test -z "$(gofmt -l \
+            services/import-api/internal/httpserver/live_load_test.go \
+            services/import-api/internal/httpserver/live_object_load_test.go)"
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  format:
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' || !contains(github.event.head_commit.message, 'style(load): format live checkpoint tests'))
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact event source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -45,13 +81,9 @@ jobs:
       - name: Capture exact source
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain)"
-          SOURCE_SHA="$(git rev-parse HEAD)"
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            git fetch origin so
-            test "$(git rev-parse origin/so)" = "$SOURCE_SHA"
-          fi
-          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Apply canonical gofmt
         run: |
@@ -62,14 +94,9 @@ jobs:
           test -z "$(gofmt -l \
             services/import-api/internal/httpserver/live_load_test.go \
             services/import-api/internal/httpserver/live_object_load_test.go)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git diff --exit-code -- \
-              services/import-api/internal/httpserver/live_load_test.go \
-              services/import-api/internal/httpserver/live_object_load_test.go
-          fi
 
       - name: Commit formatting authority
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -84,6 +111,7 @@ jobs:
             echo "Live checkpoint tests are already formatted."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "style(load): format live checkpoint tests"
