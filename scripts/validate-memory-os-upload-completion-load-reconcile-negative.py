@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove upload-completion load reconcile pins authorities and rolls back aggregate rejection."""
+"""Prove upload-completion load reconcile pins authorities, converges missing evidence, and rolls back aggregate rejection."""
 
 from __future__ import annotations
 
@@ -40,6 +40,29 @@ def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
+def expect_missing_evidence_convergence(module) -> None:
+    old = "old missing evidence"
+    new = "new missing evidence"
+
+    values = ["before", old, new, "after"]
+    module.replace_exact(values, old, new)
+    if values != ["before", new, "after"]:
+        raise AssertionError(f"existing replacement target must dedupe deterministically: {values!r}")
+
+    values = ["before", old, "after"]
+    module.replace_exact(values, old, new)
+    if values != ["before", new, "after"]:
+        raise AssertionError(f"unique replacement drift: {values!r}")
+
+    values = [old, old]
+    try:
+        module.replace_exact(values, old, new)
+    except module.ReconcileFailure:
+        pass
+    else:
+        raise AssertionError("duplicate source missing-evidence entries must fail closed")
+
+
 def main() -> int:
     module = load_module()
 
@@ -55,6 +78,7 @@ def main() -> int:
     for attr, replacement in substitutions.items():
         expect_authority_rejection(module, attr, replacement)
     module.enforce_runtime_authorities()
+    expect_missing_evidence_convergence(module)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-completion-rollback-") as tmp:
         root = Path(tmp)
@@ -155,7 +179,7 @@ def main() -> int:
         if calls != expected_calls:
             raise AssertionError(f"validator order drift: {calls!r} != {expected_calls!r}")
 
-    print("PASS: upload-completion authority identity and aggregate rollback are fail-closed")
+    print("PASS: upload-completion authority identity, missing-evidence convergence, and aggregate rollback are fail-closed")
     return 0
 
 
