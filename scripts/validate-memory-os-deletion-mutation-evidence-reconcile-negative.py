@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove deletion mutation evidence reconcile pins authorities and rolls back aggregate rejection."""
+"""Prove deletion mutation evidence reconcile pins authorities, publishes atomically, and rolls back aggregate rejection."""
 
 from __future__ import annotations
 
@@ -40,6 +40,35 @@ def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
+def expect_atomic_replace_failure(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-mutation-atomic-") as tmp:
+        root = Path(tmp)
+        authority = root / "authority.json"
+        authority.write_bytes(b"before\n")
+        original_replace = module.os.replace
+
+        def reject_replace(_source, _target):
+            raise OSError("synthetic atomic replacement failure")
+
+        module.os.replace = reject_replace
+        try:
+            try:
+                module.atomic_write_bytes(authority, b"after\n")
+            except OSError as exc:
+                if "synthetic atomic replacement failure" not in str(exc):
+                    raise
+            else:
+                raise AssertionError("atomic replacement failure was accepted")
+        finally:
+            module.os.replace = original_replace
+
+        if authority.read_bytes() != b"before\n":
+            raise AssertionError("failed atomic replacement changed authority bytes")
+        residue = list(root.glob(f".{authority.name}.*.tmp"))
+        if residue:
+            raise AssertionError(f"failed atomic replacement left temp residue: {residue!r}")
+
+
 def main() -> int:
     module = load_module()
     substitutions = {
@@ -55,6 +84,7 @@ def main() -> int:
     for attr, replacement in substitutions.items():
         expect_authority_rejection(module, attr, replacement)
     module.enforce_runtime_authorities()
+    expect_atomic_replace_failure(module)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-mutation-reconcile-") as tmp:
         root = Path(tmp)
@@ -157,6 +187,9 @@ def main() -> int:
             raise AssertionError("load authority changed after rejected mutation reconcile")
         if status.read_bytes() != before_status:
             raise AssertionError("production status changed after rejected mutation reconcile")
+        residue = list(root.glob(".*.tmp"))
+        if residue:
+            raise AssertionError(f"aggregate rollback left atomic temp residue: {residue!r}")
         expected = [
             str(proof_validator),
             str(load_index_validator),
@@ -166,7 +199,7 @@ def main() -> int:
         if calls != expected:
             raise AssertionError(f"validator order drift: {calls!r} != {expected!r}")
 
-    print("PASS: deletion mutation authority identity and aggregate rollback are fail-closed")
+    print("PASS: deletion mutation authority identity, atomic replacement, and aggregate rollback are fail-closed")
     return 0
 
 
