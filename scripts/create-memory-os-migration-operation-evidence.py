@@ -101,8 +101,6 @@ def validate_canonical_ledger_before_append(
 ) -> None:
     if ledger.resolve() != _CANONICAL_DEFAULT_LEDGER.resolve():
         return
-    if run_canonical_validator is not _canonical_runner:
-        raise EvidenceValidationError("migration operation pre-append runner authority substitution rejected")
     try:
         _canonical_runner()
     except EvidenceValidationError as exc:
@@ -118,8 +116,6 @@ def validate_canonical_ledger_after_append(
 ) -> None:
     if ledger.resolve() != _CANONICAL_DEFAULT_LEDGER.resolve():
         return
-    if run_canonical_validator is not _canonical_runner:
-        raise EvidenceValidationError("migration operation post-append runner authority substitution rejected")
     try:
         _canonical_runner()
     except EvidenceValidationError as exc:
