@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register Apply/upload-authorization pre-fence proof without overclaiming upload completion or production behavior."""
+"""Register Apply/upload-authorization pre-fence proof without overclaiming other deletion evidence."""
 
 from __future__ import annotations
 
@@ -36,6 +36,15 @@ REFS = (
     "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py",
     ".github/workflows/deletion-prefence-mutation-linearization.yml",
     "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json",
+)
+
+UPLOAD_COMPLETION_BLOCKER = (
+    "pre-fence in-flight linearization for upload-completion requests, host/process failure behavior, "
+    "production topology and independently reviewed deletion-load thresholds"
+)
+UPLOAD_COMPLETION_UNPROVEN_SUFFIX = (
+    ". Apply and upload-authorization pre-fence mutation linearization are now proven locally with zero durable mutation; "
+    "upload completion already in flight remains unproven."
 )
 
 
@@ -149,10 +158,15 @@ def main() -> int:
     require(load_readiness.get("productionEquivalentDependencies") is False, "local mutation proof cannot cross production-equivalent boundary")
     require(load_readiness.get("capacityBoundaryEstablished") is False, "local mutation proof cannot establish capacity boundary")
     require(load_readiness.get("sustainedSoakEvidence") is False, "local mutation proof cannot establish production-shaped soak")
+    upload_completion_proven = load_readiness.get("uploadCompletionPreFenceInFlightLinearizationProven")
+    require(isinstance(upload_completion_proven, bool), "upload completion readiness must be canonical boolean authority")
 
     load_readiness["applyPreFenceInFlightLinearizationProven"] = True
     load_readiness["uploadAuthorizationPreFenceInFlightLinearizationProven"] = True
-    load_readiness["uploadCompletionPreFenceInFlightLinearizationProven"] = False
+    # This reconciler owns Apply/upload-authorization mutation evidence only. Preserve
+    # independently reconciled upload-completion authority instead of promoting or
+    # demoting it from an unrelated proof.
+    load_readiness["uploadCompletionPreFenceInFlightLinearizationProven"] = upload_completion_proven
     for ref in REFS:
         append_unique(evidence_refs, ref)
 
@@ -161,17 +175,25 @@ def main() -> int:
         None,
     )
     require(isinstance(deletion_deferred, dict), "deletion-under-load deferred record missing")
-    deletion_deferred["reason"] = (
-        "post-fence former-session load, Preview requests authenticated before the fence, Apply and upload-authorization requests authenticated before the fence with zero pre-worker durable mutation, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; "
-        "upload-completion requests already in flight before the fence, host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
-    )
+    if upload_completion_proven:
+        deletion_deferred["reason"] = (
+            "post-fence former-session load, Preview requests authenticated before the fence, Apply and upload-authorization requests authenticated before the fence with zero pre-worker durable mutation, upload-completion requests paused after real MinIO HEAD and rejected after the epoch-2 fence, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; "
+            "host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
+        )
+    else:
+        deletion_deferred["reason"] = (
+            "post-fence former-session load, Preview requests authenticated before the fence, Apply and upload-authorization requests authenticated before the fence with zero pre-worker durable mutation, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; "
+            "upload-completion requests already in flight before the fence, host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
+        )
     deletion_deferred["requiredDependencyMode"] = "PRODUCTION_EQUIVALENT"
 
     note = load_readiness.get("note")
     if isinstance(note, str):
-        suffix = ". Apply and upload-authorization pre-fence mutation linearization are now proven locally with zero durable mutation; upload completion already in flight remains unproven."
-        if not note.endswith(suffix):
-            load_readiness["note"] = note.rstrip(".") + suffix
+        if upload_completion_proven:
+            if note.endswith(UPLOAD_COMPLETION_UNPROVEN_SUFFIX):
+                load_readiness["note"] = note[: -len(UPLOAD_COMPLETION_UNPROVEN_SUFFIX)] + "."
+        elif not note.endswith(UPLOAD_COMPLETION_UNPROVEN_SUFFIX):
+            load_readiness["note"] = note.rstrip(".") + UPLOAD_COMPLETION_UNPROVEN_SUFFIX
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO", "local mutation proof cannot reconcile into Production GO")
@@ -194,20 +216,18 @@ def main() -> int:
         "pre-fence in-flight linearization for Apply and Upload authorization surfaces,",
     )
     new_missing: list[Any] = []
-    replaced = False
+    mutation_blocker_replaced = False
     for item in missing:
         if isinstance(item, str) and any(item.startswith(fragment) for fragment in old_fragments):
-            new_missing.append(
-                "pre-fence in-flight linearization for upload-completion requests, host/process failure behavior, production topology and independently reviewed deletion-load thresholds"
-            )
-            replaced = True
-        else:
-            new_missing.append(item)
-    if not replaced:
-        append_unique(
-            new_missing,
-            "pre-fence in-flight linearization for upload-completion requests, host/process failure behavior, production topology and independently reviewed deletion-load thresholds",
-        )
+            mutation_blocker_replaced = True
+            if not upload_completion_proven:
+                append_unique(new_missing, UPLOAD_COMPLETION_BLOCKER)
+            continue
+        if upload_completion_proven and isinstance(item, str) and item.startswith("pre-fence in-flight linearization for upload-completion requests"):
+            continue
+        new_missing.append(item)
+    if not mutation_blocker_replaced and not upload_completion_proven:
+        append_unique(new_missing, UPLOAD_COMPLETION_BLOCKER)
     load_area["missingEvidence"] = new_missing
     for ref in REFS:
         append_unique(refs, ref)
@@ -216,7 +236,10 @@ def main() -> int:
     require(load_area.get("status") == "PARTIAL", "OPS-P0-006 status drift")
     require(load_readiness.get("productionEquivalentDependencies") is False, "production equivalence drift")
     require(load_readiness.get("capacityBoundaryEstablished") is False, "capacity boundary drift")
-    require(load_readiness.get("uploadCompletionPreFenceInFlightLinearizationProven") is False, "upload completion must remain unproven")
+    require(
+        load_readiness.get("uploadCompletionPreFenceInFlightLinearizationProven") is upload_completion_proven,
+        "mutation reconcile cannot alter independent upload completion authority",
+    )
 
     original_load = LOAD_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
@@ -234,7 +257,7 @@ def main() -> int:
     print("Memory OS deletion mutation evidence reconciled")
     print("Apply pre-fence linearization: true")
     print("upload authorization pre-fence linearization: true")
-    print("upload completion pre-fence linearization: false")
+    print(f"upload completion pre-fence linearization preserved: {str(upload_completion_proven).lower()}")
     print("OPS-P0-006: PARTIAL")
     print("Production: NO_GO")
     return 0
