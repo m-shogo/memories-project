@@ -65,37 +65,66 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+def require_exact_repo_file(
+    path: Path,
+    expected_relative: Path,
+    field: str,
+    *,
+    _root: Path = ROOT,
+) -> Path:
     try:
-        lexical = path.relative_to(ROOT)
-        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+        lexical = path.relative_to(_root)
+        resolved = path.resolve(strict=True).relative_to(_root.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(
-        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
         f"{field} authority drift",
     )
     return path
 
 
-def enforce_runtime_authorities() -> None:
-    for path, relative, field in (
-        (CONTRACT, CONTRACT_REL, "client baseline contract"),
-        (REGISTRY, REGISTRY_REL, "client baseline registry"),
-        (SUPPORT, SUPPORT_REL, "client/server support contract"),
-        (RELEASES, RELEASES_REL, "release baseline registry"),
-        (RELEASE_PAIRS, RELEASE_PAIRS_REL, "release compatibility pair registry"),
-        (SKEW, SKEW_REL, "client/server skew registry"),
-        (STATUS, STATUS_REL, "production operability status"),
-        (WRITER, WRITER_REL, "client baseline writer"),
-        (PAIR_WRITER, PAIR_WRITER_REL, "release pair writer"),
-        (VALIDATOR, VALIDATOR_REL, "client baseline validator"),
-        (SUPPORT_VALIDATOR, SUPPORT_VALIDATOR_REL, "support-window validator"),
-        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
-        (WORKFLOW, WORKFLOW_REL, "client baseline workflow"),
-        (RUNBOOK, RUNBOOK_REL, "client baseline runbook"),
+def enforce_runtime_authorities(
+    *,
+    _root: Path = ROOT,
+    _contract: Path = CONTRACT,
+    _registry: Path = REGISTRY,
+    _support: Path = SUPPORT,
+    _releases: Path = RELEASES,
+    _release_pairs: Path = RELEASE_PAIRS,
+    _skew: Path = SKEW,
+    _status: Path = STATUS,
+    _writer: Path = WRITER,
+    _pair_writer: Path = PAIR_WRITER,
+    _validator: Path = VALIDATOR,
+    _support_validator: Path = SUPPORT_VALIDATOR,
+    _operability_validator: Path = OPERABILITY_VALIDATOR,
+    _workflow: Path = WORKFLOW,
+    _runbook: Path = RUNBOOK,
+    _require: Any = require,
+    _require_exact_repo_file: Any = require_exact_repo_file,
+) -> None:
+    _require(ROOT == _root, "repository root authority drift")
+    _require(require is _require, "require helper authority drift")
+    _require(require_exact_repo_file is _require_exact_repo_file, "repository file authority helper drift")
+    for current, expected, relative, field in (
+        (CONTRACT, _contract, CONTRACT_REL, "client baseline contract"),
+        (REGISTRY, _registry, REGISTRY_REL, "client baseline registry"),
+        (SUPPORT, _support, SUPPORT_REL, "client/server support contract"),
+        (RELEASES, _releases, RELEASES_REL, "release baseline registry"),
+        (RELEASE_PAIRS, _release_pairs, RELEASE_PAIRS_REL, "release compatibility pair registry"),
+        (SKEW, _skew, SKEW_REL, "client/server skew registry"),
+        (STATUS, _status, STATUS_REL, "production operability status"),
+        (WRITER, _writer, WRITER_REL, "client baseline writer"),
+        (PAIR_WRITER, _pair_writer, PAIR_WRITER_REL, "release pair writer"),
+        (VALIDATOR, _validator, VALIDATOR_REL, "client baseline validator"),
+        (SUPPORT_VALIDATOR, _support_validator, SUPPORT_VALIDATOR_REL, "support-window validator"),
+        (OPERABILITY_VALIDATOR, _operability_validator, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW, _workflow, WORKFLOW_REL, "client baseline workflow"),
+        (RUNBOOK, _runbook, RUNBOOK_REL, "client baseline runbook"),
     ):
-        require_exact_repo_file(path, relative, field)
+        _require(current == expected, f"{field} runtime authority drift")
+        _require_exact_repo_file(current, relative, field, _root=_root)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -163,8 +192,14 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def write_and_validate_transactionally(
-    contract: dict[str, Any], support: dict[str, Any], status: dict[str, Any]
+    contract: dict[str, Any],
+    support: dict[str, Any],
+    status: dict[str, Any],
+    *,
+    _guard: Any = enforce_runtime_authorities,
 ) -> None:
+    require(enforce_runtime_authorities is _guard, "runtime authority guard drift")
+    _guard()
     paths = (CONTRACT, SUPPORT, STATUS)
     originals = {path: path.read_bytes() for path in paths}
     try:
@@ -187,8 +222,9 @@ def write_and_validate_transactionally(
         raise
 
 
-def main() -> int:
-    enforce_runtime_authorities()
+def main(*, _guard: Any = enforce_runtime_authorities) -> int:
+    require(enforce_runtime_authorities is _guard, "runtime authority guard drift")
+    _guard()
 
     registry = load(REGISTRY)
     releases = load(RELEASES)
