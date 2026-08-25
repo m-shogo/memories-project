@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-capacity-ramp-results.v1",
-  "commitSha": "6705e99849088614d8cb7b4c7e8972cea0990b96",
-  "generatedAt": "2026-08-25T04:35:36Z",
+  "commitSha": "4c3a636cc4b4397d04680f904c9c556426896e64",
+  "generatedAt": "2026-08-25T19:13:47Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
@@ -18,8 +18,8 @@
   "scenario": {
     "scenarioId": "authenticated-preview-capacity-ramp-local-postgres",
     "workloadType": "RAMP",
-    "startedAt": "2026-08-25T04:35:34Z",
-    "completedAt": "2026-08-25T04:35:36Z",
+    "startedAt": "2026-08-25T19:13:44Z",
+    "completedAt": "2026-08-25T19:13:47Z",
     "requestsPerStep": 240,
     "steps": [
       {
@@ -32,11 +32,11 @@
           "statusClassCounts": {
             "2xx": 240
           },
-          "durationSeconds": 0.340565678,
-          "throughput": 704.7098856508965,
-          "latencyP50Ms": 5.205,
-          "latencyP95Ms": 7.077,
-          "latencyP99Ms": 13.736
+          "durationSeconds": 0.646672581,
+          "throughput": 371.1306263037616,
+          "latencyP50Ms": 10.266,
+          "latencyP95Ms": 13.475,
+          "latencyP99Ms": 19.736
         }
       },
       {
@@ -49,11 +49,11 @@
           "statusClassCounts": {
             "2xx": 240
           },
-          "durationSeconds": 0.317954282,
-          "throughput": 754.8255003529093,
-          "latencyP50Ms": 10.611,
-          "latencyP95Ms": 12.189,
-          "latencyP99Ms": 13.184
+          "durationSeconds": 0.537149531,
+          "throughput": 446.80295923036005,
+          "latencyP50Ms": 16.889,
+          "latencyP95Ms": 24.791,
+          "latencyP99Ms": 31.029
         }
       },
       {
@@ -66,11 +66,11 @@
           "statusClassCounts": {
             "2xx": 240
           },
-          "durationSeconds": 0.311040929,
-          "throughput": 771.6026336842634,
-          "latencyP50Ms": 20.596,
-          "latencyP95Ms": 22.346,
-          "latencyP99Ms": 22.749
+          "durationSeconds": 0.468712603,
+          "throughput": 512.0408507556175,
+          "latencyP50Ms": 31.002,
+          "latencyP95Ms": 33.769,
+          "latencyP99Ms": 35.222
         }
       },
       {
@@ -83,11 +83,11 @@
           "statusClassCounts": {
             "2xx": 240
           },
-          "durationSeconds": 0.311895521,
-          "throughput": 769.4884467417536,
-          "latencyP50Ms": 30.657,
-          "latencyP95Ms": 32.985,
-          "latencyP99Ms": 33.714
+          "durationSeconds": 0.490991949,
+          "throughput": 488.80638570307804,
+          "latencyP50Ms": 47.333,
+          "latencyP95Ms": 59.612,
+          "latencyP99Ms": 62.593
         }
       },
       {
@@ -100,11 +100,11 @@
           "statusClassCounts": {
             "2xx": 240
           },
-          "durationSeconds": 0.321870913,
-          "throughput": 745.6405357137693,
-          "latencyP50Ms": 41.179,
-          "latencyP95Ms": 47.163,
-          "latencyP99Ms": 48.973
+          "durationSeconds": 0.459803467,
+          "throughput": 521.9621364881966,
+          "latencyP50Ms": 60.308,
+          "latencyP95Ms": 64.007,
+          "latencyP99Ms": 65.252
         }
       },
       {
@@ -117,11 +117,11 @@
           "statusClassCounts": {
             "2xx": 240
           },
-          "durationSeconds": 0.305016753,
-          "throughput": 786.8420263460087,
-          "latencyP50Ms": 59.488,
-          "latencyP95Ms": 62.631,
-          "latencyP99Ms": 63.573
+          "durationSeconds": 0.479358023,
+          "throughput": 500.66962162850876,
+          "latencyP50Ms": 94.498,
+          "latencyP95Ms": 99.179,
+          "latencyP99Ms": 100.493
         }
       }
     ],
