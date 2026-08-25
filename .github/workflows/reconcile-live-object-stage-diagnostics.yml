@@ -16,15 +16,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: reconcile-live-object-stage-diagnostics-${{ github.event_name }}-${{ github.ref }}
+  group: reconcile-live-object-stage-diagnostics-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
   validate-pr:
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -54,13 +56,17 @@ jobs:
           python scripts/reconcile-memory-os-live-object-stage-diagnostics.py
           gofmt -w services/import-api/internal/httpserver/live_object_load_test.go
           test -z "$(gofmt -l services/import-api/internal/httpserver/live_object_load_test.go)"
+          git diff --check
           git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   reconcile:
     if: >-
       github.event_name != 'pull_request' &&
       (github.event_name != 'push' ||
       !contains(github.event.head_commit.message, 'test(load): classify MinIO lifecycle failures'))
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -86,6 +92,7 @@ jobs:
           set -euo pipefail
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           python -m py_compile scripts/reconcile-memory-os-live-object-stage-diagnostics.py
           python scripts/reconcile-memory-os-live-object-stage-diagnostics.py
           gofmt -w services/import-api/internal/httpserver/live_object_load_test.go
@@ -94,8 +101,6 @@ jobs:
       - name: Commit diagnostic authority
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
-          test "$source_sha" = "${{ github.sha }}"
           git add services/import-api/internal/httpserver/live_object_load_test.go
           if git diff --cached --quiet; then
             echo "Live object stage diagnostics are already current."
@@ -106,8 +111,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test(load): classify MinIO lifecycle failures"
           remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-          if [[ "$remote_sha" != "$source_sha" ]]; then
-            echo "Live object stage diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Live object stage diagnostic source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
             exit 75
           fi
           git push origin HEAD:so
