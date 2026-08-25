@@ -152,7 +152,12 @@ def enforce_runtime_authorities() -> None:
     load_validator()
 
 
+_CANONICAL_ENFORCE_RUNTIME_AUTHORITIES = enforce_runtime_authorities
+
+
 def main() -> int:
+    if enforce_runtime_authorities is not _CANONICAL_ENFORCE_RUNTIME_AUTHORITIES:
+        raise SystemExit("emergency evaluator runtime guard execution authority drift")
     enforce_runtime_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--at", required=True, help="UTC RFC3339 evaluation time")
