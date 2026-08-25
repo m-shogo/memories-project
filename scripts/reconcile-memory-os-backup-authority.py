@@ -121,14 +121,34 @@ def append_all(items: list[str], values: tuple[str, ...]) -> None:
             items.append(value)
 
 
-def validate_runtime_authority() -> None:
+def validate_runtime_authority(
+    canonical_root=ROOT,
+    canonical_status=STATUS_PATH,
+    canonical_index=INDEX_PATH,
+    canonical_logical_result=LOGICAL_RESULT,
+    canonical_object_result=OBJECT_RESULT,
+    canonical_backup_validator=BACKUP_VALIDATOR,
+    canonical_operability_validator=OPERABILITY_VALIDATOR,
+    canonical_blocker_validator=require_canonical_gaps,
+    canonical_subprocess_run=subprocess.run,
+) -> None:
+    require(ROOT == canonical_root, "canonical backup repository root authority drift")
+    require(STATUS_PATH == canonical_status, "canonical production status authority drift")
+    require(INDEX_PATH == canonical_index, "canonical backup local foundation index authority drift")
+    require(LOGICAL_RESULT == canonical_logical_result, "canonical local logical result authority drift")
+    require(OBJECT_RESULT == canonical_object_result, "canonical local object result authority drift")
+    require(BACKUP_VALIDATOR == canonical_backup_validator, "canonical backup validator authority drift")
+    require(OPERABILITY_VALIDATOR == canonical_operability_validator, "canonical operability validator authority drift")
+    require(require_canonical_gaps is canonical_blocker_validator, "canonical blocker validator execution authority drift")
+    require(subprocess.run is canonical_subprocess_run, "backup authority subprocess execution transport drift")
+
     for path, expected, label in (
-        (STATUS_PATH, ROOT / "contracts/operations/production-operability-status.json", "production status"),
-        (INDEX_PATH, ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json", "backup local foundation index"),
-        (LOGICAL_RESULT, ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json", "local logical restore result"),
-        (OBJECT_RESULT, ROOT / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json", "local object restore result"),
-        (BACKUP_VALIDATOR, ROOT / "scripts/validate-memory-os-backup-restore.py", "backup restore validator"),
-        (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
+        (canonical_status, canonical_root / "contracts/operations/production-operability-status.json", "production status"),
+        (canonical_index, canonical_root / "contracts/operations/backup-local-foundation-evidence.v1.json", "backup local foundation index"),
+        (canonical_logical_result, canonical_root / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json", "local logical restore result"),
+        (canonical_object_result, canonical_root / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json", "local object restore result"),
+        (canonical_backup_validator, canonical_root / "scripts/validate-memory-os-backup-restore.py", "backup restore validator"),
+        (canonical_operability_validator, canonical_root / "scripts/validate-memory-os-operability.py", "operability validator"),
     ):
         require(path == expected, f"canonical {label} identity drift")
         require(path.is_file(), f"canonical {label} missing")
@@ -286,7 +306,13 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             temp_path.unlink()
 
 
-def main() -> int:
+CANONICAL_RUNTIME_AUTHORITY_GUARD = validate_runtime_authority
+
+
+def main(canonical_runtime_authority_guard=CANONICAL_RUNTIME_AUTHORITY_GUARD) -> int:
+    if validate_runtime_authority is not canonical_runtime_authority_guard:
+        raise ReconcileFailure("backup authority runtime guard drift")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
