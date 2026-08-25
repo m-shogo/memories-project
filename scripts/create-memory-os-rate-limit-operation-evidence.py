@@ -12,9 +12,13 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-operation-evidence.py"
-DEFAULT_LEDGER = ROOT / "docs/evidence/rate-limit-operations"
+_CANONICAL_ROOT = Path(__file__).resolve().parents[1]
+_CANONICAL_VALIDATOR_PATH = _CANONICAL_ROOT / "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+_CANONICAL_DEFAULT_LEDGER = _CANONICAL_ROOT / "docs/evidence/rate-limit-operations"
+
+ROOT = _CANONICAL_ROOT
+VALIDATOR_PATH = _CANONICAL_VALIDATOR_PATH
+DEFAULT_LEDGER = _CANONICAL_DEFAULT_LEDGER
 REQUIRED_APPEND_GUARDS = {
     "canonicalLedgerMustValidateBeforeAppend",
     "canonicalLedgerMustValidateAfterAppend",
@@ -26,6 +30,29 @@ class WriterFailure(RuntimeError):
     pass
 
 
+def require_cli_authorities() -> None:
+    expected = (
+        ("ROOT", ROOT, _CANONICAL_ROOT),
+        ("VALIDATOR_PATH", VALIDATOR_PATH, _CANONICAL_VALIDATOR_PATH),
+        ("DEFAULT_LEDGER", DEFAULT_LEDGER, _CANONICAL_DEFAULT_LEDGER),
+    )
+    for label, actual, canonical in expected:
+        if actual != canonical:
+            raise WriterFailure(f"{label} authority must remain canonical")
+        if actual.is_symlink():
+            raise WriterFailure(f"{label} authority cannot be a symlink")
+        try:
+            resolved = actual.resolve(strict=True)
+        except FileNotFoundError:
+            if label == "DEFAULT_LEDGER":
+                parent = actual.parent.resolve(strict=True)
+                resolved = parent / actual.name
+            else:
+                raise WriterFailure(f"{label} authority does not exist")
+        if resolved != canonical.resolve(strict=label != "DEFAULT_LEDGER"):
+            raise WriterFailure(f"{label} authority resolved path drift")
+
+
 def load_validator() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
         "memory_os_rate_limit_operation_validator", VALIDATOR_PATH
@@ -35,6 +62,15 @@ def load_validator() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+_CANONICAL_LOAD_VALIDATOR = load_validator
+
+
+def require_cli_execution_authority() -> None:
+    require_cli_authorities()
+    if load_validator is not _CANONICAL_LOAD_VALIDATOR:
+        raise WriterFailure("operation evidence validator loader authority drift")
 
 
 def load_input(path: Path) -> dict[str, Any]:
@@ -61,7 +97,7 @@ def validate_contract_append_guards(contract: dict[str, Any]) -> None:
 def validate_canonical_authority(
     validator: ModuleType, ledger: Path, *, phase: str
 ) -> None:
-    if ledger != DEFAULT_LEDGER.resolve():
+    if ledger != _CANONICAL_DEFAULT_LEDGER.resolve():
         return
     try:
         result = validator.main()
@@ -79,16 +115,8 @@ def validate_existing_canonical_authority(validator: ModuleType, ledger: Path) -
     validate_canonical_authority(validator, ledger, phase="before append")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Validate and exclusively append one rate-limit operation record"
-    )
-    parser.add_argument("--input", required=True, type=Path)
-    parser.add_argument("--ledger-dir", type=Path, default=DEFAULT_LEDGER)
-    args = parser.parse_args()
-
-    validator = load_validator()
-    record = load_input(args.input)
+def append_record(input_path: Path, ledger_dir: Path, validator: ModuleType) -> Path:
+    record = load_input(input_path)
     contract, policy_ids = validator.load_contract_context()
     validate_contract_append_guards(contract)
     try:
@@ -98,9 +126,9 @@ def main() -> int:
     except validator.ValidationFailure as exc:
         raise WriterFailure(str(exc)) from exc
 
-    ledger = args.ledger_dir.resolve()
-    allowed_root = ROOT.resolve()
-    if ledger != DEFAULT_LEDGER.resolve():
+    ledger = ledger_dir.resolve()
+    allowed_root = _CANONICAL_ROOT.resolve()
+    if ledger != _CANONICAL_DEFAULT_LEDGER.resolve():
         temp_root = Path(os.environ.get("TMPDIR", "/tmp")).resolve()
         if not (ledger.is_relative_to(allowed_root) or ledger.is_relative_to(temp_root)):
             raise WriterFailure("ledger directory is outside approved roots")
@@ -127,7 +155,19 @@ def main() -> int:
         except FileNotFoundError:
             pass
         raise
+    return target
 
+
+def main() -> int:
+    require_cli_execution_authority()
+    parser = argparse.ArgumentParser(
+        description="Validate and exclusively append one rate-limit operation record"
+    )
+    parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--ledger-dir", type=Path, default=_CANONICAL_DEFAULT_LEDGER)
+    args = parser.parse_args()
+
+    target = append_record(args.input, args.ledger_dir, load_validator())
     print(f"Created append-only rate-limit operation evidence: {target}")
     return 0
 
