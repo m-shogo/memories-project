@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,27 @@ def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
 def load_validator():
@@ -104,12 +126,13 @@ def main() -> int:
     ):
         require(boundary.get(key) is False, f"local proof cannot enable {key}")
 
+    payload = (json.dumps(contract, indent=2) + "\n").encode("utf-8")
     try:
         enforce_runtime_authorities()
-        CONTRACT_PATH.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        atomic_write_bytes(CONTRACT_PATH, payload)
         validate_canonical(validator, load(CONTRACT_PATH), expected)
     except Exception:
-        CONTRACT_PATH.write_bytes(original_contract)
+        atomic_write_bytes(CONTRACT_PATH, original_contract)
         raise
 
     print("Memory OS deletion-worker saturation authority reconciled")
