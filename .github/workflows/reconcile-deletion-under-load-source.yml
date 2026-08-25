@@ -18,24 +18,63 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-deletion-under-load-source-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
-  reconcile:
-    if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'fix(load): reconcile deletion under load source')
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout source head
+      - name: Checkout exact pull request head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: false
+
+      - name: Reconcile source read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python -m py_compile scripts/reconcile-memory-os-deletion-under-load-source.py
+          python scripts/reconcile-memory-os-deletion-under-load-source.py
+          gofmt -w services/import-api/internal/httpserver/deletion_under_load_test.go
+          test -z "$(gofmt -l services/import-api/internal/httpserver/deletion_under_load_test.go)"
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  reconcile:
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' || !contains(github.event.head_commit.message, 'fix(load): reconcile deletion under load source'))
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact event source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -52,11 +91,9 @@ jobs:
       - name: Capture exact source
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain)"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            git fetch origin so
-            test "$(git rev-parse origin/so)" = "$(git rev-parse HEAD)"
-          fi
 
       - name: Reconcile and format source
         run: |
@@ -65,12 +102,8 @@ jobs:
           python scripts/reconcile-memory-os-deletion-under-load-source.py
           gofmt -w services/import-api/internal/httpserver/deletion_under_load_test.go
           test -z "$(gofmt -l services/import-api/internal/httpserver/deletion_under_load_test.go)"
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            git diff --exit-code -- services/import-api/internal/httpserver/deletion_under_load_test.go
-          fi
 
       - name: Commit source authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git add services/import-api/internal/httpserver/deletion_under_load_test.go
