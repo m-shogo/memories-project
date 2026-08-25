@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-live-load-results.v1",
-  "commitSha": "43e01d6c8c7db4898eb9c9f8069d4f2aa815b2f3",
-  "generatedAt": "2026-08-25T07:18:36Z",
+  "commitSha": "e978daa979ea7e150a9ed204992683c03cdcc36f",
+  "generatedAt": "2026-08-25T18:59:27Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
@@ -17,7 +17,7 @@
       "scenarioId": "authenticated-preview-local-postgres",
       "workloadType": "STEADY",
       "dependencyMode": "LOCAL_POSTGRES",
-      "startedAt": "2026-08-25T07:18:35Z",
+      "startedAt": "2026-08-25T18:59:25Z",
       "batch": {
         "requests": 500,
         "concurrency": 24,
@@ -26,11 +26,11 @@
         "statusClassCounts": {
           "2xx": 500
         },
-        "durationSeconds": 1.087624935,
-        "throughput": 459.7173013507639,
-        "latencyP50Ms": 50.14,
-        "latencyP95Ms": 64.478,
-        "latencyP99Ms": 72.681
+        "durationSeconds": 0.927779484,
+        "throughput": 538.9211645900116,
+        "latencyP50Ms": 43.312,
+        "latencyP95Ms": 47.84,
+        "latencyP99Ms": 63.52
       },
       "integrityResult": "PASS",
       "databaseAssertions": {
@@ -44,7 +44,7 @@
       "scenarioId": "concurrent-idempotent-apply-local-postgres",
       "workloadType": "BURST",
       "dependencyMode": "LOCAL_POSTGRES",
-      "startedAt": "2026-08-25T07:18:36Z",
+      "startedAt": "2026-08-25T18:59:26Z",
       "batch": {
         "requests": 96,
         "concurrency": 24,
@@ -53,11 +53,11 @@
         "statusClassCounts": {
           "2xx": 96
         },
-        "durationSeconds": 0.210885366,
-        "throughput": 455.2236213488612,
-        "latencyP50Ms": 50.979,
-        "latencyP95Ms": 55.087,
-        "latencyP99Ms": 57.699
+        "durationSeconds": 0.193535112,
+        "throughput": 496.0340219814996,
+        "latencyP50Ms": 45.465,
+        "latencyP95Ms": 50.327,
+        "latencyP99Ms": 53.432
       },
       "integrityResult": "PASS",
       "databaseAssertions": {
