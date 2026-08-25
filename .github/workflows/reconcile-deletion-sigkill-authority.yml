@@ -30,20 +30,58 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: reconcile-deletion-sigkill-authority-${{ github.ref }}
+  group: reconcile-deletion-sigkill-authority-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  reconcile:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate exact PR-head SIGKILL authority
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-deletion-worker-sigkill-recovery.py \
+            scripts/reconcile-memory-os-deletion-sigkill-authority.py \
+            scripts/validate-memory-os-deletion-sigkill-authority-reconcile-negative.py \
+            scripts/reconcile-memory-os-load-readiness-note.py \
+            scripts/reconcile-memory-os-load-missing-evidence.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/reconcile-memory-os-deletion-sigkill-authority.py
+          python scripts/validate-memory-os-deletion-sigkill-authority-reconcile-negative.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -52,11 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          else
-            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Reconcile actual process-kill evidence
         run: |
@@ -73,13 +107,7 @@ jobs:
           python scripts/validate-memory-os-deletion-sigkill-authority-reconcile-negative.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git diff --exit-code -- \
-              contracts/operations/load-test-scenario-contract.v1.json \
-              contracts/operations/production-operability-status.json
-          fi
       - name: Commit canonical authority update
-        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           git add \
