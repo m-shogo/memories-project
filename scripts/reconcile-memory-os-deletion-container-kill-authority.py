@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -67,8 +69,22 @@ def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
 
 
 def append_unique(values: list[Any], item: str) -> None:
@@ -194,8 +210,8 @@ def main() -> int:
         write(STATUS, status)
         normalize_and_validate_authority()
     except BaseException:
-        LOAD_CONTRACT.write_bytes(original_load)
-        STATUS.write_bytes(original_status)
+        atomic_write_bytes(LOAD_CONTRACT, original_load)
+        atomic_write_bytes(STATUS, original_status)
         raise
 
     print("Memory OS deletion container-kill canonical reconciliation PASS")
