@@ -64,6 +64,8 @@ jobs:
             scripts/reconcile-memory-os-load-missing-evidence.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-deletion-worker-sigkill-recovery.py --require-result
+          python scripts/validate-memory-os-load.py
           python scripts/reconcile-memory-os-deletion-sigkill-authority.py
           python scripts/validate-memory-os-deletion-sigkill-authority-reconcile-negative.py
           python scripts/validate-memory-os-load.py
@@ -103,6 +105,14 @@ jobs:
             scripts/reconcile-memory-os-load-missing-evidence.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py
+      - name: Validate exact-source SIGKILL proof
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-deletion-worker-sigkill-recovery.py --require-result
+      - name: Validate pre-reconcile load authority
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-load.py
       - name: Reconcile actual process-kill evidence
         run: |
           set -euo pipefail
