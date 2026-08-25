@@ -12,6 +12,7 @@ on:
       - "scripts/migration_operation_evidence_lib.py"
       - "scripts/create-memory-os-migration-operation-evidence.py"
       - "scripts/validate-memory-os-migration-operation-evidence.py"
+      - "scripts/validate-memory-os-migration-operation-library-authority-negative.py"
       - "scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py"
       - "scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-migration-operation-evidence.py"
@@ -28,6 +29,7 @@ on:
       - "scripts/migration_operation_evidence_lib.py"
       - "scripts/create-memory-os-migration-operation-evidence.py"
       - "scripts/validate-memory-os-migration-operation-evidence.py"
+      - "scripts/validate-memory-os-migration-operation-library-authority-negative.py"
       - "scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py"
       - "scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-migration-operation-evidence.py"
@@ -77,6 +79,7 @@ jobs:
             scripts/migration_operation_evidence_lib.py \
             scripts/create-memory-os-migration-operation-evidence.py \
             scripts/validate-memory-os-migration-operation-evidence.py \
+            scripts/validate-memory-os-migration-operation-library-authority-negative.py \
             scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py \
             scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py \
             scripts/reconcile-memory-os-migration-operation-evidence.py \
@@ -85,6 +88,7 @@ jobs:
 
       - name: Reconcile authority read-only
         run: |
+          python scripts/validate-memory-os-migration-operation-library-authority-negative.py
           python scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py
           python scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py
           python scripts/reconcile-memory-os-migration-operation-evidence.py
@@ -150,6 +154,7 @@ jobs:
             scripts/migration_operation_evidence_lib.py \
             scripts/create-memory-os-migration-operation-evidence.py \
             scripts/validate-memory-os-migration-operation-evidence.py \
+            scripts/validate-memory-os-migration-operation-library-authority-negative.py \
             scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py \
             scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py \
             scripts/reconcile-memory-os-migration-operation-evidence.py \
@@ -158,6 +163,7 @@ jobs:
 
       - name: Reconcile authority in working tree
         run: |
+          python scripts/validate-memory-os-migration-operation-library-authority-negative.py
           python scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py
           python scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py
           python scripts/reconcile-memory-os-migration-operation-evidence.py
