@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,7 @@ CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability
 CANONICAL_WORKFLOW = ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
 CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
 CANONICAL_LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_SUBPROCESS_RUN = subprocess.run
 CONTRACT = CANONICAL_CONTRACT
 VALIDATOR = CANONICAL_HOST_VALIDATOR
 LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
@@ -80,6 +83,7 @@ def validate_executable_authorities() -> None:
         CANONICAL_OPERABILITY_VALIDATOR,
         "operability validator",
     )
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "host-failure subprocess transport is not canonical")
 
 
 def load_host_validator():
@@ -140,19 +144,34 @@ def validate_load_authority() -> None:
         raise Fail(f"canonical load authority validation failed: {exc}") from exc
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+
 def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> None:
     validate_executable_authorities()
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
     try:
-        CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
-        STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_bytes(CONTRACT, (json.dumps(contract, indent=2) + "\n").encode("utf-8"))
+        atomic_write_bytes(STATUS, (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+        validate_executable_authorities()
         subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
         subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
         subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
     except Exception as exc:
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
+        atomic_write_bytes(CONTRACT, contract_bytes)
+        atomic_write_bytes(STATUS, status_bytes)
         if isinstance(exc, Fail):
             raise
         raise Fail(f"host-failure post-write authority validation failed: {exc}") from exc
