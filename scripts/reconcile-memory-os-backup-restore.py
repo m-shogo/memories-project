@@ -77,10 +77,30 @@ def validator_paths() -> tuple[Path, ...]:
     )
 
 
-def validate_runtime_authority() -> None:
+def validate_runtime_authority(
+    canonical_root=ROOT,
+    canonical_contract_path=CONTRACT_PATH,
+    canonical_status_path=STATUS_PATH,
+    canonical_backup_validator=BACKUP_VALIDATOR_PATH,
+    canonical_local_logical_validator=LOCAL_LOGICAL_VALIDATOR_PATH,
+    canonical_local_object_validator=LOCAL_OBJECT_VALIDATOR_PATH,
+    canonical_operability_validator=OPERABILITY_VALIDATOR_PATH,
+    canonical_entry_docs_validator=ENTRY_DOCS_VALIDATOR_PATH,
+    canonical_blocker_validator=require_canonical_gaps,
+) -> None:
+    require(ROOT == canonical_root, "canonical backup repository root authority drift")
+    require(CONTRACT_PATH == canonical_contract_path, "canonical backup contract authority drift")
+    require(STATUS_PATH == canonical_status_path, "canonical production status authority drift")
+    require(BACKUP_VALIDATOR_PATH == canonical_backup_validator, "canonical backup validator authority drift")
+    require(LOCAL_LOGICAL_VALIDATOR_PATH == canonical_local_logical_validator, "canonical local logical validator authority drift")
+    require(LOCAL_OBJECT_VALIDATOR_PATH == canonical_local_object_validator, "canonical local object validator authority drift")
+    require(OPERABILITY_VALIDATOR_PATH == canonical_operability_validator, "canonical operability validator authority drift")
+    require(ENTRY_DOCS_VALIDATOR_PATH == canonical_entry_docs_validator, "canonical entry docs validator authority drift")
+    require(require_canonical_gaps is canonical_blocker_validator, "canonical blocker validator execution authority drift")
+
     expected_data = {
-        CONTRACT_PATH: ROOT / "contracts/operations/backup-restore-contract.v1.json",
-        STATUS_PATH: ROOT / "contracts/operations/production-operability-status.json",
+        canonical_contract_path: canonical_root / "contracts/operations/backup-restore-contract.v1.json",
+        canonical_status_path: canonical_root / "contracts/operations/production-operability-status.json",
     }
     require(len(expected_data) == 2, "canonical backup data authority set drift")
     for path, canonical in expected_data.items():
@@ -94,11 +114,11 @@ def validate_runtime_authority() -> None:
             raise ReconcileFailure(f"cannot resolve canonical data authority: {canonical.name}") from exc
 
     expected = {
-        BACKUP_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-backup-restore.py",
-        LOCAL_LOGICAL_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-local-logical-restore.py",
-        LOCAL_OBJECT_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-local-object-version-restore.py",
-        OPERABILITY_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-operability.py",
-        ENTRY_DOCS_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-entry-docs.py",
+        canonical_backup_validator: canonical_root / "scripts/validate-memory-os-backup-restore.py",
+        canonical_local_logical_validator: canonical_root / "scripts/validate-memory-os-local-logical-restore.py",
+        canonical_local_object_validator: canonical_root / "scripts/validate-memory-os-local-object-version-restore.py",
+        canonical_operability_validator: canonical_root / "scripts/validate-memory-os-operability.py",
+        canonical_entry_docs_validator: canonical_root / "scripts/validate-memory-os-entry-docs.py",
     }
     require(len(expected) == 5, "canonical backup validator authority set drift")
     for path, canonical in expected.items():
@@ -148,10 +168,15 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             temp_path.unlink()
 
 
-def main() -> int:
+CANONICAL_RUNTIME_AUTHORITY_GUARD = validate_runtime_authority
+
+
+def main(canonical_runtime_authority_guard=CANONICAL_RUNTIME_AUTHORITY_GUARD) -> int:
     # Exact executable and data-path identity are source authorities. Full validators also read
     # the derived production status, so they run after deterministic projection
     # (or on a no-op current projection) rather than blocking legitimate repair.
+    if validate_runtime_authority is not canonical_runtime_authority_guard:
+        raise ReconcileFailure("backup restore runtime authority guard drift")
     validate_runtime_authority()
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
