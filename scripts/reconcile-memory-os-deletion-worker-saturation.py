@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/deletion-worker-saturation-contract.v1.json"
 CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
 CANONICAL_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-deletion-worker-saturation.py"
+CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR_PATH = CANONICAL_VALIDATOR_PATH
@@ -39,12 +41,6 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
         raise Fail(f"canonical {label} missing or escapes repository") from exc
     require(resolved == canonical.relative_to(ROOT), f"canonical {label} path drift")
     require(canonical.is_file() and not canonical.is_symlink(), f"canonical {label} must be regular file")
-
-
-def enforce_runtime_authorities() -> None:
-    require_exact_authority(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "deletion-worker saturation contract")
-    require_exact_authority(RESULT_PATH, CANONICAL_RESULT_PATH, "deletion-worker saturation result")
-    require_exact_authority(VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, "deletion-worker saturation validator")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -85,6 +81,9 @@ def load_validator():
     return module
 
 
+CANONICAL_LOAD_VALIDATOR = load_validator
+
+
 def validate_canonical(validator, contract: dict[str, Any], expected: str) -> None:
     try:
         validator.validate_contract(contract)
@@ -93,6 +92,19 @@ def validate_canonical(validator, contract: dict[str, Any], expected: str) -> No
         if exc.__class__.__name__ == "Fail":
             raise Fail(f"canonical deletion-worker saturation authority invalid: {exc}") from exc
         raise
+
+
+CANONICAL_VALIDATE_CANONICAL = validate_canonical
+
+
+def enforce_runtime_authorities() -> None:
+    require_exact_authority(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "deletion-worker saturation contract")
+    require_exact_authority(RESULT_PATH, CANONICAL_RESULT_PATH, "deletion-worker saturation result")
+    require_exact_authority(VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, "deletion-worker saturation validator")
+    require(importlib.util.spec_from_file_location is CANONICAL_SPEC_FROM_FILE_LOCATION, "validator spec loader transport is not canonical")
+    require(importlib.util.module_from_spec is CANONICAL_MODULE_FROM_SPEC, "validator module loader transport is not canonical")
+    require(load_validator is CANONICAL_LOAD_VALIDATOR, "validator loader authority is not canonical")
+    require(validate_canonical is CANONICAL_VALIDATE_CANONICAL, "validator execution authority is not canonical")
 
 
 def main() -> int:
@@ -130,6 +142,7 @@ def main() -> int:
     try:
         enforce_runtime_authorities()
         atomic_write_bytes(CONTRACT_PATH, payload)
+        enforce_runtime_authorities()
         validate_canonical(validator, load(CONTRACT_PATH), expected)
     except Exception:
         atomic_write_bytes(CONTRACT_PATH, original_contract)
