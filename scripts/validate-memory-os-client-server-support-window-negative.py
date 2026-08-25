@@ -340,8 +340,6 @@ def verify_client_reconcile_allows_approved_pair_progression() -> None:
 
     reconciler.load_module = controlled_loader
     reconciler.write_and_validate_transactionally = capture_write
-    original_enforce = reconciler.enforce_runtime_authorities
-    reconciler.enforce_runtime_authorities = lambda: None
     try:
         RELEASE_PAIRS.write_text(json.dumps(pair_registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         reconciler.STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -368,7 +366,6 @@ def verify_client_reconcile_allows_approved_pair_progression() -> None:
         )
         require(captured["status"].get("productionDecision") == "NO_GO", "approved pair progression changed production decision")
     finally:
-        reconciler.enforce_runtime_authorities = original_enforce
         for path, data in originals.items():
             if path.read_bytes() != data:
                 path.write_bytes(data)
