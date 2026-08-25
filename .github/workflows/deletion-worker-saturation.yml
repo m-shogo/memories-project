@@ -194,6 +194,7 @@ jobs:
           import json
           import os
           import re
+          import tempfile
           from pathlib import Path
           text = Path('/tmp/memory-os-deletion-worker-saturation.log').read_text(encoding='utf-8', errors='replace')
           patterns = (
@@ -223,7 +224,21 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/deletion-worker-saturation-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          temp_path = None
+          try:
+              with tempfile.NamedTemporaryFile(
+                  mode='wb', dir=path.parent, prefix=f'.{path.name}.', suffix='.tmp', delete=False
+              ) as handle:
+                  temp_path = Path(handle.name)
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_path, path)
+              temp_path = None
+          finally:
+              if temp_path is not None:
+                  temp_path.unlink(missing_ok=True)
           PY
           git add docs/fixtures/memory-os-operability/deletion-worker-saturation-diagnostic.last.json
           git config user.name "github-actions[bot]"
