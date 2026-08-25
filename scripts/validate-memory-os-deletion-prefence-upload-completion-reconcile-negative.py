@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,10 +22,6 @@ def load_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def write_json(path: Path, value: dict) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
 def expect_identity_rejection(module, attribute: str, replacement: Path, original_contract: bytes) -> None:
@@ -62,37 +57,72 @@ def expect_transport_rejection(module, original_contract: bytes) -> None:
         module.subprocess.run = original
 
 
-def expect_post_write_rollback(module) -> None:
-    with tempfile.TemporaryDirectory(prefix="memory-os-upload-completion-proof-") as tmp:
-        root = Path(tmp)
-        contract = root / "contract.json"
-        write_json(contract, {"readiness": {"productionReady": False}})
-        before = contract.read_bytes()
-        candidate = {"readiness": {"productionReady": False, "exactSourceResultCommitted": True}}
-
-        original_contract_path = module.CONTRACT_PATH
-        original_run_validator = module.run_validator
-        original_atomic_write = module.atomic_write_bytes
-        module.CONTRACT_PATH = contract
-
-        def reject_post_write(_expected: str) -> None:
-            raise RuntimeError("synthetic upload-completion post-write validation failure")
-
-        module.run_validator = reject_post_write
+def expect_atomic_writer_rejection(module, original_contract: bytes) -> None:
+    original = module.atomic_write_bytes
+    module.atomic_write_bytes = lambda _path, _data: None
+    try:
         try:
-            try:
-                module.write_contract_transactionally(candidate, SOURCE_SHA)
-            except RuntimeError as exc:
-                if "synthetic upload-completion post-write validation failure" not in str(exc):
-                    raise
-            else:
-                raise AssertionError("post-write validator rejection was accepted")
-            if contract.read_bytes() != before:
-                raise AssertionError("proof contract changed after rejected reconcile")
-        finally:
-            module.CONTRACT_PATH = original_contract_path
-            module.run_validator = original_run_validator
-            module.atomic_write_bytes = original_atomic_write
+            module.validate_authority_identity()
+        except module.Fail as exc:
+            if "atomic writer authority is not canonical" not in str(exc):
+                raise
+        else:
+            raise AssertionError("atomic writer substitution was accepted")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            raise AssertionError("atomic writer rejection mutated canonical contract")
+    finally:
+        module.atomic_write_bytes = original
+
+
+def expect_atomic_replace_rejection(module, original_contract: bytes) -> None:
+    original = module.os.replace
+    module.os.replace = lambda _source, _target: None
+    try:
+        try:
+            module.validate_authority_identity()
+        except module.Fail as exc:
+            if "atomic replacement transport is not canonical" not in str(exc):
+                raise
+        else:
+            raise AssertionError("os.replace substitution was accepted")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            raise AssertionError("atomic replacement transport rejection mutated canonical contract")
+    finally:
+        module.os.replace = original
+
+
+def expect_post_write_rollback(module, original_contract: bytes) -> None:
+    candidate = json.loads(original_contract.decode("utf-8"))
+    readiness = candidate.setdefault("readiness", {})
+    readiness["preFenceUploadCompletionLinearizationProven"] = not bool(
+        readiness.get("preFenceUploadCompletionLinearizationProven", False)
+    )
+    candidate_bytes = (json.dumps(candidate, indent=2) + "\n").encode("utf-8")
+    if candidate_bytes == original_contract:
+        raise AssertionError("rollback fixture did not change canonical contract candidate")
+
+    original_run_validator = module.run_validator
+
+    def reject_post_write(_expected: str) -> None:
+        raise RuntimeError("synthetic upload-completion post-write validation failure")
+
+    module.run_validator = reject_post_write
+    try:
+        try:
+            module.write_contract_transactionally(candidate, SOURCE_SHA)
+        except RuntimeError as exc:
+            if "synthetic upload-completion post-write validation failure" not in str(exc):
+                raise
+        else:
+            raise AssertionError("post-write validator rejection was accepted")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            raise AssertionError("canonical proof contract changed after rejected reconcile")
+        if list(module.CANONICAL_CONTRACT_PATH.parent.glob(f".{module.CANONICAL_CONTRACT_PATH.name}.*.tmp")):
+            raise AssertionError("canonical upload-completion rollback left atomic temp residue")
+    finally:
+        module.run_validator = original_run_validator
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            module.CANONICAL_ATOMIC_WRITE_BYTES(module.CANONICAL_CONTRACT_PATH, original_contract)
 
 
 def main() -> int:
@@ -104,9 +134,11 @@ def main() -> int:
     expect_identity_rejection(module, "CONTRACT_PATH", ALTERNATE_CONTRACT, original_contract)
     expect_identity_rejection(module, "RESULT_PATH", ALTERNATE_RESULT, original_contract)
     expect_transport_rejection(module, original_contract)
-    expect_post_write_rollback(module)
+    expect_atomic_writer_rejection(module, original_contract)
+    expect_atomic_replace_rejection(module, original_contract)
+    expect_post_write_rollback(module, original_contract)
 
-    print("PASS: upload-completion proof reconcile authority, execution transport, and rollback are fail-closed")
+    print("PASS: upload-completion proof reconcile authority, execution transport, atomic writer, and rollback are fail-closed")
     return 0
 
 
