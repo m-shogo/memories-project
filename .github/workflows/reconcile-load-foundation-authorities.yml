@@ -56,53 +56,127 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-load-foundation-authorities-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean PR authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Reconcile available bounded results read-only
+        id: validate
+        run: |
+          set +e
+          log=/tmp/memory-os-load-foundation-authorities.log
+          : > "$log"
+          code=0
+          python -m py_compile \
+            scripts/validate-memory-os-capacity-ramp.py \
+            scripts/validate-memory-os-capacity-ramp-authority-negative.py \
+            scripts/reconcile-memory-os-capacity-ramp-status.py \
+            scripts/validate-memory-os-short-stability-sample.py \
+            scripts/validate-memory-os-short-stability-authority-negative.py \
+            scripts/validate-memory-os-short-stability-reconcile-negative.py \
+            scripts/reconcile-memory-os-short-stability-status.py \
+            scripts/reconcile-memory-os-sustained-local-soak-status.py \
+            scripts/validate-memory-os-deletion-under-load.py \
+            scripts/validate-memory-os-deletion-under-load-authority-negative.py \
+            scripts/reconcile-memory-os-deletion-under-load-status.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-capacity-ramp-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-short-stability-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-deletion-under-load-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-short-stability-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json ]]; then
+            capacity_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"))["commitSha"])')"
+            EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/validate-memory-os-capacity-ramp.py >> "$log" 2>&1 || code=$?
+            if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/reconcile-memory-os-capacity-ramp-status.py >> "$log" 2>&1 || code=$?; fi
+            if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-capacity-ramp.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
+          fi
+          if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json ]]; then
+            stability_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"))["commitSha"])')"
+            EXPECTED_COMMIT_SHA="$stability_sha" python scripts/validate-memory-os-short-stability-sample.py >> "$log" 2>&1 || code=$?
+            if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$stability_sha" python scripts/reconcile-memory-os-short-stability-status.py >> "$log" 2>&1 || code=$?; fi
+            if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-short-stability-sample.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
+          fi
+          if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json ]]; then
+            deletion_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"))["commitSha"])')"
+            EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/validate-memory-os-deletion-under-load.py >> "$log" 2>&1 || code=$?
+            if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/reconcile-memory-os-deletion-under-load-status.py >> "$log" 2>&1 || code=$?; fi
+            if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-deletion-under-load.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
+          fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Reject any PR worktree drift
+        if: steps.validate.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+      - name: Enforce success
+        run: test "${{ steps.validate.outputs.exit_code }}" = "0"
+
   reconcile:
     if: >-
-      github.event_name != 'push' ||
-      (!contains(github.event.head_commit.message, 'docs(ops): reconcile bounded load foundations') &&
-       !contains(github.event.head_commit.message, 'test(load): record bounded load authority diagnostic'))
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+       (!contains(github.event.head_commit.message, 'docs(ops): reconcile bounded load foundations') &&
+        !contains(github.event.head_commit.message, 'test(load): record bounded load authority diagnostic')))
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Confirm exact clean authority source
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "$EVENT_SHA"
-          fi
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
       - name: Reconcile available bounded results with stage capture
         run: |
           set +e
           log=/tmp/memory-os-load-foundation-authorities.log
           : > "$log"
           code=0
-
           echo "STAGE: compile" >> "$log"
           python -m py_compile \
             scripts/validate-memory-os-capacity-ramp.py \
@@ -119,87 +193,37 @@ jobs:
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
-
-          if [[ "$code" == "0" ]]; then
-            echo "STAGE: capacity-authority-negative" >> "$log"
-            python scripts/validate-memory-os-capacity-ramp-authority-negative.py >> "$log" 2>&1 || code=$?
-          fi
-
-          if [[ "$code" == "0" ]]; then
-            echo "STAGE: short-stability-authority-negative" >> "$log"
-            python scripts/validate-memory-os-short-stability-authority-negative.py >> "$log" 2>&1 || code=$?
-          fi
-
-          if [[ "$code" == "0" ]]; then
-            echo "STAGE: deletion-load-authority-negative" >> "$log"
-            python scripts/validate-memory-os-deletion-under-load-authority-negative.py >> "$log" 2>&1 || code=$?
-          fi
-
-          if [[ "$code" == "0" ]]; then
-            echo "STAGE: load-foundation-ordering-negative" >> "$log"
-            python scripts/validate-memory-os-short-stability-reconcile-negative.py >> "$log" 2>&1 || code=$?
-          fi
-
+          if [[ "$code" == "0" ]]; then echo "STAGE: capacity-authority-negative" >> "$log"; python scripts/validate-memory-os-capacity-ramp-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then echo "STAGE: short-stability-authority-negative" >> "$log"; python scripts/validate-memory-os-short-stability-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then echo "STAGE: deletion-load-authority-negative" >> "$log"; python scripts/validate-memory-os-deletion-under-load-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then echo "STAGE: load-foundation-ordering-negative" >> "$log"; python scripts/validate-memory-os-short-stability-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json ]]; then
             echo "STAGE: capacity-ramp" >> "$log"
             capacity_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"))["commitSha"])')"
             EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/validate-memory-os-capacity-ramp.py >> "$log" 2>&1 || code=$?
-            if [[ "$code" == "0" ]]; then
-              EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/reconcile-memory-os-capacity-ramp-status.py >> "$log" 2>&1 || code=$?
-            fi
-            if [[ "$code" == "0" ]]; then
-              python scripts/validate-memory-os-capacity-ramp.py --require-reconciled >> "$log" 2>&1 || code=$?
-            fi
+            if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/reconcile-memory-os-capacity-ramp-status.py >> "$log" 2>&1 || code=$?; fi
+            if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-capacity-ramp.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
           fi
-
           if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json ]]; then
             echo "STAGE: short-stability" >> "$log"
             stability_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"))["commitSha"])')"
             EXPECTED_COMMIT_SHA="$stability_sha" python scripts/validate-memory-os-short-stability-sample.py >> "$log" 2>&1 || code=$?
-            if [[ "$code" == "0" ]]; then
-              EXPECTED_COMMIT_SHA="$stability_sha" python scripts/reconcile-memory-os-short-stability-status.py >> "$log" 2>&1 || code=$?
-            fi
-            if [[ "$code" == "0" ]]; then
-              python scripts/validate-memory-os-short-stability-sample.py --require-reconciled >> "$log" 2>&1 || code=$?
-            fi
+            if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$stability_sha" python scripts/reconcile-memory-os-short-stability-status.py >> "$log" 2>&1 || code=$?; fi
+            if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-short-stability-sample.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
           fi
-
           if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json ]]; then
             echo "STAGE: deletion-under-load" >> "$log"
             deletion_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"))["commitSha"])')"
             EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/validate-memory-os-deletion-under-load.py >> "$log" 2>&1 || code=$?
-            if [[ "$code" == "0" ]]; then
-              EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/reconcile-memory-os-deletion-under-load-status.py >> "$log" 2>&1 || code=$?
-            fi
-            if [[ "$code" == "0" ]]; then
-              python scripts/validate-memory-os-deletion-under-load.py --require-reconciled >> "$log" 2>&1 || code=$?
-            fi
+            if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/reconcile-memory-os-deletion-under-load-status.py >> "$log" 2>&1 || code=$?; fi
+            if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-deletion-under-load.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
           fi
-
-          if [[ "$code" == "0" ]]; then
-            echo "STAGE: aggregate" >> "$log"
-            python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
-          fi
+          if [[ "$code" == "0" ]]; then echo "STAGE: aggregate" >> "$log"; python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "FOUNDATION_EXIT_CODE=$code" >> "$GITHUB_ENV"
           exit 0
-
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request' && env.FOUNDATION_EXIT_CODE == '0'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/capacity-ramp-contract.v1.json \
-            contracts/operations/short-stability-sample-contract.v1.json \
-            contracts/operations/deletion-under-load-contract.v1.json \
-            contracts/operations/load-test-scenario-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit bounded load authorities
-        if: github.event_name != 'pull_request' && env.FOUNDATION_EXIT_CODE == '0'
+        if: env.FOUNDATION_EXIT_CODE == '0'
         run: |
           set -euo pipefail
           git add \
@@ -212,28 +236,24 @@ jobs:
             rm -f docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json
             git add -A docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json
           fi
-          if git diff --cached --quiet; then
-            echo "Bounded load authorities are already current."
-            exit 0
-          fi
+          if git diff --cached --quiet; then echo "Bounded load authorities are already current."; exit 0; fi
           git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(ops): reconcile bounded load foundations"
           remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
-            echo "Load foundation authority source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
-            exit 75
-          fi
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then echo "Load foundation authority source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2; exit 75; fi
           git push origin HEAD:so
-
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && env.FOUNDATION_EXIT_CODE != '0'
+        if: env.FOUNDATION_EXIT_CODE != '0'
         run: |
           set -euo pipefail
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then echo "Load foundation diagnostic source is stale before creation" >&2; exit 75; fi
           python - <<'PY'
           import json
           import os
+          import tempfile
           from pathlib import Path
           text = Path("/tmp/memory-os-load-foundation-authorities.log").read_text(encoding="utf-8", errors="replace")
           value = {
@@ -251,7 +271,20 @@ jobs:
           }
           path = Path("docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json")
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          payload = (json.dumps(value, indent=2) + "\n").encode("utf-8")
+          tmp_path = None
+          try:
+              with tempfile.NamedTemporaryFile(mode="wb", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False) as handle:
+                  tmp_path = Path(handle.name)
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(tmp_path, path)
+              tmp_path = None
+          finally:
+              if tmp_path is not None:
+                  try: tmp_path.unlink()
+                  except FileNotFoundError: pass
           PY
           git add docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json
           git diff --cached --check
@@ -259,11 +292,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test(load): record bounded load authority diagnostic"
           remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
-            echo "Load foundation diagnostic source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
-            exit 75
-          fi
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then echo "Load foundation diagnostic source is stale before push" >&2; exit 75; fi
           git push origin HEAD:so
-
       - name: Enforce success
         run: test "${FOUNDATION_EXIT_CODE}" = "0"
