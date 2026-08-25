@@ -93,7 +93,9 @@ jobs:
           python scripts/validate-memory-os-local-object-version-restore.py
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
-          git diff --exit-code -- contracts/operations/production-operability-status.json
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   reconcile:
     if: github.event_name != 'pull_request'
