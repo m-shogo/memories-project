@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/reconcile-deletion-container-kill-authority.yml"
+      - "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py"
+      - "scripts/validate-memory-os-deletion-worker-container-kill-recovery-reconcile-negative.py"
       - "scripts/reconcile-memory-os-deletion-container-kill-authority.py"
       - "scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py"
       - "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py"
@@ -21,6 +23,8 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-deletion-container-kill-authority.yml"
+      - "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py"
+      - "scripts/validate-memory-os-deletion-worker-container-kill-recovery-reconcile-negative.py"
       - "scripts/reconcile-memory-os-deletion-container-kill-authority.py"
       - "scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py"
       - "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py"
@@ -33,35 +37,36 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-deletion-container-kill-authority-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  reconcile:
+  validate:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Capture exact source
+      - name: Capture exact PR source
         run: |
           set -euo pipefail
-          EXPECTED_SHA="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
           test -z "$(git status --porcelain)"
-          echo "SOURCE_SHA=$EXPECTED_SHA" >> "$GITHUB_ENV"
-      - name: Reconcile actual container-kill evidence
+      - name: Validate container-kill authority read-only
         run: |
           set -euo pipefail
           python -m py_compile \
+            scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py \
+            scripts/validate-memory-os-deletion-worker-container-kill-recovery-reconcile-negative.py \
             scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
             scripts/reconcile-memory-os-deletion-container-kill-authority.py \
             scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py \
@@ -69,17 +74,54 @@ jobs:
             scripts/reconcile-memory-os-load-missing-evidence.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-deletion-worker-container-kill-recovery-reconcile-negative.py
           python scripts/reconcile-memory-os-deletion-container-kill-authority.py
           python scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git diff --exit-code -- \
-              contracts/operations/load-test-scenario-contract.v1.json \
-              contracts/operations/production-operability-status.json
-          fi
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=${{ github.sha }}" >> "$GITHUB_ENV"
+      - name: Reconcile actual container-kill evidence
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py \
+            scripts/validate-memory-os-deletion-worker-container-kill-recovery-reconcile-negative.py \
+            scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
+            scripts/reconcile-memory-os-deletion-container-kill-authority.py \
+            scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py \
+            scripts/reconcile-memory-os-load-readiness-note.py \
+            scripts/reconcile-memory-os-load-missing-evidence.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-deletion-worker-container-kill-recovery-reconcile-negative.py
+          python scripts/reconcile-memory-os-deletion-container-kill-authority.py
+          python scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
       - name: Commit canonical authority update
-        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           git add \
