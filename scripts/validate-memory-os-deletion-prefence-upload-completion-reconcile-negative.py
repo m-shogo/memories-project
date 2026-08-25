@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +92,21 @@ def expect_atomic_replace_rejection(module, original_contract: bytes) -> None:
         module.os.replace = original
 
 
+def expect_mode_preservation(module, original_contract: bytes) -> None:
+    path = module.CANONICAL_CONTRACT_PATH
+    original_mode = stat.S_IMODE(path.stat().st_mode)
+    probe_mode = 0o640 if original_mode != 0o640 else 0o644
+    path.chmod(probe_mode)
+    try:
+        module.CANONICAL_ATOMIC_WRITE_BYTES(path, original_contract)
+        if stat.S_IMODE(path.stat().st_mode) != probe_mode:
+            raise AssertionError("atomic replacement changed canonical upload-completion contract mode")
+        if path.read_bytes() != original_contract:
+            raise AssertionError("mode-preservation probe changed canonical upload-completion contract bytes")
+    finally:
+        path.chmod(original_mode)
+
+
 def expect_post_write_rollback(module, original_contract: bytes) -> None:
     candidate = json.loads(original_contract.decode("utf-8"))
     readiness = candidate.setdefault("readiness", {})
@@ -136,9 +152,10 @@ def main() -> int:
     expect_transport_rejection(module, original_contract)
     expect_atomic_writer_rejection(module, original_contract)
     expect_atomic_replace_rejection(module, original_contract)
+    expect_mode_preservation(module, original_contract)
     expect_post_write_rollback(module, original_contract)
 
-    print("PASS: upload-completion proof reconcile authority, execution transport, atomic writer, and rollback are fail-closed")
+    print("PASS: upload-completion proof reconcile authority, execution transport, mode-preserving atomic writer, and rollback are fail-closed")
     return 0
 
 
