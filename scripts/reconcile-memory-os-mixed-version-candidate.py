@@ -21,6 +21,7 @@ CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-stat
 CANONICAL_CANDIDATE_VALIDATOR = ROOT / "scripts/validate-memory-os-mixed-version-candidate.py"
 CANONICAL_VERSION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_SUBPROCESS_RUN = subprocess.run
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 REJECTION_PATH = CANONICAL_REJECTION_PATH
@@ -86,6 +87,7 @@ def enforce_runtime_authorities() -> None:
         (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
     ):
         require_exact_authority(path, canonical, label)
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "candidate subprocess transport substitution")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -158,6 +160,7 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
 
 
 def is_ancestor(base: str, head: str) -> bool:
+    enforce_runtime_authorities()
     try:
         return subprocess.run(
             ["git", "merge-base", "--is-ancestor", base, head],
