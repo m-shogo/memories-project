@@ -37,6 +37,16 @@ def load_module(path: Path, name: str):
     return module
 
 
+def expect_rejection(call, error_type, expected: str) -> None:
+    rejected = False
+    try:
+        call()
+    except error_type as exc:
+        require(expected in str(exc), f"unexpected authority rejection: {exc}")
+        rejected = True
+    require(rejected, f"expected rejection containing: {expected}")
+
+
 def prove_stronger_authority_is_preserved(module, lifecycle_payload: bytes) -> None:
     lifecycle = json.loads(lifecycle_payload.decode("utf-8"))
     readiness = lifecycle["readiness"]
@@ -51,21 +61,26 @@ def prove_stronger_authority_is_preserved(module, lifecycle_payload: bytes) -> N
 
 def prove_canonical_ledger_preappend_guard(tmp_path: Path) -> None:
     creator = load_module(CREATOR, "migration_operation_creator_negative")
-    fail_validator = tmp_path / "ledger-fail.py"
-    fail_validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
-    creator.VALIDATOR = fail_validator
 
-    rejected = False
-    try:
-        creator.validate_canonical_ledger_before_append(creator.DEFAULT_LEDGER)
-    except creator.EvidenceValidationError as exc:
-        require("failed validation before append" in str(exc),
-                f"unexpected canonical ledger rejection: {exc}")
-        rejected = True
-    require(rejected, "canonical append did not require current ledger validation")
+    def fail_runner() -> None:
+        raise creator.EvidenceValidationError(
+            "canonical migration operation ledger failed validation: synthetic failure"
+        )
+
+    expect_rejection(
+        lambda: creator.validate_canonical_ledger_before_append(
+            creator.DEFAULT_LEDGER,
+            _canonical_runner=fail_runner,
+        ),
+        creator.EvidenceValidationError,
+        "failed validation before append",
+    )
 
     custom_ledger = tmp_path / "isolated-ledger"
-    creator.validate_canonical_ledger_before_append(custom_ledger)
+    creator.validate_canonical_ledger_before_append(
+        custom_ledger,
+        _canonical_runner=fail_runner,
+    )
 
 
 def prove_postappend_failure_removes_new_record(tmp_path: Path) -> None:
@@ -77,31 +92,88 @@ def prove_postappend_failure_removes_new_record(tmp_path: Path) -> None:
     record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     target = ledger / creator.expected_filename(record)
 
-    original_after = creator.validate_canonical_ledger_after_append
+    def accept_before(_: Path) -> None:
+        return None
 
     def fail_after_append(_: Path) -> None:
         raise creator.EvidenceValidationError(
             "canonical migration operation ledger failed validation after append: synthetic failure"
         )
 
-    argv = sys.argv
-    creator.validate_canonical_ledger_after_append = fail_after_append
-    sys.argv = [str(CREATOR), str(record_path), "--ledger-dir", str(ledger)]
-    try:
-        rejected = False
-        try:
-            creator.main()
-        except creator.EvidenceValidationError as exc:
-            require("failed validation after append" in str(exc),
-                    f"unexpected post-append rejection: {exc}")
-            rejected = True
-        require(rejected, "post-append canonical validation failure was not rejected")
-    finally:
-        sys.argv = argv
-        creator.validate_canonical_ledger_after_append = original_after
-
+    expect_rejection(
+        lambda: creator.append_record(
+            record_path,
+            ledger,
+            before_validator=accept_before,
+            after_validator=fail_after_append,
+        ),
+        creator.EvidenceValidationError,
+        "failed validation after append",
+    )
     require(not target.exists(),
             "new migration operation evidence remained after post-append validation failure")
+
+
+def prove_actual_cli_authority_substitution_rejected() -> None:
+    creator = load_module(CREATOR, "migration_operation_creator_cli_authority_negative")
+    canonical_root = creator.ROOT
+    canonical_ledger = creator.DEFAULT_LEDGER
+    canonical_validator = creator.VALIDATOR
+
+    mutations = (
+        ("ROOT", ROOT / "docs", "repository authority substitution rejected"),
+        ("CANONICAL_DEFAULT_LEDGER", ROOT / "docs/evidence", "canonical ledger authority substitution rejected"),
+        ("CANONICAL_VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py", "canonical validator authority substitution rejected"),
+        ("DEFAULT_LEDGER", ROOT / "docs/evidence", "default ledger authority substitution rejected"),
+        ("VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py", "validator authority substitution rejected"),
+        ("load_json", lambda path: {}, "JSON loader authority substitution rejected"),
+        ("validate_record", lambda record: None, "record validator authority substitution rejected"),
+        ("expected_filename", lambda record: "fake.json", "filename authority substitution rejected"),
+    )
+    for field, replacement, expected in mutations:
+        original = getattr(creator, field)
+        setattr(creator, field, replacement)
+        try:
+            expect_rejection(
+                creator.require_actual_cli_authorities,
+                creator.EvidenceValidationError,
+                expected,
+            )
+        finally:
+            setattr(creator, field, original)
+
+    original_run = creator.subprocess.run
+    creator.subprocess.run = lambda *args, **kwargs: None
+    try:
+        expect_rejection(
+            creator.require_actual_cli_authorities,
+            creator.EvidenceValidationError,
+            "subprocess transport substitution rejected",
+        )
+    finally:
+        creator.subprocess.run = original_run
+
+    main_mutations = (
+        ("require_actual_cli_authorities", lambda: None, "CLI guard authority substitution rejected"),
+        ("append_record", lambda *args, **kwargs: None, "CLI append authority substitution rejected"),
+        ("validate_canonical_ledger_before_append", lambda ledger: None, "pre-append validator authority substitution rejected"),
+        ("validate_canonical_ledger_after_append", lambda ledger: None, "post-append validator authority substitution rejected"),
+        ("run_canonical_validator", lambda: None, "canonical runner authority substitution rejected"),
+    )
+    for field, replacement, expected in main_mutations:
+        original = getattr(creator, field)
+        setattr(creator, field, replacement)
+        argv = sys.argv
+        sys.argv = [str(CREATOR)]
+        try:
+            expect_rejection(creator.main, creator.EvidenceValidationError, expected)
+        finally:
+            sys.argv = argv
+            setattr(creator, field, original)
+
+    require(creator.ROOT == canonical_root, "migration operation ROOT authority was not restored")
+    require(creator.DEFAULT_LEDGER == canonical_ledger, "migration operation ledger authority was not restored")
+    require(creator.VALIDATOR == canonical_validator, "migration operation validator authority was not restored")
 
 
 def prove_contract_guards_are_required(contract_payload: bytes) -> None:
@@ -230,6 +302,7 @@ def main() -> int:
     prove_stronger_authority_is_preserved(module, originals[LIFECYCLE])
     prove_contract_guards_are_required(originals[CONTRACT])
     prove_validator_chain_substitution_rejected(module, originals)
+    prove_actual_cli_authority_substitution_rejected()
 
     with tempfile.TemporaryDirectory(prefix="migration-operation-reconcile-negative-") as tmp:
         tmp_path = Path(tmp)
@@ -240,6 +313,7 @@ def main() -> int:
     prove_post_write_failure_rolls_back(module, originals)
     print("PASS: migration operation append and reconcile are fail-closed, atomic, and rollback-safe")
     print("migration operation validator-chain substitution accepted: false")
+    print("migration operation actual CLI authority substitution accepted: false")
     return 0
 
 
