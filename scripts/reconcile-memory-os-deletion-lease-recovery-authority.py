@@ -63,8 +63,13 @@ def replace_if_present(values: list[Any], old: str, new: str) -> None:
 
 
 def normalize_and_validate_authority() -> None:
-    subprocess.run(["python", str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
+    # Normalize the human-readable missing-evidence projection first. It is
+    # allowed to deduplicate stale deterministic blocker text while deriving
+    # only from already-validated load readiness flags; running the readiness
+    # normalizer first would ask aggregate Operability to accept stale duplicate
+    # blocker text before the canonical dedupe had a chance to repair it.
     subprocess.run(["python", str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run(["python", str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
     subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
     subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
 
