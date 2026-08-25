@@ -77,7 +77,14 @@ def expect_guard_rejection(module, attribute: str, substitute, expected: str) ->
 def prove_execution_authority(module) -> None:
     module.enforce_execution_authorities()
     cases = (
+        ("OBSERVABILITY", module.SERVER, "observability source authority drift"),
+        ("SERVER", module.OBSERVABILITY, "server source authority drift"),
+        ("LIVE_TEST", module.ROUTE_TEST, "live test source authority drift"),
+        ("ROUTE_TEST", module.LIVE_TEST, "route test source authority drift"),
         ("METRICS_VALIDATOR", module.RATE_LIMIT_VALIDATOR, "metrics validator authority drift"),
+        ("RATE_LIMIT_VALIDATOR", module.METRICS_VALIDATOR, "rate-limit validator authority drift"),
+        ("OBSERVABILITY_VALIDATOR", module.OPERABILITY_VALIDATOR, "observability validator authority drift"),
+        ("OPERABILITY_VALIDATOR", module.OBSERVABILITY_VALIDATOR, "operability validator authority drift"),
         ("OLD_LABEL", module.NEW_LABEL, "old label semantic authority drift"),
         ("require", lambda *_args, **_kwargs: None, "require execution authority drift"),
         ("read", lambda _path: "", "reader execution authority drift"),
