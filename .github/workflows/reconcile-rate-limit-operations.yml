@@ -36,21 +36,24 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-rate-limit-operations-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  reconcile:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout exact authority source
+      - name: Checkout exact PR authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -58,20 +61,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Confirm exact clean authority source
+      - name: Confirm exact clean PR authority source
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "$EVENT_SHA"
-          fi
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
 
-      - name: Compile and validate operations policy
+      - name: Compile operations authority
         run: |
           python -m py_compile \
             scripts/validate-memory-os-rate-limit-operations.py \
@@ -82,9 +80,78 @@ jobs:
             scripts/validate-memory-os-rate-limit.py \
             scripts/validate-memory-os-operability.py \
             scripts/validate-memory-os-entry-docs.py
+
+      - name: Validate operations contract
+        run: python scripts/validate-memory-os-rate-limit-operations.py
+
+      - name: Validate operations reconcile negative
+        run: python scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py
+
+      - name: Validate operation evidence reconcile negative
+        run: python scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py
+
+      - name: Reconcile primary policy and status read-only
+        run: |
+          python scripts/reconcile-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit.py
           python scripts/validate-memory-os-rate-limit-operations.py
-          python scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py
-          python scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py
+          python scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-entry-docs.py
+
+      - name: Require whole-worktree deterministic authority
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean authority source
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Compile operations authority
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py \
+            scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py \
+            scripts/reconcile-memory-os-rate-limit-operations.py \
+            scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/validate-memory-os-entry-docs.py
+
+      - name: Validate operations contract
+        run: python scripts/validate-memory-os-rate-limit-operations.py
+
+      - name: Validate operations reconcile negative
+        run: python scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py
+
+      - name: Validate operation evidence reconcile negative
+        run: python scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py
 
       - name: Reconcile primary policy and status
         run: |
@@ -94,19 +161,11 @@ jobs:
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/rate-limit-policy-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit reconciled authority files
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
+          source_sha="$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$source_sha"
           git add \
             contracts/operations/rate-limit-policy-contract.v1.json \
             contracts/operations/production-operability-status.json
