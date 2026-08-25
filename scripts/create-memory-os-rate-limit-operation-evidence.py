@@ -30,11 +30,15 @@ class WriterFailure(RuntimeError):
     pass
 
 
-def require_cli_authorities() -> None:
+def require_cli_authorities(
+    _canonical_root: Path = _CANONICAL_ROOT,
+    _canonical_validator_path: Path = _CANONICAL_VALIDATOR_PATH,
+    _canonical_default_ledger: Path = _CANONICAL_DEFAULT_LEDGER,
+) -> None:
     expected = (
-        ("ROOT", ROOT, _CANONICAL_ROOT),
-        ("VALIDATOR_PATH", VALIDATOR_PATH, _CANONICAL_VALIDATOR_PATH),
-        ("DEFAULT_LEDGER", DEFAULT_LEDGER, _CANONICAL_DEFAULT_LEDGER),
+        ("ROOT", ROOT, _canonical_root),
+        ("VALIDATOR_PATH", VALIDATOR_PATH, _canonical_validator_path),
+        ("DEFAULT_LEDGER", DEFAULT_LEDGER, _canonical_default_ledger),
     )
     for label, actual, canonical in expected:
         if actual != canonical:
@@ -49,7 +53,8 @@ def require_cli_authorities() -> None:
                 resolved = parent / actual.name
             else:
                 raise WriterFailure(f"{label} authority does not exist")
-        if resolved != canonical.resolve(strict=label != "DEFAULT_LEDGER"):
+        canonical_resolved = canonical.resolve(strict=label != "DEFAULT_LEDGER")
+        if resolved != canonical_resolved:
             raise WriterFailure(f"{label} authority resolved path drift")
 
 
@@ -64,12 +69,9 @@ def load_validator() -> ModuleType:
     return module
 
 
-_CANONICAL_LOAD_VALIDATOR = load_validator
-
-
-def require_cli_execution_authority() -> None:
+def require_cli_execution_authority(_canonical_loader=load_validator) -> None:
     require_cli_authorities()
-    if load_validator is not _CANONICAL_LOAD_VALIDATOR:
+    if load_validator is not _canonical_loader:
         raise WriterFailure("operation evidence validator loader authority drift")
 
 
@@ -95,9 +97,13 @@ def validate_contract_append_guards(contract: dict[str, Any]) -> None:
 
 
 def validate_canonical_authority(
-    validator: ModuleType, ledger: Path, *, phase: str
+    validator: ModuleType,
+    ledger: Path,
+    *,
+    phase: str,
+    _canonical_default_ledger: Path = _CANONICAL_DEFAULT_LEDGER,
 ) -> None:
-    if ledger != _CANONICAL_DEFAULT_LEDGER.resolve():
+    if ledger != _canonical_default_ledger.resolve():
         return
     try:
         result = validator.main()
@@ -115,7 +121,13 @@ def validate_existing_canonical_authority(validator: ModuleType, ledger: Path) -
     validate_canonical_authority(validator, ledger, phase="before append")
 
 
-def append_record(input_path: Path, ledger_dir: Path, validator: ModuleType) -> Path:
+def append_record(
+    input_path: Path,
+    ledger_dir: Path,
+    validator: ModuleType,
+    _canonical_root: Path = _CANONICAL_ROOT,
+    _canonical_default_ledger: Path = _CANONICAL_DEFAULT_LEDGER,
+) -> Path:
     record = load_input(input_path)
     contract, policy_ids = validator.load_contract_context()
     validate_contract_append_guards(contract)
@@ -127,8 +139,8 @@ def append_record(input_path: Path, ledger_dir: Path, validator: ModuleType) -> 
         raise WriterFailure(str(exc)) from exc
 
     ledger = ledger_dir.resolve()
-    allowed_root = _CANONICAL_ROOT.resolve()
-    if ledger != _CANONICAL_DEFAULT_LEDGER.resolve():
+    allowed_root = _canonical_root.resolve()
+    if ledger != _canonical_default_ledger.resolve():
         temp_root = Path(os.environ.get("TMPDIR", "/tmp")).resolve()
         if not (ledger.is_relative_to(allowed_root) or ledger.is_relative_to(temp_root)):
             raise WriterFailure("ledger directory is outside approved roots")
@@ -158,8 +170,10 @@ def append_record(input_path: Path, ledger_dir: Path, validator: ModuleType) -> 
     return target
 
 
-def main() -> int:
-    require_cli_execution_authority()
+def main(_canonical_guard=require_cli_execution_authority) -> int:
+    if require_cli_execution_authority is not _canonical_guard:
+        raise WriterFailure("operation evidence CLI guard authority drift")
+    _canonical_guard()
     parser = argparse.ArgumentParser(
         description="Validate and exclusively append one rate-limit operation record"
     )
