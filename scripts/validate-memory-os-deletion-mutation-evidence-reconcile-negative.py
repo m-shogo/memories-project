@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove deletion mutation evidence reconcile pins authorities, publishes atomically, and rolls back aggregate rejection."""
+"""Prove deletion mutation evidence reconcile preserves independent authority and rolls back aggregate rejection."""
 
 from __future__ import annotations
 
@@ -127,6 +127,7 @@ def main() -> int:
                     "productionEquivalentDependencies": False,
                     "capacityBoundaryEstablished": False,
                     "sustainedSoakEvidence": False,
+                    "uploadCompletionPreFenceInFlightLinearizationProven": True,
                     "note": "synthetic local authority",
                 },
                 "evidenceRefs": [],
@@ -143,7 +144,7 @@ def main() -> int:
                         "status": "PARTIAL",
                         "blocking": True,
                         "existingEvidence": [],
-                        "missingEvidence": [],
+                        "missingEvidence": [module.UPLOAD_COMPLETION_BLOCKER],
                         "evidenceRefs": [],
                     }
                 ],
@@ -163,7 +164,39 @@ def main() -> int:
 
         calls: list[str] = []
 
-        def fake_run(command, *, cwd, check):
+        def successful_run(command, *, cwd, check):
+            if cwd != root or check is not True:
+                raise AssertionError("validator invocation lost fail-closed execution options")
+            calls.append(str(command[1]))
+            return subprocess.CompletedProcess(command, 0)
+
+        module.subprocess.run = successful_run
+        before_load = load_contract.read_bytes()
+        before_status = status.read_bytes()
+        module.main()
+        after_success = json.loads(load_contract.read_text(encoding="utf-8"))
+        after_status = json.loads(status.read_text(encoding="utf-8"))
+        if after_success["readiness"].get("uploadCompletionPreFenceInFlightLinearizationProven") is not True:
+            raise AssertionError("mutation reconcile demoted independently proven upload completion authority")
+        if any(
+            isinstance(item, str) and item.startswith("pre-fence in-flight linearization for upload-completion requests")
+            for item in after_status["areas"][0]["missingEvidence"]
+        ):
+            raise AssertionError("mutation reconcile reintroduced an independently satisfied upload-completion blocker")
+        expected_success = [
+            str(proof_validator),
+            str(load_index_validator),
+            str(load_validator),
+            str(operability_validator),
+        ]
+        if calls != expected_success:
+            raise AssertionError(f"successful validator order drift: {calls!r} != {expected_success!r}")
+
+        load_contract.write_bytes(before_load)
+        status.write_bytes(before_status)
+        calls.clear()
+
+        def failing_run(command, *, cwd, check):
             if cwd != root or check is not True:
                 raise AssertionError("validator invocation lost fail-closed execution options")
             validator = str(command[1])
@@ -172,10 +205,7 @@ def main() -> int:
                 raise subprocess.CalledProcessError(1, command)
             return subprocess.CompletedProcess(command, 0)
 
-        module.subprocess.run = fake_run
-        before_load = load_contract.read_bytes()
-        before_status = status.read_bytes()
-
+        module.subprocess.run = failing_run
         try:
             module.main()
         except subprocess.CalledProcessError:
@@ -190,16 +220,16 @@ def main() -> int:
         residue = list(root.glob(".*.tmp"))
         if residue:
             raise AssertionError(f"aggregate rollback left atomic temp residue: {residue!r}")
-        expected = [
+        expected_failure = [
             str(proof_validator),
             str(load_index_validator),
             str(load_validator),
             str(operability_validator),
         ]
-        if calls != expected:
-            raise AssertionError(f"validator order drift: {calls!r} != {expected!r}")
+        if calls != expected_failure:
+            raise AssertionError(f"failure validator order drift: {calls!r} != {expected_failure!r}")
 
-    print("PASS: deletion mutation authority identity, atomic replacement, and aggregate rollback are fail-closed")
+    print("PASS: deletion mutation authority preserves independent upload completion, atomic replacement, and rollback")
     return 0
 
 
