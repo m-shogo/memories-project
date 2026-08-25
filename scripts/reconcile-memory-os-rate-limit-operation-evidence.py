@@ -6,8 +6,10 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -133,6 +135,26 @@ def run_validator(path: Path, label: str) -> None:
             f"{label} validation failed:\n{completed.stdout[-4000:]}")
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    atomic_write_bytes(path, payload)
+
+
 def validate_evidence_authority(evidence: dict[str, Any]) -> None:
     enforce_runtime_authorities()
     try:
@@ -160,18 +182,12 @@ def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> N
         STATUS_PATH: STATUS_PATH.read_bytes(),
     }
     try:
-        OPERATIONS_PATH.write_text(
-            json.dumps(operations, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        STATUS_PATH.write_text(
-            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_json(OPERATIONS_PATH, operations)
+        atomic_write_json(STATUS_PATH, status)
         validate_written_authority()
     except Exception:
         for path, original in originals.items():
-            path.write_bytes(original)
+            atomic_write_bytes(path, original)
         raise
 
 
