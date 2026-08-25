@@ -201,6 +201,38 @@ def prove_evaluator_authority_boundaries() -> None:
             raise AssertionError("symlink operation evidence record was incorrectly accepted")
 
 
+def prove_evaluator_runtime_guard_identity() -> None:
+    evaluator = load_module(EVALUATOR_PATH, "memory_os_rate_limit_emergency_evaluator_guard_negative")
+    original_guard = evaluator.enforce_runtime_authorities
+    evaluator.enforce_runtime_authorities = lambda: None
+    try:
+        expect_rejection(
+            evaluator.main,
+            "emergency evaluator runtime guard execution authority drift",
+        )
+    finally:
+        evaluator.enforce_runtime_authorities = original_guard
+
+    substitutions = (
+        ("ROOT", ROOT / "scripts", "emergency evaluator repository authority drift"),
+        ("DEFAULT_LEDGER", ROOT / "README.md", "emergency evaluator ledger authority drift"),
+        ("VALIDATOR_PATH", EVALUATOR_PATH, "emergency evaluator validator authority drift"),
+        ("load", lambda path: ({}, b""), "emergency evaluator load execution authority drift"),
+        ("load_validator", lambda: None, "emergency evaluator validator loader execution authority drift"),
+        ("timestamp", lambda value: None, "emergency evaluator timestamp execution authority drift"),
+        ("resolve_ledger", lambda raw: ROOT, "emergency evaluator ledger resolver execution authority drift"),
+        ("resolve_operation_record", lambda ledger, operation_id: None, "emergency evaluator record resolver execution authority drift"),
+        ("validate_authority", lambda *args: None, "emergency evaluator record validator execution authority drift"),
+    )
+    for attr, substitute, expected in substitutions:
+        original = getattr(evaluator, attr)
+        try:
+            setattr(evaluator, attr, substitute)
+            expect_rejection(evaluator.enforce_runtime_authorities, expected)
+        finally:
+            setattr(evaluator, attr, original)
+
+
 def prove_runner_foundation_delegation() -> None:
     runner = load_module(RUNNER_PATH, "memory_os_rate_limit_emergency_runner_negative")
     original_run = runner.subprocess.run
@@ -327,6 +359,7 @@ def main() -> int:
     prove_lineage_rejection()
     prove_reconciler_authority_identity()
     prove_evaluator_authority_boundaries()
+    prove_evaluator_runtime_guard_identity()
     prove_runner_foundation_delegation()
     prove_aggregate_validator_delegation()
     prove_atomic_replace_failure()
@@ -334,6 +367,7 @@ def main() -> int:
     print("PASS: detached emergency drill sources are rejected")
     print("PASS: emergency reconcile pins canonical data and validator authorities")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
+    print("PASS: emergency evaluator runtime guard and execution helpers are fail-closed")
     print("PASS: emergency evaluator validates the exact record used for state evaluation")
     print("PASS: emergency evaluator rejects record drift during authority validation")
     print("PASS: emergency evaluator rejects invalid UTC timestamps without traceback semantics")
