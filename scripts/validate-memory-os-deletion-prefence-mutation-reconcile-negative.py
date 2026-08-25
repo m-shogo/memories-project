@@ -5,9 +5,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
-import subprocess
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,85 +21,42 @@ def load_module():
     return module
 
 
-def write_json(path: Path, value: dict) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
-
-
 def main() -> int:
     module = load_module()
-    with tempfile.TemporaryDirectory(prefix="memory-os-mutation-proof-") as tmp:
-        root = Path(tmp)
-        contract = root / "contract.json"
-        result = root / "result.json"
-        validator = root / "validator.py"
-        write_json(
-            contract,
-            {
-                "readiness": {},
-                "evidenceBoundary": {
-                    "applySurfaceCovered": True,
-                    "uploadAuthorizationSurfaceCovered": True,
-                    "uploadCompletionSurfaceCovered": False,
-                    "productionEvidence": False,
-                    "productionEquivalentDependencies": False,
-                },
-            },
-        )
-        write_json(
-            result,
-            {
-                "commitSha": SOURCE_SHA,
-                "scenario": {
-                    "result": "PASS",
-                    "integrityResult": "PASS",
-                    "authenticatedBeforeFence": 32,
-                    "applyUnauthorizedAfterFence": 16,
-                    "uploadAuthorizationUnauthorizedAfterFence": 16,
-                    "preWorkerApplyConfirmationRows": 0,
-                    "preWorkerMemoryItemRows": 0,
-                    "preWorkerUploadAuthorizationRows": 0,
-                    "preWorkerQuarantineRows": 0,
-                    "unexpectedStatusCount": 0,
-                    "transportErrors": 0,
-                    "finalOwnedRowCount": 0,
-                },
-            },
-        )
+    module.validate_authority_identity()
+    before = module.CANONICAL_CONTRACT_PATH.read_bytes()
+    candidate = json.loads(before.decode("utf-8"))
+    readiness = candidate.setdefault("readiness", {})
+    readiness["preFenceMutationLinearizationProven"] = not bool(
+        readiness.get("preFenceMutationLinearizationProven", False)
+    )
+    candidate_bytes = (json.dumps(candidate, indent=2) + "\n").encode("utf-8")
+    if candidate_bytes == before:
+        raise AssertionError("rollback fixture did not change canonical contract candidate")
 
-        module.ROOT = root
-        module.CONTRACT_PATH = contract
-        module.RESULT_PATH = result
-        module.VALIDATOR = validator
-        before = contract.read_bytes()
-        previous = os.environ.get("EXPECTED_COMMIT_SHA")
-        os.environ["EXPECTED_COMMIT_SHA"] = SOURCE_SHA
-        calls: list[list[str]] = []
+    original_run_validator = module.run_validator
 
-        def fake_run(command, *, cwd, check):
-            calls.append(list(command))
-            if cwd != root or check is not True:
-                raise AssertionError("validator invocation lost fail-closed execution options")
-            raise subprocess.CalledProcessError(1, command)
+    def reject_post_write(_expected: str) -> None:
+        raise RuntimeError("synthetic post-write pre-fence mutation rejection")
 
-        module.subprocess.run = fake_run
+    module.run_validator = reject_post_write
+    try:
         try:
-            try:
-                module.main()
-            except subprocess.CalledProcessError:
-                pass
-            else:
-                raise AssertionError("canonical validator rejection must fail mutation proof reconcile")
-        finally:
-            if previous is None:
-                os.environ.pop("EXPECTED_COMMIT_SHA", None)
-            else:
-                os.environ["EXPECTED_COMMIT_SHA"] = previous
+            module.write_contract_transactionally(candidate, SOURCE_SHA)
+        except RuntimeError as exc:
+            if "synthetic post-write pre-fence mutation rejection" not in str(exc):
+                raise
+        else:
+            raise AssertionError("canonical post-write rejection must fail mutation proof reconcile")
 
-        if contract.read_bytes() != before:
-            raise AssertionError("mutation proof contract changed after rejected reconcile")
-        expected = ["python", str(validator), "--require-result", "--expected-commit-sha", SOURCE_SHA]
-        if calls != [expected]:
-            raise AssertionError(f"validator invocation drift: {calls!r}")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != before:
+            raise AssertionError("canonical mutation proof contract changed after rejected reconcile")
+        if list(module.CANONICAL_CONTRACT_PATH.parent.glob(f".{module.CANONICAL_CONTRACT_PATH.name}.*.tmp")):
+            raise AssertionError("canonical mutation proof rollback left atomic temp residue")
+    finally:
+        module.run_validator = original_run_validator
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != before:
+            module.CANONICAL_ATOMIC_WRITE_BYTES(module.CANONICAL_CONTRACT_PATH, before)
 
     print("PASS: pre-fence mutation proof reconcile rolls back after canonical rejection")
     return 0
