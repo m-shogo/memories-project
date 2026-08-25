@@ -16,6 +16,7 @@ ROOT = CANONICAL_ROOT
 CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-lease-recovery-contract.v1.json"
 CANONICAL_RESULT_PATH = CANONICAL_ROOT / "docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json"
 CANONICAL_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-lease-recovery.py"
+CANONICAL_SUBPROCESS_RUN = subprocess.run
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR = CANONICAL_VALIDATOR
@@ -57,7 +58,14 @@ def validate_authority_identity() -> None:
     _require_exact_path("lease recovery validator", VALIDATOR, CANONICAL_VALIDATOR)
 
 
+def enforce_runtime_authorities() -> None:
+    validate_authority_identity()
+    if subprocess.run is not CANONICAL_SUBPROCESS_RUN:
+        raise ReconcileFailure("lease recovery subprocess transport is not canonical")
+
+
 def run_validator(expected_sha: str) -> None:
+    enforce_runtime_authorities()
     subprocess.run(
         [
             sys.executable,
@@ -86,6 +94,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
 
 
 def write_contract_transactionally(contract: dict[str, Any], expected_sha: str) -> None:
+    enforce_runtime_authorities()
     original = CONTRACT_PATH.read_bytes()
     candidate = (json.dumps(contract, indent=2) + "\n").encode("utf-8")
     atomic_write_bytes(CONTRACT_PATH, candidate)
@@ -101,7 +110,7 @@ def main() -> int:
     if len(expected_sha) != 40:
         raise SystemExit("EXPECTED_COMMIT_SHA must be a full source commit SHA")
 
-    validate_authority_identity()
+    enforce_runtime_authorities()
     run_validator(expected_sha)
 
     contract = load(CONTRACT_PATH)
