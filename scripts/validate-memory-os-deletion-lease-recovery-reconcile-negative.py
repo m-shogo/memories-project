@@ -39,6 +39,23 @@ def expect_identity_rejection(module: ModuleType, attribute: str, replacement: P
         setattr(module, attribute, original)
 
 
+def expect_transport_rejection(module: ModuleType, original_contract: bytes) -> None:
+    original_run = module.subprocess.run
+    module.subprocess.run = lambda *args, **kwargs: None
+    try:
+        try:
+            module.enforce_runtime_authorities()
+        except module.ReconcileFailure as exc:
+            if "subprocess transport is not canonical" not in str(exc):
+                raise AssertionError(f"unexpected transport rejection: {exc}") from exc
+        else:
+            raise AssertionError("subprocess transport substitution was accepted")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            raise AssertionError("transport rejection mutated canonical contract")
+    finally:
+        module.subprocess.run = original_run
+
+
 def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> None:
     candidate = json.loads(original_contract.decode("utf-8"))
     readiness = candidate.setdefault("readiness", {})
@@ -64,6 +81,8 @@ def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> 
 
         if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
             raise AssertionError("post-write validator rejection did not restore canonical contract bytes")
+        if list(module.CANONICAL_CONTRACT_PATH.parent.glob(f".{module.CANONICAL_CONTRACT_PATH.name}.*.tmp")):
+            raise AssertionError("post-write rollback left an atomic temp file")
     finally:
         module.run_validator = original_run_validator
         if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
@@ -77,9 +96,10 @@ def main() -> int:
     module.validate_authority_identity()
     expect_identity_rejection(module, "VALIDATOR", ALTERNATE_VALIDATOR, original_contract)
     expect_identity_rejection(module, "CONTRACT_PATH", ALTERNATE_CONTRACT, original_contract)
+    expect_transport_rejection(module, original_contract)
     expect_post_write_rollback(module, original_contract)
 
-    print("PASS: deletion lease recovery reconcile authority and rollback are fail-closed")
+    print("PASS: deletion lease recovery reconcile authority, execution transport and atomic rollback are fail-closed")
     return 0
 
 
