@@ -18,6 +18,7 @@ CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-wor
 CANONICAL_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-deletion-worker-saturation.py"
 CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
 CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
+CANONICAL_OS_REPLACE = os.replace
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR_PATH = CANONICAL_VALIDATOR_PATH
@@ -74,6 +75,9 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             temp_path.unlink(missing_ok=True)
 
 
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def load_validator():
     enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location("memory_os_deletion_worker_saturation_validator", VALIDATOR_PATH)
@@ -112,6 +116,8 @@ def enforce_runtime_authorities() -> None:
     require_exact_authority(VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, "deletion-worker saturation validator")
     require(importlib.util.spec_from_file_location is CANONICAL_SPEC_FROM_FILE_LOCATION, "validator spec loader transport is not canonical")
     require(importlib.util.module_from_spec is CANONICAL_MODULE_FROM_SPEC, "validator module loader transport is not canonical")
+    require(os.replace is CANONICAL_OS_REPLACE, "atomic replacement transport is not canonical")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "atomic writer authority is not canonical")
     require(load_validator is CANONICAL_LOAD_VALIDATOR, "validator loader authority is not canonical")
     require(validate_canonical is CANONICAL_VALIDATE_CANONICAL, "validator execution authority is not canonical")
 
