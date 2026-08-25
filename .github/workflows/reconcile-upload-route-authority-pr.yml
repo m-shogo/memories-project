@@ -1,0 +1,141 @@
+name: Validate Upload Route Authority PR
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-upload-route-authority.yml"
+      - ".github/workflows/reconcile-upload-route-authority-pr.yml"
+      - "scripts/reconcile-memory-os-upload-route-authority.py"
+      - "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
+      - "services/import-api/internal/httpserver/**"
+      - "services/import-api/internal/httpapi/upload_handler.go"
+      - "contracts/operations/metrics-contract.v1.json"
+      - "contracts/operations/rate-limit*.json"
+      - "scripts/validate-memory-os-metrics.py"
+      - "scripts/validate-memory-os-rate-limit*.py"
+      - "scripts/validate-memory-os-observability.py"
+      - "scripts/validate-memory-os-operability.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-upload-route-authority-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+      MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-security-validation.txt
+
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check --requirement requirements-security-validation.txt
+
+      - name: Start local MinIO
+        run: |
+          docker run -d --name memory-os-upload-route-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-upload-route-minio
+          exit 1
+
+      - name: Confirm exact clean source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/reconcile-memory-os-upload-route-authority.py \
+            scripts/validate-memory-os-upload-route-reconcile-rollback.py \
+            scripts/validate-memory-os-metrics.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-observability.py \
+            scripts/validate-memory-os-operability.py
+
+      - name: Validate reconcile rollback boundary
+        run: python scripts/validate-memory-os-upload-route-reconcile-rollback.py
+
+      - name: Reconcile registered routes and authority contracts
+        run: python scripts/reconcile-memory-os-upload-route-authority.py
+
+      - name: Format and verify source diff
+        working-directory: services/import-api
+        run: |
+          gofmt -w internal/httpserver/observability.go internal/httpserver/server.go \
+            internal/httpserver/server_live_test.go internal/httpserver/route_authority_test.go
+          test -z "$(gofmt -l internal/httpserver/observability.go internal/httpserver/server.go internal/httpserver/server_live_test.go internal/httpserver/route_authority_test.go)"
+
+      - name: Run focused route and live upload regressions
+        working-directory: services/import-api
+        run: |
+          go test ./internal/httpserver \
+            -run '^(TestRouteAuthorityMatchesRegisteredUploadSurface|TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes|TestUploadLifecycleOverHTTP|TestAccountDeletionFencesAndErasesOverHTTP)$' \
+            -count=1 -timeout=10m
+
+      - name: Validate metrics, rate-limit and observability contracts
+        run: |
+          python scripts/validate-memory-os-metrics.py
+          python scripts/validate-memory-os-rate-limit.py
+          python scripts/validate-memory-os-observability.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Confirm reconcile is idempotent
+        run: |
+          python scripts/reconcile-memory-os-upload-route-authority.py
+          test -z "$(gofmt -l services/import-api/internal/httpserver/observability.go services/import-api/internal/httpserver/server.go services/import-api/internal/httpserver/server_live_test.go services/import-api/internal/httpserver/route_authority_test.go)"
+
+      - name: Require deterministic whole-worktree authority
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
