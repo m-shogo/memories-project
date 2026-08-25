@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -60,8 +63,24 @@ def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(fd, existing_mode)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
 
 
 def validate(path: Path) -> None:
@@ -70,9 +89,6 @@ def validate(path: Path) -> None:
 
 def main() -> int:
     validate_authorities()
-    # Refuse to derive blocker state from a corrupt load authority. The full
-    # validator is safe before reconciliation because PARTIAL status does not
-    # require the human-readable missingEvidence list to already be normalized.
     validate(LOAD_VALIDATOR)
 
     load_contract = load(LOAD)
@@ -144,7 +160,7 @@ def main() -> int:
         validate(LOAD_VALIDATOR)
         validate(OPERABILITY_VALIDATOR)
     except BaseException:
-        STATUS.write_bytes(status_bytes)
+        atomic_write_bytes(STATUS, status_bytes)
         raise
 
     print("Memory OS load missing-evidence reconciliation PASS")
