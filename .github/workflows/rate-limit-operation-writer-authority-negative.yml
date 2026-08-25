@@ -1,0 +1,56 @@
+name: Rate-Limit Operation Writer Authority Negative
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/rate-limit-operation-writer-authority-negative.yml"
+      - "scripts/create-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-writer-authority-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/rate-limit-operation-writer-authority-negative.yml"
+      - "scripts/create-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-writer-authority-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rate-limit-operation-writer-authority-negative-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean source
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Validate writer authority boundary
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/create-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-writer-authority-negative.py
+          python scripts/validate-memory-os-rate-limit-operation-writer-authority-negative.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
