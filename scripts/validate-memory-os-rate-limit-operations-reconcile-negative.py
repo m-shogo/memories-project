@@ -11,6 +11,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rate-limit-operations.py"
+CANONICAL_POLICY_PATH = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 
 
 class NegativeFailure(RuntimeError):
@@ -41,11 +43,11 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def prove_transaction_rollback(reconciler: Any) -> None:
     originals = {
-        reconciler.POLICY_PATH: reconciler.POLICY_PATH.read_bytes(),
-        reconciler.STATUS_PATH: reconciler.STATUS_PATH.read_bytes(),
+        CANONICAL_POLICY_PATH: CANONICAL_POLICY_PATH.read_bytes(),
+        CANONICAL_STATUS_PATH: CANONICAL_STATUS_PATH.read_bytes(),
     }
-    policy = copy.deepcopy(load_json(reconciler.POLICY_PATH))
-    status = copy.deepcopy(load_json(reconciler.STATUS_PATH))
+    policy = copy.deepcopy(load_json(CANONICAL_POLICY_PATH))
+    status = copy.deepcopy(load_json(CANONICAL_STATUS_PATH))
     policy["operations"]["drillCompleted"] = False
     status["asOf"] = "2099-01-01"
 
@@ -99,8 +101,8 @@ def expect_substitution_rejection(
     reconciler: Any, attribute: str, substitute: Path, label: str
 ) -> None:
     original_attribute = getattr(reconciler, attribute)
-    original_policy = reconciler.POLICY_PATH.read_bytes()
-    original_status = reconciler.STATUS_PATH.read_bytes()
+    original_policy = CANONICAL_POLICY_PATH.read_bytes()
+    original_status = CANONICAL_STATUS_PATH.read_bytes()
     setattr(reconciler, attribute, substitute)
     try:
         try:
@@ -115,14 +117,14 @@ def expect_substitution_rejection(
             raise NegativeFailure(
                 f"rate-limit operations reconciler accepted authority substitution: {label}"
             )
-        require(reconciler.POLICY_PATH.read_bytes() == original_policy,
-                f"policy mutated after authority substitution: {label}")
-        require(reconciler.STATUS_PATH.read_bytes() == original_status,
-                f"status mutated after authority substitution: {label}")
+        require(CANONICAL_POLICY_PATH.read_bytes() == original_policy,
+                f"canonical policy mutated after authority substitution: {label}")
+        require(CANONICAL_STATUS_PATH.read_bytes() == original_status,
+                f"canonical status mutated after authority substitution: {label}")
     finally:
         setattr(reconciler, attribute, original_attribute)
-        reconciler.POLICY_PATH.write_bytes(original_policy)
-        reconciler.STATUS_PATH.write_bytes(original_status)
+        CANONICAL_POLICY_PATH.write_bytes(original_policy)
+        CANONICAL_STATUS_PATH.write_bytes(original_status)
 
 
 def main() -> int:
