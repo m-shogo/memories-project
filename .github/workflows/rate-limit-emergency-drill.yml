@@ -216,6 +216,16 @@ jobs:
             docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json \
             docs/fixtures/memory-os-operability/rate-limit-emergency-drill-diagnostic.last.json
           git diff --cached --check
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Rate-limit drill result source became stale before publication: $remote_sha" >&2
+            exit 75
+          fi
+          if git diff --cached --quiet; then
+            echo "Exact-source rate-limit drill result is already current."
+            echo "RESULT_COMMIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test(rate-limit): record emergency decision drill result"
