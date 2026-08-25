@@ -66,9 +66,45 @@ def data_authority_identity_negative(module) -> None:
             "repository-contained production status substitution",
             module.validate_runtime_authority,
         )
+        module.CONTRACT_PATH = original_status
+        module.STATUS_PATH = original_contract
+        expect_rejected(
+            "paired repository-contained contract/status substitution",
+            module.validate_runtime_authority,
+        )
     finally:
         module.CONTRACT_PATH = original_contract
         module.STATUS_PATH = original_status
+
+
+def blocker_authority_identity_negative(module) -> None:
+    original_root = module.ROOT
+    original_helper = module.require_canonical_gaps
+    original_guard = module.validate_runtime_authority
+    try:
+        module.ROOT = ROOT / "scripts"
+        expect_rejected(
+            "repository root substitution",
+            module.validate_runtime_authority,
+        )
+        module.ROOT = original_root
+
+        module.require_canonical_gaps = lambda *args, **kwargs: args[0] if args else None
+        expect_rejected(
+            "canonical blocker validator substitution",
+            module.validate_runtime_authority,
+        )
+        module.require_canonical_gaps = original_helper
+
+        module.validate_runtime_authority = lambda: None
+        expect_rejected(
+            "runtime authority guard substitution",
+            module.main,
+        )
+    finally:
+        module.ROOT = original_root
+        module.require_canonical_gaps = original_helper
+        module.validate_runtime_authority = original_guard
 
 
 def make_stale_status_load(module, real_load):
@@ -167,14 +203,22 @@ def rollback_negative(module) -> None:
 
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_backup_restore_reconcile_negative_target")
+    original_status = reconciler.STATUS_PATH.read_bytes()
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
     data_authority_identity_negative(reconciler)
+    blocker_authority_identity_negative(reconciler)
     atomic_replace_negative(reconciler)
     rollback_negative(reconciler)
+    require(reconciler.STATUS_PATH.read_bytes() == original_status,
+            "authority negatives mutated canonical Production Status")
     print("Memory OS backup/restore policy reconcile negative suite PASS")
     print("canonical validator identity: enforced")
     print("canonical contract/status identity: enforced")
+    print("paired contract/status substitution accepted: false")
+    print("canonical repository root identity: enforced")
+    print("canonical blocker validator substitution accepted: false")
+    print("runtime authority guard substitution accepted: false")
     print("deterministic drift repair before full validation: enforced")
     print("atomic production status replacement: enforced")
     print("atomic replacement temp cleanup: enforced")
