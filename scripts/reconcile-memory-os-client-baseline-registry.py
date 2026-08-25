@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -111,8 +113,34 @@ def load_module(path: Path, name: str) -> Any:
     return module
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    atomic_write_bytes(path, payload)
 
 
 def append_once(values: list[Any], value: str) -> None:
@@ -147,8 +175,15 @@ def write_and_validate_transactionally(
         run_validator(SUPPORT_VALIDATOR, "post-write support-window validator")
         run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
     except Exception:
+        rollback_error: Exception | None = None
         for path in paths:
-            path.write_bytes(originals[path])
+            try:
+                atomic_write_bytes(path, originals[path])
+            except Exception as exc:
+                if rollback_error is None:
+                    rollback_error = exc
+        if rollback_error is not None:
+            raise Fail(f"client baseline authority rollback failed: {rollback_error}") from rollback_error
         raise
 
 
