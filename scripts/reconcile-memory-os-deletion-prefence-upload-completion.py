@@ -17,6 +17,7 @@ ROOT = CANONICAL_ROOT
 CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-prefence-upload-completion-contract.v1.json"
 CANONICAL_RESULT_PATH = CANONICAL_ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json"
 CANONICAL_VALIDATOR = CANONICAL_ROOT / "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
+CANONICAL_SUBPROCESS_RUN = subprocess.run
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 VALIDATOR = CANONICAL_VALIDATOR
@@ -55,9 +56,11 @@ def validate_authority_identity() -> None:
     _require_exact_path("upload completion contract", CONTRACT_PATH, CANONICAL_CONTRACT_PATH)
     _require_exact_path("upload completion result", RESULT_PATH, CANONICAL_RESULT_PATH)
     _require_exact_path("upload completion validator", VALIDATOR, CANONICAL_VALIDATOR)
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "validator execution transport is not canonical")
 
 
 def run_validator(expected: str) -> None:
+    validate_authority_identity()
     subprocess.run(
         [sys.executable, str(VALIDATOR), "--require-result", "--expected-commit-sha", expected],
         cwd=ROOT,
