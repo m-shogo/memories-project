@@ -12,6 +12,7 @@ SUPPORT_RECONCILER = ROOT / "scripts/reconcile-memory-os-client-server-support-w
 CLIENT_RECONCILER = ROOT / "scripts/reconcile-memory-os-client-baseline-registry.py"
 SUPPORT_CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
 CLIENT_CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
+CLIENT_REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
@@ -71,6 +72,49 @@ def verify_support_runtime_authority_substitutions() -> None:
                     path.read_bytes() == payload,
                     f"support-window {attribute} rejection mutated {path.relative_to(ROOT)}",
                 )
+        finally:
+            setattr(reconciler, attribute, original)
+
+
+def verify_client_runtime_authority_substitutions() -> None:
+    canonical = {
+        CLIENT_CONTRACT: CLIENT_CONTRACT.read_bytes(),
+        SUPPORT_CONTRACT: SUPPORT_CONTRACT.read_bytes(),
+        STATUS: STATUS.read_bytes(),
+    }
+    cases = (
+        ("ROOT", ROOT / "scripts"),
+        ("CONTRACT", SUPPORT_CONTRACT),
+        ("REGISTRY", SUPPORT_CONTRACT),
+        ("SUPPORT", CLIENT_CONTRACT),
+        ("STATUS", SUPPORT_CONTRACT),
+        ("require", lambda condition, message: None),
+        ("require_exact_repo_file", lambda path, expected_relative, field, **kwargs: path),
+        ("enforce_runtime_authorities", lambda: None),
+    )
+    for index, (attribute, replacement) in enumerate(cases):
+        reconciler = load_module(
+            CLIENT_RECONCILER,
+            f"memory_os_client_baseline_authority_negative_{index}",
+        )
+        original = getattr(reconciler, attribute)
+        setattr(reconciler, attribute, replacement)
+        try:
+            rejected = False
+            try:
+                if attribute == "enforce_runtime_authorities":
+                    reconciler.main()
+                else:
+                    reconciler.enforce_runtime_authorities()
+            except Exception:
+                rejected = True
+            require(rejected, f"client-baseline reconciler accepted {attribute} authority substitution")
+            for path, payload in canonical.items():
+                require(
+                    path.read_bytes() == payload,
+                    f"client-baseline {attribute} rejection mutated {path.relative_to(ROOT)}",
+                )
+            require(CLIENT_REGISTRY.is_file(), "client baseline registry authority disappeared during rejection")
         finally:
             setattr(reconciler, attribute, original)
 
@@ -194,11 +238,13 @@ def verify_support_order_preservation() -> None:
 
 def main() -> int:
     verify_support_runtime_authority_substitutions()
+    verify_client_runtime_authority_substitutions()
     verify_support_atomic_replace_failure()
     verify_client_atomic_replace_failure()
     verify_support_order_preservation()
     print("Memory OS client compatibility reconcile negative PASS")
     print("support-window runtime authority substitutions: rejected")
+    print("client-baseline runtime authority substitutions: rejected")
     print("support-window atomic replacement failure: rejected without authority mutation")
     print("client-baseline atomic replacement failure: rejected without authority mutation")
     print("temporary authority residue: none")
