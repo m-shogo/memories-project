@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove pre-fence proof reconcile authority identity and rollback are fail-closed."""
+"""Prove pre-fence proof reconcile authority identity, execution transport, and rollback are fail-closed."""
 
 from __future__ import annotations
 
@@ -38,6 +38,23 @@ def expect_identity_rejection(module: ModuleType, attribute: str, replacement: P
             raise AssertionError(f"{attribute} rejection mutated canonical contract")
     finally:
         setattr(module, attribute, original)
+
+
+def expect_transport_rejection(module: ModuleType, original_contract: bytes) -> None:
+    original = module.subprocess.run
+    module.subprocess.run = lambda *args, **kwargs: None
+    try:
+        try:
+            module.validate_authority_identity()
+        except module.Fail as exc:
+            if "validator execution transport is not canonical" not in str(exc):
+                raise
+        else:
+            raise AssertionError("subprocess.run substitution was accepted")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            raise AssertionError("execution transport rejection mutated canonical contract")
+    finally:
+        module.subprocess.run = original
 
 
 def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> None:
@@ -79,9 +96,10 @@ def main() -> int:
     module.validate_authority_identity()
     expect_identity_rejection(module, "VALIDATOR", ALTERNATE_VALIDATOR, original_contract)
     expect_identity_rejection(module, "CONTRACT_PATH", ALTERNATE_CONTRACT, original_contract)
+    expect_transport_rejection(module, original_contract)
     expect_post_write_rollback(module, original_contract)
 
-    print("PASS: pre-fence proof reconcile authority identity and rollback are fail-closed")
+    print("PASS: pre-fence proof reconcile authority identity, execution transport, and rollback are fail-closed")
     return 0
 
 
