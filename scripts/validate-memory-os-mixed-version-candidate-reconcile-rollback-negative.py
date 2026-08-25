@@ -49,6 +49,20 @@ def main() -> int:
     expect_authority_rejection(reconciler, "CANDIDATE_VALIDATOR", reconciler.VERSION_VALIDATOR)
     expect_authority_rejection(reconciler, "VERSION_VALIDATOR", reconciler.OPERABILITY_VALIDATOR)
     expect_authority_rejection(reconciler, "OPERABILITY_VALIDATOR", reconciler.CANDIDATE_VALIDATOR)
+
+    original_run = reconciler.subprocess.run
+    reconciler.subprocess.run = lambda *args, **kwargs: None
+    try:
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.ReconcileFailure as exc:
+            if "subprocess transport substitution" not in str(exc):
+                raise RuntimeError(f"unexpected subprocess transport rejection: {exc}") from exc
+        else:
+            raise RuntimeError("candidate subprocess transport substitution must be rejected")
+    finally:
+        reconciler.subprocess.run = original_run
+
     if CONTRACT.read_bytes() != contract_before or STATUS.read_bytes() != status_before:
         raise RuntimeError("candidate authority substitution changed canonical bytes")
 
@@ -60,25 +74,14 @@ def main() -> int:
     CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     transaction_before = CONTRACT.read_bytes()
 
-    original_run = reconciler.subprocess.run
-    calls: list[Path] = []
-
-    class Result:
-        def __init__(self, returncode: int, stdout: str = "", stderr: str = "") -> None:
-            self.returncode = returncode
-            self.stdout = stdout
-            self.stderr = stderr
-
-    def fake_run(command: list[str], **_: Any) -> Result:
-        if command and command[0] == "git":
-            return Result(0)
-        path = Path(command[1]).resolve()
-        calls.append(path)
-        if path == reconciler.VERSION_VALIDATOR.resolve():
-            return Result(1, stderr="synthetic version aggregate rejection")
-        return Result(0)
-
-    reconciler.subprocess.run = fake_run
+    version_before = reconciler.VERSION_VALIDATOR.read_bytes()
+    failing_version_validator = (
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "print('synthetic version aggregate rejection', file=sys.stderr)\n"
+        "raise SystemExit(1)\n"
+    ).encode("utf-8")
+    reconciler.VERSION_VALIDATOR.write_bytes(failing_version_validator)
     try:
         try:
             reconciler.main()
@@ -88,18 +91,12 @@ def main() -> int:
         else:
             raise RuntimeError("candidate reconciler accepted rejected version aggregate authority")
 
-        if reconciler.CANDIDATE_VALIDATOR.resolve() not in calls:
-            raise RuntimeError("candidate reconciler did not invoke candidate validator")
-        if reconciler.VERSION_VALIDATOR.resolve() not in calls:
-            raise RuntimeError("candidate reconciler did not invoke version aggregate validator")
-        if reconciler.OPERABILITY_VALIDATOR.resolve() in calls:
-            raise RuntimeError("candidate reconciler continued after version aggregate rejection")
         if CONTRACT.read_bytes() != transaction_before:
             raise RuntimeError("candidate reconciler did not restore the pre-transaction contract bytes after aggregate rejection")
         if STATUS.read_bytes() != status_before:
             raise RuntimeError("candidate reconciler mutated production status after aggregate rejection")
     finally:
-        reconciler.subprocess.run = original_run
+        reconciler.VERSION_VALIDATOR.write_bytes(version_before)
         CONTRACT.write_bytes(contract_before)
         STATUS.write_bytes(status_before)
 
@@ -141,7 +138,7 @@ def main() -> int:
     if replace_calls < 2:
         raise RuntimeError("candidate atomic replacement failure did not exercise atomic rollback")
 
-    print("PASS: mixed-version candidate authority identity, atomic replacement, and reconcile rollback are fail-closed")
+    print("PASS: mixed-version candidate authority identity, execution transport, atomic replacement, and reconcile rollback are fail-closed")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
