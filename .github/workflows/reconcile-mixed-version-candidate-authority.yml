@@ -32,24 +32,67 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-mixed-version-candidate-authority-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  reconcile:
-    if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'docs(version): reconcile candidate baseline evidence')
+  validate-pr:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact pull request authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate exact clean pull request authority
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-mixed-version-candidate.py \
+            scripts/reconcile-memory-os-mixed-version-candidate.py \
+            scripts/validate-memory-os-mixed-version-candidate-reconcile-rollback-negative.py \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-mixed-version-candidate-reconcile-rollback-negative.py
+          python scripts/reconcile-memory-os-mixed-version-candidate.py
+          python scripts/validate-memory-os-mixed-version-candidate.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  reconcile:
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(version): reconcile candidate baseline evidence'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -58,16 +101,10 @@ jobs:
           python-version: "3.12"
 
       - name: Confirm exact clean authority source
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           python -m py_compile \
             scripts/validate-memory-os-mixed-version-candidate.py \
             scripts/reconcile-memory-os-mixed-version-candidate.py \
@@ -88,17 +125,7 @@ jobs:
           python scripts/validate-memory-os-version-compatibility.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/mixed-version-candidate-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit candidate contract and status together
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
@@ -122,7 +149,6 @@ jobs:
           git push origin HEAD:so
 
       - name: Re-read committed authority and run aggregate checks
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
