@@ -18,6 +18,7 @@ on:
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
   push:
     branches:
       - so
@@ -37,6 +38,7 @@ on:
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
   workflow_dispatch:
 
 permissions:
@@ -84,7 +86,8 @@ jobs:
             scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit.py \
-            scripts/validate-memory-os-operability.py
+            scripts/validate-memory-os-operability.py \
+            scripts/validate-memory-os-entry-docs.py
           python scripts/validate-memory-os-rate-limit-operation-evidence.py
           python scripts/validate-memory-os-rate-limit-operation-writer-negative.py
           python scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py
@@ -157,6 +160,7 @@ jobs:
           python scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit.py
           python scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-entry-docs.py
 
       - name: Require whole-worktree deterministic authority
         run: |
@@ -202,7 +206,8 @@ jobs:
             scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit.py \
-            scripts/validate-memory-os-operability.py
+            scripts/validate-memory-os-operability.py \
+            scripts/validate-memory-os-entry-docs.py
           python scripts/validate-memory-os-rate-limit-operation-evidence.py
           python scripts/validate-memory-os-rate-limit-operation-writer-negative.py
           python scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py
@@ -275,6 +280,7 @@ jobs:
           python scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit.py
           python scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-entry-docs.py
 
       - name: Commit reconciled authority
         run: |
