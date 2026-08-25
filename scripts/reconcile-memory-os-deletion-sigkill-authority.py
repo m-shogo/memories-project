@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -48,9 +49,11 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
+        os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
             handle.flush()
