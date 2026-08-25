@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/mixed-version-candidate-contract.v1.json"
@@ -90,6 +90,14 @@ def enforce_runtime_authorities() -> None:
     require(subprocess.run is CANONICAL_SUBPROCESS_RUN, "candidate subprocess transport substitution")
 
 
+CANONICAL_RUNTIME_GUARD: Callable[[], None] = enforce_runtime_authorities
+
+
+def require_canonical_guard(guard: Callable[[], None]) -> None:
+    require(guard is CANONICAL_RUNTIME_GUARD, "candidate runtime guard substitution")
+    guard()
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -119,8 +127,12 @@ def write(path: Path, value: dict[str, Any]) -> None:
     atomic_write_bytes(path, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
 
 
-def run_validator(path: Path, failure_label: str) -> None:
-    enforce_runtime_authorities()
+def run_validator(
+    path: Path,
+    failure_label: str,
+    _guard: Callable[[], None] = enforce_runtime_authorities,
+) -> None:
+    require_canonical_guard(_guard)
     completed = subprocess.run(
         [sys.executable, str(path)],
         cwd=ROOT,
@@ -159,8 +171,12 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
         raise ReconcileFailure(f"candidate reconcile validation failed; restored prior authority: {exc}") from exc
 
 
-def is_ancestor(base: str, head: str) -> bool:
-    enforce_runtime_authorities()
+def is_ancestor(
+    base: str,
+    head: str,
+    _guard: Callable[[], None] = enforce_runtime_authorities,
+) -> bool:
+    require_canonical_guard(_guard)
     try:
         return subprocess.run(
             ["git", "merge-base", "--is-ancestor", base, head],
@@ -173,8 +189,8 @@ def is_ancestor(base: str, head: str) -> bool:
         return False
 
 
-def main() -> int:
-    enforce_runtime_authorities()
+def main(_guard: Callable[[], None] = enforce_runtime_authorities) -> int:
+    require_canonical_guard(_guard)
     result = load(RESULT_PATH)
     require(result.get("schemaVersion") ==
             "memory-os-mixed-version-candidate-results.v1",
