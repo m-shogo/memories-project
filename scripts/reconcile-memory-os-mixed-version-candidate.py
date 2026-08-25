@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -97,8 +99,22 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_bytes(path, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
 
 
 def run_validator(path: Path, failure_label: str) -> None:
@@ -126,8 +142,18 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
         run_validator(VERSION_VALIDATOR, "version compatibility authority rejected after candidate reconcile")
         run_validator(OPERABILITY_VALIDATOR, "operability authority rejected after candidate reconcile")
     except Exception as exc:
+        rollback_errors: list[str] = []
         for path, data in originals.items():
-            path.write_bytes(data)
+            try:
+                atomic_write_bytes(path, data)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path.name}: {rollback_exc}")
+        if rollback_errors:
+            raise ReconcileFailure(
+                "candidate reconcile validation failed and rollback was incomplete: "
+                + "; ".join(rollback_errors)
+                + f"; original failure: {exc}"
+            ) from exc
         raise ReconcileFailure(f"candidate reconcile validation failed; restored prior authority: {exc}") from exc
 
 
