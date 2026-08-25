@@ -39,18 +39,11 @@ def expect_rejection(callback, expected: str) -> None:
 
 def git(*args: str, env: dict[str, str] | None = None) -> str:
     completed = subprocess.run(
-        ["git", *args],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-        check=False,
+        ["git", *args], cwd=ROOT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, check=False,
     )
     if completed.returncode != 0:
-        raise AssertionError(
-            f"git {' '.join(args)} failed: {completed.stderr.strip()}"
-        )
+        raise AssertionError(f"git {' '.join(args)} failed: {completed.stderr.strip()}")
     return completed.stdout.strip()
 
 
@@ -58,14 +51,12 @@ def detached_side_commit() -> str:
     tree = git("rev-parse", "HEAD^{tree}")
     parent = git("rev-parse", "HEAD^")
     env = os.environ.copy()
-    env.update(
-        {
-            "GIT_AUTHOR_NAME": "memory-os-lineage-test",
-            "GIT_AUTHOR_EMAIL": "memory-os-lineage-test@example.invalid",
-            "GIT_COMMITTER_NAME": "memory-os-lineage-test",
-            "GIT_COMMITTER_EMAIL": "memory-os-lineage-test@example.invalid",
-        }
-    )
+    env.update({
+        "GIT_AUTHOR_NAME": "memory-os-lineage-test",
+        "GIT_AUTHOR_EMAIL": "memory-os-lineage-test@example.invalid",
+        "GIT_COMMITTER_NAME": "memory-os-lineage-test",
+        "GIT_COMMITTER_EMAIL": "memory-os-lineage-test@example.invalid",
+    })
     return git("commit-tree", tree, "-p", parent, "-m", "synthetic side commit", env=env)
 
 
@@ -86,10 +77,7 @@ def prove_lineage_rejection() -> None:
 
 
 def prove_reconciler_authority_identity() -> None:
-    reconciler = load_module(
-        RECONCILER_PATH,
-        "memory_os_rate_limit_emergency_authority_identity_negative",
-    )
+    reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_authority_identity_negative")
     substitutions = (
         ("CONTRACT_PATH", ROOT / "README.md", "emergency drill contract authority drift"),
         ("RESULT_PATH", ROOT / "README.md", "emergency drill result authority drift"),
@@ -129,9 +117,7 @@ def prove_evaluator_authority_boundaries() -> None:
         )
         try:
             try:
-                evaluator.validate_authority(
-                    evaluator.DEFAULT_LEDGER.resolve(), record_path, {}, record_bytes
-                )
+                evaluator.validate_authority(evaluator.DEFAULT_LEDGER.resolve(), record_path, {}, record_bytes)
             except SystemExit as exc:
                 if "returned non-zero: False" not in str(exc):
                     raise AssertionError(f"unexpected boolean-exit rejection: {exc}") from exc
@@ -148,15 +134,11 @@ def prove_evaluator_authority_boundaries() -> None:
             validate_record=lambda record, contract, policy_ids: calls.append("record"),
         )
         try:
-            evaluator.validate_authority(
-                evaluator.DEFAULT_LEDGER.resolve(), record_path, {}, record_bytes
-            )
+            evaluator.validate_authority(evaluator.DEFAULT_LEDGER.resolve(), record_path, {}, record_bytes)
         finally:
             evaluator.load_validator = original_loader
         if calls != ["record"]:
-            raise AssertionError(
-                f"canonical evaluator did not validate the exact record after ledger validation: {calls}"
-            )
+            raise AssertionError(f"canonical evaluator did not validate the exact record after ledger validation: {calls}")
 
         def mutate_record(record, contract, policy_ids) -> None:
             record_path.write_text('{"mutated":true}\n', encoding="utf-8")
@@ -226,11 +208,7 @@ def prove_runner_foundation_delegation() -> None:
 
     def reject_foundation(command, **kwargs):
         calls.append(list(command))
-        return SimpleNamespace(
-            returncode=17,
-            stdout="",
-            stderr="synthetic canonical foundation rejection",
-        )
+        return SimpleNamespace(returncode=17, stdout="", stderr="synthetic canonical foundation rejection")
 
     runner.subprocess.run = reject_foundation
     try:
@@ -250,10 +228,7 @@ def prove_runner_foundation_delegation() -> None:
 
 
 def prove_aggregate_validator_delegation() -> None:
-    reconciler = load_module(
-        RECONCILER_PATH,
-        "memory_os_rate_limit_emergency_aggregate_negative",
-    )
+    reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_aggregate_negative")
     original = reconciler.run_validator
     calls: list[Path] = []
 
@@ -274,30 +249,53 @@ def prove_aggregate_validator_delegation() -> None:
     finally:
         reconciler.run_validator = original
 
-    expected = [
-        reconciler.VALIDATOR_PATH,
-        reconciler.OPERATIONS_VALIDATOR,
-        reconciler.RATE_LIMIT_VALIDATOR,
-    ]
+    expected = [reconciler.VALIDATOR_PATH, reconciler.OPERATIONS_VALIDATOR, reconciler.RATE_LIMIT_VALIDATOR]
     if calls != expected:
         raise AssertionError(f"emergency reconcile aggregate validator order drift: {calls}")
     if reconciler.OPERABILITY_VALIDATOR in calls:
         raise AssertionError("operability validation ran after an earlier aggregate rejection")
 
 
+def prove_atomic_replace_failure() -> None:
+    reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_atomic_negative")
+    path = reconciler.CONTRACT_PATH
+    original = path.read_bytes()
+    original_replace = reconciler.os.replace
+    pattern = f".{path.name}.*.tmp"
+    before = {item.name for item in path.parent.glob(pattern)}
+
+    def reject_replace(source, destination) -> None:
+        if Path(destination) == path:
+            raise OSError("synthetic atomic replace rejection")
+        original_replace(source, destination)
+
+    reconciler.os.replace = reject_replace
+    try:
+        try:
+            reconciler.atomic_write_bytes(path, b"synthetic emergency authority\n")
+        except OSError as exc:
+            if "synthetic atomic replace rejection" not in str(exc):
+                raise AssertionError(f"unexpected atomic replacement rejection: {exc}") from exc
+        else:
+            raise AssertionError("atomic emergency authority replacement failure was accepted")
+        if path.read_bytes() != original:
+            raise AssertionError("emergency drill contract changed after failed atomic replacement")
+        after = {item.name for item in path.parent.glob(pattern)}
+        if after != before:
+            raise AssertionError(f"emergency atomic replacement left temporary residue: {sorted(after - before)}")
+    finally:
+        reconciler.os.replace = original_replace
+        path.write_bytes(original)
+
+
 def prove_transactional_rollback() -> None:
-    reconciler = load_module(
-        RECONCILER_PATH,
-        "memory_os_rate_limit_emergency_reconciler_negative",
-    )
+    reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_reconciler_negative")
     contract_before = reconciler.CONTRACT_PATH.read_bytes()
     status_before = reconciler.STATUS_PATH.read_bytes()
     contract = json.loads(contract_before)
     status = json.loads(status_before)
-
     contract["description"] = str(contract.get("description", "")) + " synthetic-rollback-probe"
     status["asOf"] = "2099-01-01"
-
     original_validator = reconciler.validate_written_authority
 
     def reject_after_write(source_sha: str) -> None:
@@ -331,6 +329,7 @@ def main() -> int:
     prove_evaluator_authority_boundaries()
     prove_runner_foundation_delegation()
     prove_aggregate_validator_delegation()
+    prove_atomic_replace_failure()
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
     print("PASS: emergency reconcile pins canonical data and validator authorities")
@@ -341,6 +340,7 @@ def main() -> int:
     print("PASS: emergency evaluator rejects symlink operation evidence records")
     print("PASS: direct emergency drill runner delegates to canonical foundation validation")
     print("PASS: emergency drill reconcile includes rate-limit and operability aggregate validation")
+    print("PASS: emergency drill atomic replacement preserves canonical authority and cleans temp files")
     print("PASS: emergency drill reconcile rolls back contract and status on post-write failure")
     return 0
 
