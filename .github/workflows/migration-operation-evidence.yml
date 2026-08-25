@@ -110,14 +110,12 @@ jobs:
           python scripts/validate-memory-os-migration-lifecycle.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Reject auto-healed authority drift
+      - name: Require whole-worktree deterministic authority
         run: |
           set -euo pipefail
           git diff --check
-          git diff --exit-code -- \
-            contracts/operations/migration-operation-evidence-contract.v1.json \
-            contracts/operations/migration-lifecycle-contract.v1.json \
-            contracts/operations/production-operability-status.json
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   validate-and-publish:
     if: github.event_name != 'pull_request'
