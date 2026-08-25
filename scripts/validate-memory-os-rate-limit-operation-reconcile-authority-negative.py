@@ -68,6 +68,7 @@ def prove_aggregate_validator_chain(reconciler: Any) -> None:
         reconciler.OPERATIONS_VALIDATOR.resolve(),
         reconciler.RATE_LIMIT_VALIDATOR.resolve(),
         reconciler.OPERABILITY_VALIDATOR.resolve(),
+        reconciler.ENTRY_DOCS_VALIDATOR.resolve(),
     ]
     observed: list[Path] = []
     original_validate_evidence = reconciler.validate_evidence_authority
@@ -129,15 +130,18 @@ def main() -> int:
         ("EVIDENCE_VALIDATOR", reconciler.OPERATIONS_VALIDATOR, "evidence validator executable"),
         ("OPERATIONS_VALIDATOR", reconciler.RATE_LIMIT_VALIDATOR, "operations validator executable"),
         ("RATE_LIMIT_VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "rate-limit validator executable"),
-        ("OPERABILITY_VALIDATOR", reconciler.RATE_LIMIT_VALIDATOR, "operability validator executable"),
+        ("OPERABILITY_VALIDATOR", reconciler.ENTRY_DOCS_VALIDATOR, "operability validator executable"),
+        ("ENTRY_DOCS_VALIDATOR", reconciler.RATE_LIMIT_VALIDATOR, "entry docs validator executable"),
         ("EVIDENCE_PATH", reconciler.OPERATIONS_PATH, "evidence contract path"),
+        ("OPERATIONS_PATH", reconciler.STATUS_PATH, "operations contract path"),
         ("STATUS_PATH", reconciler.OPERATIONS_PATH, "production status path"),
+        ("WORKFLOW_PATH", reconciler.EVIDENCE_PATH, "workflow authority path"),
     )
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
     prove_aggregate_validator_chain(reconciler)
     prove_transaction_rollback(reconciler)
-    print("PASS: rate-limit operation reconcile pins exact authorities and rolls back aggregate rejection")
+    print("PASS: rate-limit operation reconcile pins full canonical authority chain and rolls back aggregate rejection")
     return 0
 
 
@@ -145,5 +149,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except NegativeFailure as exc:
-        print(f"RATE-LIMIT OPERATION RECONCILE AUTHORITY NEGATIVE FAILED: {exc}", file=sys.stderr)
+        print("RATE-LIMIT OPERATION RECONCILE AUTHORITY NEGATIVE FAILED: " + str(exc), file=sys.stderr)
         raise SystemExit(1)
