@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -28,6 +29,8 @@ def expect_atomic_replace_failure(module) -> None:
         root = Path(temp_dir)
         authority = root / "authority.json"
         authority.write_bytes(b"before\n")
+        authority.chmod(0o640)
+        original_mode = stat.S_IMODE(authority.stat().st_mode)
         original_replace = module.os.replace
 
         def reject_replace(_source, _target):
@@ -47,14 +50,24 @@ def expect_atomic_replace_failure(module) -> None:
 
         if authority.read_bytes() != b"before\n":
             raise AssertionError("failed atomic replacement changed authority bytes")
+        if stat.S_IMODE(authority.stat().st_mode) != original_mode:
+            raise AssertionError("failed atomic replacement changed authority mode")
         residue = list(root.glob(f".{authority.name}.*.tmp"))
         if residue:
             raise AssertionError(f"failed atomic replacement left temp residue: {residue!r}")
+
+        module.atomic_write_bytes(authority, b"after\n")
+        if authority.read_bytes() != b"after\n":
+            raise AssertionError("successful atomic replacement did not update authority bytes")
+        if stat.S_IMODE(authority.stat().st_mode) != original_mode:
+            raise AssertionError("successful atomic replacement changed authority mode")
 
 
 def main() -> int:
     original_load = LOAD_CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
+    original_load_mode = stat.S_IMODE(LOAD_CONTRACT.stat().st_mode)
+    original_status_mode = stat.S_IMODE(STATUS.stat().st_mode)
     module = load_module()
     expect_atomic_replace_failure(module)
 
@@ -71,6 +84,8 @@ def main() -> int:
 
         load_after = LOAD_CONTRACT.read_bytes()
         status_after = STATUS.read_bytes()
+        load_mode_after = stat.S_IMODE(LOAD_CONTRACT.stat().st_mode)
+        status_mode_after = stat.S_IMODE(STATUS.stat().st_mode)
         module.atomic_write_bytes(LOAD_CONTRACT, original_load)
         module.atomic_write_bytes(STATUS, original_status)
 
@@ -80,12 +95,16 @@ def main() -> int:
             raise SystemExit("SIGKILL reconcile failed to roll back load authority")
         if status_after != original_status:
             raise SystemExit("SIGKILL reconcile failed to roll back production status")
+        if load_mode_after != original_load_mode:
+            raise SystemExit("SIGKILL reconcile failed to preserve load authority mode")
+        if status_mode_after != original_status_mode:
+            raise SystemExit("SIGKILL reconcile failed to preserve production status mode")
         residue = list(LOAD_CONTRACT.parent.glob(f".{LOAD_CONTRACT.name}.*.tmp"))
         residue += list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
         if residue:
             raise SystemExit(f"SIGKILL reconcile left atomic temp residue: {residue!r}")
 
-    print("PASS: SIGKILL reconcile atomic publication and post-write rollback are fail-closed")
+    print("PASS: SIGKILL reconcile atomic publication, file mode and post-write rollback are fail-closed")
     return 0
 
 
