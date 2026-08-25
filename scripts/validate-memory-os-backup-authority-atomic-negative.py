@@ -66,6 +66,81 @@ def semantic_authority_identity(module) -> None:
     module.validate_runtime_authority()
 
 
+def normalizer_authority_identity(module) -> None:
+    original_root = module.ROOT
+    original_status = module.STATUS_PATH
+    original_index = module.INDEX_PATH
+    original_logical = module.LOGICAL_RESULT
+    original_object = module.OBJECT_RESULT
+    original_backup_validator = module.BACKUP_VALIDATOR
+    original_blocker = module.require_canonical_gaps
+    original_subprocess_run = module.subprocess.run
+    original_guard = module.validate_runtime_authority
+    try:
+        module.STATUS_PATH = original_index
+        module.INDEX_PATH = original_status
+        expect_rejected(
+            "normalizer paired status/index substitution",
+            module.validate_runtime_authority,
+        )
+        module.STATUS_PATH = original_status
+        module.INDEX_PATH = original_index
+
+        module.LOGICAL_RESULT = original_object
+        module.OBJECT_RESULT = original_logical
+        expect_rejected(
+            "normalizer paired restore result substitution",
+            module.validate_runtime_authority,
+        )
+        module.LOGICAL_RESULT = original_logical
+        module.OBJECT_RESULT = original_object
+
+        module.BACKUP_VALIDATOR = module.OPERABILITY_VALIDATOR
+        expect_rejected(
+            "normalizer backup validator authority substitution",
+            module.validate_runtime_authority,
+        )
+        module.BACKUP_VALIDATOR = original_backup_validator
+
+        module.ROOT = ROOT / "scripts"
+        expect_rejected(
+            "normalizer repository root substitution",
+            module.validate_runtime_authority,
+        )
+        module.ROOT = original_root
+
+        module.require_canonical_gaps = lambda *args, **kwargs: args[0] if args else None
+        expect_rejected(
+            "normalizer blocker validator substitution",
+            module.validate_runtime_authority,
+        )
+        module.require_canonical_gaps = original_blocker
+
+        module.subprocess.run = lambda *args, **kwargs: type("Completed", (), {"returncode": 0})()
+        expect_rejected(
+            "normalizer subprocess execution transport substitution",
+            module.validate_runtime_authority,
+        )
+        module.subprocess.run = original_subprocess_run
+
+        module.validate_runtime_authority = lambda: None
+        expect_rejected(
+            "normalizer runtime authority guard substitution",
+            module.main,
+        )
+    finally:
+        module.ROOT = original_root
+        module.STATUS_PATH = original_status
+        module.INDEX_PATH = original_index
+        module.LOGICAL_RESULT = original_logical
+        module.OBJECT_RESULT = original_object
+        module.BACKUP_VALIDATOR = original_backup_validator
+        module.require_canonical_gaps = original_blocker
+        module.subprocess.run = original_subprocess_run
+        module.validate_runtime_authority = original_guard
+    module.validate_runtime_authority()
+
+
 def coherent_authority_identity(module) -> None:
     original_root = module.ROOT
     original_status = module.STATUS
@@ -383,6 +458,7 @@ def main() -> int:
     coherent.validate_runtime_authority()
     semantic.validate_runtime_authority()
     semantic_authority_identity(semantic)
+    normalizer_authority_identity(normalizer)
     coherent_authority_identity(coherent)
     normalizer_noop_validation(normalizer)
     normalizer_atomic_replace_failure(normalizer)
@@ -392,6 +468,10 @@ def main() -> int:
     coherent_atomic_rollback(coherent)
     print("Memory OS backup authority atomic negative suite PASS")
     print("semantic production status identity: enforced")
+    print("normalizer data/executable authority identity: enforced")
+    print("normalizer blocker validator identity: enforced")
+    print("normalizer subprocess execution transport: enforced")
+    print("normalizer runtime authority guard identity: enforced")
     print("coherent data/executable authority identity: enforced")
     print("coherent blocker validator identity: enforced")
     print("coherent subprocess execution transport: enforced")
