@@ -68,6 +68,86 @@ def expect_authority_identity(reconciler) -> None:
     reconciler.enforce_runtime_authorities()
 
 
+def expect_execution_rejection(reconciler, attribute: str, substitute, expected: str) -> None:
+    original = getattr(reconciler, attribute)
+    operations_before = reconciler.OPERATIONS_PATH.read_bytes()
+    status_before = reconciler.STATUS_PATH.read_bytes()
+    setattr(reconciler, attribute, substitute)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.ReconcileFailure as exc:
+            if expected not in str(exc):
+                raise RuntimeError(f"{attribute} rejected for unrelated reason: {exc}") from exc
+        else:
+            raise RuntimeError(f"reconciler accepted execution substitution: {attribute}")
+        if reconciler.OPERATIONS_PATH.read_bytes() != operations_before:
+            raise RuntimeError(f"operations contract changed after execution substitution: {attribute}")
+        if reconciler.STATUS_PATH.read_bytes() != status_before:
+            raise RuntimeError(f"production status changed after execution substitution: {attribute}")
+    finally:
+        setattr(reconciler, attribute, original)
+
+
+def prove_execution_authority_identity(reconciler) -> None:
+    cases = (
+        ("require", lambda *_args, **_kwargs: None, "require execution authority drift"),
+        ("require_exact_repo_file", lambda path, *_args: path, "path checker execution authority drift"),
+        ("enforce_runtime_authorities", lambda: None, "runtime guard execution authority drift"),
+        ("load", lambda _path: {}, "loader execution authority drift"),
+        ("load_writer", lambda: object(), "writer loader execution authority drift"),
+        ("append_once", lambda *_args: False, "append helper execution authority drift"),
+        ("run_validator", lambda *_args: None, "validator runner execution authority drift"),
+        ("atomic_write_bytes", lambda *_args: None, "atomic byte writer execution authority drift"),
+        ("atomic_write_json", lambda *_args: None, "atomic JSON writer execution authority drift"),
+        ("validate_evidence_authority", lambda *_args: None, "evidence validator execution authority drift"),
+        ("validate_written_authority", lambda: None, "post-write validator execution authority drift"),
+        ("transactional_write", lambda *_args: None, "transaction writer execution authority drift"),
+        ("enforce_execution_authorities", lambda: None, "execution guard authority drift"),
+    )
+    for attribute, substitute, expected in cases:
+        expect_execution_rejection(reconciler, attribute, substitute, expected)
+
+    original_run = reconciler.subprocess.run
+    reconciler.subprocess.run = lambda *_args, **_kwargs: None
+    try:
+        try:
+            reconciler.main()
+        except reconciler.ReconcileFailure as exc:
+            if "subprocess transport execution authority drift" not in str(exc):
+                raise RuntimeError(f"subprocess transport rejected for unrelated reason: {exc}") from exc
+        else:
+            raise RuntimeError("reconciler accepted subprocess transport substitution")
+    finally:
+        reconciler.subprocess.run = original_run
+
+    original_spec = reconciler.importlib.util.spec_from_file_location
+    reconciler.importlib.util.spec_from_file_location = lambda *_args, **_kwargs: None
+    try:
+        try:
+            reconciler.main()
+        except reconciler.ReconcileFailure as exc:
+            if "module spec loader execution authority drift" not in str(exc):
+                raise RuntimeError(f"module spec loader rejected for unrelated reason: {exc}") from exc
+        else:
+            raise RuntimeError("reconciler accepted module spec loader substitution")
+    finally:
+        reconciler.importlib.util.spec_from_file_location = original_spec
+
+    original_constructor = reconciler.importlib.util.module_from_spec
+    reconciler.importlib.util.module_from_spec = lambda *_args, **_kwargs: object()
+    try:
+        try:
+            reconciler.main()
+        except reconciler.ReconcileFailure as exc:
+            if "module constructor execution authority drift" not in str(exc):
+                raise RuntimeError(f"module constructor rejected for unrelated reason: {exc}") from exc
+        else:
+            raise RuntimeError("reconciler accepted module constructor substitution")
+    finally:
+        reconciler.importlib.util.module_from_spec = original_constructor
+
+
 def prove_validator_chain(reconciler) -> None:
     observed: list[Path] = []
     original_run_validator = reconciler.run_validator
@@ -160,11 +240,14 @@ def prove_transaction_rollback(reconciler) -> None:
 def main() -> int:
     reconciler = load_module()
     expect_authority_identity(reconciler)
+    reconciler.enforce_execution_authorities()
+    prove_execution_authority_identity(reconciler)
     prove_validator_chain(reconciler)
     prove_atomic_replace_failure(reconciler)
     prove_transaction_rollback(reconciler)
 
     print("PASS: rate-limit operation evidence exact data/executable authorities reject substitution")
+    print("PASS: rate-limit operation evidence execution guard and module/subprocess transports reject substitution")
     print("PASS: post-write validation includes operations, aggregate rate-limit, operability and entry-doc authorities")
     print("PASS: atomic replacement failure preserves canonical authority without temporary residue")
     print("PASS: post-write failure restores operations contract and production status byte-for-byte")
