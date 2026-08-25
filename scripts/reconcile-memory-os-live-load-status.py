@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,31 @@ def result_is_pass(document: dict[str, Any], expected_sha: str) -> bool:
     )
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
+
+def json_bytes(document: dict[str, Any]) -> bytes:
+    return (json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
 def main() -> int:
     validate_authority_identity()
 
@@ -258,18 +284,12 @@ def main() -> int:
     original_status = STATUS_PATH.read_bytes()
     original_load_contract = LOAD_CONTRACT_PATH.read_bytes()
     try:
-        STATUS_PATH.write_text(
-            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        LOAD_CONTRACT_PATH.write_text(
-            json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_bytes(STATUS_PATH, json_bytes(status))
+        atomic_write_bytes(LOAD_CONTRACT_PATH, json_bytes(load_contract))
         validate_derived_authorities()
     except Exception:
-        STATUS_PATH.write_bytes(original_status)
-        LOAD_CONTRACT_PATH.write_bytes(original_load_contract)
+        atomic_write_bytes(STATUS_PATH, original_status)
+        atomic_write_bytes(LOAD_CONTRACT_PATH, original_load_contract)
         raise
 
     print("Registered exact-source live PostgreSQL and MinIO PASS results; OPS-P0-006 remains PARTIAL")
