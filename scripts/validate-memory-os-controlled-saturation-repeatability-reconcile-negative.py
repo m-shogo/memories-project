@@ -25,6 +25,10 @@ def assert_unchanged(protected, before, label: str) -> None:
             raise RuntimeError(f"partial authority write after {label}: {path.relative_to(ROOT)}")
 
 
+def temp_residue(path: Path) -> list[Path]:
+    return list(path.parent.glob(f".{path.name}.*.tmp"))
+
+
 def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
     original = getattr(module, attr)
     setattr(module, attr, replacement)
@@ -108,13 +112,55 @@ def run_postwrite_failure(module) -> None:
     assert_unchanged(protected, before, "post-write validation rollback")
 
 
+def run_atomic_replace_failure(module) -> None:
+    protected = (module.CONTRACT, module.LOAD, module.STATUS)
+    before = {path: path.read_bytes() for path in protected}
+    residues_before = set(path for authority in protected for path in temp_residue(authority))
+    original_replace = module.os.replace
+    calls = 0
+
+    def fail_first_replace(src, dst):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("synthetic repeatability atomic replacement failure")
+        original_replace(src, dst)
+
+    module.os.replace = fail_first_replace
+    try:
+        rejected = False
+        try:
+            module.write_transactionally(
+                module.load(module.CONTRACT),
+                module.load(module.LOAD),
+                module.load(module.STATUS),
+            )
+        except BaseException as exc:
+            rejected = True
+            if "synthetic repeatability atomic replacement failure" not in str(exc):
+                raise RuntimeError(f"unexpected atomic rejection: {exc}") from exc
+        if not rejected:
+            raise RuntimeError("repeatability reconciler accepted synthetic atomic replacement failure")
+        assert_unchanged(protected, before, "atomic replacement failure")
+        residues_after = set(path for authority in protected for path in temp_residue(authority))
+        if residues_after != residues_before:
+            raise RuntimeError("repeatability atomic failure left temporary authority residue")
+    finally:
+        module.os.replace = original_replace
+        for path, payload in before.items():
+            if path.read_bytes() != payload:
+                module.atomic_write_bytes(path, payload)
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
     run_prewrite_failure(module)
     run_postwrite_failure(module)
+    run_atomic_replace_failure(module)
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
-    print("authority substitution plus pre-write/post-write failures are fail-closed")
+    print("authority substitution plus pre-write/post-write/atomic failures are fail-closed")
+    print("temporary authority residue: none")
     return 0
 
 
