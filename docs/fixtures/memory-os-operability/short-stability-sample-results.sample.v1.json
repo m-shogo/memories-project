@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-short-stability-sample-results.v1",
-  "commitSha": "5beb3452dc26db889da094fedb453aaee45aa1c4",
-  "generatedAt": "2026-08-25T04:28:28Z",
+  "commitSha": "ffc31e01d32f6a018be753588813a2c413aef541",
+  "generatedAt": "2026-08-28T02:22:57Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
@@ -18,19 +18,19 @@
   },
   "scenario": {
     "scenarioId": "authenticated-preview-short-ci-stability-local-postgres",
-    "startedAt": "2026-08-25T04:28:24Z",
-    "completedAt": "2026-08-25T04:28:28Z",
+    "startedAt": "2026-08-28T02:22:53Z",
+    "completedAt": "2026-08-28T02:22:57Z",
     "windowCount": 6,
     "requestsPerWindow": 300,
     "concurrency": 16,
-    "baselineHeapAllocBytes": 994104,
-    "baselineHeapInuseBytes": 2433024,
-    "baselineRssBytes": 19804160,
+    "baselineHeapAllocBytes": 993792,
+    "baselineHeapInuseBytes": 2572288,
+    "baselineRssBytes": 19460096,
     "baselineGoroutines": 7,
     "observations": [
       {
         "window": 1,
-        "observedAt": "2026-08-25T04:28:25Z",
+        "observedAt": "2026-08-28T02:22:54Z",
         "batch": {
           "requests": 300,
           "concurrency": 16,
@@ -39,20 +39,20 @@
           "statusClassCounts": {
             "2xx": 300
           },
-          "durationSeconds": 0.573858793,
-          "throughput": 522.7766894215735,
-          "latencyP50Ms": 29.411,
-          "latencyP95Ms": 34.178,
-          "latencyP99Ms": 47.821
+          "durationSeconds": 0.583348632,
+          "throughput": 514.2722268353584,
+          "latencyP50Ms": 29.554,
+          "latencyP95Ms": 37.82,
+          "latencyP99Ms": 45.311
         },
-        "heapAllocBytes": 1510216,
-        "heapInuseBytes": 3334144,
-        "rssBytes": 22958080,
+        "heapAllocBytes": 1474040,
+        "heapInuseBytes": 3276800,
+        "rssBytes": 22843392,
         "goroutines": 13
       },
       {
         "window": 2,
-        "observedAt": "2026-08-25T04:28:25Z",
+        "observedAt": "2026-08-28T02:22:54Z",
         "batch": {
           "requests": 300,
           "concurrency": 16,
@@ -61,20 +61,20 @@
           "statusClassCounts": {
             "2xx": 300
           },
-          "durationSeconds": 0.551811118,
-          "throughput": 543.664290577052,
-          "latencyP50Ms": 28.78,
-          "latencyP95Ms": 33.905,
-          "latencyP99Ms": 36.417
+          "durationSeconds": 0.526833497,
+          "throughput": 569.4398737140284,
+          "latencyP50Ms": 27.968,
+          "latencyP95Ms": 30.312,
+          "latencyP99Ms": 30.953
         },
-        "heapAllocBytes": 1495712,
-        "heapInuseBytes": 3301376,
-        "rssBytes": 21811200,
+        "heapAllocBytes": 1491816,
+        "heapInuseBytes": 3293184,
+        "rssBytes": 21852160,
         "goroutines": 13
       },
       {
         "window": 3,
-        "observedAt": "2026-08-25T04:28:26Z",
+        "observedAt": "2026-08-28T02:22:55Z",
         "batch": {
           "requests": 300,
           "concurrency": 16,
@@ -83,20 +83,20 @@
           "statusClassCounts": {
             "2xx": 300
           },
-          "durationSeconds": 0.558967655,
-          "throughput": 536.7036845808188,
-          "latencyP50Ms": 28.941,
-          "latencyP95Ms": 37.295,
-          "latencyP99Ms": 40.569
+          "durationSeconds": 0.524724084,
+          "throughput": 571.7290460790056,
+          "latencyP50Ms": 27.836,
+          "latencyP95Ms": 29.876,
+          "latencyP99Ms": 30.792
         },
-        "heapAllocBytes": 1497552,
-        "heapInuseBytes": 3317760,
-        "rssBytes": 21483520,
+        "heapAllocBytes": 1480112,
+        "heapInuseBytes": 3309568,
+        "rssBytes": 21819392,
         "goroutines": 13
       },
       {
         "window": 4,
-        "observedAt": "2026-08-25T04:28:27Z",
+        "observedAt": "2026-08-28T02:22:56Z",
         "batch": {
           "requests": 300,
           "concurrency": 16,
@@ -105,20 +105,20 @@
           "statusClassCounts": {
             "2xx": 300
           },
-          "durationSeconds": 0.543933417,
-          "throughput": 551.5380938619552,
-          "latencyP50Ms": 28.627,
-          "latencyP95Ms": 32.113,
-          "latencyP99Ms": 35.382
+          "durationSeconds": 0.542191199,
+          "throughput": 553.3103461533686,
+          "latencyP50Ms": 28.177,
+          "latencyP95Ms": 35.54,
+          "latencyP99Ms": 40.439
         },
-        "heapAllocBytes": 1483880,
-        "heapInuseBytes": 3350528,
-        "rssBytes": 21626880,
+        "heapAllocBytes": 1502632,
+        "heapInuseBytes": 3342336,
+        "rssBytes": 21725184,
         "goroutines": 13
       },
       {
         "window": 5,
-        "observedAt": "2026-08-25T04:28:27Z",
+        "observedAt": "2026-08-28T02:22:56Z",
         "batch": {
           "requests": 300,
           "concurrency": 16,
@@ -127,20 +127,20 @@
           "statusClassCounts": {
             "2xx": 300
           },
-          "durationSeconds": 0.535679818,
-          "throughput": 560.0360325689926,
-          "latencyP50Ms": 28.219,
-          "latencyP95Ms": 31.489,
-          "latencyP99Ms": 33.955
+          "durationSeconds": 0.52193395,
+          "throughput": 574.7853727468773,
+          "latencyP50Ms": 27.604,
+          "latencyP95Ms": 29.65,
+          "latencyP99Ms": 30.649
         },
-        "heapAllocBytes": 1485304,
-        "heapInuseBytes": 3284992,
-        "rssBytes": 21618688,
+        "heapAllocBytes": 1492048,
+        "heapInuseBytes": 3358720,
+        "rssBytes": 21663744,
         "goroutines": 13
       },
       {
         "window": 6,
-        "observedAt": "2026-08-25T04:28:28Z",
+        "observedAt": "2026-08-28T02:22:57Z",
         "batch": {
           "requests": 300,
           "concurrency": 16,
@@ -149,25 +149,25 @@
           "statusClassCounts": {
             "2xx": 300
           },
-          "durationSeconds": 0.535999618,
-          "throughput": 559.7018914293332,
-          "latencyP50Ms": 28.415,
-          "latencyP95Ms": 30.935,
-          "latencyP99Ms": 32.251
+          "durationSeconds": 0.525213953,
+          "throughput": 571.1957922793418,
+          "latencyP50Ms": 27.973,
+          "latencyP95Ms": 30.298,
+          "latencyP99Ms": 30.949
         },
-        "heapAllocBytes": 1500304,
-        "heapInuseBytes": 3334144,
-        "rssBytes": 21553152,
+        "heapAllocBytes": 1499816,
+        "heapInuseBytes": 3391488,
+        "rssBytes": 21725184,
         "goroutines": 13
       }
     ],
-    "finalMinusBaselineHeapAllocBytes": 506200,
-    "finalMinusBaselineHeapInuseBytes": 901120,
-    "finalMinusBaselineRssBytes": 1748992,
+    "finalMinusBaselineHeapAllocBytes": 506024,
+    "finalMinusBaselineHeapInuseBytes": 819200,
+    "finalMinusBaselineRssBytes": 2265088,
     "finalMinusBaselineGoroutines": 6,
-    "heapAllocSlopeBytesPerWindow": 52033.71428571428,
-    "heapInuseSlopeBytesPerWindow": 94793.14285714286,
-    "rssSlopeBytesPerWindow": 85138.28571428571,
+    "heapAllocSlopeBytesPerWindow": 55889.42857142857,
+    "heapInuseSlopeBytesPerWindow": 95378.28571428571,
+    "rssSlopeBytesPerWindow": 153892.57142857142,
     "goroutineSlopePerWindow": 0.6428571428571429,
     "decision": "SHORT_SAMPLE_ONLY",
     "assertions": {
