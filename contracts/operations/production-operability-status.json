@@ -1,6 +1,6 @@
 {
   "schemaVersion": "memory-os-operability-status.0.1",
-  "asOf": "2026-08-29",
+  "asOf": "2026-08-30",
   "productionDecision": "NO_GO",
   "authority": "docs/memory-os-production-operability-audit-2026-07-24.md",
   "rules": {
