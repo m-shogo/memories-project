@@ -1,9 +1,9 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "parser-restart-recovery-matrix",
-  "sourceCommitSha": "d2c9d196ff3b054752c1def66fc72d7e59e6ac5d",
+  "sourceCommitSha": "e8954113c1ab4c5bb60be0f0797d36cadd2a1cad",
   "result": "PASS",
-  "generatedAt": "2026-08-30T22:05:22.804846Z",
+  "generatedAt": "2026-08-31T23:24:33.290837Z",
   "cases": [
     {
       "id": "protocol_truncation",
@@ -13,12 +13,12 @@
     {
       "id": "wall_clock_timeout",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t2.022s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t2.023s\n"
     },
     {
       "id": "cpu_limit_kill",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t1.018s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t1.020s\n"
     },
     {
       "id": "memory_limit_kill",
@@ -28,7 +28,7 @@
     {
       "id": "pre_start_cancellation",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.015s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.014s\n"
     }
   ],
   "containsSecrets": false,
