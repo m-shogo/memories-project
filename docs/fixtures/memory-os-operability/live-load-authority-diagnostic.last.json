@@ -1,10 +1,10 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "reconcile-live-load-authority-v2",
-  "sourceCommitSha": "10ee4269fcc15aa5fe7fe029381d69f0ce4359fa",
+  "sourceCommitSha": "520faec3cda115de4dd269866742aeb0ebd681fa",
   "result": "PASS",
   "exitCode": 0,
-  "output": "STAGE: validate-live-postgresql-load\nLive PostgreSQL load evidence PASS: b24d07801b0c17abf0b539ec9c8490f97b517926\nSTAGE: validate-live-object-load\nLive MinIO upload evidence PASS: b24d07801b0c17abf0b539ec9c8490f97b517926\n",
+  "output": "STAGE: validate-live-postgresql-load\nLive PostgreSQL load evidence PASS: 61644572823bfff4ec318b1b8d19556759c3b0ab\nSTAGE: validate-live-object-load\nLive MinIO upload evidence PASS: 61644572823bfff4ec318b1b8d19556759c3b0ab\n",
   "containsSecrets": false,
   "productionEvidence": false
 }
