@@ -132,7 +132,53 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     return normalized
 
 
-def main() -> int:
+def require_runtime_authorities(
+    _root: Path = ROOT,
+    _paths: tuple[tuple[str, Path], ...] = (
+        ("CONTRACT", CONTRACT),
+        ("REGISTRY", REGISTRY),
+        ("POLICY", POLICY),
+        ("GEN_REGISTRY", GEN_REGISTRY),
+        ("GEN_WRITER", GEN_WRITER),
+        ("WRITER", WRITER),
+        ("VALIDATOR", VALIDATOR),
+        ("RECONCILER", RECONCILER),
+        ("WORKFLOW", WORKFLOW),
+        ("STATUS", STATUS),
+        ("LOCK", LOCK),
+    ),
+    _helpers: tuple[tuple[str, object], ...] = (
+        ("require", require),
+        ("require_count", require_count),
+        ("load", load),
+        ("load_module", load_module),
+        ("load_writer", load_writer),
+        ("validate_writer_authority", validate_writer_authority),
+        ("validate_reconciler_authority", validate_reconciler_authority),
+        ("validate_generation_authority", validate_generation_authority),
+        ("validate_registry_for_append", validate_registry_for_append),
+    ),
+) -> None:
+    if ROOT != _root or ROOT.resolve() != _root.resolve():
+        raise Fail("distributed runtime validator repository root authority drift")
+    for attribute, canonical in _paths:
+        current = globals().get(attribute)
+        if current != canonical:
+            raise Fail(f"distributed runtime validator {attribute} authority drift")
+        if attribute != "LOCK":
+            if not canonical.is_file() or canonical.is_symlink() or canonical.resolve() != current.resolve():
+                raise Fail(f"distributed runtime validator {attribute} canonical file authority invalid")
+        elif canonical.exists() and (canonical.is_symlink() or not canonical.is_file()):
+            raise Fail("distributed runtime validator LOCK authority invalid")
+    for name, canonical in _helpers:
+        if globals().get(name) is not canonical:
+            raise Fail(f"distributed runtime validator {name} execution authority drift")
+
+
+def main(_guard=require_runtime_authorities) -> int:
+    if _guard is not require_runtime_authorities or _guard is not main.__defaults__[0]:
+        raise Fail("distributed runtime validator runtime guard authority drift")
+    _guard()
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     require(contract.get("schemaVersion") == "memory-os-rate-limit-distributed-runtime-admission.v1", "contract schema drift")
