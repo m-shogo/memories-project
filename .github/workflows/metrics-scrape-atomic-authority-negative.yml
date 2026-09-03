@@ -1,19 +1,27 @@
-name: Metrics Scrape Atomic Authority Negative
+name: Metrics Atomic Authority Negative
 
 on:
   pull_request:
     paths:
       - ".github/workflows/metrics-scrape-atomic-authority-negative.yml"
+      - "scripts/reconcile-memory-os-metrics-contract.py"
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
+      - "scripts/reconcile-memory-os-metrics-operations.py"
+      - "scripts/reconcile-memory-os-metrics-alerting.py"
       - "scripts/validate-memory-os-metrics-scrape-atomic-negative.py"
+      - "contracts/operations/metrics-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
     paths:
       - ".github/workflows/metrics-scrape-atomic-authority-negative.yml"
+      - "scripts/reconcile-memory-os-metrics-contract.py"
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
+      - "scripts/reconcile-memory-os-metrics-operations.py"
+      - "scripts/reconcile-memory-os-metrics-alerting.py"
       - "scripts/validate-memory-os-metrics-scrape-atomic-negative.py"
+      - "contracts/operations/metrics-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
   workflow_dispatch:
 
@@ -21,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: metrics-scrape-atomic-authority-${{ github.event.pull_request.number || github.sha }}
+  group: metrics-atomic-authority-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -51,7 +59,10 @@ jobs:
       - name: Compile focused authority negative
         run: |
           python -m py_compile \
+            scripts/reconcile-memory-os-metrics-contract.py \
             scripts/reconcile-memory-os-metrics-scrape-status.py \
+            scripts/reconcile-memory-os-metrics-operations.py \
+            scripts/reconcile-memory-os-metrics-alerting.py \
             scripts/validate-memory-os-metrics-scrape-atomic-negative.py
 
       - name: Validate atomic authority boundary
