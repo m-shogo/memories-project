@@ -21,6 +21,8 @@ DEFAULT_NEGATIVE = DEFAULT_REPO / "docs/fixtures/memory-os-operability/rate-limi
 DEFAULT_STATUS = DEFAULT_REPO / "contracts/operations/production-operability-status.json"
 DEFAULT_ENFORCE_GO = DEFAULT_REPO / "services/import-api/internal/ratelimit/enforce.go"
 DEFAULT_OBSLOG_CODES = DEFAULT_REPO / "services/import-api/internal/obslog/codes.go"
+DEFAULT_MAX_CAPACITY = 1_000_000
+DEFAULT_MAX_REFILL = 1_000_000
 
 REPO = DEFAULT_REPO
 CONTRACT = DEFAULT_CONTRACT
@@ -29,8 +31,8 @@ STATUS = DEFAULT_STATUS
 ENFORCE_GO = DEFAULT_ENFORCE_GO
 OBSLOG_CODES = DEFAULT_OBSLOG_CODES
 
-MAX_CAPACITY = 1_000_000
-MAX_REFILL = 1_000_000
+MAX_CAPACITY = DEFAULT_MAX_CAPACITY
+MAX_REFILL = DEFAULT_MAX_REFILL
 
 
 class Fail(RuntimeError):
@@ -50,7 +52,13 @@ def go_consts(source: str, go_type: str) -> set[str]:
     return set(re.findall(rf'{go_type}\s*=\s*"([^"]+)"', source))
 
 
-def check_policy_set(policies: list, contract: dict, inventory: list) -> list[str]:
+def check_policy_set(
+    policies: list,
+    contract: dict,
+    inventory: list,
+    _max_capacity: int = DEFAULT_MAX_CAPACITY,
+    _max_refill: int = DEFAULT_MAX_REFILL,
+) -> list[str]:
     """Return reasons the policy set is invalid (empty = clean)."""
     reasons: list[str] = []
     allowed_dims = set(contract["allowedKeyDimensions"])
@@ -95,9 +103,9 @@ def check_policy_set(policies: list, contract: dict, inventory: list) -> list[st
                     continue
                 cap = block.get("capacity")
                 refill = block.get("refillPerSecond")
-                if not isinstance(cap, (int, float)) or cap <= 0 or cap > MAX_CAPACITY:
+                if not isinstance(cap, (int, float)) or cap <= 0 or cap > _max_capacity:
                     reasons.append(f"{pid}: {guard} capacity out of range")
-                if not isinstance(refill, (int, float)) or refill <= 0 or refill > MAX_REFILL:
+                if not isinstance(refill, (int, float)) or refill <= 0 or refill > _max_refill:
                     reasons.append(f"{pid}: {guard} refill out of range")
             if policy.get("routeClass") in ("PUBLIC_UNAUTHENTICATED", "PUBLIC_AUTHENTICATED"):
                 if policy.get("failureMode") not in ("fail_closed", "fail_closed_emergency_local"):
@@ -148,6 +156,8 @@ def enforce_runtime_authorities(
     _go_consts=go_consts,
     _check_policy_set=check_policy_set,
     _path_checker=canonical_repo_file,
+    _max_capacity: int = DEFAULT_MAX_CAPACITY,
+    _max_refill: int = DEFAULT_MAX_REFILL,
 ) -> None:
     if REPO != _expected_repo or REPO.resolve() != _expected_repo.resolve():
         raise Fail("repository root authority drift")
@@ -162,6 +172,10 @@ def enforce_runtime_authorities(
         raise Fail("policy-set checker execution authority drift")
     if canonical_repo_file is not _path_checker:
         raise Fail("path checker execution authority drift")
+    if MAX_CAPACITY != _max_capacity:
+        raise Fail("maximum capacity semantic authority drift")
+    if MAX_REFILL != _max_refill:
+        raise Fail("maximum refill semantic authority drift")
 
 
 def main(
