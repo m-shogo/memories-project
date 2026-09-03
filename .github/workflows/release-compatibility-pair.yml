@@ -106,12 +106,10 @@ jobs:
 
       - name: Require deterministic pair authority
         run: |
+          set -euo pipefail
           git diff --check
-          git diff --exit-code -- \
-            contracts/operations/release-compatibility-pair-contract.v1.json \
-            contracts/operations/version-compatibility-execution-evidence.v1.json \
-            contracts/operations/compatibility-admission-gaps.v1.json \
-            contracts/operations/production-operability-status.json
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   validate-and-publish:
     if: github.event_name != 'pull_request'
