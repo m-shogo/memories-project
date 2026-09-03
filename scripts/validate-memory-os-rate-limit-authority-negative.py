@@ -116,6 +116,23 @@ def prove_direct_call_authorities(module: Any) -> None:
     expect_main_call_rejection(module, "policy-set checker argument", _check_policy_set=lambda *_args: [])
 
 
+def prove_policy_bound_authorities(module: Any) -> None:
+    cases = (
+        ("MAX_CAPACITY", "DEFAULT_MAX_CAPACITY", 10**18, "paired maximum capacity"),
+        ("MAX_REFILL", "DEFAULT_MAX_REFILL", 10**18, "paired maximum refill"),
+    )
+    for current_attr, default_attr, substitute, label in cases:
+        original_current = getattr(module, current_attr)
+        original_default = getattr(module, default_attr)
+        setattr(module, current_attr, substitute)
+        setattr(module, default_attr, substitute)
+        try:
+            expect_main_rejection(module, label)
+        finally:
+            setattr(module, current_attr, original_current)
+            setattr(module, default_attr, original_default)
+
+
 def main() -> int:
     module = load_module()
     require(module.main() == 0, "canonical aggregate rate-limit validator does not pass before negatives")
@@ -123,9 +140,10 @@ def main() -> int:
     prove_paired_default_substitution(module)
     prove_execution_authorities(module)
     prove_direct_call_authorities(module)
+    prove_policy_bound_authorities(module)
     require(module.main() == 0, "canonical aggregate rate-limit validator does not pass after negatives")
 
-    print("PASS: aggregate rate-limit validator data, helper, direct-call and paired default authorities are fail-closed")
+    print("PASS: aggregate rate-limit validator data, helper, direct-call, policy-bound and paired default authorities are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
