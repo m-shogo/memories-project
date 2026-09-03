@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-rate-limit-local-multiprocess-shared-store-results.v1",
-  "sourceCommitSha": "ec80f1979fd3312c54913cbabd86c3376efb4f2c",
-  "generatedAt": "2026-08-21T01:38:00.123202Z",
+  "sourceCommitSha": "323043514cdaba0cb2cd95427975af6493b644a9",
+  "generatedAt": "2026-09-03T09:19:49.911010Z",
   "classification": "LOCAL_MULTI_PROCESS_SHARED_STORE_REHEARSAL",
   "dependencyMode": "TEST_ONLY_LOOPBACK_HTTP_BROKER_MEMORY_STORE",
   "test": "TestLocalSharedStoreCrossProcessBudgetRestartAndOutage",
