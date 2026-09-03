@@ -48,6 +48,28 @@ def main() -> int:
     if module.CONTRACT_PATH.read_bytes() != original_contract or module.STATUS_PATH.read_bytes() != original_status:
         raise RuntimeError("mixed-version Apply substitution changed canonical authority")
 
+    with tempfile.TemporaryDirectory(prefix="memory-os-mixed-version-apply-transport-") as tmp:
+        root = Path(tmp)
+        authority = root / "authority.json"
+        authority.write_bytes(b"before\n")
+        authority.chmod(0o640)
+        original_replace = module.os.replace
+
+        def reject_mutable_replace(*_args, **_kwargs):
+            raise RuntimeError("mutable os.replace substitution reached atomic writer")
+
+        module.os.replace = reject_mutable_replace
+        try:
+            module.atomic_write_bytes(authority, b"after\n")
+        finally:
+            module.os.replace = original_replace
+        if authority.read_bytes() != b"after\n":
+            raise RuntimeError("mixed-version Apply atomic writer did not publish bytes")
+        if authority.stat().st_mode & 0o7777 != 0o640:
+            raise RuntimeError("mixed-version Apply atomic writer did not preserve file mode")
+        if list(root.glob(".*.tmp")):
+            raise RuntimeError("mixed-version Apply atomic writer left temp residue")
+
     current_sha = "1" * 40
     old_sha = "0" * 40
     with tempfile.TemporaryDirectory(prefix="memory-os-mixed-version-apply-negative-") as tmp:
@@ -100,6 +122,10 @@ def main() -> int:
         status_bytes = json.dumps(status, indent=2).encode("utf-8") + b"\n"
         contract_path.write_bytes(contract_bytes)
         status_path.write_bytes(status_bytes)
+        contract_path.chmod(0o640)
+        status_path.chmod(0o640)
+        contract_mode = contract_path.stat().st_mode & 0o7777
+        status_mode = status_path.stat().st_mode & 0o7777
 
         # The rollback transaction fixture intentionally lives outside the
         # repository. Point diagnostic path rendering at that fixture root
@@ -134,8 +160,14 @@ def main() -> int:
             raise RuntimeError("mixed-version Apply reconcile did not roll back contract")
         if status_path.read_bytes() != status_bytes:
             raise RuntimeError("mixed-version Apply reconcile did not roll back Production Status")
+        if contract_path.stat().st_mode & 0o7777 != contract_mode:
+            raise RuntimeError("mixed-version Apply reconcile changed contract mode during rollback")
+        if status_path.stat().st_mode & 0o7777 != status_mode:
+            raise RuntimeError("mixed-version Apply reconcile changed Production Status mode during rollback")
+        if list(root.glob(".*.tmp")):
+            raise RuntimeError("mixed-version Apply reconcile left atomic temp residue")
 
-    print("PASS: mixed-version Apply exact authority and reconcile rollback are fail-closed")
+    print("PASS: mixed-version Apply exact authority, atomic transport, and reconcile rollback are fail-closed")
     return 0
 
 
