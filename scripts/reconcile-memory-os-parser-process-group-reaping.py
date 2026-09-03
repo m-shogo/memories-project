@@ -62,17 +62,27 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def source_is_ancestor(source_sha: str) -> bool:
-    try:
-        return subprocess.run(
-            ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode == 0
-    except OSError:
-        return False
+def _build_source_is_ancestor(
+    run_impl: Callable[..., Any],
+    root: Path,
+) -> Callable[[str], bool]:
+    def source_is_ancestor(source_sha: str) -> bool:
+        try:
+            return run_impl(
+                ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
+                cwd=root,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode == 0
+        except OSError:
+            return False
+
+    return source_is_ancestor
+
+
+source_is_ancestor = _build_source_is_ancestor(subprocess.run, ROOT)
+del _build_source_is_ancestor
 
 
 def append_once(values: list[Any], value: str) -> bool:
@@ -155,48 +165,97 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
 
 
-def enforce_data_authorities() -> None:
-    require_exact_authority(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "process-group contract")
-    require_exact_authority(RESULT_PATH, CANONICAL_RESULT_PATH, "process-group result")
-    require_exact_authority(STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status")
+def _build_data_authority_guard(
+    require_exact_impl: Callable[[Path, Path, str], None],
+    contract_authority: Path,
+    result_authority: Path,
+    status_authority: Path,
+) -> Callable[[], None]:
+    def enforce_data_authorities() -> None:
+        require_exact_impl(CONTRACT_PATH, contract_authority, "process-group contract")
+        require_exact_impl(RESULT_PATH, result_authority, "process-group result")
+        require_exact_impl(STATUS_PATH, status_authority, "production operability status")
+
+    return enforce_data_authorities
 
 
-def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
-    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
-    require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
-    env = os.environ.copy()
-    if expected_sha is not None:
-        env["EXPECTED_COMMIT_SHA"] = expected_sha
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        env=env,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    require(type(completed.returncode) is int and completed.returncode == 0,
-            f"canonical validator failed: {path.relative_to(ROOT)}\n{completed.stdout}")
+enforce_data_authorities = _build_data_authority_guard(
+    require_exact_authority,
+    CANONICAL_CONTRACT_PATH,
+    CANONICAL_RESULT_PATH,
+    CANONICAL_STATUS_PATH,
+)
+del _build_data_authority_guard
 
 
-def run_authority_validators(source_sha: str) -> None:
-    enforce_data_authorities()
-    require_exact_authority(
-        PROCESS_GROUP_VALIDATOR,
-        CANONICAL_PROCESS_GROUP_VALIDATOR,
-        "process-group validator",
-    )
-    require_exact_authority(
-        OPERABILITY_VALIDATOR,
-        CANONICAL_OPERABILITY_VALIDATOR,
-        "operability validator",
-    )
-    run_validator(PROCESS_GROUP_VALIDATOR, expected_sha=source_sha)
-    run_validator(OPERABILITY_VALIDATOR)
+def _build_validator_runner(
+    run_impl: Callable[..., Any],
+    require_impl: Callable[[bool, str], None],
+    executable: str,
+    root: Path,
+) -> Callable[..., None]:
+    def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
+        require_impl(path.is_file(), f"canonical validator missing: {path.relative_to(root)}")
+        require_impl(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(root)}")
+        env = os.environ.copy()
+        if expected_sha is not None:
+            env["EXPECTED_COMMIT_SHA"] = expected_sha
+        completed = run_impl(
+            [executable, str(path)],
+            cwd=root,
+            env=env,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        require_impl(type(completed.returncode) is int and completed.returncode == 0,
+                     f"canonical validator failed: {path.relative_to(root)}\n{completed.stdout}")
+
+    return run_validator
+
+
+run_validator = _build_validator_runner(subprocess.run, require, sys.executable, ROOT)
+del _build_validator_runner
+
+
+def _build_authority_validator_runner(
+    data_guard: Callable[[], None],
+    require_exact_impl: Callable[[Path, Path, str], None],
+    validator_runner: Callable[..., None],
+    process_group_validator_authority: Path,
+    operability_validator_authority: Path,
+) -> Callable[[str], None]:
+    def run_authority_validators(source_sha: str) -> None:
+        data_guard()
+        require_exact_impl(
+            PROCESS_GROUP_VALIDATOR,
+            process_group_validator_authority,
+            "process-group validator",
+        )
+        require_exact_impl(
+            OPERABILITY_VALIDATOR,
+            operability_validator_authority,
+            "operability validator",
+        )
+        validator_runner(PROCESS_GROUP_VALIDATOR, expected_sha=source_sha)
+        validator_runner(OPERABILITY_VALIDATOR)
+
+    return run_authority_validators
+
+
+run_authority_validators = _build_authority_validator_runner(
+    enforce_data_authorities,
+    require_exact_authority,
+    run_validator,
+    CANONICAL_PROCESS_GROUP_VALIDATOR,
+    CANONICAL_OPERABILITY_VALIDATOR,
+)
+del _build_authority_validator_runner
 
 
 def _build_commit_candidate(
+    data_guard: Callable[[], None],
     json_writer: Callable[[Path, dict[str, Any]], None],
     atomic_writer: Callable[[Path, bytes], None],
     default_validator_runner: Callable[[str], None],
@@ -208,7 +267,7 @@ def _build_commit_candidate(
         *,
         validator_runner: Callable[[str], None] | None = None,
     ) -> None:
-        enforce_data_authorities()
+        data_guard()
         original_contract = CONTRACT_PATH.read_bytes()
         original_status = STATUS_PATH.read_bytes()
         try:
@@ -227,6 +286,7 @@ def _build_commit_candidate(
 
 
 commit_candidate = _build_commit_candidate(
+    enforce_data_authorities,
     write_json,
     atomic_write_bytes,
     run_authority_validators,
