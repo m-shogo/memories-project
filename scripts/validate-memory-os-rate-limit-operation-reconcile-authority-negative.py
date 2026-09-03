@@ -89,39 +89,45 @@ def prove_aggregate_validator_chain(reconciler: Any) -> None:
             f"rate-limit operation aggregate validator chain drift: {observed!r} != {expected!r}")
 
 
-def prove_atomic_replace_failure(reconciler: Any) -> None:
+def prove_atomic_transport_and_mode(reconciler: Any) -> None:
     original_operations = OPERATIONS_PATH.read_bytes()
+    original_mode = OPERATIONS_PATH.stat().st_mode & 0o777
     original_replace = reconciler.os.replace
     temp_pattern = f".{OPERATIONS_PATH.name}.*.tmp"
     before_temps = {path.name for path in OPERATIONS_PATH.parent.glob(temp_pattern)}
 
-    def fail_replace(source: Any, destination: Any) -> None:
-        if Path(destination) == OPERATIONS_PATH:
-            raise OSError("synthetic atomic replace rejection")
-        original_replace(source, destination)
-
-    reconciler.os.replace = fail_replace
     try:
+        reconciler.os.replace = lambda _source, _destination: None
         try:
             reconciler.atomic_write_bytes(OPERATIONS_PATH, b"synthetic replacement payload\n")
-        except OSError as exc:
-            require("synthetic atomic replace rejection" in str(exc),
-                    "atomic replace failed for unrelated reason")
+        except reconciler.ReconcileFailure as exc:
+            require("atomic replace transport drift" in str(exc),
+                    "atomic replace substitution rejected for unrelated reason")
         else:
-            raise NegativeFailure("atomic writer accepted synthetic replacement failure")
+            raise NegativeFailure("atomic writer accepted replacement transport substitution")
         require(OPERATIONS_PATH.read_bytes() == original_operations,
-                "operations contract changed after failed atomic replacement")
+                "operations contract changed after rejected replace transport substitution")
         after_temps = {path.name for path in OPERATIONS_PATH.parent.glob(temp_pattern)}
         require(after_temps == before_temps,
                 f"atomic writer left temporary residue: {sorted(after_temps - before_temps)}")
     finally:
         reconciler.os.replace = original_replace
-        OPERATIONS_PATH.write_bytes(original_operations)
+
+    reconciler.atomic_write_bytes(OPERATIONS_PATH, original_operations)
+    require(OPERATIONS_PATH.read_bytes() == original_operations,
+            "atomic writer changed canonical bytes during mode-preservation proof")
+    require((OPERATIONS_PATH.stat().st_mode & 0o777) == original_mode,
+            "atomic writer changed canonical file mode")
+    after_temps = {path.name for path in OPERATIONS_PATH.parent.glob(temp_pattern)}
+    require(after_temps == before_temps,
+            f"atomic writer left temporary residue after successful replacement: {sorted(after_temps - before_temps)}")
 
 
 def prove_transaction_rollback(reconciler: Any) -> None:
     original_operations = OPERATIONS_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
+    original_operations_mode = OPERATIONS_PATH.stat().st_mode & 0o777
+    original_status_mode = STATUS_PATH.stat().st_mode & 0o777
     operations = json.loads(original_operations.decode("utf-8"))
     status = json.loads(original_status.decode("utf-8"))
     operations = copy.deepcopy(operations)
@@ -146,10 +152,16 @@ def prove_transaction_rollback(reconciler: Any) -> None:
                 "rate-limit operations contract was not rolled back byte-for-byte")
         require(STATUS_PATH.read_bytes() == original_status,
                 "rate-limit production status was not rolled back byte-for-byte")
+        require((OPERATIONS_PATH.stat().st_mode & 0o777) == original_operations_mode,
+                "rate-limit operations contract mode drifted during rollback")
+        require((STATUS_PATH.stat().st_mode & 0o777) == original_status_mode,
+                "rate-limit production status mode drifted during rollback")
     finally:
         reconciler.validate_written_authority = original_validate_written
-        OPERATIONS_PATH.write_bytes(original_operations)
-        STATUS_PATH.write_bytes(original_status)
+        if OPERATIONS_PATH.read_bytes() != original_operations:
+            reconciler.atomic_write_bytes(OPERATIONS_PATH, original_operations)
+        if STATUS_PATH.read_bytes() != original_status:
+            reconciler.atomic_write_bytes(STATUS_PATH, original_status)
 
 
 def main() -> int:
@@ -170,9 +182,9 @@ def main() -> int:
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
     prove_aggregate_validator_chain(reconciler)
-    prove_atomic_replace_failure(reconciler)
+    prove_atomic_transport_and_mode(reconciler)
     prove_transaction_rollback(reconciler)
-    print("PASS: rate-limit operation reconcile pins full canonical authority chain, atomic publication, and aggregate rollback")
+    print("PASS: rate-limit operation reconcile pins full canonical authority chain, mode-preserving atomic publication, and aggregate rollback")
     return 0
 
 
