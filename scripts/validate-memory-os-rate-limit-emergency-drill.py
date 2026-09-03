@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
@@ -32,14 +32,19 @@ def require(condition: bool, message: str) -> None:
         raise ValidationFailure(message)
 
 
-def require_commit_ancestor(commit_sha: str) -> None:
-    completed = subprocess.run(
+def require_commit_ancestor(
+    commit_sha: str,
+    _subprocess_run: Callable[..., Any] = subprocess.run,
+) -> None:
+    if subprocess.run is not _subprocess_run:
+        raise ValidationFailure("emergency drill validator subprocess transport authority drift")
+    completed = _subprocess_run(
         ["git", "merge-base", "--is-ancestor", commit_sha, "HEAD"],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    require(completed.returncode == 0,
+    require(type(completed.returncode) is int and completed.returncode == 0,
             "result commitSha must be an ancestor of current HEAD")
 
 
@@ -75,13 +80,23 @@ def iter_strings(value: Any) -> list[str]:
     return strings
 
 
-def validate_result(result: dict[str, Any], contract: dict[str, Any], expected_sha: str | None) -> None:
+def validate_result(
+    result: dict[str, Any],
+    contract: dict[str, Any],
+    expected_sha: str | None,
+    _require_commit_ancestor: Callable[[str], None] = require_commit_ancestor,
+    _iter_strings: Callable[[Any], list[str]] = iter_strings,
+) -> None:
+    require(require_commit_ancestor is _require_commit_ancestor,
+            "emergency drill validator lineage helper authority drift")
+    require(iter_strings is _iter_strings,
+            "emergency drill validator string traversal authority drift")
     require(result.get("schemaVersion") == "memory-os-rate-limit-emergency-drill-results.v1",
             "result schemaVersion drift")
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA_RE.fullmatch(commit_sha) is not None,
             "result commitSha must be a full SHA")
-    require_commit_ancestor(commit_sha)
+    _require_commit_ancestor(commit_sha)
     if expected_sha is not None:
         require(commit_sha == expected_sha, "result commitSha does not match expected source")
     require(result.get("classification") == "LOCAL_CI_DECISION_MODEL",
@@ -108,15 +123,96 @@ def validate_result(result: dict[str, Any], contract: dict[str, Any], expected_s
     require(result.get("result") == "PASS", "drill result must PASS")
     require(result.get("integrityResult") == "PASS", "drill integrity must PASS")
     require(result.get("limitations") == contract["limitations"], "result limitations drift")
-    joined = "\n".join(iter_strings(result))
+    joined = "\n".join(_iter_strings(result))
     require(FORBIDDEN_TEXT.search(joined) is None, "result contains secret/identity-like text")
 
 
-def main() -> int:
-    args = parse_args()
-    contract = load(CONTRACT_PATH)
-    operations = load(OPERATIONS_PATH)
-    policy = load(POLICY_PATH)
+_CANONICAL_ROOT = ROOT
+_CANONICAL_CONTRACT_PATH = CONTRACT_PATH
+_CANONICAL_OPERATIONS_PATH = OPERATIONS_PATH
+_CANONICAL_POLICY_PATH = POLICY_PATH
+_CANONICAL_RESULT_PATH = RESULT_PATH
+_CANONICAL_SUBPROCESS_RUN = subprocess.run
+_CANONICAL_REQUIRE = require
+_CANONICAL_REQUIRE_COMMIT_ANCESTOR = require_commit_ancestor
+_CANONICAL_LOAD = load
+_CANONICAL_PARSE_ARGS = parse_args
+_CANONICAL_ITER_STRINGS = iter_strings
+_CANONICAL_VALIDATE_RESULT = validate_result
+
+
+def _require_path_authority(current: Path, canonical: Path, label: str, *, required: bool) -> None:
+    if current != canonical:
+        raise ValidationFailure(f"emergency drill validator {label} authority drift")
+    if current.is_symlink():
+        raise ValidationFailure(f"emergency drill validator {label} cannot be a symlink")
+    if required and not current.is_file():
+        raise ValidationFailure(f"canonical emergency drill validator {label} missing")
+    if current.exists():
+        try:
+            resolved = current.resolve(strict=True)
+        except (FileNotFoundError, OSError, RuntimeError) as exc:
+            raise ValidationFailure(f"emergency drill validator {label} cannot be resolved") from exc
+        if resolved != canonical:
+            raise ValidationFailure(f"emergency drill validator {label} escaped canonical path")
+
+
+def enforce_runtime_authorities(
+    _root: Path = _CANONICAL_ROOT,
+    _contract: Path = _CANONICAL_CONTRACT_PATH,
+    _operations: Path = _CANONICAL_OPERATIONS_PATH,
+    _policy: Path = _CANONICAL_POLICY_PATH,
+    _result: Path = _CANONICAL_RESULT_PATH,
+    _subprocess_run: Callable[..., Any] = _CANONICAL_SUBPROCESS_RUN,
+    _require: Callable[[bool, str], None] = _CANONICAL_REQUIRE,
+    _require_commit_ancestor: Callable[[str], None] = _CANONICAL_REQUIRE_COMMIT_ANCESTOR,
+    _load: Callable[[Path], dict[str, Any]] = _CANONICAL_LOAD,
+    _parse_args: Callable[[], argparse.Namespace] = _CANONICAL_PARSE_ARGS,
+    _iter_strings: Callable[[Any], list[str]] = _CANONICAL_ITER_STRINGS,
+    _validate_result: Callable[..., None] = _CANONICAL_VALIDATE_RESULT,
+) -> None:
+    if ROOT != _root or _root != Path(__file__).resolve().parents[1]:
+        raise ValidationFailure("emergency drill validator repository authority drift")
+    _require_path_authority(CONTRACT_PATH, _contract, "contract", required=True)
+    _require_path_authority(OPERATIONS_PATH, _operations, "operations contract", required=True)
+    _require_path_authority(POLICY_PATH, _policy, "policy contract", required=True)
+    _require_path_authority(RESULT_PATH, _result, "result", required=False)
+    helpers = (
+        (subprocess.run, _subprocess_run, "subprocess transport"),
+        (require, _require, "require"),
+        (require_commit_ancestor, _require_commit_ancestor, "lineage helper"),
+        (load, _load, "load"),
+        (parse_args, _parse_args, "argument parser"),
+        (iter_strings, _iter_strings, "string traversal"),
+        (validate_result, _validate_result, "result validator"),
+    )
+    for current, canonical, label in helpers:
+        if current is not canonical:
+            raise ValidationFailure(f"emergency drill validator {label} execution authority drift")
+
+
+_CANONICAL_ENFORCE_RUNTIME_AUTHORITIES = enforce_runtime_authorities
+
+
+def main(
+    _guard: Callable[[], None] = _CANONICAL_ENFORCE_RUNTIME_AUTHORITIES,
+    _parse_args: Callable[[], argparse.Namespace] = _CANONICAL_PARSE_ARGS,
+    _load: Callable[[Path], dict[str, Any]] = _CANONICAL_LOAD,
+    _validate_result: Callable[..., None] = _CANONICAL_VALIDATE_RESULT,
+) -> int:
+    if enforce_runtime_authorities is not _guard:
+        raise ValidationFailure("emergency drill validator runtime guard execution authority drift")
+    if parse_args is not _parse_args:
+        raise ValidationFailure("emergency drill validator argument parser execution authority drift")
+    if load is not _load:
+        raise ValidationFailure("emergency drill validator load execution authority drift")
+    if validate_result is not _validate_result:
+        raise ValidationFailure("emergency drill validator result validator execution authority drift")
+    _guard()
+    args = _parse_args()
+    contract = _load(CONTRACT_PATH)
+    operations = _load(OPERATIONS_PATH)
+    policy = _load(POLICY_PATH)
     require(contract.get("schemaVersion") == "memory-os-rate-limit-emergency-drill.v1",
             "contract schemaVersion drift")
     require(contract.get("sourceCommitMustBeAncestorOfCurrentHead") is True,
@@ -197,7 +293,7 @@ def main() -> int:
     if args.require_result:
         require(result_exists, "exact-source drill result is required")
     if result_exists:
-        validate_result(load(RESULT_PATH), contract, args.expected_commit_sha)
+        _validate_result(_load(RESULT_PATH), contract, args.expected_commit_sha)
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be an object")
