@@ -151,9 +151,6 @@ def main() -> int:
     prove_atomic_transport_binding(module)
     prove_bound_transaction_rollback(module, source_sha)
 
-    if module.CONTRACT_PATH.read_bytes() != module.CONTRACT_PATH.read_bytes():
-        raise RuntimeError("unreachable process-group authority consistency guard")
-
     print(
         "PASS: process-group reconcile pins data/executable authority, atomic transport, mode preservation, and rollback"
     )
