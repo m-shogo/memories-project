@@ -41,40 +41,56 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def prove_atomic_replace_failure(reconciler: Any) -> None:
+def prove_atomic_transport_and_mode(reconciler: Any) -> None:
     original = CANONICAL_POLICY_PATH.read_bytes()
-    original_replace = reconciler.os.replace
+    original_mode = CANONICAL_POLICY_PATH.stat().st_mode & 0o7777
     pattern = f".{CANONICAL_POLICY_PATH.name}.*.tmp"
     before = {path.name for path in CANONICAL_POLICY_PATH.parent.glob(pattern)}
+    original_replace = reconciler.os.replace
+    original_canonical_replace = reconciler.CANONICAL_OS_REPLACE
 
-    def reject_replace(source: Any, destination: Any) -> None:
-        if Path(destination) == CANONICAL_POLICY_PATH:
-            raise OSError("synthetic atomic replace rejection")
-        original_replace(source, destination)
+    def fake_replace(_source: Any, _destination: Any) -> None:
+        return None
 
-    reconciler.os.replace = reject_replace
+    reconciler.os.replace = fake_replace
+    reconciler.CANONICAL_OS_REPLACE = fake_replace
     try:
         try:
-            reconciler.atomic_write_bytes(CANONICAL_POLICY_PATH, b"synthetic operations authority\n")
-        except OSError as exc:
-            require("synthetic atomic replace rejection" in str(exc),
-                    "atomic replacement failed for unrelated reason")
+            reconciler.atomic_write_bytes(CANONICAL_POLICY_PATH, original)
+        except reconciler.ReconcileFailure as exc:
+            require("os.replace transport execution authority drift" in str(exc),
+                    f"paired os.replace substitution rejected for unrelated reason: {exc}")
         else:
-            raise NegativeFailure("atomic writer accepted synthetic replacement failure")
-        require(CANONICAL_POLICY_PATH.read_bytes() == original,
-                "canonical policy changed after failed atomic replacement")
-        after = {path.name for path in CANONICAL_POLICY_PATH.parent.glob(pattern)}
-        require(after == before,
-                f"atomic replacement left temporary residue: {sorted(after - before)}")
+            raise NegativeFailure("atomic writer accepted paired os.replace transport substitution")
     finally:
         reconciler.os.replace = original_replace
-        CANONICAL_POLICY_PATH.write_bytes(original)
+        reconciler.CANONICAL_OS_REPLACE = original_canonical_replace
+
+    require(CANONICAL_POLICY_PATH.read_bytes() == original,
+            "canonical policy changed after rejected os.replace substitution")
+    require((CANONICAL_POLICY_PATH.stat().st_mode & 0o7777) == original_mode,
+            "canonical policy mode changed after rejected os.replace substitution")
+    after = {path.name for path in CANONICAL_POLICY_PATH.parent.glob(pattern)}
+    require(after == before,
+            f"rejected transport substitution left temporary residue: {sorted(after - before)}")
+
+    reconciler.atomic_write_bytes(CANONICAL_POLICY_PATH, original)
+    require(CANONICAL_POLICY_PATH.read_bytes() == original,
+            "canonical policy bytes changed after canonical atomic rewrite")
+    require((CANONICAL_POLICY_PATH.stat().st_mode & 0o7777) == original_mode,
+            "canonical policy mode changed after canonical atomic rewrite")
+    require({path.name for path in CANONICAL_POLICY_PATH.parent.glob(pattern)} == before,
+            "canonical atomic rewrite left temporary residue")
 
 
 def prove_transaction_rollback(reconciler: Any) -> None:
     originals = {
         CANONICAL_POLICY_PATH: CANONICAL_POLICY_PATH.read_bytes(),
         CANONICAL_STATUS_PATH: CANONICAL_STATUS_PATH.read_bytes(),
+    }
+    modes = {
+        CANONICAL_POLICY_PATH: CANONICAL_POLICY_PATH.stat().st_mode & 0o7777,
+        CANONICAL_STATUS_PATH: CANONICAL_STATUS_PATH.stat().st_mode & 0o7777,
     }
     policy = copy.deepcopy(load_json(CANONICAL_POLICY_PATH))
     status = copy.deepcopy(load_json(CANONICAL_STATUS_PATH))
@@ -99,10 +115,15 @@ def prove_transaction_rollback(reconciler: Any) -> None:
         for path, original in originals.items():
             require(path.read_bytes() == original,
                     f"rollback failed for {path.relative_to(ROOT)}")
+            require((path.stat().st_mode & 0o7777) == modes[path],
+                    f"rollback changed mode for {path.relative_to(ROOT)}")
+            require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                    f"rollback left temp residue for {path.relative_to(ROOT)}")
     finally:
         reconciler.validate_written_authority = original_validator
         for path, original in originals.items():
-            path.write_bytes(original)
+            if path.read_bytes() != original:
+                reconciler.atomic_write_bytes(path, original)
 
 
 def prove_validator_chain(reconciler: Any) -> None:
@@ -153,8 +174,10 @@ def expect_substitution_rejection(
                 f"canonical status mutated after authority substitution: {label}")
     finally:
         setattr(reconciler, attribute, original_attribute)
-        CANONICAL_POLICY_PATH.write_bytes(original_policy)
-        CANONICAL_STATUS_PATH.write_bytes(original_status)
+        if CANONICAL_POLICY_PATH.read_bytes() != original_policy:
+            reconciler.atomic_write_bytes(CANONICAL_POLICY_PATH, original_policy)
+        if CANONICAL_STATUS_PATH.read_bytes() != original_status:
+            reconciler.atomic_write_bytes(CANONICAL_STATUS_PATH, original_status)
 
 
 def expect_execution_substitution_rejection(
@@ -180,8 +203,10 @@ def expect_execution_substitution_rejection(
                 f"canonical status mutated after execution substitution: {attribute}")
     finally:
         setattr(reconciler, attribute, original_attribute)
-        CANONICAL_POLICY_PATH.write_bytes(original_policy)
-        CANONICAL_STATUS_PATH.write_bytes(original_status)
+        if CANONICAL_POLICY_PATH.read_bytes() != original_policy:
+            reconciler.atomic_write_bytes(CANONICAL_POLICY_PATH, original_policy)
+        if CANONICAL_STATUS_PATH.read_bytes() != original_status:
+            reconciler.atomic_write_bytes(CANONICAL_STATUS_PATH, original_status)
 
 
 def prove_execution_authority_identity(reconciler: Any) -> None:
@@ -215,12 +240,29 @@ def prove_execution_authority_identity(reconciler: Any) -> None:
     finally:
         reconciler.subprocess.run = original_run
 
+    original_replace = reconciler.os.replace
+    original_canonical_replace = reconciler.CANONICAL_OS_REPLACE
+    fake_replace = lambda *_args, **_kwargs: None
+    reconciler.os.replace = fake_replace
+    reconciler.CANONICAL_OS_REPLACE = fake_replace
+    try:
+        try:
+            reconciler.main()
+        except reconciler.ReconcileFailure as exc:
+            require("os.replace transport execution authority drift" in str(exc),
+                    f"paired os.replace transport rejected for unrelated reason: {exc}")
+        else:
+            raise NegativeFailure("rate-limit operations reconciler accepted paired os.replace transport substitution")
+    finally:
+        reconciler.os.replace = original_replace
+        reconciler.CANONICAL_OS_REPLACE = original_canonical_replace
+
 
 def main() -> int:
     reconciler = load_module()
     reconciler.enforce_runtime_authorities()
     reconciler.enforce_execution_authorities()
-    prove_atomic_replace_failure(reconciler)
+    prove_atomic_transport_and_mode(reconciler)
     prove_transaction_rollback(reconciler)
     prove_validator_chain(reconciler)
     cases = (
@@ -235,7 +277,7 @@ def main() -> int:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
     prove_execution_authority_identity(reconciler)
 
-    print("PASS: rate-limit operations exact authorities, execution guard, atomic publication and post-write rollback are fail-closed")
+    print("PASS: rate-limit operations exact authorities, immutable replace transport, mode-preserving atomic publication and rollback are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
