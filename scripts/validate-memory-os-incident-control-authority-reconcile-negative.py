@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Reject unsafe incident authority normalization and prove rollback on post-write failure."""
+"""Reject unsafe incident authority normalization and prove atomic rollback safety."""
 
 from __future__ import annotations
 
 import copy
 import importlib.util
 import json
+import os
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +34,19 @@ def load_module():
     return module
 
 
+def expect_runtime_authority_rejected(reconciler, field: str, substitute) -> None:
+    original = getattr(reconciler, field)
+    try:
+        setattr(reconciler, field, substitute)
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.ReconcileFailure:
+            return
+        raise RuntimeError(f"reconciler accepted {field} authority substitution")
+    finally:
+        setattr(reconciler, field, original)
+
+
 def verify_runtime_authority_identity(reconciler, original_contract: bytes, original_result: bytes, original_status: bytes) -> None:
     reconciler.enforce_runtime_authorities()
     substitutions = (
@@ -45,17 +60,7 @@ def verify_runtime_authority_identity(reconciler, original_contract: bytes, orig
         ("WORKFLOW_PATH", ROOT / ".github/workflows/incident-control-exercise.yml"),
     )
     for field, substitute in substitutions:
-        original = getattr(reconciler, field)
-        try:
-            setattr(reconciler, field, substitute)
-            try:
-                reconciler.enforce_runtime_authorities()
-            except reconciler.ReconcileFailure:
-                pass
-            else:
-                raise RuntimeError(f"reconciler accepted {field} authority substitution")
-        finally:
-            setattr(reconciler, field, original)
+        expect_runtime_authority_rejected(reconciler, field, substitute)
 
     original_chain = reconciler.POST_WRITE_VALIDATORS
     try:
@@ -69,6 +74,42 @@ def verify_runtime_authority_identity(reconciler, original_contract: bytes, orig
     finally:
         reconciler.POST_WRITE_VALIDATORS = original_chain
 
+    original_subprocess_run = reconciler.subprocess.run
+    try:
+        reconciler.subprocess.run = lambda *args, **kwargs: None
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.ReconcileFailure:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted subprocess transport substitution")
+    finally:
+        reconciler.subprocess.run = original_subprocess_run
+
+    original_replace = reconciler.os.replace
+    try:
+        reconciler.os.replace = lambda *args, **kwargs: None
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.ReconcileFailure:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted atomic replacement transport substitution")
+    finally:
+        reconciler.os.replace = original_replace
+
+    original_atomic_writer = reconciler.atomic_write_bytes
+    try:
+        reconciler.atomic_write_bytes = lambda *args, **kwargs: None
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.ReconcileFailure:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted atomic writer substitution")
+    finally:
+        reconciler.atomic_write_bytes = original_atomic_writer
+
     reconciler.enforce_runtime_authorities()
     if CONTRACT_PATH.read_bytes() != original_contract:
         raise RuntimeError("authority substitution mutated incident control contract")
@@ -76,6 +117,34 @@ def verify_runtime_authority_identity(reconciler, original_contract: bytes, orig
         raise RuntimeError("authority substitution mutated incident control result")
     if STATUS_PATH.read_bytes() != original_status:
         raise RuntimeError("authority substitution mutated production operability status")
+
+
+def verify_atomic_replace_failure(reconciler, original_contract: bytes) -> None:
+    original_mode = stat.S_IMODE(CONTRACT_PATH.stat().st_mode)
+    before_temps = set(CONTRACT_PATH.parent.glob(f".{CONTRACT_PATH.name}.*.tmp"))
+    original_replace = reconciler.os.replace
+
+    def fail_replace(*_args, **_kwargs):
+        raise OSError("synthetic incident atomic replacement failure")
+
+    try:
+        reconciler.os.replace = fail_replace
+        try:
+            reconciler.CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, original_contract + b" ")
+        except OSError:
+            pass
+        else:
+            raise RuntimeError("atomic writer accepted synthetic replacement failure")
+    finally:
+        reconciler.os.replace = original_replace
+
+    if CONTRACT_PATH.read_bytes() != original_contract:
+        raise RuntimeError("atomic replacement failure mutated incident control contract")
+    if stat.S_IMODE(CONTRACT_PATH.stat().st_mode) != original_mode:
+        raise RuntimeError("atomic replacement failure changed incident control contract mode")
+    after_temps = set(CONTRACT_PATH.parent.glob(f".{CONTRACT_PATH.name}.*.tmp"))
+    if after_temps != before_temps:
+        raise RuntimeError("atomic replacement failure left temporary incident authority residue")
 
 
 def expect_result_rejected(reconciler, result, contract, label: str) -> None:
@@ -91,6 +160,8 @@ def main() -> int:
     original_contract_bytes = CONTRACT_PATH.read_bytes()
     original_result_bytes = RESULT_PATH.read_bytes()
     original_status_bytes = STATUS_PATH.read_bytes()
+    original_contract_mode = stat.S_IMODE(CONTRACT_PATH.stat().st_mode)
+    original_status_mode = stat.S_IMODE(STATUS_PATH.stat().st_mode)
     contract = json.loads(original_contract_bytes.decode("utf-8"))
     status = json.loads(original_status_bytes.decode("utf-8"))
     result = json.loads(original_result_bytes.decode("utf-8"))
@@ -101,6 +172,7 @@ def main() -> int:
         original_result_bytes,
         original_status_bytes,
     )
+    verify_atomic_replace_failure(reconciler, original_contract_bytes)
 
     for field in UNPROVEN_READINESS:
         candidate = copy.deepcopy(contract)
@@ -143,10 +215,19 @@ def main() -> int:
         raise RuntimeError("negative validation mutated incident control result")
     if STATUS_PATH.read_bytes() != original_status_bytes:
         raise RuntimeError("negative validation mutated production operability status")
+    if stat.S_IMODE(CONTRACT_PATH.stat().st_mode) != original_contract_mode:
+        raise RuntimeError("incident contract mode changed across rollback")
+    if stat.S_IMODE(STATUS_PATH.stat().st_mode) != original_status_mode:
+        raise RuntimeError("production status mode changed across rollback")
+    if list(CONTRACT_PATH.parent.glob(f".{CONTRACT_PATH.name}.*.tmp")):
+        raise RuntimeError("incident contract temporary residue remains")
+    if list(STATUS_PATH.parent.glob(f".{STATUS_PATH.name}.*.tmp")):
+        raise RuntimeError("production status temporary residue remains")
 
     print("PASS: incident authority reconcile rejects data/executable authority substitution")
-    print("PASS: incident authority reconcile rejects validator-chain substitution")
-    print("PASS: incident authority reconcile rejects unsafe input and rolls back post-write validation failures")
+    print("PASS: incident authority reconcile rejects validator-chain and execution-transport substitution")
+    print("PASS: incident authority atomic replacement failure preserves bytes, mode and temp cleanliness")
+    print("PASS: incident authority rejects unsafe input and atomically rolls back post-write validation failures")
     return 0
 
 
