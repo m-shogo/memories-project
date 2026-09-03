@@ -100,7 +100,22 @@ jobs:
           EXERCISE_EXIT_CODE="$code" python - <<'PY'
           import json
           import os
+          import tempfile
           from pathlib import Path
+
+          def atomic_write_text(path: Path, text: str) -> None:
+              path.parent.mkdir(parents=True, exist_ok=True)
+              fd, name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+              temporary = Path(name)
+              try:
+                  with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                      handle.write(text)
+                      handle.flush()
+                      os.fsync(handle.fileno())
+                  os.replace(temporary, path)
+              finally:
+                  if temporary.exists():
+                      temporary.unlink()
 
           output = Path('/tmp/incident-control-exercise.log').read_text(
               encoding='utf-8', errors='replace'
@@ -119,8 +134,7 @@ jobs:
               'humanTabletopCompleted': False,
           }
           path = Path('docs/fixtures/memory-os-operability/incident-control-exercise-diagnostic.last.json')
-          path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          atomic_write_text(path, json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n')
           PY
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
 
@@ -137,7 +151,21 @@ jobs:
           VALIDATION_EXIT_CODE="$code" python - <<'PY'
           import json
           import os
+          import tempfile
           from pathlib import Path
+
+          def atomic_write_text(path: Path, text: str) -> None:
+              fd, name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+              temporary = Path(name)
+              try:
+                  with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                      handle.write(text)
+                      handle.flush()
+                      os.fsync(handle.fileno())
+                  os.replace(temporary, path)
+              finally:
+                  if temporary.exists():
+                      temporary.unlink()
 
           path = Path('docs/fixtures/memory-os-operability/incident-control-exercise-diagnostic.last.json')
           diagnostic = json.loads(path.read_text(encoding='utf-8'))
@@ -151,7 +179,7 @@ jobs:
           diagnostic['output'] = (
               str(diagnostic.get('output', '')) + '\n--- validator ---\n' + output
           )[-6000:]
-          path.write_text(json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          atomic_write_text(path, json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n')
           PY
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
 
