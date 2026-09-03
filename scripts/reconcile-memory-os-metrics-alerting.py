@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,8 @@ METRICS_VALIDATOR = CANONICAL_METRICS_VALIDATOR
 ALERTING_VALIDATOR = CANONICAL_ALERTING_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 ENTRY_DOCS_VALIDATOR = CANONICAL_ENTRY_DOCS_VALIDATOR
+CANONICAL_OS_REPLACE = os.replace
+CANONICAL_SUBPROCESS_RUN = subprocess.run
 
 OLD_GAP = "alert routing, on-call and runbooks"
 NEW_EXISTING = (
@@ -62,6 +66,26 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    mode = path.stat().st_mode & 0o7777
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        CANONICAL_OS_REPLACE(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
     require(canonical.is_file(), f"canonical {label} missing")
@@ -73,7 +97,11 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(resolved == canonical, f"canonical {label} escaped repository path")
 
 
-def enforce_runtime_authorities() -> None:
+def enforce_runtime_authorities(
+    expected_replace=CANONICAL_OS_REPLACE,
+    expected_subprocess_run=CANONICAL_SUBPROCESS_RUN,
+    expected_atomic_writer=CANONICAL_ATOMIC_WRITE_BYTES,
+) -> None:
     for path, canonical, label in (
         (METRICS_PATH, CANONICAL_METRICS_PATH, "metrics contract"),
         (ALERTING_PATH, CANONICAL_ALERTING_PATH, "metrics alerting contract"),
@@ -84,6 +112,12 @@ def enforce_runtime_authorities() -> None:
         (ENTRY_DOCS_VALIDATOR, CANONICAL_ENTRY_DOCS_VALIDATOR, "entry docs validator"),
     ):
         require_exact_authority(path, canonical, label)
+    require(CANONICAL_OS_REPLACE is expected_replace, "canonical os.replace transport authority drift")
+    require(os.replace is expected_replace, "os.replace transport authority drift")
+    require(CANONICAL_SUBPROCESS_RUN is expected_subprocess_run, "canonical subprocess transport authority drift")
+    require(subprocess.run is expected_subprocess_run, "subprocess transport authority drift")
+    require(CANONICAL_ATOMIC_WRITE_BYTES is expected_atomic_writer, "canonical atomic writer authority drift")
+    require(atomic_write_bytes is expected_atomic_writer, "atomic writer authority drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -106,7 +140,7 @@ def append_once(items: list[Any], value: str) -> bool:
 
 def run_validator(path: Path) -> None:
     enforce_runtime_authorities()
-    result = subprocess.run(
+    result = CANONICAL_SUBPROCESS_RUN(
         [sys.executable, str(path)],
         cwd=ROOT,
         check=False,
@@ -133,19 +167,15 @@ def write_transactionally(metrics: dict[str, Any], status: dict[str, Any]) -> No
     enforce_runtime_authorities()
     original_metrics = METRICS_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
+    metrics_payload = (json.dumps(metrics, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    status_payload = (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     try:
-        METRICS_PATH.write_text(
-            json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        STATUS_PATH.write_text(
-            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        CANONICAL_ATOMIC_WRITE_BYTES(METRICS_PATH, metrics_payload)
+        CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, status_payload)
         validate_written_authority()
     except BaseException:
-        METRICS_PATH.write_bytes(original_metrics)
-        STATUS_PATH.write_bytes(original_status)
+        CANONICAL_ATOMIC_WRITE_BYTES(METRICS_PATH, original_metrics)
+        CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, original_status)
         raise
 
 
