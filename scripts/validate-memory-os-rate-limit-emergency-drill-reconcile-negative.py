@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -74,6 +75,53 @@ def prove_lineage_rejection() -> None:
         raise AssertionError("detached emergency drill source was incorrectly accepted")
     if git("rev-parse", "HEAD") != current_head:
         raise AssertionError("lineage negative changed the current branch ref")
+
+
+def prove_validator_runtime_authority_identity() -> None:
+    validator = load_module(VALIDATOR_PATH, "memory_os_rate_limit_emergency_validator_authority_negative")
+    substitutions = (
+        ("ROOT", ROOT / "scripts", "emergency drill validator repository authority drift"),
+        ("CONTRACT_PATH", ROOT / "README.md", "emergency drill validator contract authority drift"),
+        ("OPERATIONS_PATH", ROOT / "README.md", "emergency drill validator operations contract authority drift"),
+        ("POLICY_PATH", ROOT / "README.md", "emergency drill validator policy contract authority drift"),
+        ("RESULT_PATH", ROOT / "README.md", "emergency drill validator result authority drift"),
+        ("require", lambda *_args, **_kwargs: None, "emergency drill validator require execution authority drift"),
+        ("require_commit_ancestor", lambda *_args, **_kwargs: None, "emergency drill validator lineage helper execution authority drift"),
+        ("load", lambda _path: {}, "emergency drill validator load execution authority drift"),
+        ("parse_args", lambda: SimpleNamespace(expected_commit_sha=None, require_result=False, require_reconciled=False), "emergency drill validator argument parser execution authority drift"),
+        ("iter_strings", lambda _value: [], "emergency drill validator string traversal execution authority drift"),
+        ("validate_result", lambda *_args, **_kwargs: None, "emergency drill validator result validator execution authority drift"),
+        ("_require_path_authority", lambda *_args, **_kwargs: None, "emergency drill validator path guard execution authority drift"),
+        ("SHA_RE", re.compile(r".*"), "emergency drill validator SHA semantics execution authority drift"),
+        ("FORBIDDEN_TEXT", re.compile(r"$^"), "emergency drill validator privacy semantics execution authority drift"),
+    )
+    for attr, substitute, expected in substitutions:
+        original = getattr(validator, attr)
+        try:
+            setattr(validator, attr, substitute)
+            expect_rejection(validator.enforce_runtime_authorities, expected)
+        finally:
+            setattr(validator, attr, original)
+
+    original_run = validator.subprocess.run
+    try:
+        validator.subprocess.run = lambda *_args, **_kwargs: SimpleNamespace(returncode=0)
+        expect_rejection(
+            validator.enforce_runtime_authorities,
+            "emergency drill validator subprocess transport execution authority drift",
+        )
+    finally:
+        validator.subprocess.run = original_run
+
+    original_guard = validator.enforce_runtime_authorities
+    try:
+        validator.enforce_runtime_authorities = lambda: None
+        expect_rejection(
+            validator.main,
+            "emergency drill validator runtime guard execution authority drift",
+        )
+    finally:
+        validator.enforce_runtime_authorities = original_guard
 
 
 def prove_reconciler_authority_identity() -> None:
@@ -436,6 +484,7 @@ def prove_transactional_rollback() -> None:
 
 def main() -> int:
     prove_lineage_rejection()
+    prove_validator_runtime_authority_identity()
     prove_reconciler_authority_identity()
     prove_execution_helper_identity()
     prove_evaluator_authority_boundaries()
@@ -444,6 +493,7 @@ def main() -> int:
     prove_atomic_replace_failure_and_mode()
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
+    print("PASS: emergency validator pins canonical paths, execution helpers, SHA semantics, and privacy semantics")
     print("PASS: emergency reconcile pins immutable canonical data and validator authorities")
     print("PASS: emergency reconcile rejects paired path, transport, guard, writer, and transaction substitution")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
