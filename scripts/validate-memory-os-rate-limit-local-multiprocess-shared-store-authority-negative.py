@@ -84,24 +84,49 @@ def main() -> int:
             finally:
                 setattr(validator, attribute, original)
 
-        expect_rejected(
-            "local shared-store validator main guard substitution",
-            lambda: validator.main(lambda: None, validator.source_is_ancestor),
-            validator.Fail,
-        )
-        expect_rejected(
-            "local shared-store validator ancestry helper substitution",
-            lambda: validator.main(validator.require_runtime_authorities, lambda source: True),
-            validator.Fail,
-        )
+        real_guard = validator.require_runtime_authorities
+        validator.require_runtime_authorities = lambda: None
+        try:
+            expect_rejected(
+                "local shared-store validator main guard substitution",
+                validator.main,
+                validator.Fail,
+            )
+        finally:
+            validator.require_runtime_authorities = real_guard
+
+        real_ancestry = validator.source_is_ancestor
+        validator.source_is_ancestor = lambda _source: True
+        try:
+            expect_rejected(
+                "local shared-store validator ancestry helper substitution",
+                validator.main,
+                validator.Fail,
+            )
+        finally:
+            validator.source_is_ancestor = real_ancestry
+
+        guard_defaults = real_guard.__defaults__
+        require(guard_defaults is not None, "shared-store runtime guard defaults missing")
+        real_guard.__defaults__ = (outside.parent, guard_defaults[1], guard_defaults[2])
+        try:
+            expect_rejected(
+                "local shared-store validator guard default mutation",
+                validator.main,
+                validator.Fail,
+            )
+        finally:
+            real_guard.__defaults__ = guard_defaults
 
     validator.require_runtime_authorities()
+    require(validator.main() == 0, "canonical local shared-store validator failed after authority negatives")
     if result_before is None:
         require(not validator.RESULT.exists(), "shared-store authority negative created result evidence")
     else:
         require(validator.RESULT.read_bytes() == result_before, "shared-store authority negative mutated result evidence")
     print("Memory OS local shared-store validator authority negative suite PASS")
     print("validator data/helper/semantic substitution accepted: false")
+    print("runtime guard/default substitution accepted: false")
     print("production-equivalent evidence generated: false")
     print("production evidence generated: false")
     return 0
