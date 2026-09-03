@@ -96,17 +96,48 @@ def main() -> int:
             finally:
                 setattr(validator, attribute, original)
 
-        expect_rejected(
-            "distributed runtime validator main guard substitution",
-            lambda: validator.main(lambda: None),
-            validator.Fail,
-        )
+        real_guard = validator.require_runtime_authorities
+        validator.require_runtime_authorities = lambda: None
+        try:
+            expect_rejected(
+                "distributed runtime validator main guard substitution",
+                validator.main,
+                validator.Fail,
+            )
+        finally:
+            validator.require_runtime_authorities = real_guard
+
+        guard_defaults = real_guard.__defaults__
+        require(guard_defaults is not None, "distributed runtime guard defaults missing")
+        real_guard.__defaults__ = (ROOT / "contracts", guard_defaults[1], guard_defaults[2])
+        try:
+            expect_rejected(
+                "distributed runtime validator guard default mutation",
+                validator.main,
+                validator.Fail,
+            )
+        finally:
+            real_guard.__defaults__ = guard_defaults
+
+        validator.require_runtime_authorities = lambda: None
+        real_guard.__defaults__ = (ROOT / "contracts", guard_defaults[1], guard_defaults[2])
+        try:
+            expect_rejected(
+                "paired distributed runtime guard and default substitution",
+                validator.main,
+                validator.Fail,
+            )
+        finally:
+            validator.require_runtime_authorities = real_guard
+            real_guard.__defaults__ = guard_defaults
 
     validator.require_runtime_authorities()
+    require(validator.main() == 0, "canonical distributed runtime validator failed after authority negatives")
     require(validator.REGISTRY.read_bytes() == canonical_registry_before,
             "distributed runtime validator authority negative mutated canonical registry")
     print("Memory OS distributed rate-limit runtime validator authority negative suite PASS")
     print("validator data/executable/helper substitution accepted: false")
+    print("runtime guard paired substitution accepted: false")
     print("distributed runtime evidence generated: false")
     print("production evidence generated: false")
     print("production readiness changed: false")
