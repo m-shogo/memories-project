@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 import tempfile
 from pathlib import Path
 
@@ -68,6 +69,8 @@ def main() -> int:
         result_path.write_text(json.dumps({"commitSha": source_sha}) + "\n", encoding="utf-8")
         original_bytes = stale_status_bytes()
         status_path.write_bytes(original_bytes)
+        status_path.chmod(0o640)
+        original_mode = stat.S_IMODE(status_path.stat().st_mode)
 
         module.RESULT_PATH = result_path
         module.STATUS_PATH = status_path
@@ -102,6 +105,11 @@ def main() -> int:
             raise RuntimeError("v1 atomic rollback did not restore original bytes")
         if status_path.read_bytes() != original_bytes:
             raise RuntimeError("v1 chaos reconcile did not roll back Production Status")
+        if stat.S_IMODE(status_path.stat().st_mode) != original_mode:
+            raise RuntimeError("v1 chaos reconcile did not preserve Production Status mode")
+        residues = list(root.glob(f".{status_path.name}.*.tmp"))
+        if residues:
+            raise RuntimeError(f"v1 atomic rollback left temp authority residue: {residues}")
 
     module = load_module()
     with tempfile.TemporaryDirectory(prefix="memory-os-chaos-v1-replace-") as tmp:
@@ -111,6 +119,8 @@ def main() -> int:
         result_path.write_text(json.dumps({"commitSha": source_sha}) + "\n", encoding="utf-8")
         original_bytes = stale_status_bytes()
         status_path.write_bytes(original_bytes)
+        status_path.chmod(0o640)
+        original_mode = stat.S_IMODE(status_path.stat().st_mode)
 
         module.RESULT_PATH = result_path
         module.STATUS_PATH = status_path
@@ -130,11 +140,13 @@ def main() -> int:
             module.os.replace = canonical_replace
         if status_path.read_bytes() != original_bytes:
             raise RuntimeError("v1 atomic replacement failure mutated Production Status")
+        if stat.S_IMODE(status_path.stat().st_mode) != original_mode:
+            raise RuntimeError("v1 atomic replacement failure changed Production Status mode")
         residues = list(root.glob(f".{status_path.name}.*.tmp"))
         if residues:
             raise RuntimeError(f"v1 atomic replacement failure left temp authority residue: {residues}")
 
-    print("PASS: v1 chaos reconcile pins data authority, publishes atomically, and rolls back after aggregate rejection")
+    print("PASS: v1 chaos reconcile pins data authority, preserves mode, publishes atomically, and rolls back after aggregate rejection")
     return 0
 
 
