@@ -43,6 +43,17 @@ def expect_main_rejection(module: Any, label: str) -> None:
             f"canonical Production Status mutated after rejected substitution: {label}")
 
 
+def expect_main_call_rejection(module: Any, label: str, **kwargs: Any) -> None:
+    before_policy = POLICY_PATH.read_bytes()
+    before_status = STATUS_PATH.read_bytes()
+    rc = module.main(**kwargs)
+    require(rc != 0, f"aggregate rate-limit validator accepted direct call substitution: {label}")
+    require(POLICY_PATH.read_bytes() == before_policy,
+            f"canonical rate-limit policy mutated after rejected direct call substitution: {label}")
+    require(STATUS_PATH.read_bytes() == before_status,
+            f"canonical Production Status mutated after rejected direct call substitution: {label}")
+
+
 def prove_path_authorities(module: Any) -> None:
     cases = (
         ("REPO", ROOT / "contracts", "repository root"),
@@ -98,15 +109,23 @@ def prove_execution_authorities(module: Any) -> None:
             setattr(module, attribute, original)
 
 
+def prove_direct_call_authorities(module: Any) -> None:
+    expect_main_call_rejection(module, "runtime guard argument", _runtime_guard=lambda: None)
+    expect_main_call_rejection(module, "JSON loader argument", _load=lambda _path: {})
+    expect_main_call_rejection(module, "Go constant parser argument", _go_consts=lambda *_args: set())
+    expect_main_call_rejection(module, "policy-set checker argument", _check_policy_set=lambda *_args: [])
+
+
 def main() -> int:
     module = load_module()
     require(module.main() == 0, "canonical aggregate rate-limit validator does not pass before negatives")
     prove_path_authorities(module)
     prove_paired_default_substitution(module)
     prove_execution_authorities(module)
+    prove_direct_call_authorities(module)
     require(module.main() == 0, "canonical aggregate rate-limit validator does not pass after negatives")
 
-    print("PASS: aggregate rate-limit validator data, helper and paired default authorities are fail-closed")
+    print("PASS: aggregate rate-limit validator data, helper, direct-call and paired default authorities are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
