@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,15 @@ def expect_rejected(name: str, action) -> None:
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def expect_any_failure(name: str, action) -> None:
+    try:
+        action()
+    except Exception:
+        print(f"PASS reject: {name}")
+        return
+    raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
 def authority_identity_negative(module) -> None:
     real_operability = module.OPERABILITY_VALIDATOR
     module.OPERABILITY_VALIDATOR = module.RATE_LIMIT_VALIDATOR
@@ -50,6 +60,54 @@ def authority_identity_negative(module) -> None:
         )
     finally:
         module.OPERABILITY_VALIDATOR = real_operability
+
+
+def ordering_negative(module) -> None:
+    values = ["before", module.EVIDENCE_PREFIX + " old", "after"]
+    module.replace_prefixed_once(values, module.EVIDENCE_PREFIX, module.EVIDENCE_PREFIX + " new")
+    require(values == ["before", module.EVIDENCE_PREFIX + " new", "after"],
+            "existing evidence replacement must preserve list position")
+
+    duplicate = [module.EVIDENCE_PREFIX + " one", module.EVIDENCE_PREFIX + " two"]
+    expect_rejected(
+        "duplicate local shared-store evidence prefixes",
+        lambda: module.replace_prefixed_once(duplicate, module.EVIDENCE_PREFIX, module.EVIDENCE_PREFIX + " new"),
+    )
+
+
+def atomic_writer_negative(module) -> None:
+    original_contract = module.CONTRACT.read_bytes()
+    original_status = module.STATUS.read_bytes()
+    original_mode = stat.S_IMODE(module.CONTRACT.stat().st_mode)
+    real_replace = module.os.replace
+
+    module.atomic_write_bytes(module.CONTRACT, original_contract)
+    require(module.CONTRACT.read_bytes() == original_contract,
+            "atomic no-op write changed canonical contract bytes")
+    require(stat.S_IMODE(module.CONTRACT.stat().st_mode) == original_mode,
+            "atomic no-op write changed canonical contract mode")
+
+    def fail_contract_replace(src, dst):
+        if Path(dst) == module.CONTRACT:
+            raise OSError("synthetic atomic replacement rejection")
+        return real_replace(src, dst)
+
+    module.os.replace = fail_contract_replace
+    try:
+        expect_any_failure(
+            "atomic replacement failure preserves canonical authority",
+            lambda: module.atomic_write_bytes(module.CONTRACT, b"synthetic mutation\n"),
+        )
+        require(module.CONTRACT.read_bytes() == original_contract,
+                "canonical contract changed after atomic replacement failure")
+        require(not list(module.CONTRACT.parent.glob(f".{module.CONTRACT.name}.*.tmp")),
+                "atomic replacement failure left temporary contract authority")
+    finally:
+        module.os.replace = real_replace
+        if module.CONTRACT.read_bytes() != original_contract:
+            module.atomic_write_bytes(module.CONTRACT, original_contract)
+        if module.STATUS.read_bytes() != original_status:
+            module.atomic_write_bytes(module.STATUS, original_status)
 
 
 def validator_semantic_negatives(module) -> None:
@@ -151,9 +209,9 @@ def rollback_negative(module) -> None:
         module.normalized_status = real_normalized_status
         module.run_validator = real_run_validator
         if module.CONTRACT.read_bytes() != original_contract:
-            module.CONTRACT.write_bytes(original_contract)
+            module.atomic_write_bytes(module.CONTRACT, original_contract)
         if module.STATUS.read_bytes() != original_status:
-            module.STATUS.write_bytes(original_status)
+            module.atomic_write_bytes(module.STATUS, original_status)
 
 
 def main() -> int:
@@ -168,12 +226,17 @@ def main() -> int:
     reconciler.validate_runtime_authority()
     require(validator.main() == 0, "canonical local shared-store validator baseline failed")
     authority_identity_negative(reconciler)
+    ordering_negative(reconciler)
+    atomic_writer_negative(reconciler)
     validator_semantic_negatives(validator)
     rollback_negative(reconciler)
     print("Memory OS local multi-process shared-store reconcile negative suite PASS")
     print("canonical validator identity: enforced")
     print("contract executable identity: enforced")
     print("source commit ancestry: enforced")
+    print("same-index evidence replacement: enforced")
+    print("duplicate evidence prefix rejection: enforced")
+    print("atomic replacement and mode preservation: enforced")
     print("post-write aggregate rollback: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
