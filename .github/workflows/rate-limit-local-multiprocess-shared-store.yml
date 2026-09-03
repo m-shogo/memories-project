@@ -10,6 +10,7 @@ on:
       - "services/import-api/internal/ratelimit/shared_store_multiprocess_test.go"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-transport-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit.py"
@@ -25,6 +26,7 @@ on:
       - "services/import-api/internal/ratelimit/shared_store_multiprocess_test.go"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-transport-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit.py"
@@ -71,11 +73,13 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py \
             scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py \
+            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-transport-negative.py \
             scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py \
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit.py \
             scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py
+          python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-transport-negative.py
           python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py
           python scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit.py
@@ -129,11 +133,13 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py \
             scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py \
+            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-transport-negative.py \
             scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py \
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit.py \
             scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py
+          python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-transport-negative.py
       - name: Execute cross-process shared-store rehearsal
         working-directory: services/import-api
         run: |
