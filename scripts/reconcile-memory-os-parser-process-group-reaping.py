@@ -51,15 +51,25 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
-def load(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
-    return value
+def _build_loader(
+    require_impl: Callable[[bool, str], None],
+    root: Path,
+) -> Callable[[Path], dict[str, Any]]:
+    def load(path: Path) -> dict[str, Any]:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise ReconcileFailure(f"missing file: {path.relative_to(root)}") from exc
+        except json.JSONDecodeError as exc:
+            raise ReconcileFailure(f"invalid JSON in {path.relative_to(root)}: {exc}") from exc
+        require_impl(isinstance(value, dict), f"root must be object: {path.relative_to(root)}")
+        return value
+
+    return load
+
+
+load = _build_loader(require, ROOT)
+del _build_loader
 
 
 def _build_source_is_ancestor(
@@ -98,9 +108,11 @@ def _build_atomic_write_bytes(
     fsync_impl: Callable[[int], None],
     chmod_impl: Callable[[Path, int], None],
     replace_impl: Callable[[Path, Path], None],
+    require_impl: Callable[[bool, str], None],
+    root: Path,
 ) -> Callable[[Path, bytes], None]:
     def atomic_write_bytes(path: Path, payload: bytes) -> None:
-        require(path.parent.is_dir(), f"authority parent missing: {path.parent}")
+        require_impl(path.parent.is_dir(), f"authority parent missing: {path.parent}")
         mode = path.stat().st_mode & 0o7777
         temp_path: Path | None = None
         try:
@@ -119,7 +131,7 @@ def _build_atomic_write_bytes(
             temp_path = None
         except OSError as exc:
             try:
-                relative = path.relative_to(ROOT)
+                relative = path.relative_to(root)
             except ValueError:
                 relative = path
             raise ReconcileFailure(f"cannot atomically write authority: {relative}: {exc}") from exc
@@ -141,6 +153,8 @@ atomic_write_bytes = _build_atomic_write_bytes(
     os.fsync,
     os.chmod,
     os.replace,
+    require,
+    ROOT,
 )
 del _build_atomic_write_bytes
 
@@ -159,10 +173,19 @@ write_json = _build_json_writer(atomic_write_bytes)
 del _build_json_writer
 
 
-def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
-    require(path == canonical, f"{label} authority drift")
-    require(canonical.is_file(), f"canonical {label} missing")
-    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+def _build_require_exact_authority(
+    require_impl: Callable[[bool, str], None],
+) -> Callable[[Path, Path, str], None]:
+    def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+        require_impl(path == canonical, f"{label} authority drift")
+        require_impl(canonical.is_file(), f"canonical {label} missing")
+        require_impl(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+    return require_exact_authority
+
+
+require_exact_authority = _build_require_exact_authority(require)
+del _build_require_exact_authority
 
 
 def _build_data_authority_guard(
