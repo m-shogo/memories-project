@@ -62,6 +62,28 @@ def authority_identity_negative(module) -> None:
         module.OPERABILITY_VALIDATOR = real_operability
 
 
+def execution_authority_negative(module) -> None:
+    cases = (
+        ("validate_runtime_authority", lambda: None, "runtime guard substitution"),
+        ("run_validator", lambda _path: None, "validator execution helper substitution"),
+        ("atomic_write_json", lambda _path, _value: None, "JSON atomic writer substitution"),
+        ("atomic_write_bytes", lambda _path, _value: None, "byte atomic writer substitution"),
+    )
+    original_contract = module.CONTRACT.read_bytes()
+    original_status = module.STATUS.read_bytes()
+    for attribute, substitute, label in cases:
+        original = getattr(module, attribute)
+        setattr(module, attribute, substitute)
+        try:
+            expect_rejected(label, module.main)
+            require(module.CONTRACT.read_bytes() == original_contract,
+                    f"canonical contract mutated after rejected {label}")
+            require(module.STATUS.read_bytes() == original_status,
+                    f"Production Status mutated after rejected {label}")
+        finally:
+            setattr(module, attribute, original)
+
+
 def ordering_negative(module) -> None:
     values = ["before", module.EVIDENCE_PREFIX + " old", "after"]
     module.replace_prefixed_once(values, module.EVIDENCE_PREFIX, module.EVIDENCE_PREFIX + " new")
@@ -153,19 +175,8 @@ def validator_semantic_negatives(module) -> None:
 def rollback_negative(module) -> None:
     original_contract = module.CONTRACT.read_bytes()
     original_status = module.STATUS.read_bytes()
-    real_normalized_contract = module.normalized_contract
+    original_operability = module.OPERABILITY_VALIDATOR.read_bytes()
     real_normalized_status = module.normalized_status
-    real_run_validator = module.run_validator
-    calls: list[Path] = []
-
-    def fake_contract(current, result_present):
-        candidate = copy.deepcopy(current)
-        readiness = candidate.get("readiness")
-        require(isinstance(readiness, dict), "readiness missing in rollback fixture")
-        readiness["localCrossProcessStoreSemanticsProven"] = not bool(
-            readiness.get("localCrossProcessStoreSemanticsProven")
-        )
-        return candidate
 
     def fake_status(current, result_present):
         candidate = copy.deepcopy(current)
@@ -178,40 +189,31 @@ def rollback_negative(module) -> None:
         evidence.append("synthetic local shared-store rollback sentinel")
         return candidate
 
-    def fake_run_validator(path: Path) -> None:
-        calls.append(path)
-        if path == module.OPERABILITY_VALIDATOR:
-            raise module.Fail("synthetic aggregate operability rejection")
-
-    module.normalized_contract = fake_contract
     module.normalized_status = fake_status
-    module.run_validator = fake_run_validator
+    module.atomic_write_bytes(
+        module.OPERABILITY_VALIDATOR,
+        b"#!/usr/bin/env python3\nraise SystemExit(1)\n",
+    )
     try:
         expect_rejected(
-            "post-write operability rejection rolls back local shared-store authority",
+            "post-write canonical operability rejection rolls back local shared-store authority",
             module.main,
-        )
-        require(
-            calls == [
-                module.VALIDATOR,
-                module.RATE_LIMIT_OPERATIONS_VALIDATOR,
-                module.RATE_LIMIT_VALIDATOR,
-                module.OPERABILITY_VALIDATOR,
-            ],
-            "local shared-store validator transaction order drift",
         )
         require(module.CONTRACT.read_bytes() == original_contract,
                 "local shared-store contract was not rolled back byte-for-byte")
         require(module.STATUS.read_bytes() == original_status,
                 "production status was not rolled back byte-for-byte")
     finally:
-        module.normalized_contract = real_normalized_contract
         module.normalized_status = real_normalized_status
-        module.run_validator = real_run_validator
+        module.atomic_write_bytes(module.OPERABILITY_VALIDATOR, original_operability)
         if module.CONTRACT.read_bytes() != original_contract:
             module.atomic_write_bytes(module.CONTRACT, original_contract)
         if module.STATUS.read_bytes() != original_status:
             module.atomic_write_bytes(module.STATUS, original_status)
+    require(not list(module.CONTRACT.parent.glob(f".{module.CONTRACT.name}.*.tmp")),
+            "rollback left temporary contract authority")
+    require(not list(module.STATUS.parent.glob(f".{module.STATUS.name}.*.tmp")),
+            "rollback left temporary Production Status authority")
 
 
 def main() -> int:
@@ -226,10 +228,12 @@ def main() -> int:
     reconciler.validate_runtime_authority()
     require(validator.main() == 0, "canonical local shared-store validator baseline failed")
     authority_identity_negative(reconciler)
+    execution_authority_negative(reconciler)
     ordering_negative(reconciler)
     atomic_writer_negative(reconciler)
     validator_semantic_negatives(validator)
     rollback_negative(reconciler)
+    require(reconciler.main() == 0, "canonical local shared-store reconciler failed after negatives")
     print("Memory OS local multi-process shared-store reconcile negative suite PASS")
     print("canonical validator identity: enforced")
     print("contract executable identity: enforced")
@@ -237,6 +241,7 @@ def main() -> int:
     print("same-index evidence replacement: enforced")
     print("duplicate evidence prefix rejection: enforced")
     print("atomic replacement and mode preservation: enforced")
+    print("runtime guard and validator transport: enforced")
     print("post-write aggregate rollback: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
