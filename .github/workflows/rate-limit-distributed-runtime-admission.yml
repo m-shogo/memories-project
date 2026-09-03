@@ -108,6 +108,7 @@ jobs:
           python scripts/validate-memory-os-operability.py
           git diff --check
           git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   validate-and-publish:
     if: github.event_name != 'pull_request'
