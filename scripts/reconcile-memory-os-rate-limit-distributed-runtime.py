@@ -121,10 +121,10 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
-def run_validator() -> None:
-    completed = subprocess.run(
-        ["python", str(VALIDATOR)],
-        cwd=ROOT,
+def run_validator(*, _run=subprocess.run, _validator=VALIDATOR, _root=ROOT) -> None:
+    completed = _run(
+        ["python", str(_validator)],
+        cwd=_root,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -144,6 +144,9 @@ def commit_outputs_transactionally(
     _write=write,
     _atomic_write=atomic_write_bytes,
     _enforce=enforce_runtime_authorities,
+    _validators=POST_WRITE_VALIDATORS,
+    _run=subprocess.run,
+    _root=ROOT,
 ) -> None:
     _enforce()
     originals = {path: path.read_bytes() for path in outputs}
@@ -151,10 +154,10 @@ def commit_outputs_transactionally(
         for path, value in outputs.items():
             _write(path, value)
         _enforce()
-        for validator in POST_WRITE_VALIDATORS:
-            completed = subprocess.run(
+        for validator in _validators:
+            completed = _run(
                 ["python", str(validator)],
-                cwd=ROOT,
+                cwd=_root,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -172,11 +175,11 @@ def commit_outputs_transactionally(
         raise Fail(f"distributed runtime reconcile validation failed; restored prior authority: {exc}") from exc
 
 
-def main() -> int:
-    enforce_runtime_authorities()
+def main(*, _enforce=enforce_runtime_authorities, _run_validator=run_validator) -> int:
+    _enforce()
     for path in (REGISTRY, WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"distributed runtime admission missing: {path.relative_to(ROOT)}")
-    run_validator()
+    _run_validator()
     registry = load(REGISTRY)
     runtimes = registry.get("runtimes")
     require(isinstance(runtimes, list), "distributed runtime registry missing")
