@@ -116,6 +116,22 @@ def prove_direct_call_authorities(module: Any) -> None:
     expect_main_call_rejection(module, "policy-set checker argument", _check_policy_set=lambda *_args: [])
 
 
+def prove_paired_direct_call_authorities(module: Any) -> None:
+    cases = (
+        ("enforce_runtime_authorities", "_runtime_guard", lambda: None, "paired runtime guard argument"),
+        ("load", "_load", lambda _path: {}, "paired JSON loader argument"),
+        ("go_consts", "_go_consts", lambda *_args: set(), "paired Go constant parser argument"),
+        ("check_policy_set", "_check_policy_set", lambda *_args: [], "paired policy-set checker argument"),
+    )
+    for attribute, argument, substitute, label in cases:
+        original = getattr(module, attribute)
+        setattr(module, attribute, substitute)
+        try:
+            expect_main_call_rejection(module, label, **{argument: substitute})
+        finally:
+            setattr(module, attribute, original)
+
+
 def prove_policy_bound_authorities(module: Any) -> None:
     cases = (
         ("MAX_CAPACITY", "DEFAULT_MAX_CAPACITY", 10**18, "paired maximum capacity"),
@@ -133,6 +149,24 @@ def prove_policy_bound_authorities(module: Any) -> None:
             setattr(module, default_attr, original_default)
 
 
+def prove_function_default_authorities(module: Any) -> None:
+    original_guard_defaults = module.enforce_runtime_authorities.__defaults__
+    mutated_guard_defaults = list(original_guard_defaults)
+    mutated_guard_defaults[-2] = 10**18
+    module.enforce_runtime_authorities.__defaults__ = tuple(mutated_guard_defaults)
+    try:
+        expect_main_rejection(module, "runtime guard defaults")
+    finally:
+        module.enforce_runtime_authorities.__defaults__ = original_guard_defaults
+
+    original_policy_defaults = module.check_policy_set.__defaults__
+    module.check_policy_set.__defaults__ = (10**18, 10**18)
+    try:
+        expect_main_rejection(module, "policy-set checker defaults")
+    finally:
+        module.check_policy_set.__defaults__ = original_policy_defaults
+
+
 def main() -> int:
     module = load_module()
     require(module.main() == 0, "canonical aggregate rate-limit validator does not pass before negatives")
@@ -140,10 +174,12 @@ def main() -> int:
     prove_paired_default_substitution(module)
     prove_execution_authorities(module)
     prove_direct_call_authorities(module)
+    prove_paired_direct_call_authorities(module)
     prove_policy_bound_authorities(module)
+    prove_function_default_authorities(module)
     require(module.main() == 0, "canonical aggregate rate-limit validator does not pass after negatives")
 
-    print("PASS: aggregate rate-limit validator data, helper, direct-call, policy-bound and paired default authorities are fail-closed")
+    print("PASS: aggregate rate-limit validator data, helper, paired direct-call, semantic default and path authorities are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
