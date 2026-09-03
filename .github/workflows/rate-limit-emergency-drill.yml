@@ -296,7 +296,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os, re
+          import json, os, re, tempfile
           from pathlib import Path
           text = Path('/tmp/memory-os-rate-limit-emergency-drill.log').read_text(encoding='utf-8', errors='replace')
           text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
@@ -319,7 +319,23 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/rate-limit-emergency-drill-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          mode = (path.stat().st_mode & 0o777) if path.exists() else None
+          fd, temp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+          temp_path = Path(temp_name)
+          try:
+              with os.fdopen(fd, 'wb') as handle:
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              if mode is not None:
+                  os.chmod(temp_path, mode)
+              os.replace(temp_path, path)
+          finally:
+              try:
+                  temp_path.unlink()
+              except FileNotFoundError:
+                  pass
           PY
           git add docs/fixtures/memory-os-operability/rate-limit-emergency-drill-diagnostic.last.json
           git diff --cached --check
