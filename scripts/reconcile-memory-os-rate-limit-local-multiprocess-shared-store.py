@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -48,16 +51,50 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def replace_prefixed_once(values: list[Any], prefix: str, value: str) -> None:
+    matches = [index for index, item in enumerate(values) if isinstance(item, str) and item.startswith(prefix)]
+    require(len(matches) <= 1, f"duplicate evidence prefix: {prefix}")
+    if matches:
+        values[matches[0]] = value
+    else:
+        values.append(value)
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp, mode)
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    atomic_write_bytes(path, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+
+
 def validate_runtime_authority() -> None:
     for path, expected, label in (
+        (CONTRACT, ROOT / "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json", "local shared-store contract"),
+        (RESULT, ROOT / "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json", "local shared-store result"),
+        (STATUS, ROOT / "contracts/operations/production-operability-status.json", "production status"),
         (VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py", "local shared-store validator"),
         (RATE_LIMIT_OPERATIONS_VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit-operations.py", "rate-limit operations validator"),
         (RATE_LIMIT_VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit.py", "rate-limit validator"),
         (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
     ):
         require(path == expected, f"canonical {label} identity drift")
-        require(path.is_file(), f"canonical {label} missing")
         require(not path.is_symlink(), f"canonical {label} must not be a symlink")
+        if path == RESULT and not path.exists():
+            continue
+        require(path.is_file(), f"canonical {label} missing")
         try:
             require(path.resolve(strict=True) == expected, f"canonical {label} path drift")
         except OSError as exc:
@@ -102,15 +139,12 @@ def normalized_status(current: dict[str, Any], result_present: bool) -> dict[str
     refs = gate.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list),
             "OPS-P0-005 authority arrays missing")
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
-    if result_present:
-        append_once(existing, (
-            EVIDENCE_PREFIX + " proves two independent OS test clients consume one atomic shared budget through the canonical Store interface, a fresh client process cannot reset exhausted backend state, and a loopback shared-store outage maps to fail-closed store_unavailable; the broker is test-only MemoryStore-backed HTTP, so this is not a distributed production store, runtime-host restart, TLS/trusted-proxy deployment or production-equivalent evidence"
-        ))
-    else:
-        append_once(existing, (
-            EVIDENCE_PREFIX + " foundation is implemented but no exact-source PASS result is committed yet; no distributed-runtime claim is created"
-        ))
+    evidence_value = (
+        EVIDENCE_PREFIX + " proves two independent OS test clients consume one atomic shared budget through the canonical Store interface, a fresh client process cannot reset exhausted backend state, and a loopback shared-store outage maps to fail-closed store_unavailable; the broker is test-only MemoryStore-backed HTTP, so this is not a distributed production store, runtime-host restart, TLS/trusted-proxy deployment or production-equivalent evidence"
+        if result_present else
+        EVIDENCE_PREFIX + " foundation is implemented but no exact-source PASS result is committed yet; no distributed-runtime claim is created"
+    )
+    replace_prefixed_once(existing, EVIDENCE_PREFIX, evidence_value)
     for ref in REFS:
         require((ROOT / ref).is_file(), f"local shared-store evidence ref missing: {ref}")
         append_once(refs, ref)
@@ -138,8 +172,8 @@ def main() -> int:
 
     original_contract = CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_json(CONTRACT, contract)
+    atomic_write_json(STATUS, status)
     try:
         for validator in (
             VALIDATOR,
@@ -149,8 +183,8 @@ def main() -> int:
         ):
             run_validator(validator)
     except Exception:
-        CONTRACT.write_bytes(original_contract)
-        STATUS.write_bytes(original_status)
+        atomic_write_bytes(CONTRACT, original_contract)
+        atomic_write_bytes(STATUS, original_status)
         raise
 
     print("Memory OS local multi-process shared-store reconciliation PASS")
