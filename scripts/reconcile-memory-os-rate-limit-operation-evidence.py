@@ -135,19 +135,30 @@ def run_validator(path: Path, label: str) -> None:
             f"{label} validation failed:\n{completed.stdout[-4000:]}")
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+def _build_atomic_write_bytes(replace_transport: Any):
+    def atomic_write_bytes(path: Path, payload: bytes) -> None:
+        if os.replace is not replace_transport:
+            raise ReconcileFailure("rate-limit operation evidence atomic replace transport drift")
+        mode = (path.stat().st_mode & 0o777) if path.exists() else None
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if mode is not None:
+                os.chmod(temporary, mode)
+            replace_transport(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    return atomic_write_bytes
+
+
+atomic_write_bytes = _build_atomic_write_bytes(os.replace)
 
 
 def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
