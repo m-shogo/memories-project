@@ -76,24 +76,24 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: version-compatibility-foundations-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
-    if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'docs(version): register bounded compatibility foundations')
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact source
+      - name: Checkout exact PR source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -101,19 +101,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Capture exact compatibility authority source
-        if: github.event_name != 'pull_request'
+      - name: Confirm exact clean PR source
         run: |
           set -euo pipefail
-          git fetch origin so
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
 
       - name: Compile compatibility authority tools
         run: |
           set -euo pipefail
-          test -z "$(git status --porcelain)"
           python -m py_compile \
             scripts/reconcile-memory-os-version-compatibility-canonical.py \
             scripts/validate-memory-os-version-compatibility.py \
@@ -152,17 +150,93 @@ jobs:
           python scripts/validate-memory-os-version-compatibility-foundations.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
+      - name: Require deterministic whole-worktree authority
         run: |
           set -euo pipefail
           git diff --check
-          git diff --exit-code -- \
-            contracts/operations/version-compatibility-contract.v1.json \
-            contracts/operations/production-operability-status.json
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+      - name: Validate canonical, upstream, foundation and aggregate authority
+        run: |
+          python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-rollback-rehearsal-gate.py
+          python scripts/validate-memory-os-parser-artifact-registry.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-version-compatibility-foundations.py
+          python scripts/validate-memory-os-operability.py
+
+  validate-and-publish:
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' || !contains(github.event.head_commit.message, 'docs(version): register bounded compatibility foundations'))
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact compatibility authority source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+
+      - name: Compile compatibility authority tools
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/reconcile-memory-os-version-compatibility-canonical.py \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-version-compatibility-foundations.py \
+            scripts/validate-memory-os-version-compatibility-foundation-status-negative.py \
+            scripts/reconcile-memory-os-version-compatibility-foundation-status.py \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/validate-memory-os-release-baseline-registry.py \
+            scripts/request-memory-os-rollback-rehearsal.py \
+            scripts/validate-memory-os-rollback-rehearsal-gate.py \
+            scripts/register-memory-os-parser-artifact.py \
+            scripts/validate-memory-os-parser-artifact-registry.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-version-compatibility-foundation-status-negative.py
+          python scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py
+
+      - name: Validate upstream admission authorities
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-rollback-rehearsal-gate.py
+          python scripts/validate-memory-os-parser-artifact-registry.py
+
+      - name: Restore conservative canonical authority
+        run: python scripts/reconcile-memory-os-version-compatibility-canonical.py
+
+      - name: Validate canonical matrix remains conservative
+        run: python scripts/validate-memory-os-version-compatibility.py
+
+      - name: Reconcile and validate bounded foundation status
+        run: |
+          python scripts/reconcile-memory-os-version-compatibility-foundation-status.py
+          python scripts/validate-memory-os-version-compatibility-foundations.py
+          python scripts/validate-memory-os-operability.py
 
       - name: Commit compatibility authorities
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -189,7 +263,7 @@ jobs:
           fi
 
       - name: Re-read committed authority
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
