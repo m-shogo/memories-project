@@ -425,121 +425,132 @@ def require_runtime_authorities(
             raise ValidationFailure(f"operation evidence validator {name} execution authority drift")
 
 
-def main(_guard=require_runtime_authorities) -> int:
-    expected_guard = main.__defaults__[0]
-    if _guard is not expected_guard or require_runtime_authorities is not expected_guard:
-        raise ValidationFailure("operation evidence validator runtime guard authority drift")
-    _guard()
-    contract, policy_ids = load_contract_context()
-    require(contract.get("schemaVersion") ==
-            "memory-os-rate-limit-operation-evidence.v1",
-            "operation evidence contract schemaVersion drift")
-    require(contract.get("recordSchemaVersion") ==
-            "memory-os-rate-limit-operation-record.v2",
-            "operation record schemaVersion drift")
-    expected_paths = {
-        "sourceOperationsContract": "contracts/operations/rate-limit-operations-contract.v1.json",
-        "sourcePolicyContract": "contracts/operations/rate-limit-policy-contract.v1.json",
-        "ledgerDirectory": "docs/evidence/rate-limit-operations",
-        "template": "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
-        "writer": "scripts/create-memory-os-rate-limit-operation-evidence.py",
-        "validator": "scripts/validate-memory-os-rate-limit-operation-evidence.py",
-    }
-    for field, expected in expected_paths.items():
-        require(contract.get(field) == expected, f"{field} path drift")
+def _build_main(
+    _canonical_guard=require_runtime_authorities,
+    _canonical_guard_defaults=require_runtime_authorities.__defaults__,
+):
+    def _main() -> int:
+        if require_runtime_authorities is not _canonical_guard:
+            raise ValidationFailure("operation evidence validator runtime guard authority drift")
+        if _canonical_guard.__defaults__ != _canonical_guard_defaults:
+            raise ValidationFailure("operation evidence validator runtime guard default authority drift")
+        _canonical_guard()
+        contract, policy_ids = load_contract_context()
+        require(contract.get("schemaVersion") ==
+                "memory-os-rate-limit-operation-evidence.v1",
+                "operation evidence contract schemaVersion drift")
+        require(contract.get("recordSchemaVersion") ==
+                "memory-os-rate-limit-operation-record.v2",
+                "operation record schemaVersion drift")
+        expected_paths = {
+            "sourceOperationsContract": "contracts/operations/rate-limit-operations-contract.v1.json",
+            "sourcePolicyContract": "contracts/operations/rate-limit-policy-contract.v1.json",
+            "ledgerDirectory": "docs/evidence/rate-limit-operations",
+            "template": "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
+            "writer": "scripts/create-memory-os-rate-limit-operation-evidence.py",
+            "validator": "scripts/validate-memory-os-rate-limit-operation-evidence.py",
+        }
+        for field, expected in expected_paths.items():
+            require(contract.get(field) == expected, f"{field} path drift")
 
-    rules = contract.get("record")
-    require(isinstance(rules, dict), "record rules must be an object")
-    require("UNLIMITED_OR_FAIL_OPEN" not in set(rules.get("modeValues", [])),
-            "evidence contract permits forbidden fail-open mode")
-    require("ARBITRARY_FORWARDED_HEADERS" not in
-            set(rules.get("proxyModeValues", [])),
-            "evidence contract permits arbitrary forwarded headers")
-    require(rules.get("maximumEmergencyDurationMinutes") == 60,
-            "maximum emergency duration drift")
-    for flag in (
-        "fullSourceCommitShaRequired", "sourceCommitMustBeAncestorOfCurrentHead",
-        "operatorReviewerMustDiffer", "productionRequiresConfirmation",
-        "restoredRequiresAllChecksPass", "failedRequiresOpenRisk", "appendOnly",
-        "writerComputesEvidenceDigests", "evidenceDigestsCoverEveryEvidenceRef",
-        "evidenceDigestsUseSha256",
-    ):
-        require(rules.get(flag) is True, f"record.{flag} must be true")
+        rules = contract.get("record")
+        require(isinstance(rules, dict), "record rules must be an object")
+        require("UNLIMITED_OR_FAIL_OPEN" not in set(rules.get("modeValues", [])),
+                "evidence contract permits forbidden fail-open mode")
+        require("ARBITRARY_FORWARDED_HEADERS" not in
+                set(rules.get("proxyModeValues", [])),
+                "evidence contract permits arbitrary forwarded headers")
+        require(rules.get("maximumEmergencyDurationMinutes") == 60,
+                "maximum emergency duration drift")
+        for flag in (
+            "fullSourceCommitShaRequired", "sourceCommitMustBeAncestorOfCurrentHead",
+            "operatorReviewerMustDiffer", "productionRequiresConfirmation",
+            "restoredRequiresAllChecksPass", "failedRequiresOpenRisk", "appendOnly",
+            "writerComputesEvidenceDigests", "evidenceDigestsCoverEveryEvidenceRef",
+            "evidenceDigestsUseSha256",
+        ):
+            require(rules.get(flag) is True, f"record.{flag} must be true")
 
-    privacy = contract.get("privacy")
-    require(isinstance(privacy, dict), "privacy must be an object")
-    require(privacy.get("classification") == "operational_sensitive_no_secrets",
-            "privacy classification drift")
-    for flag in (
-        "rawIpForbidden", "networkDigestForbidden", "tokenForbidden",
-        "accountOrSessionIdentifierForbidden", "requestContentForbidden",
-        "rawUrlForbidden", "databaseOrStoreCredentialForbidden",
-        "freeFormEvidenceTextForbidden", "evidenceRefsMustBeRepositoryRelative",
-        "evidenceRefsMustBeTracked", "evidenceRefsMustBeSymlinkFree",
-        "evidenceRefsMustMatchHeadBytes",
-    ):
-        require(privacy.get(flag) is True, f"privacy.{flag} must be true")
+        privacy = contract.get("privacy")
+        require(isinstance(privacy, dict), "privacy must be an object")
+        require(privacy.get("classification") == "operational_sensitive_no_secrets",
+                "privacy classification drift")
+        for flag in (
+            "rawIpForbidden", "networkDigestForbidden", "tokenForbidden",
+            "accountOrSessionIdentifierForbidden", "requestContentForbidden",
+            "rawUrlForbidden", "databaseOrStoreCredentialForbidden",
+            "freeFormEvidenceTextForbidden", "evidenceRefsMustBeRepositoryRelative",
+            "evidenceRefsMustBeTracked", "evidenceRefsMustBeSymlinkFree",
+            "evidenceRefsMustMatchHeadBytes",
+        ):
+            require(privacy.get(flag) is True, f"privacy.{flag} must be true")
 
-    template = load_json(TEMPLATE_PATH)
-    validate_record(template, contract, policy_ids, template=True)
+        template = load_json(TEMPLATE_PATH)
+        validate_record(template, contract, policy_ids, template=True)
 
-    LEDGER_PATH.mkdir(parents=True, exist_ok=True)
-    records = sorted(LEDGER_PATH.glob("*.json"))
-    operation_ids: set[str] = set()
-    for path in records:
-        record = load_json(path)
-        validate_record(record, contract, policy_ids)
-        operation_id = record["operationId"]
-        require(path.name == f"{operation_id}.json",
-                f"ledger filename does not match operationId: {path.name}")
-        require(operation_id not in operation_ids,
-                f"duplicate operationId across ledger: {operation_id}")
-        operation_ids.add(operation_id)
+        LEDGER_PATH.mkdir(parents=True, exist_ok=True)
+        records = sorted(LEDGER_PATH.glob("*.json"))
+        operation_ids: set[str] = set()
+        for path in records:
+            record = load_json(path)
+            validate_record(record, contract, policy_ids)
+            operation_id = record["operationId"]
+            require(path.name == f"{operation_id}.json",
+                    f"ledger filename does not match operationId: {path.name}")
+            require(operation_id not in operation_ids,
+                    f"duplicate operationId across ledger: {operation_id}")
+            operation_ids.add(operation_id)
 
-    readiness = contract.get("readiness")
-    require(isinstance(readiness, dict), "readiness must be an object")
-    for foundation in (
-        "recordContractDefined", "exclusiveWriterImplemented",
-        "ledgerValidatorImplemented", "duplicateOperationIdRejected",
-        "privacyValidationImplemented",
-    ):
-        require(readiness.get(foundation) is True,
-                f"readiness.{foundation} must be true")
-    for unproven in (
-        "productionControlPlaneImplemented", "automaticModeExpiryImplemented",
-        "productionEvidenceRecorded", "operatorReviewCompleted", "productionReady",
-    ):
-        require(readiness.get(unproven) is False,
-                f"unproven operation evidence readiness cannot be true: {unproven}")
+        readiness = contract.get("readiness")
+        require(isinstance(readiness, dict), "readiness must be an object")
+        for foundation in (
+            "recordContractDefined", "exclusiveWriterImplemented",
+            "ledgerValidatorImplemented", "duplicateOperationIdRejected",
+            "privacyValidationImplemented",
+        ):
+            require(readiness.get(foundation) is True,
+                    f"readiness.{foundation} must be true")
+        for unproven in (
+            "productionControlPlaneImplemented", "automaticModeExpiryImplemented",
+            "productionEvidenceRecorded", "operatorReviewCompleted", "productionReady",
+        ):
+            require(readiness.get(unproven) is False,
+                    f"unproven operation evidence readiness cannot be true: {unproven}")
 
-    refs = contract.get("evidenceRefs")
-    require(isinstance(refs, list) and len(refs) == len(set(refs)),
-            "operation evidenceRefs invalid")
-    for ref in refs:
-        require((ROOT / ref).is_file(), f"evidence path missing: {ref}")
+        refs = contract.get("evidenceRefs")
+        require(isinstance(refs, list) and len(refs) == len(set(refs)),
+                "operation evidenceRefs invalid")
+        for ref in refs:
+            require((ROOT / ref).is_file(), f"evidence path missing: {ref}")
 
-    operations = load_json(OPERATIONS_PATH)
-    operations_readiness = operations.get("readiness")
-    require(isinstance(operations_readiness, dict),
-            "rate-limit operations readiness must be an object")
-    require(operations_readiness.get("productionControlPlaneImplemented") is False,
-            "ledger cannot imply a production control plane")
+        operations = load_json(OPERATIONS_PATH)
+        operations_readiness = operations.get("readiness")
+        require(isinstance(operations_readiness, dict),
+                "rate-limit operations readiness must be an object")
+        require(operations_readiness.get("productionControlPlaneImplemented") is False,
+                "ledger cannot imply a production control plane")
 
-    status = load_json(STATUS_PATH)
-    require(status.get("productionDecision") == "NO_GO",
-            "operation evidence cannot change production decision")
-    areas = status.get("areas")
-    require(isinstance(areas, list), "status areas must be a list")
-    matches = [item for item in areas if isinstance(item, dict) and item.get("id") == "OPS-P0-005"]
-    require(len(matches) == 1, "OPS-P0-005 must exist exactly once")
-    require(matches[0].get("status") != "READY",
-            "evidence ledger without control plane/shared store cannot make OPS-P0-005 READY")
+        status = load_json(STATUS_PATH)
+        require(status.get("productionDecision") == "NO_GO",
+                "operation evidence cannot change production decision")
+        areas = status.get("areas")
+        require(isinstance(areas, list), "status areas must be a list")
+        matches = [item for item in areas if isinstance(item, dict) and item.get("id") == "OPS-P0-005"]
+        require(len(matches) == 1, "OPS-P0-005 must exist exactly once")
+        require(matches[0].get("status") != "READY",
+                "evidence ledger without control plane/shared store cannot make OPS-P0-005 READY")
 
-    print("Memory OS rate-limit operation evidence validation PASS")
-    print(f"registered operation records: {len(records)}")
-    print("production control plane: NOT_IMPLEMENTED")
-    print("production decision: NO_GO")
-    return 0
+        print("Memory OS rate-limit operation evidence validation PASS")
+        print(f"registered operation records: {len(records)}")
+        print("production control plane: NOT_IMPLEMENTED")
+        print("production decision: NO_GO")
+        return 0
+
+    return _main
+
+
+main = _build_main()
+del _build_main
 
 
 if __name__ == "__main__":
