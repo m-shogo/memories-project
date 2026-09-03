@@ -24,6 +24,8 @@ SCRAPE_VALIDATOR = CANONICAL_SCRAPE_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 ENTRY_DOCS_VALIDATOR = CANONICAL_ENTRY_DOCS_VALIDATOR
 CANONICAL_OS_REPLACE = os.replace
+CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+CANONICAL_MODULE_FROM_SPEC = importlib.util.module_from_spec
 
 OLD_MISSING = "Prometheus/OTel exporter and an exposed scrape endpoint"
 NEW_EXISTING = (
@@ -90,6 +92,8 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
 def enforce_runtime_authorities(
     expected_replace=CANONICAL_OS_REPLACE,
     expected_atomic_writer=CANONICAL_ATOMIC_WRITE_BYTES,
+    expected_spec_from_file_location=CANONICAL_SPEC_FROM_FILE_LOCATION,
+    expected_module_from_spec=CANONICAL_MODULE_FROM_SPEC,
 ) -> None:
     for path, canonical, label in (
         (STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status"),
@@ -103,6 +107,14 @@ def enforce_runtime_authorities(
     require(os.replace is expected_replace, "os.replace transport authority drift")
     require(CANONICAL_ATOMIC_WRITE_BYTES is expected_atomic_writer, "canonical atomic writer authority drift")
     require(atomic_write_bytes is expected_atomic_writer, "atomic writer authority drift")
+    require(CANONICAL_SPEC_FROM_FILE_LOCATION is expected_spec_from_file_location,
+            "canonical validator spec loader authority drift")
+    require(importlib.util.spec_from_file_location is expected_spec_from_file_location,
+            "validator spec loader authority drift")
+    require(CANONICAL_MODULE_FROM_SPEC is expected_module_from_spec,
+            "canonical validator module loader authority drift")
+    require(importlib.util.module_from_spec is expected_module_from_spec,
+            "validator module loader authority drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -118,9 +130,9 @@ def load(path: Path) -> dict[str, Any]:
 
 def load_validator(path: Path, name: str):
     enforce_runtime_authorities()
-    spec = importlib.util.spec_from_file_location(name, path)
+    spec = CANONICAL_SPEC_FROM_FILE_LOCATION(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load validator: {path.relative_to(ROOT)}")
-    module = importlib.util.module_from_spec(spec)
+    module = CANONICAL_MODULE_FROM_SPEC(spec)
     spec.loader.exec_module(module)
     return module
 
