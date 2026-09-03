@@ -84,6 +84,49 @@ def execution_authority_negative(module) -> None:
             setattr(module, attribute, original)
 
 
+def transaction_binding_negative(module) -> None:
+    original_contract = module.CONTRACT.read_bytes()
+    original_status = module.STATUS.read_bytes()
+    real_guard = module.validate_runtime_authority
+    real_runner = module.run_validator
+    real_json_writer = module.atomic_write_json
+    real_byte_writer = module.atomic_write_bytes
+
+    module.validate_runtime_authority = lambda: None
+    module.run_validator = lambda _path: None
+    module.atomic_write_json = lambda _path, _value: None
+    module.atomic_write_bytes = lambda _path, _value: None
+    try:
+        expect_rejected("paired reconcile transaction helper substitution", module.main)
+        require(module.CONTRACT.read_bytes() == original_contract,
+                "canonical contract mutated after paired transaction substitution")
+        require(module.STATUS.read_bytes() == original_status,
+                "Production Status mutated after paired transaction substitution")
+    finally:
+        module.validate_runtime_authority = real_guard
+        module.run_validator = real_runner
+        module.atomic_write_json = real_json_writer
+        module.atomic_write_bytes = real_byte_writer
+
+    default_cases = (
+        (real_guard, real_guard.__defaults__, (module.ROOT / "contracts", real_guard.__defaults__[1]), "runtime guard defaults"),
+        (real_runner, real_runner.__defaults__, (lambda *args, **kwargs: None,), "validator subprocess defaults"),
+        (real_json_writer, real_json_writer.__defaults__, (lambda _path, _payload: None,), "JSON writer defaults"),
+        (real_byte_writer, real_byte_writer.__defaults__, (lambda _src, _dst: None,), "byte writer defaults"),
+    )
+    for function, original_defaults, substitute_defaults, label in default_cases:
+        require(original_defaults is not None, f"{label} missing")
+        function.__defaults__ = substitute_defaults
+        try:
+            expect_rejected(f"{label} mutation", module.main)
+            require(module.CONTRACT.read_bytes() == original_contract,
+                    f"canonical contract mutated after rejected {label}")
+            require(module.STATUS.read_bytes() == original_status,
+                    f"Production Status mutated after rejected {label}")
+        finally:
+            function.__defaults__ = original_defaults
+
+
 def ordering_negative(module) -> None:
     values = ["before", module.EVIDENCE_PREFIX + " old", "after"]
     module.replace_prefixed_once(values, module.EVIDENCE_PREFIX, module.EVIDENCE_PREFIX + " new")
@@ -229,6 +272,7 @@ def main() -> int:
     require(validator.main() == 0, "canonical local shared-store validator baseline failed")
     authority_identity_negative(reconciler)
     execution_authority_negative(reconciler)
+    transaction_binding_negative(reconciler)
     ordering_negative(reconciler)
     atomic_writer_negative(reconciler)
     validator_semantic_negatives(validator)
@@ -242,6 +286,7 @@ def main() -> int:
     print("duplicate evidence prefix rejection: enforced")
     print("atomic replacement and mode preservation: enforced")
     print("runtime guard and validator transport: enforced")
+    print("definition-time transaction bindings: enforced")
     print("post-write aggregate rollback: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
