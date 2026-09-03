@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +109,101 @@ def expect_noop_validator_rejection(reconciler: Any) -> None:
         STATUS_PATH.write_bytes(original_status)
 
 
+def expect_atomic_transport_binding(reconciler: Any) -> None:
+    original_replace = reconciler.os.replace
+
+    def reject_mutable_replace(*_args: Any, **_kwargs: Any) -> None:
+        raise NegativeFailure("mutable os.replace transport was invoked")
+
+    with tempfile.TemporaryDirectory(prefix="parser-artifact-atomic-negative-") as temp_dir:
+        target = Path(temp_dir) / "authority.json"
+        target.write_bytes(b"before\n")
+        os.chmod(target, 0o640)
+        before_mode = target.stat().st_mode & 0o7777
+        reconciler.os.replace = reject_mutable_replace
+        try:
+            reconciler.atomic_write_bytes(target, b"after\n")
+        finally:
+            reconciler.os.replace = original_replace
+
+        require(target.read_bytes() == b"after\n", "bound atomic writer did not replace payload")
+        require(
+            target.stat().st_mode & 0o7777 == before_mode,
+            "bound atomic writer did not preserve target mode",
+        )
+        require(
+            not list(target.parent.glob(f".{target.name}.*.tmp")),
+            "bound atomic writer left temporary residue",
+        )
+
+
+def expect_transaction_transport_binding(reconciler: Any) -> None:
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    original_write = reconciler.write
+    original_atomic = reconciler.atomic_write_bytes
+    original_runner = reconciler.run_canonical_validators
+
+    class SyntheticPostWriteFailure(RuntimeError):
+        pass
+
+    def reject_mutable_helper(*_args: Any, **_kwargs: Any) -> None:
+        raise NegativeFailure("mutable transaction helper was invoked")
+
+    def fail_post_write() -> None:
+        raise SyntheticPostWriteFailure("synthetic post-write validator failure")
+
+    contract = json.loads(original_contract.decode("utf-8"))
+    status = json.loads(original_status.decode("utf-8"))
+    contract["_syntheticAtomicTransportNegative"] = True
+    status["_syntheticAtomicTransportNegative"] = True
+
+    contract_mode = CONTRACT_PATH.stat().st_mode & 0o7777
+    status_mode = STATUS_PATH.stat().st_mode & 0o7777
+    reconciler.write = reject_mutable_helper
+    reconciler.atomic_write_bytes = reject_mutable_helper
+    reconciler.run_canonical_validators = reject_mutable_helper
+    try:
+        try:
+            reconciler.commit_authority_transaction(
+                contract,
+                status,
+                validator_runner=fail_post_write,
+            )
+        except SyntheticPostWriteFailure:
+            pass
+        else:
+            raise NegativeFailure("synthetic post-write failure was not propagated")
+
+        require(
+            CONTRACT_PATH.read_bytes() == original_contract,
+            "parser contract was not byte-for-byte rolled back by bound transport",
+        )
+        require(
+            STATUS_PATH.read_bytes() == original_status,
+            "production status was not byte-for-byte rolled back by bound transport",
+        )
+        require(
+            CONTRACT_PATH.stat().st_mode & 0o7777 == contract_mode,
+            "parser contract mode changed after bound rollback",
+        )
+        require(
+            STATUS_PATH.stat().st_mode & 0o7777 == status_mode,
+            "production status mode changed after bound rollback",
+        )
+        for target in (CONTRACT_PATH, STATUS_PATH):
+            require(
+                not list(target.parent.glob(f".{target.name}.*.tmp")),
+                f"temporary residue remained after bound rollback: {target.name}",
+            )
+    finally:
+        reconciler.write = original_write
+        reconciler.atomic_write_bytes = original_atomic
+        reconciler.run_canonical_validators = original_runner
+        CONTRACT_PATH.write_bytes(original_contract)
+        STATUS_PATH.write_bytes(original_status)
+
+
 def main() -> int:
     reconciler = load_reconciler()
     reconciler.enforce_runtime_authorities()
@@ -119,8 +217,12 @@ def main() -> int:
     )
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
+    expect_atomic_transport_binding(reconciler)
+    expect_transaction_transport_binding(reconciler)
     expect_noop_validator_rejection(reconciler)
-    print("PASS: parser reconcile rejects authority substitutions and no-op validator bypass")
+    print(
+        "PASS: parser reconcile rejects authority substitutions and pins atomic transport/rollback"
+    )
     return 0
 
 
