@@ -10,10 +10,17 @@ on:
       - "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py"
+      - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-evidence-authority-negative.py"
+      - "scripts/create-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-writer-negative.py"
       - "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
       - "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json"
       - "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json"
+      - "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
+      - "contracts/operations/rate-limit-operations-contract.v1.json"
+      - "docs/evidence/rate-limit-operations/**"
       - "contracts/operations/rate-limit-policy-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -28,10 +35,17 @@ on:
       - "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py"
+      - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-evidence-authority-negative.py"
+      - "scripts/create-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-writer-negative.py"
       - "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
       - "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json"
       - "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json"
+      - "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
+      - "contracts/operations/rate-limit-operations-contract.v1.json"
+      - "docs/evidence/rate-limit-operations/**"
       - "contracts/operations/rate-limit-policy-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -66,11 +80,18 @@ jobs:
             scripts/validate-memory-os-rate-limit-distributed-runtime.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-validator-authority-negative.py \
             scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py \
-            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py
+            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py \
+            scripts/validate-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-evidence-authority-negative.py \
+            scripts/create-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-writer-negative.py
           python scripts/validate-memory-os-rate-limit-distributed-runtime-validator-authority-negative.py
           python scripts/validate-memory-os-rate-limit-distributed-runtime.py
           python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py
           python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py
+          python scripts/validate-memory-os-rate-limit-operation-evidence-authority-negative.py
+          python scripts/validate-memory-os-rate-limit-operation-writer-negative.py
+          python scripts/validate-memory-os-rate-limit-operation-evidence.py
           python scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit.py
           python scripts/validate-memory-os-operability.py
