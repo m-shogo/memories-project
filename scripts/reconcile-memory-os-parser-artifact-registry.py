@@ -142,27 +142,55 @@ def replace_prefixed(items: list[Any], prefix: str, value: str) -> bool:
     return changed
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
-    mode = path.stat().st_mode & 0o7777
-    fd, temp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    temp_path = Path(temp_name)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temp_path, mode)
-        os.replace(temp_path, path)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
+def _build_atomic_write_bytes(
+    mkstemp_impl: Callable[..., tuple[int, str]],
+    fdopen_impl: Callable[..., Any],
+    fsync_impl: Callable[[int], None],
+    chmod_impl: Callable[[Path, int], None],
+    replace_impl: Callable[[Path, Path], None],
+) -> Callable[[Path, bytes], None]:
+    def atomic_write_bytes(path: Path, payload: bytes) -> None:
+        mode = path.stat().st_mode & 0o7777
+        fd, temp_name = mkstemp_impl(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        temp_path = Path(temp_name)
+        try:
+            with fdopen_impl(fd, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                fsync_impl(handle.fileno())
+            chmod_impl(temp_path, mode)
+            replace_impl(temp_path, path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+    return atomic_write_bytes
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
-    payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-    atomic_write_bytes(path, payload)
+atomic_write_bytes = _build_atomic_write_bytes(
+    tempfile.mkstemp,
+    os.fdopen,
+    os.fsync,
+    os.chmod,
+    os.replace,
+)
+del _build_atomic_write_bytes
+
+
+def _build_json_writer(
+    atomic_writer: Callable[[Path, bytes], None],
+) -> Callable[[Path, dict[str, Any]], None]:
+    def write(path: Path, value: dict[str, Any]) -> None:
+        payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+        atomic_writer(path, payload)
+
+    return write
+
+
+write = _build_json_writer(atomic_write_bytes)
+del _build_json_writer
 
 
 def run_canonical_validators() -> None:
@@ -175,27 +203,42 @@ def run_canonical_validators() -> None:
         subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
 
 
-def commit_authority_transaction(
-    contract: dict[str, Any],
-    status: dict[str, Any],
-    *,
-    validator_runner: Callable[[], None] | None = None,
-) -> None:
-    originals = {
-        CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
-        STATUS_PATH: STATUS_PATH.read_bytes(),
-    }
-    try:
-        write(CONTRACT_PATH, contract)
-        write(STATUS_PATH, status)
-        if validator_runner is None:
-            run_canonical_validators()
-        else:
-            validator_runner()
-    except BaseException:
-        for path, payload in originals.items():
-            atomic_write_bytes(path, payload)
-        raise
+def _build_commit_authority_transaction(
+    json_writer: Callable[[Path, dict[str, Any]], None],
+    atomic_writer: Callable[[Path, bytes], None],
+    default_validator_runner: Callable[[], None],
+) -> Callable[..., None]:
+    def commit_authority_transaction(
+        contract: dict[str, Any],
+        status: dict[str, Any],
+        *,
+        validator_runner: Callable[[], None] | None = None,
+    ) -> None:
+        originals = {
+            CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
+            STATUS_PATH: STATUS_PATH.read_bytes(),
+        }
+        try:
+            json_writer(CONTRACT_PATH, contract)
+            json_writer(STATUS_PATH, status)
+            if validator_runner is None:
+                default_validator_runner()
+            else:
+                validator_runner()
+        except BaseException:
+            for path, payload in originals.items():
+                atomic_writer(path, payload)
+            raise
+
+    return commit_authority_transaction
+
+
+commit_authority_transaction = _build_commit_authority_transaction(
+    write,
+    atomic_write_bytes,
+    run_canonical_validators,
+)
+del _build_commit_authority_transaction
 
 
 def main() -> int:
