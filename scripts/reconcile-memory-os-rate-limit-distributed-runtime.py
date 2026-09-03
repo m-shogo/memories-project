@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -90,8 +92,28 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def atomic_write_bytes(path: Path, payload: bytes, *, _replace=os.replace) -> None:
+    mode = path.stat().st_mode & 0o777 if path.exists() else None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if mode is not None:
+            os.chmod(tmp_name, mode)
+        _replace(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write(path: Path, value: dict[str, Any], *, _atomic_write=atomic_write_bytes) -> None:
+    payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    _atomic_write(path, payload)
 
 
 def append_once(values: list[Any], value: str) -> None:
@@ -116,11 +138,19 @@ def run_validator() -> None:
     )
 
 
-def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
+def commit_outputs_transactionally(
+    outputs: dict[Path, dict[str, Any]],
+    *,
+    _write=write,
+    _atomic_write=atomic_write_bytes,
+    _enforce=enforce_runtime_authorities,
+) -> None:
+    _enforce()
     originals = {path: path.read_bytes() for path in outputs}
     try:
         for path, value in outputs.items():
-            write(path, value)
+            _write(path, value)
+        _enforce()
         for validator in POST_WRITE_VALIDATORS:
             completed = subprocess.run(
                 ["python", str(validator)],
@@ -138,7 +168,7 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
             )
     except Exception as exc:
         for path, data in originals.items():
-            path.write_bytes(data)
+            _atomic_write(path, data)
         raise Fail(f"distributed runtime reconcile validation failed; restored prior authority: {exc}") from exc
 
 
