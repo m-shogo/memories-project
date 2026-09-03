@@ -1,4 +1,4 @@
-name: Rate Limit Distributed Runtime Validator Authority Negative
+name: Rate Limit Validator Authority Negative
 
 on:
   pull_request:
@@ -8,8 +8,12 @@ on:
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-validator-authority-negative.py"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py"
       - "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
+      - "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json"
       - "contracts/operations/rate-limit-policy-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -22,8 +26,12 @@ on:
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-validator-authority-negative.py"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py"
       - "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
+      - "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json"
       - "contracts/operations/rate-limit-policy-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -51,14 +59,18 @@ jobs:
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
-      - name: Validate distributed runtime validator authority
+      - name: Validate rate-limit validator authorities
         run: |
           set -euo pipefail
           python -m py_compile \
             scripts/validate-memory-os-rate-limit-distributed-runtime.py \
-            scripts/validate-memory-os-rate-limit-distributed-runtime-validator-authority-negative.py
+            scripts/validate-memory-os-rate-limit-distributed-runtime-validator-authority-negative.py \
+            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py \
+            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py
           python scripts/validate-memory-os-rate-limit-distributed-runtime-validator-authority-negative.py
           python scripts/validate-memory-os-rate-limit-distributed-runtime.py
+          python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py
+          python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py
           python scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit.py
           python scripts/validate-memory-os-operability.py
