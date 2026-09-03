@@ -11,6 +11,7 @@ on:
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-rate-limit-authority-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operations.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit.py"
@@ -28,6 +29,7 @@ on:
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-rate-limit-authority-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operations.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit.py"
@@ -75,6 +77,7 @@ jobs:
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py \
             scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py \
+            scripts/validate-memory-os-rate-limit-authority-negative.py \
             scripts/reconcile-memory-os-rate-limit-operations.py \
             scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit.py \
@@ -89,6 +92,9 @@ jobs:
 
       - name: Validate operation evidence reconcile negative
         run: python scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py
+
+      - name: Validate aggregate rate-limit authority negative
+        run: python scripts/validate-memory-os-rate-limit-authority-negative.py
 
       - name: Reconcile primary policy and status read-only
         run: |
@@ -138,6 +144,7 @@ jobs:
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py \
             scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py \
+            scripts/validate-memory-os-rate-limit-authority-negative.py \
             scripts/reconcile-memory-os-rate-limit-operations.py \
             scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit.py \
@@ -152,6 +159,9 @@ jobs:
 
       - name: Validate operation evidence reconcile negative
         run: python scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py
+
+      - name: Validate aggregate rate-limit authority negative
+        run: python scripts/validate-memory-os-rate-limit-authority-negative.py
 
       - name: Reconcile primary policy and status
         run: |
