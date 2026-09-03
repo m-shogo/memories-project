@@ -66,8 +66,44 @@ def source_is_ancestor(source: str, _run=subprocess.run) -> bool:
     ).returncode == 0
 
 
-def main(_source_is_ancestor=source_is_ancestor) -> int:
-    require(source_is_ancestor is _source_is_ancestor, "source ancestry helper execution authority drift")
+def require_runtime_authorities(
+    _root: Path = ROOT,
+    _contract: Path = CONTRACT,
+    _result: Path = RESULT,
+    _expected_refs: tuple[tuple[str, str], ...] = tuple(EXPECTED_REFS.items()),
+    _helpers: tuple[tuple[str, object], ...] = (
+        ("require", require),
+        ("load", load),
+        ("require_canonical_ref", require_canonical_ref),
+        ("source_is_ancestor", source_is_ancestor),
+    ),
+) -> None:
+    if ROOT != _root or ROOT.resolve() != _root.resolve():
+        raise Fail("local shared-store validator repository root authority drift")
+    for current, canonical, label, optional in (
+        (CONTRACT, _contract, "CONTRACT", False),
+        (RESULT, _result, "RESULT", True),
+    ):
+        if current != canonical:
+            raise Fail(f"local shared-store validator {label} authority drift")
+        if optional and not canonical.exists():
+            continue
+        if not canonical.is_file() or canonical.is_symlink() or canonical.resolve() != current.resolve():
+            raise Fail(f"local shared-store validator {label} canonical file authority invalid")
+    if tuple(EXPECTED_REFS.items()) != _expected_refs:
+        raise Fail("local shared-store validator EXPECTED_REFS semantic authority drift")
+    for name, canonical in _helpers:
+        if globals().get(name) is not canonical:
+            raise Fail(f"local shared-store validator {name} execution authority drift")
+
+
+def main(
+    _guard=require_runtime_authorities,
+    _source_is_ancestor=source_is_ancestor,
+) -> int:
+    if _guard is not require_runtime_authorities or _source_is_ancestor is not source_is_ancestor:
+        raise Fail("local shared-store validator main execution authority drift")
+    _guard()
     contract = load(CONTRACT)
     require(contract.get("contractId") == "memory-os.operability.rate-limit-local-multiprocess-shared-store.v1", "contract id drift")
     require(contract.get("schemaVersion") == "memory-os-rate-limit-local-multiprocess-shared-store.v1", "contract schema drift")
