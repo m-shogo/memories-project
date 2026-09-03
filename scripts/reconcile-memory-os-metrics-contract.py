@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ SCRAPE_VALIDATOR = CANONICAL_SCRAPE_VALIDATOR
 METRICS_VALIDATOR = CANONICAL_METRICS_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 ENTRY_DOCS_VALIDATOR = CANONICAL_ENTRY_DOCS_VALIDATOR
+CANONICAL_OS_REPLACE = os.replace
 
 NEW_DESCRIPTION = (
     "Machine-readable runtime metrics contract for the import-api boundary. "
@@ -63,6 +66,26 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    mode = path.stat().st_mode & 0o7777
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        CANONICAL_OS_REPLACE(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
     require(canonical.is_file(), f"canonical {label} missing")
@@ -74,7 +97,10 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(resolved == canonical, f"canonical {label} escaped repository path")
 
 
-def enforce_runtime_authorities() -> None:
+def enforce_runtime_authorities(
+    expected_replace=CANONICAL_OS_REPLACE,
+    expected_atomic_writer=CANONICAL_ATOMIC_WRITE_BYTES,
+) -> None:
     for path, canonical, label in (
         (METRICS_PATH, CANONICAL_METRICS_PATH, "metrics contract"),
         (SCRAPE_PATH, CANONICAL_SCRAPE_PATH, "metrics scrape contract"),
@@ -84,6 +110,10 @@ def enforce_runtime_authorities() -> None:
         (ENTRY_DOCS_VALIDATOR, CANONICAL_ENTRY_DOCS_VALIDATOR, "entry docs validator"),
     ):
         require_exact_authority(path, canonical, label)
+    require(CANONICAL_OS_REPLACE is expected_replace, "canonical os.replace transport authority drift")
+    require(os.replace is expected_replace, "os.replace transport authority drift")
+    require(CANONICAL_ATOMIC_WRITE_BYTES is expected_atomic_writer, "canonical atomic writer authority drift")
+    require(atomic_write_bytes is expected_atomic_writer, "atomic writer authority drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -129,14 +159,12 @@ def validate_written_authority() -> None:
 def write_transactionally(metrics: dict[str, Any]) -> None:
     enforce_runtime_authorities()
     original = METRICS_PATH.read_bytes()
-    METRICS_PATH.write_text(
-        json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    payload = (json.dumps(metrics, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    CANONICAL_ATOMIC_WRITE_BYTES(METRICS_PATH, payload)
     try:
         validate_written_authority()
     except BaseException:
-        METRICS_PATH.write_bytes(original)
+        CANONICAL_ATOMIC_WRITE_BYTES(METRICS_PATH, original)
         raise
 
 
