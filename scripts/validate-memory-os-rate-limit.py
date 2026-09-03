@@ -178,97 +178,115 @@ def enforce_runtime_authorities(
         raise Fail("maximum refill semantic authority drift")
 
 
-def main(
-    _runtime_guard=enforce_runtime_authorities,
-    _load=load,
-    _go_consts=go_consts,
-    _check_policy_set=check_policy_set,
-) -> int:
-    try:
-        if enforce_runtime_authorities is not _runtime_guard:
-            raise Fail("runtime guard execution authority drift")
-        if _load is not load:
-            raise Fail("main JSON loader execution authority drift")
-        if _go_consts is not go_consts:
-            raise Fail("main Go constant parser execution authority drift")
-        if _check_policy_set is not check_policy_set:
-            raise Fail("main policy-set checker execution authority drift")
-        _runtime_guard()
-        contract = _load(CONTRACT)
+def _build_main(
+    _canonical_runtime_guard=enforce_runtime_authorities,
+    _canonical_load=load,
+    _canonical_go_consts=go_consts,
+    _canonical_check_policy_set=check_policy_set,
+    _canonical_runtime_guard_defaults=enforce_runtime_authorities.__defaults__,
+    _canonical_policy_checker_defaults=check_policy_set.__defaults__,
+):
+    def _main(
+        _runtime_guard=_canonical_runtime_guard,
+        _load=_canonical_load,
+        _go_consts=_canonical_go_consts,
+        _check_policy_set=_canonical_check_policy_set,
+    ) -> int:
+        try:
+            if enforce_runtime_authorities is not _canonical_runtime_guard or _runtime_guard is not _canonical_runtime_guard:
+                raise Fail("runtime guard execution authority drift")
+            if load is not _canonical_load or _load is not _canonical_load:
+                raise Fail("main JSON loader execution authority drift")
+            if go_consts is not _canonical_go_consts or _go_consts is not _canonical_go_consts:
+                raise Fail("main Go constant parser execution authority drift")
+            if check_policy_set is not _canonical_check_policy_set or _check_policy_set is not _canonical_check_policy_set:
+                raise Fail("main policy-set checker execution authority drift")
+            if _canonical_runtime_guard.__defaults__ != _canonical_runtime_guard_defaults:
+                raise Fail("runtime guard default authority drift")
+            if _canonical_check_policy_set.__defaults__ != _canonical_policy_checker_defaults:
+                raise Fail("policy-set checker default authority drift")
+            _canonical_runtime_guard()
+            contract = _canonical_load(CONTRACT)
 
-        enforce_src = ENFORCE_GO.read_text(encoding="utf-8")
-        go_classes = _go_consts(enforce_src, "RouteClass")
-        if go_classes != set(contract["routeClasses"]):
-            raise Fail(f"route class drift: go={go_classes} contract={set(contract['routeClasses'])}")
-        go_modes = _go_consts(enforce_src, "FailureMode")
-        if go_modes != set(contract["failureModes"]):
-            raise Fail(f"failure mode drift: go={go_modes} contract={set(contract['failureModes'])}")
-        obslog_src = OBSLOG_CODES.read_text(encoding="utf-8")
-        rate_codes = {c for c in _go_consts(obslog_src, "EventCode") if c.startswith("OBS_RATE_LIMIT")}
-        if rate_codes != set(contract["observabilityEventCodes"]):
-            raise Fail(f"rate-limit event code drift: go={rate_codes} contract={set(contract['observabilityEventCodes'])}")
+            enforce_src = ENFORCE_GO.read_text(encoding="utf-8")
+            go_classes = _canonical_go_consts(enforce_src, "RouteClass")
+            if go_classes != set(contract["routeClasses"]):
+                raise Fail(f"route class drift: go={go_classes} contract={set(contract['routeClasses'])}")
+            go_modes = _canonical_go_consts(enforce_src, "FailureMode")
+            if go_modes != set(contract["failureModes"]):
+                raise Fail(f"failure mode drift: go={go_modes} contract={set(contract['failureModes'])}")
+            obslog_src = OBSLOG_CODES.read_text(encoding="utf-8")
+            rate_codes = {c for c in _canonical_go_consts(obslog_src, "EventCode") if c.startswith("OBS_RATE_LIMIT")}
+            if rate_codes != set(contract["observabilityEventCodes"]):
+                raise Fail(f"rate-limit event code drift: go={rate_codes} contract={set(contract['observabilityEventCodes'])}")
 
-        rej = contract["rejectionResponse"]
-        if rej["httpStatus"] != 429 or rej["publicErrorCode"] != "SEC_RATE_LIMITED":
-            raise Fail("rejection response must be 429 SEC_RATE_LIMITED")
-        bounds = rej["retryAfterBoundedSeconds"]
-        if bounds["min"] < 1 or bounds["max"] > 86400 or bounds["min"] > bounds["max"]:
-            raise Fail("Retry-After bounds invalid")
-        if rej.get("bodyRevealsInternalState") is not False:
-            raise Fail("rejection body must not reveal internal state")
+            rej = contract["rejectionResponse"]
+            if rej["httpStatus"] != 429 or rej["publicErrorCode"] != "SEC_RATE_LIMITED":
+                raise Fail("rejection response must be 429 SEC_RATE_LIMITED")
+            bounds = rej["retryAfterBoundedSeconds"]
+            if bounds["min"] < 1 or bounds["max"] > 86400 or bounds["min"] > bounds["max"]:
+                raise Fail("Retry-After bounds invalid")
+            if rej.get("bodyRevealsInternalState") is not False:
+                raise Fail("rejection body must not reveal internal state")
 
-        card = contract["metricCardinality"]
-        if set(card["allowedLabels"]) & set(card["forbiddenLabels"]):
-            raise Fail("a metric label is both allowed and forbidden")
-        for bad in ("request_id", "ip", "account_id", "apple_subject"):
-            if bad in card["allowedLabels"]:
-                raise Fail(f"high-cardinality label allowed: {bad}")
+            card = contract["metricCardinality"]
+            if set(card["allowedLabels"]) & set(card["forbiddenLabels"]):
+                raise Fail("a metric label is both allowed and forbidden")
+            for bad in ("request_id", "ip", "account_id", "apple_subject"):
+                if bad in card["allowedLabels"]:
+                    raise Fail(f"high-cardinality label allowed: {bad}")
 
-        priv = contract["privacy"]
-        if priv["rawIpStored"] or priv["rawIpLogged"] or not priv["networkKeyIsKeyedDigest"] \
-                or priv["digestIsDurableIdentifier"] or not priv["trustedProxyBoundaryExplicit"] \
-                or priv["arbitraryForwardedHeaderTrusted"]:
-            raise Fail("privacy invariants violated in contract")
+            priv = contract["privacy"]
+            if priv["rawIpStored"] or priv["rawIpLogged"] or not priv["networkKeyIsKeyedDigest"] \
+                    or priv["digestIsDurableIdentifier"] or not priv["trustedProxyBoundaryExplicit"] \
+                    or priv["arbitraryForwardedHeaderTrusted"]:
+                raise Fail("privacy invariants violated in contract")
 
-        reasons = _check_policy_set(contract["policies"], contract, contract["routeInventory"])
-        if reasons:
-            raise Fail(f"shipped policy set invalid: {reasons}")
+            reasons = _canonical_check_policy_set(contract["policies"], contract, contract["routeInventory"])
+            if reasons:
+                raise Fail(f"shipped policy set invalid: {reasons}")
 
-        negative = _load(NEGATIVE)
-        for case in negative["cases"]:
-            inv = case.get("routeInventory", contract["routeInventory"])
-            if not _check_policy_set(case["policies"], contract, inv):
-                raise Fail(f"negative case was not rejected: {case['reason']}")
+            negative = _canonical_load(NEGATIVE)
+            for case in negative["cases"]:
+                inv = case.get("routeInventory", contract["routeInventory"])
+                if not _canonical_check_policy_set(case["policies"], contract, inv):
+                    raise Fail(f"negative case was not rejected: {case['reason']}")
 
-        status = _load(STATUS)
-        gate = next((a for a in status["areas"] if a.get("id") == "OPS-P0-005"), None)
-        if gate is None:
-            raise Fail("OPS-P0-005 missing from operability status")
-        if gate.get("status") == "READY":
-            if not contract["store"]["distributedEnforcementImplemented"]:
-                raise Fail("OPS-P0-005 READY but distributed enforcement is not implemented")
-            required = {"load-calibrated limits", "store-failure behavior proof", "distributed enforcement"}
-            if any(any(term in m for term in required) for m in gate.get("missingEvidence", [])):
-                raise Fail("OPS-P0-005 READY but load/store-failure/distributed evidence still missing")
-        for ref in gate.get("evidenceRefs", []):
-            if not (REPO / ref).is_file():
-                raise Fail(f"OPS-P0-005 evidence path does not exist: {ref}")
-        for ref in contract["evidenceRefs"]:
-            if not (REPO / ref).is_file():
-                raise Fail(f"contract evidence path does not exist: {ref}")
+            status = _canonical_load(STATUS)
+            gate = next((a for a in status["areas"] if a.get("id") == "OPS-P0-005"), None)
+            if gate is None:
+                raise Fail("OPS-P0-005 missing from operability status")
+            if gate.get("status") == "READY":
+                if not contract["store"]["distributedEnforcementImplemented"]:
+                    raise Fail("OPS-P0-005 READY but distributed enforcement is not implemented")
+                required = {"load-calibrated limits", "store-failure behavior proof", "distributed enforcement"}
+                if any(any(term in m for term in required) for m in gate.get("missingEvidence", [])):
+                    raise Fail("OPS-P0-005 READY but load/store-failure/distributed evidence still missing")
+            for ref in gate.get("evidenceRefs", []):
+                if not (REPO / ref).is_file():
+                    raise Fail(f"OPS-P0-005 evidence path does not exist: {ref}")
+            for ref in contract["evidenceRefs"]:
+                if not (REPO / ref).is_file():
+                    raise Fail(f"contract evidence path does not exist: {ref}")
 
-    except Fail as exc:
-        print(f"RATE-LIMIT VALIDATION FAILED: {exc}", file=sys.stderr)
-        return 1
-    except Exception as exc:  # noqa: BLE001
-        print(f"RATE-LIMIT VALIDATION FAILED (unexpected): {exc}", file=sys.stderr)
-        return 2
+        except Fail as exc:
+            print(f"RATE-LIMIT VALIDATION FAILED: {exc}", file=sys.stderr)
+            return 1
+        except Exception as exc:  # noqa: BLE001
+            print(f"RATE-LIMIT VALIDATION FAILED (unexpected): {exc}", file=sys.stderr)
+            return 2
 
-    print("Memory OS rate-limit policy validation PASS")
-    print(f"policies: {len(contract['policies'])}")
-    print(f"negative cases rejected: {len(negative['cases'])}")
-    print(f"OPS-P0-005 status: {gate.get('status')}")
-    return 0
+        print("Memory OS rate-limit policy validation PASS")
+        print(f"policies: {len(contract['policies'])}")
+        print(f"negative cases rejected: {len(negative['cases'])}")
+        print(f"OPS-P0-005 status: {gate.get('status')}")
+        return 0
+
+    return _main
+
+
+main = _build_main()
+del _build_main
 
 
 if __name__ == "__main__":
