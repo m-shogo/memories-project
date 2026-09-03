@@ -202,6 +202,45 @@ def prove_bound_transaction_rollback(module, source_sha: str) -> None:
         raise RuntimeError(f"bound process-group rollback left temp authority residue: {residues}")
 
 
+def prove_main_authority_binding(module) -> None:
+    originals = {
+        "require": module.require,
+        "load": module.load,
+        "source_is_ancestor": module.source_is_ancestor,
+        "run_authority_validators": module.run_authority_validators,
+        "append_once": module.append_once,
+        "commit_candidate": module.commit_candidate,
+        "SHA_RE": module.SHA_RE,
+        "SATISFIED_MISSING": module.SATISFIED_MISSING,
+        "EXISTING": module.EXISTING,
+        "REFS": module.REFS,
+    }
+
+    class RejectMutableSemantic:
+        def __eq__(self, _other):
+            raise RuntimeError("mutable process-group semantic authority was consulted")
+
+    def reject_mutable_helper(*_args, **_kwargs):
+        raise RuntimeError("mutable process-group main helper was invoked")
+
+    try:
+        module.require = reject_mutable_helper
+        module.load = reject_mutable_helper
+        module.source_is_ancestor = reject_mutable_helper
+        module.run_authority_validators = reject_mutable_helper
+        module.append_once = reject_mutable_helper
+        module.commit_candidate = reject_mutable_helper
+        module.SHA_RE = None
+        module.SATISFIED_MISSING = RejectMutableSemantic()
+        module.EXISTING = None
+        module.REFS = None
+        if module.main() != 0:
+            raise RuntimeError("bound process-group main returned non-zero under mutable helper substitution")
+    finally:
+        for attr, value in originals.items():
+            setattr(module, attr, value)
+
+
 def main() -> int:
     module = load_module()
 
@@ -235,9 +274,10 @@ def main() -> int:
     prove_execution_transport_binding(module)
     prove_atomic_transport_binding(module)
     prove_bound_transaction_rollback(module, source_sha)
+    prove_main_authority_binding(module)
 
     print(
-        "PASS: process-group reconcile pins paired data/executable authority, execution/atomic transport, mode preservation, and rollback"
+        "PASS: process-group reconcile pins paired data/executable authority, main semantics/helpers, execution/atomic transport, mode preservation, and rollback"
     )
     return 0
 
