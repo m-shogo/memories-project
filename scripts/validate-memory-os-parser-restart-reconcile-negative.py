@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 import tempfile
 from pathlib import Path
 
@@ -62,6 +63,8 @@ def main() -> int:
         )
         original_bytes = stale_status_bytes(module)
         status_path.write_bytes(original_bytes)
+        status_path.chmod(0o640)
+        original_mode = stat.S_IMODE(status_path.stat().st_mode)
 
         module.RESULT_PATH = result_path
         module.STATUS_PATH = status_path
@@ -97,6 +100,8 @@ def main() -> int:
             raise AssertionError("atomic parser restart rollback did not restore original bytes")
         if status_path.read_bytes() != original_bytes:
             raise AssertionError("parser restart reconcile did not roll back Production Status")
+        if stat.S_IMODE(status_path.stat().st_mode) != original_mode:
+            raise AssertionError("parser restart atomic publish/rollback did not preserve file mode")
 
     module = load_reconciler()
     with tempfile.TemporaryDirectory(prefix="memory-os-parser-restart-replace-") as tmp:
@@ -130,7 +135,7 @@ def main() -> int:
         if residues:
             raise AssertionError(f"atomic replacement failure left temp authority residue: {residues}")
 
-    print("PASS: parser restart reconcile publishes atomically and rolls back post-write authority rejection")
+    print("PASS: parser restart reconcile publishes atomically, preserves mode, and rolls back post-write authority rejection")
     return 0
 
 
