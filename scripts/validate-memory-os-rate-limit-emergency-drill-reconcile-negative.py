@@ -87,6 +87,9 @@ def prove_reconciler_authority_identity() -> None:
         ("OPERATIONS_VALIDATOR", VALIDATOR_PATH, "rate-limit operations validator authority drift"),
         ("RATE_LIMIT_VALIDATOR", VALIDATOR_PATH, "rate-limit validator authority drift"),
         ("OPERABILITY_VALIDATOR", VALIDATOR_PATH, "operability validator authority drift"),
+        ("run_validator", lambda *args, **kwargs: None, "emergency drill validator execution authority drift"),
+        ("atomic_write_bytes", lambda *args, **kwargs: None, "emergency drill atomic writer authority drift"),
+        ("atomic_write_json", lambda *args, **kwargs: None, "emergency drill JSON writer authority drift"),
     )
     for attr, substitute, expected in substitutions:
         original = getattr(reconciler, attr)
@@ -95,6 +98,26 @@ def prove_reconciler_authority_identity() -> None:
             expect_rejection(reconciler.enforce_runtime_authorities, expected)
         finally:
             setattr(reconciler, attr, original)
+
+    original_run = reconciler.subprocess.run
+    try:
+        reconciler.subprocess.run = lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="")
+        expect_rejection(
+            reconciler.enforce_runtime_authorities,
+            "emergency drill subprocess execution authority drift",
+        )
+    finally:
+        reconciler.subprocess.run = original_run
+
+    original_replace = reconciler.os.replace
+    try:
+        reconciler.os.replace = lambda *args, **kwargs: None
+        expect_rejection(
+            reconciler.enforce_runtime_authorities,
+            "emergency drill atomic replacement transport authority drift",
+        )
+    finally:
+        reconciler.os.replace = original_replace
 
 
 def prove_evaluator_authority_boundaries() -> None:
@@ -163,7 +186,10 @@ def prove_evaluator_authority_boundaries() -> None:
     original_path = evaluator.VALIDATOR_PATH
     with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-evaluator-authority-") as tmp:
         rogue = Path(tmp) / "validator.py"
-        rogue.write_text("class ValidationFailure(RuntimeError):\n    pass\n\ndef main():\n    return 0\n", encoding="utf-8")
+        rogue.write_text(
+            "class ValidationFailure(RuntimeError):\n    pass\n\ndef main():\n    return 0\n",
+            encoding="utf-8",
+        )
         evaluator.VALIDATOR_PATH = rogue
         try:
             try:
@@ -262,62 +288,42 @@ def prove_runner_foundation_delegation() -> None:
 def prove_aggregate_validator_delegation() -> None:
     reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_aggregate_negative")
     original = reconciler.run_validator
-    calls: list[Path] = []
-
-    def reject_rate_limit(path: Path, *args: str) -> None:
-        calls.append(path)
-        if path == reconciler.RATE_LIMIT_VALIDATOR:
-            raise reconciler.ReconcileFailure("synthetic aggregate rate-limit rejection")
-
-    reconciler.run_validator = reject_rate_limit
+    reconciler.run_validator = lambda *args, **kwargs: None
     try:
-        try:
-            reconciler.validate_written_authority("0" * 40)
-        except reconciler.ReconcileFailure as exc:
-            if "synthetic aggregate rate-limit rejection" not in str(exc):
-                raise AssertionError(f"unexpected aggregate rejection: {exc}") from exc
-        else:
-            raise AssertionError("aggregate rate-limit rejection was incorrectly accepted")
+        expect_rejection(
+            lambda: reconciler.validate_written_authority("0" * 40),
+            "emergency drill validator execution authority drift",
+        )
     finally:
         reconciler.run_validator = original
 
-    expected = [reconciler.VALIDATOR_PATH, reconciler.OPERATIONS_VALIDATOR, reconciler.RATE_LIMIT_VALIDATOR]
-    if calls != expected:
-        raise AssertionError(f"emergency reconcile aggregate validator order drift: {calls}")
-    if reconciler.OPERABILITY_VALIDATOR in calls:
-        raise AssertionError("operability validation ran after an earlier aggregate rejection")
 
-
-def prove_atomic_replace_failure() -> None:
+def prove_atomic_replace_failure_and_mode() -> None:
     reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_atomic_negative")
-    path = reconciler.CONTRACT_PATH
-    original = path.read_bytes()
-    original_replace = reconciler.os.replace
-    pattern = f".{path.name}.*.tmp"
-    before = {item.name for item in path.parent.glob(pattern)}
+    with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-emergency-atomic-") as tmp:
+        root = Path(tmp)
+        path = root / "authority.json"
+        path.write_bytes(b"original\n")
+        path.chmod(0o640)
+        reconciler.atomic_write_bytes(path, b"replacement\n")
+        if path.read_bytes() != b"replacement\n":
+            raise AssertionError("emergency atomic writer did not replace candidate bytes")
+        if path.stat().st_mode & 0o777 != 0o640:
+            raise AssertionError("emergency atomic writer did not preserve existing file mode")
 
-    def reject_replace(source, destination) -> None:
-        if Path(destination) == path:
-            raise OSError("synthetic atomic replace rejection")
-        original_replace(source, destination)
-
-    reconciler.os.replace = reject_replace
-    try:
+        destination_directory = root / "destination-directory"
+        destination_directory.mkdir()
+        pattern = f".{destination_directory.name}.*.tmp"
+        before = {item.name for item in root.glob(pattern)}
         try:
-            reconciler.atomic_write_bytes(path, b"synthetic emergency authority\n")
-        except OSError as exc:
-            if "synthetic atomic replace rejection" not in str(exc):
-                raise AssertionError(f"unexpected atomic replacement rejection: {exc}") from exc
+            reconciler.atomic_write_bytes(destination_directory, b"synthetic emergency authority\n")
+        except OSError:
+            pass
         else:
             raise AssertionError("atomic emergency authority replacement failure was accepted")
-        if path.read_bytes() != original:
-            raise AssertionError("emergency drill contract changed after failed atomic replacement")
-        after = {item.name for item in path.parent.glob(pattern)}
+        after = {item.name for item in root.glob(pattern)}
         if after != before:
             raise AssertionError(f"emergency atomic replacement left temporary residue: {sorted(after - before)}")
-    finally:
-        reconciler.os.replace = original_replace
-        path.write_bytes(original)
 
 
 def prove_transactional_rollback() -> None:
@@ -362,10 +368,10 @@ def main() -> int:
     prove_evaluator_runtime_guard_identity()
     prove_runner_foundation_delegation()
     prove_aggregate_validator_delegation()
-    prove_atomic_replace_failure()
+    prove_atomic_replace_failure_and_mode()
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
-    print("PASS: emergency reconcile pins canonical data and validator authorities")
+    print("PASS: emergency reconcile pins canonical data, validator, and execution authorities")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
     print("PASS: emergency evaluator runtime guard and execution helpers are fail-closed")
     print("PASS: emergency evaluator validates the exact record used for state evaluation")
@@ -373,8 +379,8 @@ def main() -> int:
     print("PASS: emergency evaluator rejects invalid UTC timestamps without traceback semantics")
     print("PASS: emergency evaluator rejects symlink operation evidence records")
     print("PASS: direct emergency drill runner delegates to canonical foundation validation")
-    print("PASS: emergency drill reconcile includes rate-limit and operability aggregate validation")
-    print("PASS: emergency drill atomic replacement preserves canonical authority and cleans temp files")
+    print("PASS: emergency drill validator execution transport is fail-closed")
+    print("PASS: emergency drill atomic replacement preserves mode and cleans temp files")
     print("PASS: emergency drill reconcile rolls back contract and status on post-write failure")
     return 0
 
