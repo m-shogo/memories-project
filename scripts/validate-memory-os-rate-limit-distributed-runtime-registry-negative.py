@@ -237,26 +237,24 @@ def prove_reconciler_aggregate_rollback(reconciler: Any) -> None:
     status = json.loads(status_before.decode("utf-8"))
     contract["rollbackProbe"] = "must-not-persist"
     status["rollbackProbe"] = "must-not-persist"
-    original_validators = reconciler.POST_WRITE_VALIDATORS
-    with tempfile.TemporaryDirectory(prefix="rate-limit-runtime-aggregate-negative-") as tmp:
-        fail_validator = Path(tmp) / "fail.py"
-        fail_validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
-        reconciler.POST_WRITE_VALIDATORS = (reconciler.VALIDATOR, fail_validator)
+    validator_path = reconciler.OPERABILITY_VALIDATOR
+    validator_before = validator_path.read_bytes()
+    try:
+        validator_path.write_text("raise SystemExit(1)\n", encoding="utf-8")
         try:
-            try:
-                reconciler.commit_outputs_transactionally({CONTRACT: contract, STATUS: status})
-            except reconciler.Fail:
-                pass
-            else:
-                raise RuntimeError("reconciler accepted synthetic aggregate validator failure")
-            if CONTRACT.read_bytes() != contract_before:
-                raise RuntimeError("aggregate failure left distributed runtime contract mutated")
-            if STATUS.read_bytes() != status_before:
-                raise RuntimeError("aggregate failure left production operability status mutated")
-        finally:
-            reconciler.POST_WRITE_VALIDATORS = original_validators
-            CONTRACT.write_bytes(contract_before)
-            STATUS.write_bytes(status_before)
+            reconciler.commit_outputs_transactionally({CONTRACT: contract, STATUS: status})
+        except reconciler.Fail:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted synthetic aggregate validator failure")
+        if CONTRACT.read_bytes() != contract_before:
+            raise RuntimeError("aggregate failure left distributed runtime contract mutated")
+        if STATUS.read_bytes() != status_before:
+            raise RuntimeError("aggregate failure left production operability status mutated")
+    finally:
+        validator_path.write_bytes(validator_before)
+        CONTRACT.write_bytes(contract_before)
+        STATUS.write_bytes(status_before)
 
 
 def main() -> int:
