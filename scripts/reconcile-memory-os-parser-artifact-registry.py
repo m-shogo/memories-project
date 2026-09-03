@@ -6,8 +6,10 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -140,8 +142,27 @@ def replace_prefixed(items: list[Any], prefix: str, value: str) -> bool:
     return changed
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    mode = path.stat().st_mode & 0o7777
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, mode)
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    atomic_write_bytes(path, payload)
 
 
 def run_canonical_validators() -> None:
@@ -173,7 +194,7 @@ def commit_authority_transaction(
             validator_runner()
     except BaseException:
         for path, payload in originals.items():
-            path.write_bytes(payload)
+            atomic_write_bytes(path, payload)
         raise
 
 
