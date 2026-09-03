@@ -1,14 +1,14 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "parser-process-group-reaping",
-  "sourceCommitSha": "df128980d08eec48d259d3b0bac88ad201540952",
+  "sourceCommitSha": "67dee61918134c7c94b45a244f2a6a31c52c3fb3",
   "result": "PASS",
   "exitCode": 0,
-  "durationSeconds": 0.630975,
+  "durationSeconds": 0.822367,
   "trackedProcessCountBeforeCancel": 2,
   "cancellationLatencyMilliseconds": 0,
   "trackedProcessCountAfterCancel": 0,
-  "output": "=== RUN   TestSupervisorReapsChildProcessGroupAfterCancellation\n    process_group_reaping_drill_linux_test.go:71: MEMORY_OS_TRACKED_PROCESS_COUNT_BEFORE_CANCEL=2\n    process_group_reaping_drill_linux_test.go:84: MEMORY_OS_REAP_CANCELLATION_LATENCY_MS=0\n    process_group_reaping_drill_linux_test.go:97: MEMORY_OS_TRACKED_PROCESS_COUNT_AFTER_CANCEL=0\n--- PASS: TestSupervisorReapsChildProcessGroupAfterCancellation (0.02s)\nPASS\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.019s\n",
+  "output": "=== RUN   TestSupervisorReapsChildProcessGroupAfterCancellation\n    process_group_reaping_drill_linux_test.go:71: MEMORY_OS_TRACKED_PROCESS_COUNT_BEFORE_CANCEL=2\n    process_group_reaping_drill_linux_test.go:84: MEMORY_OS_REAP_CANCELLATION_LATENCY_MS=0\n    process_group_reaping_drill_linux_test.go:97: MEMORY_OS_TRACKED_PROCESS_COUNT_AFTER_CANCEL=0\n--- PASS: TestSupervisorReapsChildProcessGroupAfterCancellation (0.03s)\nPASS\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.030s\n",
   "containsSecrets": false,
   "productionEvidence": false
 }
