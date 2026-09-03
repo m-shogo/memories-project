@@ -87,9 +87,6 @@ def prove_reconciler_authority_identity() -> None:
         ("OPERATIONS_VALIDATOR", VALIDATOR_PATH, "rate-limit operations validator authority drift"),
         ("RATE_LIMIT_VALIDATOR", VALIDATOR_PATH, "rate-limit validator authority drift"),
         ("OPERABILITY_VALIDATOR", VALIDATOR_PATH, "operability validator authority drift"),
-        ("run_validator", lambda *args, **kwargs: None, "emergency drill validator execution authority drift"),
-        ("atomic_write_bytes", lambda *args, **kwargs: None, "emergency drill atomic writer authority drift"),
-        ("atomic_write_json", lambda *args, **kwargs: None, "emergency drill JSON writer authority drift"),
     )
     for attr, substitute, expected in substitutions:
         original = getattr(reconciler, attr)
@@ -99,25 +96,113 @@ def prove_reconciler_authority_identity() -> None:
         finally:
             setattr(reconciler, attr, original)
 
-    original_run = reconciler.subprocess.run
+    paired_paths = (
+        ("CONTRACT_PATH", "CANONICAL_CONTRACT_PATH", ROOT / "README.md", "canonical emergency drill contract identity drift"),
+        ("RESULT_PATH", "CANONICAL_RESULT_PATH", ROOT / "README.md", "canonical emergency drill result identity drift"),
+        ("OPERATIONS_PATH", "CANONICAL_OPERATIONS_PATH", ROOT / "README.md", "canonical rate-limit operations contract identity drift"),
+        ("STATUS_PATH", "CANONICAL_STATUS_PATH", ROOT / "SECURITY.md", "canonical production operability status identity drift"),
+        ("VALIDATOR_PATH", "CANONICAL_VALIDATOR_PATH", EVALUATOR_PATH, "canonical emergency drill validator identity drift"),
+        ("OPERATIONS_VALIDATOR", "CANONICAL_OPERATIONS_VALIDATOR", VALIDATOR_PATH, "canonical rate-limit operations validator identity drift"),
+        ("RATE_LIMIT_VALIDATOR", "CANONICAL_RATE_LIMIT_VALIDATOR", VALIDATOR_PATH, "canonical rate-limit validator identity drift"),
+        ("OPERABILITY_VALIDATOR", "CANONICAL_OPERABILITY_VALIDATOR", VALIDATOR_PATH, "canonical operability validator identity drift"),
+    )
+    for runtime_attr, canonical_attr, substitute, expected in paired_paths:
+        runtime_original = getattr(reconciler, runtime_attr)
+        canonical_original = getattr(reconciler, canonical_attr)
+        try:
+            setattr(reconciler, runtime_attr, substitute)
+            setattr(reconciler, canonical_attr, substitute)
+            expect_rejection(reconciler.enforce_runtime_authorities, expected)
+        finally:
+            setattr(reconciler, runtime_attr, runtime_original)
+            setattr(reconciler, canonical_attr, canonical_original)
+
+    original_root = reconciler.ROOT
     try:
-        reconciler.subprocess.run = lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="")
-        expect_rejection(
-            reconciler.enforce_runtime_authorities,
-            "emergency drill subprocess execution authority drift",
-        )
+        reconciler.ROOT = ROOT / "scripts"
+        expect_rejection(reconciler.enforce_runtime_authorities, "emergency drill repository authority drift")
+    finally:
+        reconciler.ROOT = original_root
+
+    original_run = reconciler.subprocess.run
+    canonical_run = reconciler.CANONICAL_SUBPROCESS_RUN
+    fake_run = lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="")
+    try:
+        reconciler.subprocess.run = fake_run
+        reconciler.CANONICAL_SUBPROCESS_RUN = fake_run
+        expect_rejection(reconciler.enforce_runtime_authorities, "emergency drill subprocess execution authority drift")
     finally:
         reconciler.subprocess.run = original_run
+        reconciler.CANONICAL_SUBPROCESS_RUN = canonical_run
 
     original_replace = reconciler.os.replace
+    canonical_replace = reconciler.CANONICAL_OS_REPLACE
+    fake_replace = lambda *args, **kwargs: None
     try:
-        reconciler.os.replace = lambda *args, **kwargs: None
-        expect_rejection(
-            reconciler.enforce_runtime_authorities,
-            "emergency drill atomic replacement transport authority drift",
-        )
+        reconciler.os.replace = fake_replace
+        reconciler.CANONICAL_OS_REPLACE = fake_replace
+        expect_rejection(reconciler.enforce_runtime_authorities, "emergency drill atomic replacement transport authority drift")
     finally:
         reconciler.os.replace = original_replace
+        reconciler.CANONICAL_OS_REPLACE = canonical_replace
+
+
+def prove_execution_helper_identity() -> None:
+    reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_execution_identity_negative")
+
+    original_run_validator = reconciler.run_validator
+    try:
+        reconciler.run_validator = lambda *args, **kwargs: None
+        expect_rejection(
+            lambda: reconciler.validate_written_authority("0" * 40),
+            "emergency drill validator execution authority drift",
+        )
+    finally:
+        reconciler.run_validator = original_run_validator
+
+    original_json_writer = reconciler.atomic_write_json
+    try:
+        reconciler.atomic_write_json = lambda *args, **kwargs: None
+        expect_rejection(
+            lambda: reconciler.transactional_write({}, {}, "0" * 40),
+            "emergency drill JSON writer authority drift",
+        )
+    finally:
+        reconciler.atomic_write_json = original_json_writer
+
+    original_bytes_writer = reconciler.atomic_write_bytes
+    try:
+        reconciler.atomic_write_bytes = lambda *args, **kwargs: None
+        expect_rejection(
+            lambda: reconciler.transactional_write({}, {}, "0" * 40),
+            "emergency drill atomic writer authority drift",
+        )
+    finally:
+        reconciler.atomic_write_bytes = original_bytes_writer
+
+    original_post_validator = reconciler.validate_written_authority
+    try:
+        reconciler.validate_written_authority = lambda source_sha: None
+        expect_rejection(
+            lambda: reconciler.transactional_write({}, {}, "0" * 40),
+            "emergency drill post-write validator authority drift",
+        )
+    finally:
+        reconciler.validate_written_authority = original_post_validator
+
+    original_guard = reconciler.enforce_runtime_authorities
+    try:
+        reconciler.enforce_runtime_authorities = lambda: None
+        expect_rejection(reconciler.main, "emergency drill runtime guard authority drift")
+    finally:
+        reconciler.enforce_runtime_authorities = original_guard
+
+    original_transaction = reconciler.transactional_write
+    try:
+        reconciler.transactional_write = lambda *args, **kwargs: None
+        expect_rejection(reconciler.main, "emergency drill transaction execution authority drift")
+    finally:
+        reconciler.transactional_write = original_transaction
 
 
 def prove_evaluator_authority_boundaries() -> None:
@@ -285,19 +370,6 @@ def prove_runner_foundation_delegation() -> None:
         raise AssertionError(f"runner delegated to unexpected foundation authority: {calls}")
 
 
-def prove_aggregate_validator_delegation() -> None:
-    reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_aggregate_negative")
-    original = reconciler.run_validator
-    reconciler.run_validator = lambda *args, **kwargs: None
-    try:
-        expect_rejection(
-            lambda: reconciler.validate_written_authority("0" * 40),
-            "emergency drill validator execution authority drift",
-        )
-    finally:
-        reconciler.run_validator = original
-
-
 def prove_atomic_replace_failure_and_mode() -> None:
     reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_atomic_negative")
     with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-emergency-atomic-") as tmp:
@@ -330,30 +402,31 @@ def prove_transactional_rollback() -> None:
     reconciler = load_module(RECONCILER_PATH, "memory_os_rate_limit_emergency_reconciler_negative")
     contract_before = reconciler.CONTRACT_PATH.read_bytes()
     status_before = reconciler.STATUS_PATH.read_bytes()
+    validator_path = reconciler.OPERABILITY_VALIDATOR
+    validator_before = validator_path.read_bytes()
+    validator_mode = validator_path.stat().st_mode & 0o777
     contract = json.loads(contract_before)
     status = json.loads(status_before)
     contract["description"] = str(contract.get("description", "")) + " synthetic-rollback-probe"
     status["asOf"] = "2099-01-01"
-    original_validator = reconciler.validate_written_authority
+    result = json.loads(reconciler.RESULT_PATH.read_text(encoding="utf-8"))
+    source_sha = result.get("commitSha")
+    if not isinstance(source_sha, str) or len(source_sha) != 40:
+        raise AssertionError("canonical emergency result source SHA missing")
 
-    def reject_after_write(source_sha: str) -> None:
-        if reconciler.CONTRACT_PATH.read_bytes() == contract_before:
-            raise AssertionError("contract candidate was not written before post-write validation")
-        if reconciler.STATUS_PATH.read_bytes() == status_before:
-            raise AssertionError("status candidate was not written before post-write validation")
-        raise reconciler.ReconcileFailure("synthetic post-write validation failure")
-
-    reconciler.validate_written_authority = reject_after_write
     try:
+        validator_path.write_text("#!/usr/bin/env python3\nraise SystemExit(17)\n", encoding="utf-8")
+        validator_path.chmod(validator_mode)
         try:
-            reconciler.transactional_write(contract, status, "0" * 40)
+            reconciler.transactional_write(contract, status, source_sha)
         except reconciler.ReconcileFailure as exc:
-            if "synthetic post-write validation failure" not in str(exc):
+            if "post-write validation failed for validate-memory-os-operability.py" not in str(exc):
                 raise AssertionError(f"unexpected rollback rejection: {exc}") from exc
         else:
-            raise AssertionError("post-write failure was incorrectly accepted")
+            raise AssertionError("post-write aggregate failure was incorrectly accepted")
     finally:
-        reconciler.validate_written_authority = original_validator
+        validator_path.write_bytes(validator_before)
+        validator_path.chmod(validator_mode)
 
     if reconciler.CONTRACT_PATH.read_bytes() != contract_before:
         raise AssertionError("emergency drill contract was not rolled back byte-for-byte")
@@ -364,14 +437,15 @@ def prove_transactional_rollback() -> None:
 def main() -> int:
     prove_lineage_rejection()
     prove_reconciler_authority_identity()
+    prove_execution_helper_identity()
     prove_evaluator_authority_boundaries()
     prove_evaluator_runtime_guard_identity()
     prove_runner_foundation_delegation()
-    prove_aggregate_validator_delegation()
     prove_atomic_replace_failure_and_mode()
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
-    print("PASS: emergency reconcile pins canonical data, validator, and execution authorities")
+    print("PASS: emergency reconcile pins immutable canonical data and validator authorities")
+    print("PASS: emergency reconcile rejects paired path, transport, guard, writer, and transaction substitution")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
     print("PASS: emergency evaluator runtime guard and execution helpers are fail-closed")
     print("PASS: emergency evaluator validates the exact record used for state evaluation")
@@ -379,9 +453,8 @@ def main() -> int:
     print("PASS: emergency evaluator rejects invalid UTC timestamps without traceback semantics")
     print("PASS: emergency evaluator rejects symlink operation evidence records")
     print("PASS: direct emergency drill runner delegates to canonical foundation validation")
-    print("PASS: emergency drill validator execution transport is fail-closed")
     print("PASS: emergency drill atomic replacement preserves mode and cleans temp files")
-    print("PASS: emergency drill reconcile rolls back contract and status on post-write failure")
+    print("PASS: emergency drill reconcile rolls back contract and status on canonical aggregate failure")
     return 0
 
 
