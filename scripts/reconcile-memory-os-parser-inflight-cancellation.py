@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -79,6 +80,7 @@ def load(path: Path) -> dict[str, Any]:
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     require(path.parent.is_dir(), f"authority parent missing: {path_label(path.parent)}")
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     temp_name: str | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
@@ -90,6 +92,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        os.chmod(temp_name, mode)
         os.replace(temp_name, path)
         temp_name = None
     except OSError as exc:
