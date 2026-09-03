@@ -162,12 +162,17 @@ atomic_write_bytes = _build_atomic_write_bytes(os.replace)
 
 
 def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    if "_CANONICAL_ATOMIC_WRITE_BYTES" in globals() and atomic_write_bytes is not _CANONICAL_ATOMIC_WRITE_BYTES:
+        raise ReconcileFailure("rate-limit operation evidence atomic byte writer authority drift")
     payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     atomic_write_bytes(path, payload)
 
 
 def validate_evidence_authority(evidence: dict[str, Any]) -> None:
-    enforce_runtime_authorities()
+    if "_CANONICAL_ENFORCE_EXECUTION_AUTHORITIES" in globals():
+        enforce_execution_authorities()
+    else:
+        enforce_runtime_authorities()
     try:
         load_writer().validate_contract_append_guards(evidence)
     except Exception as exc:
@@ -178,7 +183,10 @@ def validate_evidence_authority(evidence: dict[str, Any]) -> None:
 
 
 def validate_written_authority() -> None:
-    enforce_runtime_authorities()
+    if "_CANONICAL_ENFORCE_EXECUTION_AUTHORITIES" in globals():
+        enforce_execution_authorities()
+    else:
+        enforce_runtime_authorities()
     evidence = load(EVIDENCE_PATH)
     validate_evidence_authority(evidence)
     run_validator(OPERATIONS_VALIDATOR, "rate-limit operation evidence post-write")
@@ -188,6 +196,8 @@ def validate_written_authority() -> None:
 
 
 def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> None:
+    if "_CANONICAL_ENFORCE_EXECUTION_AUTHORITIES" in globals():
+        enforce_execution_authorities()
     originals = {
         OPERATIONS_PATH: OPERATIONS_PATH.read_bytes(),
         STATUS_PATH: STATUS_PATH.read_bytes(),
