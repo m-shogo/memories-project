@@ -48,24 +48,177 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: rollback-rehearsal-gate-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean PR source and compile gate tools
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/validate-memory-os-release-baseline-registry.py \
+            scripts/request-memory-os-rollback-rehearsal.py \
+            scripts/validate-memory-os-rollback-rehearsal-gate.py \
+            scripts/validate-memory-os-rollback-rehearsal-registry-negative.py \
+            scripts/validate-memory-os-rollback-rehearsal-append-rollback-negative.py \
+            scripts/validate-memory-os-rollback-rehearsal-derived-state-negative.py \
+            scripts/reconcile-memory-os-rollback-rehearsal-gate.py \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-operability.py
+
+      - name: Reject rollback registry corruption and unsafe progression
+        run: |
+          python scripts/validate-memory-os-rollback-rehearsal-registry-negative.py
+          python scripts/validate-memory-os-rollback-rehearsal-append-rollback-negative.py
+          python scripts/validate-memory-os-rollback-rehearsal-derived-state-negative.py
+
+      - name: Prove invalid and unapproved requests cannot mutate authority
+        run: |
+          registry="contracts/operations/rollback-rehearsal-registry.v1.json"
+          lock="contracts/operations/.rollback-rehearsal-registry.lock"
+          before="$(sha256sum "$registry" | awk '{print $1}')"
+          incomplete="$RUNNER_TEMP/incomplete-rollback-request.json"
+          unapproved="$RUNNER_TEMP/unapproved-rollback-request.json"
+          printf '{}\n' > "$incomplete"
+
+          if python scripts/request-memory-os-rollback-rehearsal.py \
+              --request "$incomplete" --confirm "WRONG CONFIRMATION"; then
+            echo "writer accepted an incorrect confirmation" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          if python scripts/request-memory-os-rollback-rehearsal.py \
+              --request "$incomplete" --confirm "REQUEST ISOLATED ROLLBACK REHEARSAL"; then
+            echo "writer accepted an incomplete request" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          OUT="$unapproved" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          record = {
+              "schemaVersion": "memory-os-rollback-rehearsal-request.v1",
+              "rehearsalId": "rrh_20991231_unapproved-ci",
+              "requestedAt": "2099-12-31T00:00:00Z",
+              "sourceReleaseId": "rel_20991231_unapproved-source",
+              "rollbackTargetReleaseId": "rel_20991230_unapproved-target",
+              "sourceCommitSha": "1" * 40,
+              "rollbackTargetCommitSha": "2" * 40,
+              "sourceReleaseTag": "v9999.1.0-unapproved",
+              "rollbackTargetReleaseTag": "v9999.0.0-unapproved",
+              "environmentClass": "ISOLATED_NON_PRODUCTION_REHEARSAL",
+              "trafficPolicy": {
+                  "productionTrafficAllowed": False,
+                  "productionCredentialsAllowed": False,
+                  "automaticPromotionAllowed": False,
+                  "syntheticOrApprovedSanitizedDataOnly": True,
+              },
+              "databasePolicy": {
+                  "destructiveDownMigrationAllowed": False,
+                  "automaticRecoveryDecisionAllowed": False,
+                  "recoveryPointEvidenceRef": "contracts/operations/backup-restore-contract.v1.json",
+                  "forwardFixDecisionRef": "contracts/operations/migration-lifecycle-contract.v1.json",
+              },
+              "artifactPolicy": {
+                  "exactRetainedArtifactsRequired": True,
+                  "parserArtifactEvidenceRef": "contracts/operations/parser-sandbox-contract.v1.json",
+                  "objectVersionEvidenceRef": "contracts/operations/local-object-version-restore-contract.v1.json",
+              },
+              "entryCriteriaRefs": [
+                  "contracts/operations/release-baseline-registry.v1.json",
+                  "contracts/operations/mixed-version-apply-contract.v1.json",
+                  "contracts/operations/backup-restore-contract.v1.json",
+                  "contracts/operations/migration-lifecycle-contract.v1.json",
+                  "contracts/operations/version-compatibility-contract.v1.json",
+              ],
+              "stopConditions": [
+                  "release identity differs from approved authority",
+                  "rollback eligibility is absent",
+                  "exact retained artifact is unavailable",
+                  "database recovery point is incoherent",
+                  "destructive schema contraction is required",
+                  "tenant or deletion authority is ambiguous",
+              ],
+              "approvers": [
+                  {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci11", "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/unapproved-release.json"},
+                  {"role": "DATABASE_RECOVERY_OWNER", "approverRef": "apr_database_ci22", "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/unapproved-database.json"},
+              ],
+              "openRisks": [],
+          }
+          Path(os.environ["OUT"]).write_text(
+              json.dumps(record, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+          if python scripts/request-memory-os-rollback-rehearsal.py \
+              --request "$unapproved" --confirm "REQUEST ISOLATED ROLLBACK REHEARSAL"; then
+            echo "writer admitted unapproved release IDs" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+          test -z "$(git status --porcelain)"
+
+      - name: Reconcile then validate rollback planning authority
+        run: |
+          python scripts/reconcile-memory-os-rollback-rehearsal-gate.py
+          python scripts/validate-memory-os-rollback-rehearsal-gate.py
+          python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Require deterministic whole-worktree authority
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  validate-and-publish:
     if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'docs(rollback): register rehearsal admission gate')
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' || !contains(github.event.head_commit.message, 'docs(rollback): register rehearsal admission gate'))
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -74,7 +227,6 @@ jobs:
           python-version: "3.12"
 
       - name: Capture exact rollback gate source
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -205,17 +357,8 @@ jobs:
           python scripts/validate-memory-os-version-compatibility.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Reject auto-healed rollback authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/rollback-rehearsal-gate-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit rollback admission authority
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -242,7 +385,7 @@ jobs:
           fi
 
       - name: Re-read authority and run aggregate checks
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
