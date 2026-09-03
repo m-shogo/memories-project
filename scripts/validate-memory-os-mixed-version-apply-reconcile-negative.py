@@ -35,6 +35,56 @@ def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
+def prove_paired_authority_rejection(module) -> None:
+    cases = (
+        ("CONTRACT_PATH", "CANONICAL_CONTRACT_PATH", ROOT / "README.md"),
+        ("RESULT_PATH", "CANONICAL_RESULT_PATH", ROOT / "README.md"),
+        ("STATUS_PATH", "CANONICAL_STATUS_PATH", ROOT / "SECURITY.md"),
+        ("APPLY_VALIDATOR", "CANONICAL_APPLY_VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
+        ("VERSION_VALIDATOR", "CANONICAL_VERSION_VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
+        ("OPERABILITY_VALIDATOR", "CANONICAL_OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-version-compatibility.py"),
+    )
+    for current_attr, canonical_attr, replacement in cases:
+        original_current = getattr(module, current_attr)
+        original_canonical = getattr(module, canonical_attr)
+        original_guard = module.require_exact_authority
+        try:
+            setattr(module, current_attr, replacement)
+            setattr(module, canonical_attr, replacement)
+            module.require_exact_authority = lambda *_args, **_kwargs: None
+            try:
+                module.enforce_runtime_authorities()
+            except module.ReconcileFailure:
+                pass
+            else:
+                raise RuntimeError(
+                    f"mixed-version Apply paired {current_attr}/{canonical_attr} substitution must be rejected"
+                )
+        finally:
+            setattr(module, current_attr, original_current)
+            setattr(module, canonical_attr, original_canonical)
+            module.require_exact_authority = original_guard
+
+
+def prove_execution_transport_binding(module) -> None:
+    original_run = module.subprocess.run
+    calls = 0
+
+    def reject_mutable_run(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("mutable subprocess.run substitution reached execution helper")
+
+    module.subprocess.run = reject_mutable_run
+    try:
+        module.is_ancestor("0" * 40, "1" * 40)
+        module.run_validator(module.CANONICAL_OPERABILITY_VALIDATOR)
+    finally:
+        module.subprocess.run = original_run
+    if calls != 0:
+        raise RuntimeError("mixed-version Apply execution helper used mutable subprocess.run")
+
+
 def main() -> int:
     module = load_module()
     original_contract = module.CONTRACT_PATH.read_bytes()
@@ -45,6 +95,8 @@ def main() -> int:
     expect_authority_rejection(module, "APPLY_VALIDATOR", module.VERSION_VALIDATOR)
     expect_authority_rejection(module, "VERSION_VALIDATOR", module.OPERABILITY_VALIDATOR)
     expect_authority_rejection(module, "OPERABILITY_VALIDATOR", module.APPLY_VALIDATOR)
+    prove_paired_authority_rejection(module)
+    prove_execution_transport_binding(module)
     if module.CONTRACT_PATH.read_bytes() != original_contract or module.STATUS_PATH.read_bytes() != original_status:
         raise RuntimeError("mixed-version Apply substitution changed canonical authority")
 
@@ -127,9 +179,6 @@ def main() -> int:
         contract_mode = contract_path.stat().st_mode & 0o7777
         status_mode = status_path.stat().st_mode & 0o7777
 
-        # The rollback transaction fixture intentionally lives outside the
-        # repository. Point diagnostic path rendering at that fixture root
-        # after canonical authority-substitution checks have already passed.
         module.ROOT = root
         module.RESULT_PATH = result_path
         module.CONTRACT_PATH = contract_path
@@ -137,6 +186,8 @@ def main() -> int:
         module.enforce_runtime_authorities = lambda: None
         module.is_ancestor = lambda _base, _head: True
         module.REFS = ()
+        original_load = module.load
+        module.load = lambda path: json.loads(path.read_text(encoding="utf-8"))
 
         calls: list[tuple[str, bool]] = []
 
@@ -153,6 +204,8 @@ def main() -> int:
                 raise RuntimeError(f"unexpected mixed-version Apply rejection: {exc}") from exc
         else:
             raise RuntimeError("mixed-version Apply reconcile accepted post-write aggregate rejection")
+        finally:
+            module.load = original_load
 
         if calls != [(current_sha, False), (current_sha, True)]:
             raise RuntimeError(f"mixed-version Apply validator order drift: {calls}")
@@ -167,7 +220,9 @@ def main() -> int:
         if list(root.glob(".*.tmp")):
             raise RuntimeError("mixed-version Apply reconcile left atomic temp residue")
 
-    print("PASS: mixed-version Apply exact authority, atomic transport, and reconcile rollback are fail-closed")
+    print(
+        "PASS: mixed-version Apply pins paired authority, execution/atomic transport, mode preservation, and reconcile rollback"
+    )
     return 0
 
 
