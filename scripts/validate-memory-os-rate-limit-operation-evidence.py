@@ -53,8 +53,10 @@ def require(condition: bool, message: str) -> None:
         raise ValidationFailure(message)
 
 
-def require_source_ancestor(source_sha: str) -> None:
-    completed = subprocess.run(
+def require_source_ancestor(source_sha: str, _run=subprocess.run) -> None:
+    if subprocess.run is not _run:
+        raise ValidationFailure("source ancestry execution transport drift")
+    completed = _run(
         ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
@@ -64,8 +66,10 @@ def require_source_ancestor(source_sha: str) -> None:
             "sourceCommitSha must be an ancestor of current HEAD")
 
 
-def git_bytes(*args: str) -> bytes:
-    completed = subprocess.run(
+def git_bytes(*args: str, _run=subprocess.run) -> bytes:
+    if subprocess.run is not _run:
+        raise ValidationFailure("git evidence execution transport drift")
+    completed = _run(
         ["git", *args],
         cwd=ROOT,
         stdout=subprocess.PIPE,
@@ -352,7 +356,80 @@ def validate_record(record: dict[str, Any], contract: dict[str, Any],
                     "record contains identity-like free text")
 
 
-def main() -> int:
+def require_runtime_authorities(
+    _root: Path = ROOT,
+    _paths: tuple[tuple[str, Path, bool], ...] = (
+        ("CONTRACT_PATH", CONTRACT_PATH, False),
+        ("OPERATIONS_PATH", OPERATIONS_PATH, False),
+        ("POLICY_PATH", POLICY_PATH, False),
+        ("STATUS_PATH", STATUS_PATH, False),
+        ("LEDGER_PATH", LEDGER_PATH, True),
+        ("TEMPLATE_PATH", TEMPLATE_PATH, False),
+    ),
+    _record_fields: tuple[str, ...] = tuple(sorted(REQUIRED_RECORD_FIELDS)),
+    _regex_semantics: tuple[tuple[str, int], ...] = tuple(
+        (pattern.pattern, pattern.flags)
+        for pattern in (
+            SAFE_RISK_RE, SHA_RE, SHA256_RE, REPO_REF_RE, IPV4_RE,
+            EMAIL_RE, URL_RE, SECRET_WORD_RE, IDENTITY_WORD_RE,
+        )
+    ),
+    _helpers: tuple[tuple[str, object], ...] = (
+        ("require", require),
+        ("require_source_ancestor", require_source_ancestor),
+        ("git_bytes", git_bytes),
+        ("canonical_evidence_path", canonical_evidence_path),
+        ("load_json", load_json),
+        ("parse_rfc3339", parse_rfc3339),
+        ("validate_repo_refs", validate_repo_refs),
+        ("all_evidence_refs", all_evidence_refs),
+        ("expected_evidence_digests", expected_evidence_digests),
+        ("iter_string_values", iter_string_values),
+        ("load_contract_context", load_contract_context),
+        ("validate_record", validate_record),
+    ),
+) -> None:
+    if ROOT != _root or ROOT.resolve() != _root.resolve():
+        raise ValidationFailure("operation evidence validator repository root authority drift")
+    root = _root.resolve()
+    for label, canonical, is_directory in _paths:
+        current = globals().get(label)
+        if current != canonical:
+            raise ValidationFailure(f"operation evidence validator {label} authority drift")
+        if current.is_symlink():
+            raise ValidationFailure(f"operation evidence validator {label} cannot be a symlink")
+        try:
+            resolved = current.resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise ValidationFailure(f"operation evidence validator {label} missing") from exc
+        if not resolved.is_relative_to(root):
+            raise ValidationFailure(f"operation evidence validator {label} escapes repository")
+        if is_directory:
+            if not current.is_dir():
+                raise ValidationFailure(f"operation evidence validator {label} must be a directory")
+        elif not current.is_file():
+            raise ValidationFailure(f"operation evidence validator {label} must be a file")
+    if tuple(sorted(REQUIRED_RECORD_FIELDS)) != _record_fields:
+        raise ValidationFailure("operation evidence required record field semantics drift")
+    current_regex_semantics = tuple(
+        (pattern.pattern, pattern.flags)
+        for pattern in (
+            SAFE_RISK_RE, SHA_RE, SHA256_RE, REPO_REF_RE, IPV4_RE,
+            EMAIL_RE, URL_RE, SECRET_WORD_RE, IDENTITY_WORD_RE,
+        )
+    )
+    if current_regex_semantics != _regex_semantics:
+        raise ValidationFailure("operation evidence regex semantic authority drift")
+    for name, canonical in _helpers:
+        if globals().get(name) is not canonical:
+            raise ValidationFailure(f"operation evidence validator {name} execution authority drift")
+
+
+def main(_guard=require_runtime_authorities) -> int:
+    expected_guard = main.__defaults__[0]
+    if _guard is not expected_guard or require_runtime_authorities is not expected_guard:
+        raise ValidationFailure("operation evidence validator runtime guard authority drift")
+    _guard()
     contract, policy_ids = load_contract_context()
     require(contract.get("schemaVersion") ==
             "memory-os-rate-limit-operation-evidence.v1",
