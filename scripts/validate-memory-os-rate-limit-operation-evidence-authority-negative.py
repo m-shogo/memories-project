@@ -139,11 +139,40 @@ def main() -> int:
         finally:
             validator.SECRET_WORD_RE = original_secret_re
 
-        expect_rejected(
-            "operation evidence validator main guard substitution",
-            lambda: validator.main(lambda: None),
-            validator.ValidationFailure,
-        )
+        real_guard = validator.require_runtime_authorities
+        validator.require_runtime_authorities = lambda: None
+        try:
+            expect_rejected(
+                "operation evidence validator main guard substitution",
+                validator.main,
+                validator.ValidationFailure,
+            )
+        finally:
+            validator.require_runtime_authorities = real_guard
+
+        guard_defaults = real_guard.__defaults__
+        require(guard_defaults is not None, "operation evidence runtime guard defaults missing")
+        real_guard.__defaults__ = (outside_root, guard_defaults[1], guard_defaults[2], guard_defaults[3], guard_defaults[4])
+        try:
+            expect_rejected(
+                "operation evidence validator guard default mutation",
+                validator.main,
+                validator.ValidationFailure,
+            )
+        finally:
+            real_guard.__defaults__ = guard_defaults
+
+        validator.require_runtime_authorities = lambda: None
+        real_guard.__defaults__ = (outside_root, guard_defaults[1], guard_defaults[2], guard_defaults[3], guard_defaults[4])
+        try:
+            expect_rejected(
+                "paired operation evidence guard and default substitution",
+                validator.main,
+                validator.ValidationFailure,
+            )
+        finally:
+            validator.require_runtime_authorities = real_guard
+            real_guard.__defaults__ = guard_defaults
 
         original_run = validator.subprocess.run
         try:
@@ -162,6 +191,7 @@ def main() -> int:
             validator.subprocess.run = original_run
 
     validator.require_runtime_authorities()
+    require(validator.main() == 0, "canonical operation evidence validator failed after authority negatives")
     require(validator.CONTRACT_PATH.read_bytes() == contract_before,
             "operation evidence authority negative mutated contract")
     require(validator.STATUS_PATH.read_bytes() == status_before,
@@ -170,6 +200,7 @@ def main() -> int:
             "operation evidence authority negative mutated append-only ledger")
     print("Memory OS rate-limit operation evidence authority negative suite PASS")
     print("validator path/helper/privacy semantic substitution accepted: false")
+    print("runtime guard/default paired substitution accepted: false")
     print("append-only evidence mutated: false")
     print("production evidence generated: false")
     print("production readiness changed: false")
