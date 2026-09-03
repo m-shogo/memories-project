@@ -85,6 +85,71 @@ def reconcile_contract_guard_negative(writer, validator) -> None:
     )
 
 
+def cli_helper_authority_negative(writer) -> None:
+    original_guard = writer.require_cli_execution_authority
+    original_append = writer.append_record
+    original_loader = writer.load_validator
+    original_parser = writer.argparse.ArgumentParser
+
+    expect_failure(
+        lambda: writer.main(original_guard, lambda *args, **kwargs: Path("ignored"), original_loader, original_parser),
+        writer.WriterFailure,
+        "append helper authority drift",
+    )
+    expect_failure(
+        lambda: writer.main(original_guard, original_append, lambda: object(), original_parser),
+        writer.WriterFailure,
+        "validator loader authority drift",
+    )
+    expect_failure(
+        lambda: writer.main(lambda: None, original_append, original_loader, original_parser),
+        writer.WriterFailure,
+        "CLI guard authority drift",
+    )
+    expect_failure(
+        lambda: writer.main(original_guard, original_append, original_loader, lambda *args, **kwargs: object()),
+        writer.WriterFailure,
+        "argument parser authority drift",
+    )
+
+    paired_cases = (
+        ("append_record", lambda *args, **kwargs: Path("ignored"), "append helper authority drift"),
+        ("load_validator", lambda: object(), "validator loader authority drift"),
+        ("require_cli_execution_authority", lambda: None, "CLI guard authority drift"),
+    )
+    for attribute, substitute, expected in paired_cases:
+        original = getattr(writer, attribute)
+        try:
+            setattr(writer, attribute, substitute)
+            expect_failure(
+                lambda substitute=substitute, attribute=attribute: writer.main(
+                    substitute if attribute == "require_cli_execution_authority" else original_guard,
+                    substitute if attribute == "append_record" else original_append,
+                    substitute if attribute == "load_validator" else original_loader,
+                    original_parser,
+                ),
+                writer.WriterFailure,
+                expected,
+            )
+        finally:
+            setattr(writer, attribute, original)
+
+    try:
+        writer.argparse.ArgumentParser = lambda *args, **kwargs: object()
+        expect_failure(
+            lambda: writer.main(
+                original_guard,
+                original_append,
+                original_loader,
+                writer.argparse.ArgumentParser,
+            ),
+            writer.WriterFailure,
+            "argument parser authority drift",
+        )
+    finally:
+        writer.argparse.ArgumentParser = original_parser
+
+
 def post_append_rollback_negative(writer) -> None:
     class FakeValidationFailure(RuntimeError):
         pass
@@ -234,6 +299,7 @@ def main() -> int:
 
     contract_guard_negative(writer, validator)
     reconcile_contract_guard_negative(writer, validator)
+    cli_helper_authority_negative(writer)
     post_append_rollback_negative(writer)
     digest_binding_negative(validator)
 
@@ -241,6 +307,7 @@ def main() -> int:
         raise AssertionError("rate-limit operation negatives left residue")
 
     print("PASS: canonical rate-limit operation ledger is validated before append")
+    print("PASS: operation evidence CLI helper substitutions are rejected")
     print("PASS: post-append validation rejection removes the new record")
     print("PASS: rate-limit operation reconcile delegates to append authority")
     print("PASS: operation evidence digests remain writer-computed and tamper-evident")
