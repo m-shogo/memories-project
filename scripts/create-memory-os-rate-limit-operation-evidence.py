@@ -194,13 +194,14 @@ def main(
     _load_validator=load_validator,
     _argument_parser=argparse.ArgumentParser,
 ) -> int:
-    if require_cli_execution_authority is not _canonical_guard:
+    expected_guard, expected_append, expected_loader, expected_parser = main.__defaults__
+    if _canonical_guard is not expected_guard or require_cli_execution_authority is not expected_guard:
         raise WriterFailure("operation evidence CLI guard authority drift")
-    if append_record is not _append_record:
+    if _append_record is not expected_append or append_record is not expected_append:
         raise WriterFailure("operation evidence append helper authority drift")
-    if load_validator is not _load_validator:
+    if _load_validator is not expected_loader or load_validator is not expected_loader:
         raise WriterFailure("operation evidence validator loader authority drift")
-    if argparse.ArgumentParser is not _argument_parser:
+    if _argument_parser is not expected_parser or argparse.ArgumentParser is not expected_parser:
         raise WriterFailure("operation evidence argument parser authority drift")
     _canonical_guard()
     parser = _argument_parser(
