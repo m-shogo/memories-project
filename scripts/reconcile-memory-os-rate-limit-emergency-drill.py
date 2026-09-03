@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
@@ -21,6 +21,8 @@ CANONICAL_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-emergen
 CANONICAL_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
 CANONICAL_RATE_LIMIT_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 RESULT_PATH = CANONICAL_RESULT_PATH
 OPERATIONS_PATH = CANONICAL_OPERATIONS_PATH
@@ -76,6 +78,16 @@ def enforce_runtime_authorities() -> None:
         (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
     ):
         require_exact_authority(path, canonical, label)
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN,
+            "emergency drill subprocess execution authority drift")
+    require(os.replace is CANONICAL_OS_REPLACE,
+            "emergency drill atomic replacement transport authority drift")
+    require(run_validator is CANONICAL_RUN_VALIDATOR,
+            "emergency drill validator execution authority drift")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES,
+            "emergency drill atomic writer authority drift")
+    require(atomic_write_json is CANONICAL_ATOMIC_WRITE_JSON,
+            "emergency drill JSON writer authority drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -98,7 +110,7 @@ def append_once(items: list[Any], value: str) -> bool:
 
 def run_validator(path: Path, *args: str) -> None:
     enforce_runtime_authorities()
-    completed = subprocess.run(
+    completed = CANONICAL_SUBPROCESS_RUN(
         [sys.executable, str(path), *args],
         cwd=ROOT,
         text=True,
@@ -110,20 +122,29 @@ def run_validator(path: Path, *args: str) -> None:
             f"post-write validation failed for {path.name}:\n{completed.stdout[-4000:]}")
 
 
+CANONICAL_RUN_VALIDATOR = run_validator
+
+
 def validate_written_authority(source_sha: str) -> None:
     enforce_runtime_authorities()
-    run_validator(
+    CANONICAL_RUN_VALIDATOR(
         VALIDATOR_PATH,
         "--expected-commit-sha", source_sha,
         "--require-result",
         "--require-reconciled",
     )
-    run_validator(OPERATIONS_VALIDATOR)
-    run_validator(RATE_LIMIT_VALIDATOR)
-    run_validator(OPERABILITY_VALIDATOR)
+    CANONICAL_RUN_VALIDATOR(OPERATIONS_VALIDATOR)
+    CANONICAL_RUN_VALIDATOR(RATE_LIMIT_VALIDATOR)
+    CANONICAL_RUN_VALIDATOR(OPERABILITY_VALIDATOR)
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(
+    path: Path,
+    payload: bytes,
+    *,
+    replace_fn: Callable[[str | bytes | os.PathLike[str] | os.PathLike[bytes], str | bytes | os.PathLike[str] | os.PathLike[bytes]], None] = CANONICAL_OS_REPLACE,
+) -> None:
+    existing_mode = path.stat().st_mode & 0o777 if path.exists() else None
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
     )
@@ -131,18 +152,26 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
+            if existing_mode is not None:
+                os.fchmod(handle.fileno(), existing_mode)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        replace_fn(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
 
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
-    atomic_write_bytes(
+    CANONICAL_ATOMIC_WRITE_BYTES(
         path,
         (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
     )
+
+
+CANONICAL_ATOMIC_WRITE_JSON = atomic_write_json
 
 
 def transactional_write(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
@@ -152,12 +181,12 @@ def transactional_write(contract: dict[str, Any], status: dict[str, Any], source
         STATUS_PATH: STATUS_PATH.read_bytes(),
     }
     try:
-        atomic_write_json(CONTRACT_PATH, contract)
-        atomic_write_json(STATUS_PATH, status)
+        CANONICAL_ATOMIC_WRITE_JSON(CONTRACT_PATH, contract)
+        CANONICAL_ATOMIC_WRITE_JSON(STATUS_PATH, status)
         validate_written_authority(source_sha)
     except BaseException:
         for path, original in originals.items():
-            atomic_write_bytes(path, original)
+            CANONICAL_ATOMIC_WRITE_BYTES(path, original)
         raise
 
 
