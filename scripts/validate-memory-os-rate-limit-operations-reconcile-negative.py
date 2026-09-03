@@ -11,6 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rate-limit-operations.py"
+OPERATIONS_VALIDATOR_SCRIPT = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
 CANONICAL_POLICY_PATH = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
 CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 
@@ -30,6 +31,17 @@ def load_module() -> Any:
     )
     require(spec is not None and spec.loader is not None,
             "cannot load rate-limit operations reconciler")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_operations_validator() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_rate_limit_operations_validator_negative", OPERATIONS_VALIDATOR_SCRIPT
+    )
+    require(spec is not None and spec.loader is not None,
+            "cannot load rate-limit operations validator")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -258,6 +270,84 @@ def prove_execution_authority_identity(reconciler: Any) -> None:
         reconciler.CANONICAL_OS_REPLACE = original_canonical_replace
 
 
+def expect_operations_validator_rejection(
+    validator: Any, attribute: str, substitute: Any, label: str
+) -> None:
+    original = getattr(validator, attribute)
+    policy_before = CANONICAL_POLICY_PATH.read_bytes()
+    status_before = CANONICAL_STATUS_PATH.read_bytes()
+    setattr(validator, attribute, substitute)
+    try:
+        try:
+            validator.main()
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise NegativeFailure(
+                f"rate-limit operations validator accepted authority substitution: {label}"
+            )
+        require(CANONICAL_POLICY_PATH.read_bytes() == policy_before,
+                f"canonical policy mutated after validator substitution: {label}")
+        require(CANONICAL_STATUS_PATH.read_bytes() == status_before,
+                f"canonical status mutated after validator substitution: {label}")
+    finally:
+        setattr(validator, attribute, original)
+
+
+def prove_operations_validator_runtime_authority() -> None:
+    validator = load_operations_validator()
+    require(validator.main() == 0,
+            "canonical rate-limit operations validator does not pass before negatives")
+    path_cases = (
+        ("ROOT", ROOT / "contracts", "repository root"),
+        ("POLICY_PATH", validator.STATUS_PATH, "policy contract"),
+        ("OPERATIONS_PATH", validator.STATUS_PATH, "operations contract"),
+        ("EVIDENCE_CONTRACT_PATH", validator.STATUS_PATH, "evidence contract"),
+        ("STATUS_PATH", validator.POLICY_PATH, "Production Status"),
+    )
+    for attribute, substitute, label in path_cases:
+        expect_operations_validator_rejection(validator, attribute, substitute, label)
+
+    helper_cases = (
+        ("require", lambda *_args, **_kwargs: None, "require helper"),
+        ("load", lambda _path: {}, "JSON loader"),
+        ("object_map", lambda *_args, **_kwargs: {}, "object-map helper"),
+        ("unique_strings", lambda *_args, **_kwargs: ["x"] * 20, "unique-string helper"),
+        ("canonical_repo_file", lambda path, *_args, **_kwargs: path, "path checker"),
+        ("enforce_runtime_authorities", lambda: None, "runtime guard"),
+        ("_main_impl", lambda: 0, "main implementation"),
+    )
+    for attribute, substitute, label in helper_cases:
+        expect_operations_validator_rejection(validator, attribute, substitute, label)
+
+    semantic_cases = (
+        ("EXPECTED_MODES", {"NORMAL_CONFIGURED": True}, "operational modes"),
+        ("EXPECTED_PROXY_MODES", {"TRUSTED_PROXY_CONFIGURED": True}, "proxy modes"),
+        ("EXPECTED_TRANSITIONS", set(), "transition set"),
+        ("BASE_EVIDENCE", set(), "base evidence set"),
+        ("LEDGER_EVIDENCE", set(), "ledger evidence set"),
+        ("REQUIRED_RUNBOOK_HEADINGS", tuple(), "runbook headings"),
+    )
+    for attribute, substitute, label in semantic_cases:
+        expect_operations_validator_rejection(validator, attribute, substitute, label)
+
+    original_defaults = validator.enforce_runtime_authorities.__defaults__
+    validator.enforce_runtime_authorities.__defaults__ = tuple(original_defaults[:-1]) + (tuple(),)
+    try:
+        try:
+            validator.main()
+        except validator.ValidationFailure as exc:
+            require("runtime guard default authority drift" in str(exc),
+                    f"validator defaults rejected for unrelated reason: {exc}")
+        else:
+            raise NegativeFailure("rate-limit operations validator accepted runtime guard defaults drift")
+    finally:
+        validator.enforce_runtime_authorities.__defaults__ = original_defaults
+
+    require(validator.main() == 0,
+            "canonical rate-limit operations validator does not pass after negatives")
+
+
 def main() -> int:
     reconciler = load_module()
     reconciler.enforce_runtime_authorities()
@@ -276,8 +366,9 @@ def main() -> int:
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
     prove_execution_authority_identity(reconciler)
+    prove_operations_validator_runtime_authority()
 
-    print("PASS: rate-limit operations exact authorities, immutable replace transport, mode-preserving atomic publication and rollback are fail-closed")
+    print("PASS: rate-limit operations reconciler and standalone validator exact authorities, immutable transport, semantics, atomic publication and rollback are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
