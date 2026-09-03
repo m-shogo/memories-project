@@ -1,39 +1,12 @@
 name: Reconcile Metrics Authority
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/reconcile-metrics-scrape-status.yml"
-      - "contracts/operations/metrics-scrape-contract.v1.json"
-      - "contracts/operations/metrics-dashboard-contract.v1.json"
-      - "contracts/operations/metrics-retention-error-budget-contract.v1.json"
-      - "contracts/operations/metrics-alerting-contract.v1.json"
-      - "infra/observability/prometheus/memory-os-alerts.yml"
-      - "docs/runbooks/memory-os-metrics-alerts.md"
-      - "services/import-api/internal/metrics/prometheus.go"
-      - "services/import-api/internal/metrics/scrape.go"
-      - "services/import-api/internal/metrics/prometheus_test.go"
-      - "services/import-api/internal/httpserver/server.go"
-      - "services/import-api/internal/httpserver/observability.go"
-      - "services/import-api/internal/httpserver/metrics_scrape_test.go"
-      - "scripts/validate-memory-os-metrics.py"
-      - "scripts/validate-memory-os-metrics-scrape.py"
-      - "scripts/validate-memory-os-metrics-operations.py"
-      - "scripts/validate-memory-os-metrics-alerting.py"
-      - "scripts/validate-memory-os-metrics-reconcile-rollback-negative.py"
-      - "scripts/reconcile-memory-os-metrics-contract.py"
-      - "scripts/reconcile-memory-os-metrics-scrape-status.py"
-      - "scripts/reconcile-memory-os-metrics-operations.py"
-      - "scripts/reconcile-memory-os-metrics-alerting.py"
-      - "scripts/validate-memory-os-operability.py"
-      - "scripts/validate-memory-os-entry-docs.py"
-      - "contracts/operations/metrics-contract.v1.json"
-      - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
     paths:
       - ".github/workflows/reconcile-metrics-scrape-status.yml"
+      - ".github/workflows/reconcile-metrics-scrape-status-pr.yml"
       - "contracts/operations/metrics-scrape-contract.v1.json"
       - "contracts/operations/metrics-dashboard-contract.v1.json"
       - "contracts/operations/metrics-retention-error-budget-contract.v1.json"
@@ -67,7 +40,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-metrics-authority-${{ github.event.pull_request.number || 'so' }}
+  group: reconcile-metrics-authority-so
   cancel-in-progress: false
 
 jobs:
@@ -78,7 +51,7 @@ jobs:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -94,16 +67,11 @@ jobs:
 
       - name: Confirm exact source state
         env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "$EVENT_SHA"
-          fi
+          test "$(git rev-parse HEAD)" = "$EVENT_SHA"
 
       - name: Validate Go scrape implementation
         working-directory: services/import-api
@@ -152,17 +120,7 @@ jobs:
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/metrics-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit reconciled authority files
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
