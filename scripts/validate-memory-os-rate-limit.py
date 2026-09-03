@@ -173,6 +173,12 @@ def main(
     try:
         if enforce_runtime_authorities is not _runtime_guard:
             raise Fail("runtime guard execution authority drift")
+        if _load is not load:
+            raise Fail("main JSON loader execution authority drift")
+        if _go_consts is not go_consts:
+            raise Fail("main Go constant parser execution authority drift")
+        if _check_policy_set is not check_policy_set:
+            raise Fail("main policy-set checker execution authority drift")
         _runtime_guard()
         contract = _load(CONTRACT)
 
