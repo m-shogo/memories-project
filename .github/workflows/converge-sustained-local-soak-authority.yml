@@ -1,0 +1,39 @@
+name: Converge Sustained Local Soak Authority
+
+on:
+  workflow_run:
+    workflows:
+      - Sustained Local Soak
+    types:
+      - completed
+  workflow_dispatch:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/converge-sustained-local-soak-authority.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: converge-sustained-local-soak-authority-so
+  cancel-in-progress: true
+
+jobs:
+  dispatch-current-authority-reconcile:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.head_branch == 'so'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch deterministic current-head authority reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run reconcile-sustained-local-soak-authority.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref so
