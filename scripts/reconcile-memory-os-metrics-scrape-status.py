@@ -6,7 +6,9 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 SCRAPE_VALIDATOR = CANONICAL_SCRAPE_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 ENTRY_DOCS_VALIDATOR = CANONICAL_ENTRY_DOCS_VALIDATOR
+CANONICAL_OS_REPLACE = os.replace
 
 OLD_MISSING = "Prometheus/OTel exporter and an exposed scrape endpoint"
 NEW_EXISTING = (
@@ -53,6 +56,26 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    mode = path.stat().st_mode & 0o7777
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        CANONICAL_OS_REPLACE(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
+
+
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
     require(canonical.is_file(), f"canonical {label} missing")
@@ -73,6 +96,8 @@ def enforce_runtime_authorities() -> None:
         (ENTRY_DOCS_VALIDATOR, CANONICAL_ENTRY_DOCS_VALIDATOR, "entry docs validator"),
     ):
         require_exact_authority(path, canonical, label)
+    require(os.replace is CANONICAL_OS_REPLACE, "os.replace transport authority drift")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "atomic writer authority drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -113,14 +138,12 @@ def validate_written_authority() -> None:
 def write_transactionally(status: dict[str, Any]) -> None:
     enforce_runtime_authorities()
     original = STATUS_PATH.read_bytes()
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    payload = (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, payload)
     try:
         validate_written_authority()
     except BaseException:
-        STATUS_PATH.write_bytes(original)
+        CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, original)
         raise
 
 
