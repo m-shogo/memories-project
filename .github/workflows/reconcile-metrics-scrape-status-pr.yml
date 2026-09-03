@@ -1,0 +1,123 @@
+name: Validate Metrics Authority on Pull Requests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-metrics-scrape-status.yml"
+      - ".github/workflows/reconcile-metrics-scrape-status-pr.yml"
+      - "contracts/operations/metrics-scrape-contract.v1.json"
+      - "contracts/operations/metrics-dashboard-contract.v1.json"
+      - "contracts/operations/metrics-retention-error-budget-contract.v1.json"
+      - "contracts/operations/metrics-alerting-contract.v1.json"
+      - "infra/observability/prometheus/memory-os-alerts.yml"
+      - "docs/runbooks/memory-os-metrics-alerts.md"
+      - "services/import-api/internal/metrics/prometheus.go"
+      - "services/import-api/internal/metrics/scrape.go"
+      - "services/import-api/internal/metrics/prometheus_test.go"
+      - "services/import-api/internal/httpserver/server.go"
+      - "services/import-api/internal/httpserver/observability.go"
+      - "services/import-api/internal/httpserver/metrics_scrape_test.go"
+      - "scripts/validate-memory-os-metrics.py"
+      - "scripts/validate-memory-os-metrics-scrape.py"
+      - "scripts/validate-memory-os-metrics-operations.py"
+      - "scripts/validate-memory-os-metrics-alerting.py"
+      - "scripts/validate-memory-os-metrics-reconcile-rollback-negative.py"
+      - "scripts/reconcile-memory-os-metrics-contract.py"
+      - "scripts/reconcile-memory-os-metrics-scrape-status.py"
+      - "scripts/reconcile-memory-os-metrics-operations.py"
+      - "scripts/reconcile-memory-os-metrics-alerting.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
+      - "contracts/operations/metrics-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-metrics-authority-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean PR source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Validate Go scrape implementation
+        working-directory: services/import-api
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l \
+            internal/metrics/prometheus.go \
+            internal/metrics/scrape.go \
+            internal/metrics/prometheus_test.go \
+            internal/httpserver/server.go \
+            internal/httpserver/observability.go \
+            internal/httpserver/metrics_scrape_test.go)"
+          go test ./internal/metrics ./internal/httpserver -count=1
+
+      - name: Compile and validate metrics definitions
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-metrics.py \
+            scripts/validate-memory-os-metrics-scrape.py \
+            scripts/validate-memory-os-metrics-operations.py \
+            scripts/validate-memory-os-metrics-alerting.py \
+            scripts/validate-memory-os-metrics-reconcile-rollback-negative.py \
+            scripts/reconcile-memory-os-metrics-contract.py \
+            scripts/reconcile-memory-os-metrics-scrape-status.py \
+            scripts/reconcile-memory-os-metrics-operations.py \
+            scripts/reconcile-memory-os-metrics-alerting.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/validate-memory-os-entry-docs.py
+          python scripts/validate-memory-os-metrics-scrape.py
+          python scripts/validate-memory-os-metrics-operations.py
+          python scripts/validate-memory-os-metrics-alerting.py
+          python scripts/validate-memory-os-metrics-reconcile-rollback-negative.py
+
+      - name: Reconcile and validate deterministic authority
+        run: |
+          set -euo pipefail
+          python scripts/reconcile-memory-os-metrics-contract.py
+          python scripts/reconcile-memory-os-metrics-scrape-status.py
+          python scripts/reconcile-memory-os-metrics-operations.py
+          python scripts/reconcile-memory-os-metrics-alerting.py
+          python scripts/validate-memory-os-metrics.py
+          python scripts/validate-memory-os-metrics-scrape.py
+          python scripts/validate-memory-os-metrics-operations.py
+          python scripts/validate-memory-os-metrics-alerting.py
+          python scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-entry-docs.py
+
+      - name: Reject whole-worktree drift
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
