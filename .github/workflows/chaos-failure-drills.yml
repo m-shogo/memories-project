@@ -260,9 +260,8 @@ jobs:
             echo "so advanced before failure-drill authority reconciliation; refusing stale authority."
             exit 75
           fi
-          export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
           python scripts/reconcile-memory-os-chaos-failure-drills.py
-          python scripts/validate-memory-os-chaos-failure-drills.py
+          EXPECTED_COMMIT_SHA="$SOURCE_SHA" python scripts/validate-memory-os-chaos-failure-drills.py
           python scripts/validate-memory-os-operability.py
           git add contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
