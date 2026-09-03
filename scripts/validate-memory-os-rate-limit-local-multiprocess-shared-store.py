@@ -54,8 +54,10 @@ def require_canonical_ref(contract: dict[str, Any], field: str) -> Path:
     return path
 
 
-def source_is_ancestor(source: str) -> bool:
-    return subprocess.run(
+def source_is_ancestor(source: str, _run=subprocess.run) -> bool:
+    if subprocess.run is not _run:
+        raise Fail("git ancestry execution transport drift")
+    return _run(
         ["git", "merge-base", "--is-ancestor", source, "HEAD"],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
@@ -64,7 +66,8 @@ def source_is_ancestor(source: str) -> bool:
     ).returncode == 0
 
 
-def main() -> int:
+def main(_source_is_ancestor=source_is_ancestor) -> int:
+    require(source_is_ancestor is _source_is_ancestor, "source ancestry helper execution authority drift")
     contract = load(CONTRACT)
     require(contract.get("contractId") == "memory-os.operability.rate-limit-local-multiprocess-shared-store.v1", "contract id drift")
     require(contract.get("schemaVersion") == "memory-os-rate-limit-local-multiprocess-shared-store.v1", "contract schema drift")
@@ -118,7 +121,7 @@ def main() -> int:
     require(result.get("schemaVersion") == contract.get("resultsSchemaVersion"), "result schema drift")
     source = result.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
-    require(source_is_ancestor(source), "sourceCommitSha must be an ancestor of current HEAD")
+    require(_source_is_ancestor(source), "sourceCommitSha must be an ancestor of current HEAD")
     require(result.get("classification") == "LOCAL_MULTI_PROCESS_SHARED_STORE_REHEARSAL", "result classification drift")
     require(result.get("dependencyMode") == "TEST_ONLY_LOOPBACK_HTTP_BROKER_MEMORY_STORE", "result dependency mode drift")
     require(result.get("result") == "PASS", "result must be PASS")
