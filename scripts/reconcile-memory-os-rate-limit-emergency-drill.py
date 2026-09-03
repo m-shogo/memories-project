@@ -66,28 +66,38 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(resolved == canonical, f"canonical {label} escaped repository path")
 
 
-def enforce_runtime_authorities() -> None:
-    for path, canonical, label in (
-        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "emergency drill contract"),
-        (RESULT_PATH, CANONICAL_RESULT_PATH, "emergency drill result"),
-        (OPERATIONS_PATH, CANONICAL_OPERATIONS_PATH, "rate-limit operations contract"),
-        (STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status"),
-        (VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, "emergency drill validator"),
-        (OPERATIONS_VALIDATOR, CANONICAL_OPERATIONS_VALIDATOR, "rate-limit operations validator"),
-        (RATE_LIMIT_VALIDATOR, CANONICAL_RATE_LIMIT_VALIDATOR, "rate-limit validator"),
-        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
-    ):
-        require_exact_authority(path, canonical, label)
-    require(subprocess.run is CANONICAL_SUBPROCESS_RUN,
+def enforce_runtime_authorities(
+    _root: Path = ROOT,
+    _contract: Path = CANONICAL_CONTRACT_PATH,
+    _result: Path = CANONICAL_RESULT_PATH,
+    _operations: Path = CANONICAL_OPERATIONS_PATH,
+    _status: Path = CANONICAL_STATUS_PATH,
+    _validator: Path = CANONICAL_VALIDATOR_PATH,
+    _operations_validator: Path = CANONICAL_OPERATIONS_VALIDATOR,
+    _rate_limit_validator: Path = CANONICAL_RATE_LIMIT_VALIDATOR,
+    _operability_validator: Path = CANONICAL_OPERABILITY_VALIDATOR,
+    _subprocess_run: Callable[..., Any] = CANONICAL_SUBPROCESS_RUN,
+    _os_replace: Callable[..., Any] = CANONICAL_OS_REPLACE,
+) -> None:
+    require(ROOT == _root and _root == Path(__file__).resolve().parents[1],
+            "emergency drill repository authority drift")
+    immutable_authorities = (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, _contract, "emergency drill contract"),
+        (RESULT_PATH, CANONICAL_RESULT_PATH, _result, "emergency drill result"),
+        (OPERATIONS_PATH, CANONICAL_OPERATIONS_PATH, _operations, "rate-limit operations contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, _status, "production operability status"),
+        (VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, _validator, "emergency drill validator"),
+        (OPERATIONS_VALIDATOR, CANONICAL_OPERATIONS_VALIDATOR, _operations_validator, "rate-limit operations validator"),
+        (RATE_LIMIT_VALIDATOR, CANONICAL_RATE_LIMIT_VALIDATOR, _rate_limit_validator, "rate-limit validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, _operability_validator, "operability validator"),
+    )
+    for path, canonical_global, immutable, label in immutable_authorities:
+        require(canonical_global == immutable, f"canonical {label} identity drift")
+        require_exact_authority(path, immutable, label)
+    require(CANONICAL_SUBPROCESS_RUN is _subprocess_run and subprocess.run is _subprocess_run,
             "emergency drill subprocess execution authority drift")
-    require(os.replace is CANONICAL_OS_REPLACE,
+    require(CANONICAL_OS_REPLACE is _os_replace and os.replace is _os_replace,
             "emergency drill atomic replacement transport authority drift")
-    require(run_validator is CANONICAL_RUN_VALIDATOR,
-            "emergency drill validator execution authority drift")
-    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES,
-            "emergency drill atomic writer authority drift")
-    require(atomic_write_json is CANONICAL_ATOMIC_WRITE_JSON,
-            "emergency drill JSON writer authority drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -108,9 +118,15 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
-def run_validator(path: Path, *args: str) -> None:
+def run_validator(
+    path: Path,
+    *args: str,
+    _subprocess_run: Callable[..., Any] = CANONICAL_SUBPROCESS_RUN,
+) -> None:
     enforce_runtime_authorities()
-    completed = CANONICAL_SUBPROCESS_RUN(
+    require(CANONICAL_SUBPROCESS_RUN is _subprocess_run and subprocess.run is _subprocess_run,
+            "emergency drill subprocess execution authority drift")
+    completed = _subprocess_run(
         [sys.executable, str(path), *args],
         cwd=ROOT,
         text=True,
@@ -122,28 +138,32 @@ def run_validator(path: Path, *args: str) -> None:
             f"post-write validation failed for {path.name}:\n{completed.stdout[-4000:]}")
 
 
-CANONICAL_RUN_VALIDATOR = run_validator
-
-
-def validate_written_authority(source_sha: str) -> None:
+def validate_written_authority(
+    source_sha: str,
+    _run_validator: Callable[..., None] = run_validator,
+) -> None:
     enforce_runtime_authorities()
-    CANONICAL_RUN_VALIDATOR(
+    require(run_validator is _run_validator,
+            "emergency drill validator execution authority drift")
+    _run_validator(
         VALIDATOR_PATH,
         "--expected-commit-sha", source_sha,
         "--require-result",
         "--require-reconciled",
     )
-    CANONICAL_RUN_VALIDATOR(OPERATIONS_VALIDATOR)
-    CANONICAL_RUN_VALIDATOR(RATE_LIMIT_VALIDATOR)
-    CANONICAL_RUN_VALIDATOR(OPERABILITY_VALIDATOR)
+    _run_validator(OPERATIONS_VALIDATOR)
+    _run_validator(RATE_LIMIT_VALIDATOR)
+    _run_validator(OPERABILITY_VALIDATOR)
 
 
 def atomic_write_bytes(
     path: Path,
     payload: bytes,
     *,
-    replace_fn: Callable[[str | bytes | os.PathLike[str] | os.PathLike[bytes], str | bytes | os.PathLike[str] | os.PathLike[bytes]], None] = CANONICAL_OS_REPLACE,
+    _replace_fn: Callable[[str | bytes | os.PathLike[str] | os.PathLike[bytes], str | bytes | os.PathLike[str] | os.PathLike[bytes]], None] = CANONICAL_OS_REPLACE,
 ) -> None:
+    require(CANONICAL_OS_REPLACE is _replace_fn and os.replace is _replace_fn,
+            "emergency drill atomic replacement transport authority drift")
     existing_mode = path.stat().st_mode & 0o777 if path.exists() else None
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
@@ -156,42 +176,65 @@ def atomic_write_bytes(
                 os.fchmod(handle.fileno(), existing_mode)
             handle.flush()
             os.fsync(handle.fileno())
-        replace_fn(temporary, path)
+        _replace_fn(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
 
-CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
-
-
-def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
-    CANONICAL_ATOMIC_WRITE_BYTES(
+def atomic_write_json(
+    path: Path,
+    value: dict[str, Any],
+    _atomic_write_bytes: Callable[..., None] = atomic_write_bytes,
+) -> None:
+    require(atomic_write_bytes is _atomic_write_bytes,
+            "emergency drill atomic writer authority drift")
+    _atomic_write_bytes(
         path,
         (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
     )
 
 
-CANONICAL_ATOMIC_WRITE_JSON = atomic_write_json
-
-
-def transactional_write(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
+def transactional_write(
+    contract: dict[str, Any],
+    status: dict[str, Any],
+    source_sha: str,
+    _atomic_write_json: Callable[..., None] = atomic_write_json,
+    _atomic_write_bytes: Callable[..., None] = atomic_write_bytes,
+    _validate_written_authority: Callable[[str], None] = validate_written_authority,
+) -> None:
     enforce_runtime_authorities()
+    require(atomic_write_json is _atomic_write_json,
+            "emergency drill JSON writer authority drift")
+    require(atomic_write_bytes is _atomic_write_bytes,
+            "emergency drill atomic writer authority drift")
+    require(validate_written_authority is _validate_written_authority,
+            "emergency drill post-write validator authority drift")
     originals = {
         CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
         STATUS_PATH: STATUS_PATH.read_bytes(),
     }
     try:
-        CANONICAL_ATOMIC_WRITE_JSON(CONTRACT_PATH, contract)
-        CANONICAL_ATOMIC_WRITE_JSON(STATUS_PATH, status)
-        validate_written_authority(source_sha)
+        _atomic_write_json(CONTRACT_PATH, contract)
+        _atomic_write_json(STATUS_PATH, status)
+        _validate_written_authority(source_sha)
     except BaseException:
         for path, original in originals.items():
-            CANONICAL_ATOMIC_WRITE_BYTES(path, original)
+            _atomic_write_bytes(path, original)
         raise
 
 
-def main() -> int:
-    enforce_runtime_authorities()
+def main(
+    _enforce_runtime_authorities: Callable[[], None] = enforce_runtime_authorities,
+    _transactional_write: Callable[..., None] = transactional_write,
+    _validate_written_authority: Callable[[str], None] = validate_written_authority,
+) -> int:
+    require(enforce_runtime_authorities is _enforce_runtime_authorities,
+            "emergency drill runtime guard authority drift")
+    require(transactional_write is _transactional_write,
+            "emergency drill transaction execution authority drift")
+    require(validate_written_authority is _validate_written_authority,
+            "emergency drill post-write validator authority drift")
+    _enforce_runtime_authorities()
     contract = load(CONTRACT_PATH)
     result = load(RESULT_PATH)
     operations = load(OPERATIONS_PATH)
@@ -287,12 +330,12 @@ def main() -> int:
                 f"required OPS-P0-005 gap disappeared: {required_gap}")
 
     if not changed:
-        validate_written_authority(source_sha)
+        _validate_written_authority(source_sha)
         print("Rate-limit emergency decision drill authority already reconciled")
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    transactional_write(contract, status, source_sha)
+    _transactional_write(contract, status, source_sha)
     print("Registered local rate-limit emergency decision drill; runtime/production gaps remain")
     return 0
 
