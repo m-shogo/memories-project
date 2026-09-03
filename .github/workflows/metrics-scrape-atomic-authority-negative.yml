@@ -1,0 +1,65 @@
+name: Metrics Scrape Atomic Authority Negative
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/metrics-scrape-atomic-authority-negative.yml"
+      - "scripts/reconcile-memory-os-metrics-scrape-status.py"
+      - "scripts/validate-memory-os-metrics-scrape-atomic-negative.py"
+      - "contracts/operations/production-operability-status.json"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/metrics-scrape-atomic-authority-negative.yml"
+      - "scripts/reconcile-memory-os-metrics-scrape-status.py"
+      - "scripts/validate-memory-os-metrics-scrape-atomic-negative.py"
+      - "contracts/operations/production-operability-status.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metrics-scrape-atomic-authority-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean source
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Compile focused authority negative
+        run: |
+          python -m py_compile \
+            scripts/reconcile-memory-os-metrics-scrape-status.py \
+            scripts/validate-memory-os-metrics-scrape-atomic-negative.py
+
+      - name: Validate atomic authority boundary
+        run: python scripts/validate-memory-os-metrics-scrape-atomic-negative.py
+
+      - name: Require clean worktree
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
