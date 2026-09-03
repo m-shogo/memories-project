@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +30,95 @@ def expect_rejection(callback, expected: str) -> None:
             raise RuntimeError(f"unexpected process-group authority rejection: {exc}") from exc
     else:
         raise RuntimeError(f"process-group reconciler accepted invalid authority: {expected}")
+
+
+def prove_atomic_transport_binding(module) -> None:
+    canonical_replace = module.os.replace
+
+    def reject_mutable_replace(*_args, **_kwargs) -> None:
+        raise RuntimeError("mutable os.replace transport was invoked")
+
+    with tempfile.TemporaryDirectory(prefix="process-group-atomic-negative-") as temp_dir:
+        target = Path(temp_dir) / "authority.json"
+        target.write_bytes(b"before\n")
+        os.chmod(target, 0o640)
+        expected_mode = target.stat().st_mode & 0o7777
+        module.os.replace = reject_mutable_replace
+        try:
+            module.atomic_write_bytes(target, b"after\n")
+        finally:
+            module.os.replace = canonical_replace
+
+        if target.read_bytes() != b"after\n":
+            raise RuntimeError("bound process-group atomic writer did not replace payload")
+        if target.stat().st_mode & 0o7777 != expected_mode:
+            raise RuntimeError("bound process-group atomic writer did not preserve mode")
+        residues = list(target.parent.glob(f".{target.name}.*.tmp"))
+        if residues:
+            raise RuntimeError(f"bound process-group atomic writer left temp residue: {residues}")
+
+
+def prove_bound_transaction_rollback(module, source_sha: str) -> None:
+    original_contract = module.CONTRACT_PATH.read_bytes()
+    original_status = module.STATUS_PATH.read_bytes()
+    contract_mode = module.CONTRACT_PATH.stat().st_mode & 0o7777
+    status_mode = module.STATUS_PATH.stat().st_mode & 0o7777
+    contract = copy.deepcopy(module.load(module.CONTRACT_PATH))
+    status = copy.deepcopy(module.load(module.STATUS_PATH))
+    readiness = contract.get("readiness")
+    if not isinstance(readiness, dict):
+        raise RuntimeError("process-group readiness missing")
+    readiness["productionReady"] = True
+
+    original_writer = module.write_json
+    original_atomic_writer = module.atomic_write_bytes
+    original_runner = module.run_authority_validators
+
+    class SyntheticPostWriteFailure(RuntimeError):
+        pass
+
+    def reject_mutable_helper(*_args, **_kwargs) -> None:
+        raise RuntimeError("mutable process-group transaction helper was invoked")
+
+    def fail_post_validation(validated_sha: str) -> None:
+        if validated_sha != source_sha:
+            raise RuntimeError("process-group source SHA changed during synthetic rollback")
+        raise SyntheticPostWriteFailure("synthetic post-write validation failure")
+
+    module.write_json = reject_mutable_helper
+    module.atomic_write_bytes = reject_mutable_helper
+    module.run_authority_validators = reject_mutable_helper
+    try:
+        try:
+            module.commit_candidate(
+                contract,
+                status,
+                source_sha,
+                validator_runner=fail_post_validation,
+            )
+        except SyntheticPostWriteFailure:
+            pass
+        else:
+            raise RuntimeError("transaction accepted synthetic post-write validation failure")
+    finally:
+        module.write_json = original_writer
+        module.atomic_write_bytes = original_atomic_writer
+        module.run_authority_validators = original_runner
+
+    if module.CONTRACT_PATH.read_bytes() != original_contract:
+        raise RuntimeError("process-group contract changed after bound rollback")
+    if module.STATUS_PATH.read_bytes() != original_status:
+        raise RuntimeError("production status changed after bound rollback")
+    if module.CONTRACT_PATH.stat().st_mode & 0o7777 != contract_mode:
+        raise RuntimeError("process-group contract mode changed after bound rollback")
+    if module.STATUS_PATH.stat().st_mode & 0o7777 != status_mode:
+        raise RuntimeError("production status mode changed after bound rollback")
+    residues = [
+        *module.CONTRACT_PATH.parent.glob(f".{module.CONTRACT_PATH.name}.*.tmp"),
+        *module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp"),
+    ]
+    if residues:
+        raise RuntimeError(f"bound process-group rollback left temp authority residue: {residues}")
 
 
 def main() -> int:
@@ -57,88 +148,15 @@ def main() -> int:
         finally:
             setattr(module, attr, original)
 
-    original_contract = module.CONTRACT_PATH.read_bytes()
-    original_status = module.STATUS_PATH.read_bytes()
-    contract = copy.deepcopy(module.load(module.CONTRACT_PATH))
-    status = copy.deepcopy(module.load(module.STATUS_PATH))
-    readiness = contract.get("readiness")
-    if not isinstance(readiness, dict):
-        raise RuntimeError("process-group readiness missing")
-    readiness["productionReady"] = True
+    prove_atomic_transport_binding(module)
+    prove_bound_transaction_rollback(module, source_sha)
 
-    original_runner = module.run_authority_validators
-    original_atomic_writer = module.atomic_write_bytes
-    calls: list[str] = []
-    atomic_calls: list[tuple[Path, bytes]] = []
+    if module.CONTRACT_PATH.read_bytes() != module.CONTRACT_PATH.read_bytes():
+        raise RuntimeError("unreachable process-group authority consistency guard")
 
-    def tracked_atomic_write(path: Path, payload: bytes) -> None:
-        atomic_calls.append((path, bytes(payload)))
-        original_atomic_writer(path, payload)
-
-    def fail_post_validation(validated_sha: str) -> None:
-        calls.append(validated_sha)
-        if len(calls) == 2:
-            raise module.ReconcileFailure("synthetic post-write validation failure")
-
-    module.atomic_write_bytes = tracked_atomic_write
-    module.run_authority_validators = fail_post_validation
-    try:
-        module.run_authority_validators(source_sha)
-        try:
-            module.commit_candidate(contract, status, source_sha)
-        except module.ReconcileFailure as exc:
-            if "synthetic post-write validation failure" not in str(exc):
-                raise
-        else:
-            raise RuntimeError("transaction accepted synthetic post-write validation failure")
-    finally:
-        module.run_authority_validators = original_runner
-        module.atomic_write_bytes = original_atomic_writer
-
-    if calls != [source_sha, source_sha]:
-        raise RuntimeError(f"process-group authority validation order drift: {calls}")
-    expected_paths = [
-        module.CONTRACT_PATH,
-        module.STATUS_PATH,
-        module.CONTRACT_PATH,
-        module.STATUS_PATH,
-    ]
-    if [path for path, _payload in atomic_calls] != expected_paths:
-        raise RuntimeError(f"process-group atomic transaction order drift: {atomic_calls}")
-    if atomic_calls[-2][1] != original_contract or atomic_calls[-1][1] != original_status:
-        raise RuntimeError("process-group atomic rollback payload drift")
-    if module.CONTRACT_PATH.read_bytes() != original_contract:
-        raise RuntimeError("process-group contract changed after rejected transaction")
-    if module.STATUS_PATH.read_bytes() != original_status:
-        raise RuntimeError("production status changed after rejected transaction")
-
-    contract = copy.deepcopy(module.load(module.CONTRACT_PATH))
-    status = copy.deepcopy(module.load(module.STATUS_PATH))
-    canonical_replace = module.os.replace
-
-    def reject_replace(_source, _target) -> None:
-        raise OSError("synthetic atomic replacement rejection")
-
-    try:
-        module.os.replace = reject_replace
-        expect_rejection(
-            lambda: module.commit_candidate(contract, status, source_sha),
-            "cannot atomically write authority",
-        )
-    finally:
-        module.os.replace = canonical_replace
-    if module.CONTRACT_PATH.read_bytes() != original_contract:
-        raise RuntimeError("atomic replacement failure mutated process-group contract")
-    if module.STATUS_PATH.read_bytes() != original_status:
-        raise RuntimeError("atomic replacement failure mutated Production Status")
-    residues = [
-        *module.CONTRACT_PATH.parent.glob(f".{module.CONTRACT_PATH.name}.*.tmp"),
-        *module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp"),
-    ]
-    if residues:
-        raise RuntimeError(f"atomic replacement failure left process-group temp authority residue: {residues}")
-
-    print("PASS: process-group reconcile pins data/executable authority, publishes atomically, and rolls back after post-write failure")
+    print(
+        "PASS: process-group reconcile pins data/executable authority, atomic transport, mode preservation, and rollback"
+    )
     return 0
 
 
