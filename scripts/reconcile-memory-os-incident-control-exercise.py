@@ -6,8 +6,11 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +33,8 @@ TABLETOP_VALIDATOR = ROOT / TABLETOP_VALIDATOR_REL
 OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 RUNNER = ROOT / RUNNER_REL
 WORKFLOW = ROOT / WORKFLOW_REL
+CANONICAL_SUBPROCESS_RUN = subprocess.run
+CANONICAL_OS_REPLACE = os.replace
 
 NEW_EXISTING = (
     "exact-source automated incident control exercise covering tenant isolation, PostgreSQL commit outage, object-store outage, migration/version incompatibility, restore non-resurrection and parser compromise/stall scenarios",
@@ -81,10 +86,29 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise ReconcileFailure(f"{field} missing or escapes repository") from exc
     require(
-        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
         f"{field} authority drift",
     )
     return path
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(fd, existing_mode)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+
+CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 
 
 def enforce_runtime_authorities() -> None:
@@ -100,6 +124,12 @@ def enforce_runtime_authorities() -> None:
         (WORKFLOW, WORKFLOW_REL, "incident exercise workflow"),
     ):
         require_exact_repo_file(path, relative, field)
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN,
+            "incident exercise subprocess transport authority drift")
+    require(os.replace is CANONICAL_OS_REPLACE,
+            "incident exercise atomic replacement transport authority drift")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES,
+            "incident exercise atomic writer authority drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -146,6 +176,7 @@ def run_validator(path: Path) -> None:
 
 
 def run_canonical_validators() -> None:
+    enforce_runtime_authorities()
     for validator in (
         EXERCISE_VALIDATOR,
         INCIDENT_RESPONSE_VALIDATOR,
@@ -156,15 +187,16 @@ def run_canonical_validators() -> None:
 
 
 def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
     original_contract = CONTRACT_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     try:
-        CONTRACT_PATH.write_bytes(render(contract))
-        STATUS_PATH.write_bytes(render(status))
+        CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, render(contract))
+        CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, render(status))
         run_canonical_validators()
     except BaseException:
-        CONTRACT_PATH.write_bytes(original_contract)
-        STATUS_PATH.write_bytes(original_status)
+        CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, original_contract)
+        CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, original_status)
         raise
 
 
