@@ -56,8 +56,52 @@ def main() -> int:
     finally:
         validator.source_is_ancestor = real_source_is_ancestor
 
+    real_guard = validator.require_runtime_authorities
+    fake_guard = lambda: None
+    fake_source = lambda _source: True
+    validator.require_runtime_authorities = fake_guard
+    validator.source_is_ancestor = fake_source
+    try:
+        expect_rejected(
+            "paired runtime guard and source ancestry substitution",
+            validator.main,
+        )
+    finally:
+        validator.require_runtime_authorities = real_guard
+        validator.source_is_ancestor = real_source_is_ancestor
+
+    real_load = validator.load
+    validator.load = lambda _path: {}
+    validator.require_runtime_authorities = fake_guard
+    try:
+        expect_rejected(
+            "paired runtime guard and JSON loader substitution",
+            validator.main,
+        )
+    finally:
+        validator.load = real_load
+        validator.require_runtime_authorities = real_guard
+
+    guard_defaults = real_guard.__defaults__
+    require(guard_defaults is not None, "runtime guard defaults missing")
+    real_guard.__defaults__ = guard_defaults[:-1] + ((),)
+    try:
+        expect_rejected("runtime guard default authority mutation", validator.main)
+    finally:
+        real_guard.__defaults__ = guard_defaults
+
+    source_defaults = real_source_is_ancestor.__defaults__
+    require(source_defaults is not None, "source ancestry defaults missing")
+    real_source_is_ancestor.__defaults__ = (lambda *args, **kwargs: SimpleNamespace(returncode=0),)
+    try:
+        expect_rejected("source ancestry default authority mutation", validator.main)
+    finally:
+        real_source_is_ancestor.__defaults__ = source_defaults
+
     require(validator.main() == 0, "canonical local shared-store validator failed after transport negatives")
-    print("PASS: local shared-store ancestry execution authority is fail-closed")
+    print("PASS: local shared-store runtime and ancestry authority are fail-closed")
+    print("paired helper substitution: rejected")
+    print("definition-time default authority mutation: rejected")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
