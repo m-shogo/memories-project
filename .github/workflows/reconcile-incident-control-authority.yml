@@ -32,21 +32,68 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-incident-control-authority-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean PR authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+
+      - name: Validate deterministic incident authority
+        run: |
+          python -m py_compile \
+            scripts/reconcile-memory-os-incident-control-authority.py \
+            scripts/validate-memory-os-incident-control-authority-reconcile-negative.py \
+            scripts/validate-memory-os-incident-control-exercise.py \
+            scripts/validate-memory-os-incident-response.py \
+            scripts/validate-memory-os-incident-tabletop.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-incident-control-authority-reconcile-negative.py
+          python scripts/reconcile-memory-os-incident-control-authority.py
+          python scripts/reconcile-memory-os-incident-control-authority.py --check
+          python scripts/validate-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-response.py
+          python scripts/validate-memory-os-incident-tabletop.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
   reconcile:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -57,7 +104,7 @@ jobs:
       - name: Confirm exact clean authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.sha }}"
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
@@ -79,16 +126,7 @@ jobs:
           python scripts/validate-memory-os-incident-tabletop.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/incident-control-exercise-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit normalized incident authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
