@@ -86,15 +86,21 @@ def validate_result(
     expected_sha: str | None,
     _require_commit_ancestor: Callable[[str], None] = require_commit_ancestor,
     _iter_strings: Callable[[Any], list[str]] = iter_strings,
+    _sha_re: re.Pattern[str] = SHA_RE,
+    _forbidden_text: re.Pattern[str] = FORBIDDEN_TEXT,
 ) -> None:
     require(require_commit_ancestor is _require_commit_ancestor,
             "emergency drill validator lineage helper authority drift")
     require(iter_strings is _iter_strings,
             "emergency drill validator string traversal authority drift")
+    require(SHA_RE is _sha_re,
+            "emergency drill validator SHA semantics authority drift")
+    require(FORBIDDEN_TEXT is _forbidden_text,
+            "emergency drill validator privacy semantics authority drift")
     require(result.get("schemaVersion") == "memory-os-rate-limit-emergency-drill-results.v1",
             "result schemaVersion drift")
     commit_sha = result.get("commitSha")
-    require(isinstance(commit_sha, str) and SHA_RE.fullmatch(commit_sha) is not None,
+    require(isinstance(commit_sha, str) and _sha_re.fullmatch(commit_sha) is not None,
             "result commitSha must be a full SHA")
     _require_commit_ancestor(commit_sha)
     if expected_sha is not None:
@@ -124,7 +130,7 @@ def validate_result(
     require(result.get("integrityResult") == "PASS", "drill integrity must PASS")
     require(result.get("limitations") == contract["limitations"], "result limitations drift")
     joined = "\n".join(_iter_strings(result))
-    require(FORBIDDEN_TEXT.search(joined) is None, "result contains secret/identity-like text")
+    require(_forbidden_text.search(joined) is None, "result contains secret/identity-like text")
 
 
 _CANONICAL_ROOT = ROOT
@@ -139,6 +145,8 @@ _CANONICAL_LOAD = load
 _CANONICAL_PARSE_ARGS = parse_args
 _CANONICAL_ITER_STRINGS = iter_strings
 _CANONICAL_VALIDATE_RESULT = validate_result
+_CANONICAL_SHA_RE = SHA_RE
+_CANONICAL_FORBIDDEN_TEXT = FORBIDDEN_TEXT
 
 
 def _require_path_authority(current: Path, canonical: Path, label: str, *, required: bool) -> None:
@@ -157,6 +165,9 @@ def _require_path_authority(current: Path, canonical: Path, label: str, *, requi
             raise ValidationFailure(f"emergency drill validator {label} escaped canonical path")
 
 
+_CANONICAL_REQUIRE_PATH_AUTHORITY = _require_path_authority
+
+
 def enforce_runtime_authorities(
     _root: Path = _CANONICAL_ROOT,
     _contract: Path = _CANONICAL_CONTRACT_PATH,
@@ -170,13 +181,18 @@ def enforce_runtime_authorities(
     _parse_args: Callable[[], argparse.Namespace] = _CANONICAL_PARSE_ARGS,
     _iter_strings: Callable[[Any], list[str]] = _CANONICAL_ITER_STRINGS,
     _validate_result: Callable[..., None] = _CANONICAL_VALIDATE_RESULT,
+    _path_guard: Callable[..., None] = _CANONICAL_REQUIRE_PATH_AUTHORITY,
+    _sha_re: re.Pattern[str] = _CANONICAL_SHA_RE,
+    _forbidden_text: re.Pattern[str] = _CANONICAL_FORBIDDEN_TEXT,
 ) -> None:
     if ROOT != _root or _root != Path(__file__).resolve().parents[1]:
         raise ValidationFailure("emergency drill validator repository authority drift")
-    _require_path_authority(CONTRACT_PATH, _contract, "contract", required=True)
-    _require_path_authority(OPERATIONS_PATH, _operations, "operations contract", required=True)
-    _require_path_authority(POLICY_PATH, _policy, "policy contract", required=True)
-    _require_path_authority(RESULT_PATH, _result, "result", required=False)
+    if _require_path_authority is not _path_guard:
+        raise ValidationFailure("emergency drill validator path guard execution authority drift")
+    _path_guard(CONTRACT_PATH, _contract, "contract", required=True)
+    _path_guard(OPERATIONS_PATH, _operations, "operations contract", required=True)
+    _path_guard(POLICY_PATH, _policy, "policy contract", required=True)
+    _path_guard(RESULT_PATH, _result, "result", required=False)
     helpers = (
         (subprocess.run, _subprocess_run, "subprocess transport"),
         (require, _require, "require"),
@@ -185,6 +201,8 @@ def enforce_runtime_authorities(
         (parse_args, _parse_args, "argument parser"),
         (iter_strings, _iter_strings, "string traversal"),
         (validate_result, _validate_result, "result validator"),
+        (SHA_RE, _sha_re, "SHA semantics"),
+        (FORBIDDEN_TEXT, _forbidden_text, "privacy semantics"),
     )
     for current, canonical, label in helpers:
         if current is not canonical:
