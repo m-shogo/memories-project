@@ -370,7 +370,7 @@
     "previewPreFenceInFlightLinearizationProven": true,
     "multiAccountDeletionWorkerSaturationProven": true,
     "localLongSoakFoundationImplemented": true,
-    "localLongSoakRunCount": 7,
+    "localLongSoakRunCount": 8,
     "localSustainedSoakEvidence": true,
     "applyPreFenceInFlightLinearizationProven": true,
     "uploadAuthorizationPreFenceInFlightLinearizationProven": true,
@@ -492,6 +492,7 @@
     "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-a.v1.json",
     "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-b.v1.json",
     "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32174904406-1.v1.json",
-    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32516837927-1.v1.json"
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32516837927-1.v1.json",
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32887993460-1.v1.json"
   ]
 }

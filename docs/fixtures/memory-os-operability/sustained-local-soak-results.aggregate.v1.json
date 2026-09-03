@@ -2,7 +2,7 @@
   "schemaVersion": "memory-os-sustained-local-soak-aggregate.v1",
   "scenarioId": "mixed-import-lifecycle-local-long-soak",
   "classification": "LOCAL_LONG_SOAK",
-  "runCount": 7,
+  "runCount": 8,
   "runIds": [
     "gha-31157909318-1-a",
     "gha-31157909318-1-b",
@@ -10,11 +10,13 @@
     "gha-32010573115-1-a",
     "gha-32010573115-1-b",
     "gha-32174904406-1",
-    "gha-32516837927-1"
+    "gha-32516837927-1",
+    "gha-32887993460-1"
   ],
   "sourceCommitShas": [
     "171ba6971db3a6325701ffcb2e8130fa898c27ba",
     "3d88029888e07e10e4cc31d660c66ae7de1ffe0a",
+    "4c3a636cc4b4397d04680f904c9c556426896e64",
     "950a1ce60cb30f8415cd605fb2d799e7f7ba5ed0",
     "9dd97a9571e58a08a1d8ee43a9f378a505a09c15",
     "e4c6c09532d2a4fe043f6c4f545e149e84dbe803"
@@ -344,6 +346,52 @@
         "scanQueueTrend": {
           "oldestPendingSecondsPerMinute": 60.00001880912945,
           "pendingPerMinute": 1.6000006844203485
+        },
+        "deletionBacklogTrend": {
+          "pendingPerMinute": 0,
+          "stuckPerMinute": 0
+        }
+      },
+      {
+        "runId": "gha-32887993460-1",
+        "sourceCommitSha": "4c3a636cc4b4397d04680f904c9c556426896e64",
+        "rssSlopeBytesPerMinute": 19016.32430465821,
+        "heapAllocSlopeBytesPerMinute": 1963.1782928259022,
+        "heapInuseSlopeBytesPerMinute": 5310.480025591268,
+        "goroutineSlopePerMinute": 0,
+        "latencyTrendBySurface": {
+          "deletionWorker": {
+            "p95MsPerMinute": 0.09951080559946891,
+            "p99MsPerMinute": 0.09951080559946891
+          },
+          "parserSupervisor": {
+            "p95MsPerMinute": -0.8536638221060683,
+            "p99MsPerMinute": -0.8536638221060683
+          },
+          "previewRead": {
+            "p95MsPerMinute": -0.13005590512300494,
+            "p99MsPerMinute": -0.15358385166326374
+          },
+          "signedUploadLifecycle": {
+            "p95MsPerMinute": -0.09441675905476712,
+            "p99MsPerMinute": -0.09441675905476712
+          }
+        },
+        "errorRateTrendBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "dbConnectionTrend": {
+          "acquireDurationMsPerMinute": 95.10905852504041,
+          "acquiredConnsPerMinute": 0,
+          "emptyAcquireCountPerMinute": 37.3881283463171,
+          "totalConnsPerMinute": 0
+        },
+        "scanQueueTrend": {
+          "oldestPendingSecondsPerMinute": 60.000015297790114,
+          "pendingPerMinute": 1.6000007043511884
         },
         "deletionBacklogTrend": {
           "pendingPerMinute": 0,
