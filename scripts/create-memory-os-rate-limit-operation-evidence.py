@@ -188,18 +188,29 @@ def append_record(
     return target
 
 
-def main(_canonical_guard=require_cli_execution_authority) -> int:
+def main(
+    _canonical_guard=require_cli_execution_authority,
+    _append_record=append_record,
+    _load_validator=load_validator,
+    _argument_parser=argparse.ArgumentParser,
+) -> int:
     if require_cli_execution_authority is not _canonical_guard:
         raise WriterFailure("operation evidence CLI guard authority drift")
+    if append_record is not _append_record:
+        raise WriterFailure("operation evidence append helper authority drift")
+    if load_validator is not _load_validator:
+        raise WriterFailure("operation evidence validator loader authority drift")
+    if argparse.ArgumentParser is not _argument_parser:
+        raise WriterFailure("operation evidence argument parser authority drift")
     _canonical_guard()
-    parser = argparse.ArgumentParser(
+    parser = _argument_parser(
         description="Validate and exclusively append one rate-limit operation record"
     )
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--ledger-dir", type=Path, default=_CANONICAL_DEFAULT_LEDGER)
     args = parser.parse_args()
 
-    target = append_record(args.input, args.ledger_dir, load_validator())
+    target = _append_record(args.input, args.ledger_dir, _load_validator())
     print(f"Created append-only rate-limit operation evidence: {target}")
     return 0
 
