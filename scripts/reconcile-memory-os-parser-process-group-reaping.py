@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/parser-process-group-reaping-contract.v1.json"
@@ -82,36 +82,71 @@ def append_once(values: list[Any], value: str) -> bool:
     return True
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
-    require(path.parent.is_dir(), f"authority parent missing: {path.parent}")
-    temp_name: str | None = None
-    try:
-        fd, temp_name = tempfile.mkstemp(
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            dir=path.parent,
-        )
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_name, path)
-        temp_name = None
-    except OSError as exc:
-        raise ReconcileFailure(f"cannot atomically write authority: {path.relative_to(ROOT)}: {exc}") from exc
-    finally:
-        if temp_name is not None:
+def _build_atomic_write_bytes(
+    mkstemp_impl: Callable[..., tuple[int, str]],
+    fdopen_impl: Callable[..., Any],
+    fsync_impl: Callable[[int], None],
+    chmod_impl: Callable[[Path, int], None],
+    replace_impl: Callable[[Path, Path], None],
+) -> Callable[[Path, bytes], None]:
+    def atomic_write_bytes(path: Path, payload: bytes) -> None:
+        require(path.parent.is_dir(), f"authority parent missing: {path.parent}")
+        mode = path.stat().st_mode & 0o7777
+        temp_path: Path | None = None
+        try:
+            fd, temp_name = mkstemp_impl(
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                dir=path.parent,
+            )
+            temp_path = Path(temp_name)
+            with fdopen_impl(fd, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                fsync_impl(handle.fileno())
+            chmod_impl(temp_path, mode)
+            replace_impl(temp_path, path)
+            temp_path = None
+        except OSError as exc:
             try:
-                os.unlink(temp_name)
-            except FileNotFoundError:
-                pass
-            except OSError:
-                pass
+                relative = path.relative_to(ROOT)
+            except ValueError:
+                relative = path
+            raise ReconcileFailure(f"cannot atomically write authority: {relative}: {exc}") from exc
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    pass
+
+    return atomic_write_bytes
 
 
-def write_json(path: Path, value: dict[str, Any]) -> None:
-    payload = json.dumps(value, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
-    atomic_write_bytes(path, payload)
+atomic_write_bytes = _build_atomic_write_bytes(
+    tempfile.mkstemp,
+    os.fdopen,
+    os.fsync,
+    os.chmod,
+    os.replace,
+)
+del _build_atomic_write_bytes
+
+
+def _build_json_writer(
+    atomic_writer: Callable[[Path, bytes], None],
+) -> Callable[[Path, dict[str, Any]], None]:
+    def write_json(path: Path, value: dict[str, Any]) -> None:
+        payload = json.dumps(value, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+        atomic_writer(path, payload)
+
+    return write_json
+
+
+write_json = _build_json_writer(atomic_write_bytes)
+del _build_json_writer
 
 
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
@@ -161,18 +196,42 @@ def run_authority_validators(source_sha: str) -> None:
     run_validator(OPERABILITY_VALIDATOR)
 
 
-def commit_candidate(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
-    enforce_data_authorities()
-    original_contract = CONTRACT_PATH.read_bytes()
-    original_status = STATUS_PATH.read_bytes()
-    try:
-        write_json(CONTRACT_PATH, contract)
-        write_json(STATUS_PATH, status)
-        run_authority_validators(source_sha)
-    except Exception:
-        atomic_write_bytes(CONTRACT_PATH, original_contract)
-        atomic_write_bytes(STATUS_PATH, original_status)
-        raise
+def _build_commit_candidate(
+    json_writer: Callable[[Path, dict[str, Any]], None],
+    atomic_writer: Callable[[Path, bytes], None],
+    default_validator_runner: Callable[[str], None],
+) -> Callable[..., None]:
+    def commit_candidate(
+        contract: dict[str, Any],
+        status: dict[str, Any],
+        source_sha: str,
+        *,
+        validator_runner: Callable[[str], None] | None = None,
+    ) -> None:
+        enforce_data_authorities()
+        original_contract = CONTRACT_PATH.read_bytes()
+        original_status = STATUS_PATH.read_bytes()
+        try:
+            json_writer(CONTRACT_PATH, contract)
+            json_writer(STATUS_PATH, status)
+            if validator_runner is None:
+                default_validator_runner(source_sha)
+            else:
+                validator_runner(source_sha)
+        except BaseException:
+            atomic_writer(CONTRACT_PATH, original_contract)
+            atomic_writer(STATUS_PATH, original_status)
+            raise
+
+    return commit_candidate
+
+
+commit_candidate = _build_commit_candidate(
+    write_json,
+    atomic_write_bytes,
+    run_authority_validators,
+)
+del _build_commit_candidate
 
 
 def main() -> int:
