@@ -8,11 +8,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-POLICY_PATH = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
-OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
-EVIDENCE_CONTRACT_PATH = ROOT / "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+DEFAULT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_POLICY_PATH = DEFAULT_ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
+DEFAULT_OPERATIONS_PATH = DEFAULT_ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
+DEFAULT_EVIDENCE_CONTRACT_PATH = DEFAULT_ROOT / "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
+DEFAULT_STATUS_PATH = DEFAULT_ROOT / "contracts/operations/production-operability-status.json"
+
+ROOT = DEFAULT_ROOT
+POLICY_PATH = DEFAULT_POLICY_PATH
+OPERATIONS_PATH = DEFAULT_OPERATIONS_PATH
+EVIDENCE_CONTRACT_PATH = DEFAULT_EVIDENCE_CONTRACT_PATH
+STATUS_PATH = DEFAULT_STATUS_PATH
 EXPECTED_MODES = {
     "NORMAL_CONFIGURED": True,
     "STRICT_LOCAL_EMERGENCY": True,
@@ -101,7 +107,82 @@ def unique_strings(items: Any, field: str, minimum: int = 1) -> list[str]:
     return items
 
 
-def main() -> int:
+def canonical_repo_file(
+    path: Path,
+    expected: Path,
+    label: str,
+    _expected_root: Path = DEFAULT_ROOT,
+) -> Path:
+    if path != expected:
+        raise ValidationFailure(f"{label} authority drift: {path} != {expected}")
+    if path.is_symlink():
+        raise ValidationFailure(f"{label} authority must not be symlink: {path}")
+    try:
+        resolved = path.resolve(strict=True)
+        root = _expected_root.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValidationFailure(f"{label} authority missing: {path}") from exc
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValidationFailure(f"{label} authority escapes repository: {path}") from exc
+    if resolved != expected.resolve(strict=True):
+        raise ValidationFailure(f"{label} resolved authority drift: {resolved}")
+    if not resolved.is_file():
+        raise ValidationFailure(f"{label} authority is not a file: {path}")
+    return resolved
+
+
+def enforce_runtime_authorities(
+    _expected_root: Path = DEFAULT_ROOT,
+    _expected_paths: tuple[tuple[Path, str], ...] = (
+        (DEFAULT_POLICY_PATH, "rate-limit policy contract"),
+        (DEFAULT_OPERATIONS_PATH, "rate-limit operations contract"),
+        (DEFAULT_EVIDENCE_CONTRACT_PATH, "rate-limit operation evidence contract"),
+        (DEFAULT_STATUS_PATH, "Production Status"),
+    ),
+    _require=require,
+    _load=load,
+    _object_map=object_map,
+    _unique_strings=unique_strings,
+    _path_checker=canonical_repo_file,
+    _expected_modes: tuple[tuple[str, bool], ...] = tuple(sorted(EXPECTED_MODES.items())),
+    _expected_proxy_modes: tuple[tuple[str, bool], ...] = tuple(sorted(EXPECTED_PROXY_MODES.items())),
+    _expected_transitions: frozenset[tuple[str, str]] = frozenset(EXPECTED_TRANSITIONS),
+    _base_evidence: frozenset[str] = frozenset(BASE_EVIDENCE),
+    _ledger_evidence: frozenset[str] = frozenset(LEDGER_EVIDENCE),
+    _runbook_headings: tuple[str, ...] = REQUIRED_RUNBOOK_HEADINGS,
+) -> None:
+    if ROOT != _expected_root or ROOT.resolve() != _expected_root.resolve():
+        raise ValidationFailure("repository root authority drift")
+    current_paths = (POLICY_PATH, OPERATIONS_PATH, EVIDENCE_CONTRACT_PATH, STATUS_PATH)
+    for current, (expected, label) in zip(current_paths, _expected_paths, strict=True):
+        _path_checker(current, expected, label)
+    if require is not _require:
+        raise ValidationFailure("require execution authority drift")
+    if load is not _load:
+        raise ValidationFailure("JSON loader execution authority drift")
+    if object_map is not _object_map:
+        raise ValidationFailure("object-map execution authority drift")
+    if unique_strings is not _unique_strings:
+        raise ValidationFailure("unique-string execution authority drift")
+    if canonical_repo_file is not _path_checker:
+        raise ValidationFailure("path checker execution authority drift")
+    if tuple(sorted(EXPECTED_MODES.items())) != _expected_modes:
+        raise ValidationFailure("operational mode semantic authority drift")
+    if tuple(sorted(EXPECTED_PROXY_MODES.items())) != _expected_proxy_modes:
+        raise ValidationFailure("proxy mode semantic authority drift")
+    if frozenset(EXPECTED_TRANSITIONS) != _expected_transitions:
+        raise ValidationFailure("transition semantic authority drift")
+    if frozenset(BASE_EVIDENCE) != _base_evidence:
+        raise ValidationFailure("base evidence semantic authority drift")
+    if frozenset(LEDGER_EVIDENCE) != _ledger_evidence:
+        raise ValidationFailure("ledger evidence semantic authority drift")
+    if REQUIRED_RUNBOOK_HEADINGS != _runbook_headings:
+        raise ValidationFailure("runbook heading semantic authority drift")
+
+
+def _main_impl() -> int:
     policy = load(POLICY_PATH)
     operations = load(OPERATIONS_PATH)
     evidence_contract = load(EVIDENCE_CONTRACT_PATH)
@@ -312,6 +393,28 @@ def main() -> int:
     print("production control plane: NOT_IMPLEMENTED")
     print("production decision: NO_GO")
     return 0
+
+
+def _build_main(
+    _canonical_guard=enforce_runtime_authorities,
+    _canonical_impl=_main_impl,
+    _guard_defaults=enforce_runtime_authorities.__defaults__,
+):
+    def _main() -> int:
+        if enforce_runtime_authorities is not _canonical_guard:
+            raise ValidationFailure("runtime guard execution authority drift")
+        if _main_impl is not _canonical_impl:
+            raise ValidationFailure("main implementation execution authority drift")
+        if _canonical_guard.__defaults__ != _guard_defaults:
+            raise ValidationFailure("runtime guard default authority drift")
+        _canonical_guard()
+        return _canonical_impl()
+
+    return _main
+
+
+main = _build_main()
+del _build_main
 
 
 if __name__ == "__main__":
