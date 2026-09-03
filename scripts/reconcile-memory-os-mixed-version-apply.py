@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -105,8 +107,38 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def atomic_write_bytes(
+    path: Path,
+    data: bytes,
+    *,
+    _mkstemp=tempfile.mkstemp,
+    _fdopen=os.fdopen,
+    _fsync=os.fsync,
+    _chmod=os.chmod,
+    _replace=os.replace,
+) -> None:
+    mode = path.stat().st_mode & 0o7777 if path.exists() else 0o644
+    fd, tmp_name = _mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    try:
+        with _fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            _fsync(handle.fileno())
+        _chmod(tmp_path, mode)
+        _replace(tmp_path, path)
+    finally:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_bytes(
+        path,
+        (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+    )
 
 
 def is_ancestor(base: str, head: str) -> bool:
@@ -164,8 +196,6 @@ def main() -> int:
     require(is_ancestor(old_sha, current_sha) and is_ancestor(current_sha, "HEAD"),
             "mixed-version Apply source lineage invalid")
 
-    # The canonical validator owns exact-source result, contract, privacy and
-    # historical-candidate semantics. Aggregate validators gate any projection.
     validate_authority_chain(current_sha, require_reconciled=False)
 
     contract = load(CONTRACT_PATH)
@@ -255,8 +285,8 @@ def main() -> int:
     try:
         validate_authority_chain(current_sha, require_reconciled=True)
     except Exception:
-        CONTRACT_PATH.write_bytes(original_contract_bytes)
-        STATUS_PATH.write_bytes(original_status_bytes)
+        atomic_write_bytes(CONTRACT_PATH, original_contract_bytes)
+        atomic_write_bytes(STATUS_PATH, original_status_bytes)
         raise
 
     print("Registered mixed-version Apply evidence; OPS-P0-008 remains PARTIAL")
