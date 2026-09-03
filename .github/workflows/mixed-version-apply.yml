@@ -46,19 +46,137 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: mixed-version-apply-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  drill:
-    if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'docs(compat): register mixed-version Apply evidence')
+  validate-pr:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+      MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+      MEMORY_OS_MIXED_VERSION_OLD_SHA: 2af6e8e10755cc707c6bdd958a049a0f4afb3d70
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          bash -n scripts/run-memory-os-mixed-version-apply-drill.sh
+          python -m py_compile \
+            scripts/validate-memory-os-mixed-version-apply.py \
+            scripts/reconcile-memory-os-mixed-version-apply.py \
+            scripts/validate-memory-os-mixed-version-apply-reconcile-negative.py
+          test -z "$(gofmt -l services/import-api/cmd/memory-os-mixed-version-fixture/main.go)"
+
+      - name: Start local MinIO
+        run: |
+          docker run -d --name memory-os-mixed-version-apply-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-mixed-version-apply-minio
+          exit 1
+
+      - name: Validate committed authority read-only
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-mixed-version-apply.py
+          python scripts/validate-memory-os-mixed-version-apply-reconcile-negative.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Execute read-only candidate drill
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          MEMORY_OS_MIXED_VERSION_APPLY_RESULTS_PATH: /tmp/mixed-version-apply-pr-result.json
+        run: |
+          set -euo pipefail
+          bash scripts/run-memory-os-mixed-version-apply-drill.sh
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path('/tmp/mixed-version-apply-pr-result.json')
+          if not path.is_file():
+              raise SystemExit('candidate drill did not emit its isolated result')
+          result = json.loads(path.read_text(encoding='utf-8'))
+          if result.get('schemaVersion') != 'memory-os-mixed-version-apply-results.v1':
+              raise SystemExit('candidate drill result schema drift')
+          if result.get('currentCommitSha') != os.environ['MEMORY_OS_COMMIT_SHA']:
+              raise SystemExit('candidate drill result source SHA drift')
+          if result.get('result') != 'PASS' or result.get('integrityResult') != 'PASS':
+              raise SystemExit('candidate drill did not pass')
+          environment = result.get('environment') or {}
+          if environment.get('productionEvidence') is not False:
+              raise SystemExit('candidate drill overclaimed production evidence')
+          if environment.get('releaseCompatibilityEvidence') is not False:
+              raise SystemExit('candidate drill overclaimed release compatibility evidence')
+          PY
+
+      - name: Reject repository mutation
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  drill:
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+       !contains(github.event.head_commit.message, 'docs(compat): register mixed-version Apply evidence'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
     services:
       postgres:
         image: postgres:16-alpine
@@ -84,7 +202,7 @@ jobs:
       - name: Checkout exact source with candidate history
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -100,7 +218,7 @@ jobs:
 
       - name: Capture clean exact source
         env:
-          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
@@ -216,7 +334,7 @@ jobs:
           PY
 
       - name: Commit result or bounded diagnostic
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -253,7 +371,7 @@ jobs:
 
       - name: Reconcile candidate-only compatibility authority
         if: >-
-          github.event_name != 'pull_request' && github.ref == 'refs/heads/so' &&
+          github.ref == 'refs/heads/so' &&
           steps.execute.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
@@ -285,7 +403,7 @@ jobs:
 
       - name: Re-read authority and run aggregate checks
         if: >-
-          github.event_name != 'pull_request' && github.ref == 'refs/heads/so' &&
+          github.ref == 'refs/heads/so' &&
           steps.execute.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         run: |
           git fetch origin so
