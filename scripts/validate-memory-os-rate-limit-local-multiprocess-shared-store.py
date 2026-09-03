@@ -97,87 +97,112 @@ def require_runtime_authorities(
             raise Fail(f"local shared-store validator {name} execution authority drift")
 
 
-def main(
-    _guard=require_runtime_authorities,
-    _source_is_ancestor=source_is_ancestor,
-) -> int:
-    if _guard is not require_runtime_authorities or _source_is_ancestor is not source_is_ancestor:
-        raise Fail("local shared-store validator main execution authority drift")
-    _guard()
-    contract = load(CONTRACT)
-    require(contract.get("contractId") == "memory-os.operability.rate-limit-local-multiprocess-shared-store.v1", "contract id drift")
-    require(contract.get("schemaVersion") == "memory-os-rate-limit-local-multiprocess-shared-store.v1", "contract schema drift")
-    resolved_refs = {field: require_canonical_ref(contract, field) for field in EXPECTED_REFS}
-    require(contract.get("result") == str(RESULT.relative_to(ROOT)), "result path drift")
-    require(contract.get("test") == "TestLocalSharedStoreCrossProcessBudgetRestartAndOutage", "test binding drift")
-    assertions = contract.get("requiredAssertions")
-    require(isinstance(assertions, dict), "requiredAssertions missing")
-    for key in (
-        "independentOsClientProcesses", "sharedBudgetAtomicAcrossProcesses",
-        "freshClientProcessDoesNotResetBudget", "storeOutageFailsClosed",
-    ):
-        require(assertions.get(key) is True, f"required local assertion missing: {key}")
-    for key in (
-        "productionStoreImplementationExercised", "productionEquivalentRuntimeExercised",
-        "productionTlsExercised", "deploymentTrustedProxyConfigurationExercised",
-        "productionCredentialsUsed", "productionTrafficUsed",
-    ):
-        require(assertions.get(key) is False, f"local rehearsal cannot enable: {key}")
-    promotion = contract.get("promotionRules")
-    require(isinstance(promotion, dict) and promotion and all(value is False for value in promotion.values()), "local rehearsal promotion must remain forbidden")
+def _build_main(
+    _canonical_guard=require_runtime_authorities,
+    _canonical_require=require,
+    _canonical_load=load,
+    _canonical_ref=require_canonical_ref,
+    _canonical_source_is_ancestor=source_is_ancestor,
+    _canonical_guard_defaults=require_runtime_authorities.__defaults__,
+    _canonical_source_defaults=source_is_ancestor.__defaults__,
+):
+    def _main() -> int:
+        if require_runtime_authorities is not _canonical_guard:
+            raise Fail("local shared-store validator runtime guard execution authority drift")
+        if require is not _canonical_require:
+            raise Fail("local shared-store validator require execution authority drift")
+        if load is not _canonical_load:
+            raise Fail("local shared-store validator load execution authority drift")
+        if require_canonical_ref is not _canonical_ref:
+            raise Fail("local shared-store validator canonical-ref execution authority drift")
+        if source_is_ancestor is not _canonical_source_is_ancestor:
+            raise Fail("local shared-store validator ancestry helper execution authority drift")
+        if _canonical_guard.__defaults__ != _canonical_guard_defaults:
+            raise Fail("local shared-store validator runtime guard default authority drift")
+        if _canonical_source_is_ancestor.__defaults__ != _canonical_source_defaults:
+            raise Fail("local shared-store validator ancestry helper default authority drift")
 
-    runner = resolved_refs["runner"].read_text(encoding="utf-8")
-    for token in (
-        "exec.Command(os.Args[0]",
-        "MEMORY_OS_RATE_LIMIT_CHILD=1",
-        "cross-process shared budget allowed",
-        "client restart reset shared state",
-        "shared-store outage did not fail closed",
-        "ReasonStoreUnavailable",
-        "httptest.NewServer",
-    ):
-        require(token in runner, f"runner safety binding missing: {token}")
+        _canonical_guard()
+        contract = _canonical_load(CONTRACT)
+        _canonical_require(contract.get("contractId") == "memory-os.operability.rate-limit-local-multiprocess-shared-store.v1", "contract id drift")
+        _canonical_require(contract.get("schemaVersion") == "memory-os-rate-limit-local-multiprocess-shared-store.v1", "contract schema drift")
+        resolved_refs = {field: _canonical_ref(contract, field) for field in EXPECTED_REFS}
+        _canonical_require(contract.get("result") == str(RESULT.relative_to(ROOT)), "result path drift")
+        _canonical_require(contract.get("test") == "TestLocalSharedStoreCrossProcessBudgetRestartAndOutage", "test binding drift")
+        assertions = contract.get("requiredAssertions")
+        _canonical_require(isinstance(assertions, dict), "requiredAssertions missing")
+        for key in (
+            "independentOsClientProcesses", "sharedBudgetAtomicAcrossProcesses",
+            "freshClientProcessDoesNotResetBudget", "storeOutageFailsClosed",
+        ):
+            _canonical_require(assertions.get(key) is True, f"required local assertion missing: {key}")
+        for key in (
+            "productionStoreImplementationExercised", "productionEquivalentRuntimeExercised",
+            "productionTlsExercised", "deploymentTrustedProxyConfigurationExercised",
+            "productionCredentialsUsed", "productionTrafficUsed",
+        ):
+            _canonical_require(assertions.get(key) is False, f"local rehearsal cannot enable: {key}")
+        promotion = contract.get("promotionRules")
+        _canonical_require(isinstance(promotion, dict) and promotion and all(value is False for value in promotion.values()), "local rehearsal promotion must remain forbidden")
 
-    readiness = contract.get("readiness")
-    require(isinstance(readiness, dict), "readiness missing")
-    for field in ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented"):
-        require(readiness.get(field) is True, f"foundation readiness missing: {field}")
-    for field in ("distributedSharedStoreImplemented", "productionEquivalentRuntimeEvidence", "productionReady"):
-        require(readiness.get(field) is False, f"local rehearsal cannot promote readiness.{field}")
+        runner = resolved_refs["runner"].read_text(encoding="utf-8")
+        for token in (
+            "exec.Command(os.Args[0]",
+            "MEMORY_OS_RATE_LIMIT_CHILD=1",
+            "cross-process shared budget allowed",
+            "client restart reset shared state",
+            "shared-store outage did not fail closed",
+            "ReasonStoreUnavailable",
+            "httptest.NewServer",
+        ):
+            _canonical_require(token in runner, f"runner safety binding missing: {token}")
 
-    if not RESULT.exists():
-        require(readiness.get("exactSourcePassCommitted") is False, "missing result cannot be committed PASS")
-        require(readiness.get("localCrossProcessStoreSemanticsProven") is False, "missing result cannot prove local semantics")
-        print("Memory OS local multi-process shared-store validation PASS (foundation only)")
-        print("exact-source result: absent")
+        readiness = contract.get("readiness")
+        _canonical_require(isinstance(readiness, dict), "readiness missing")
+        for field in ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented"):
+            _canonical_require(readiness.get(field) is True, f"foundation readiness missing: {field}")
+        for field in ("distributedSharedStoreImplemented", "productionEquivalentRuntimeEvidence", "productionReady"):
+            _canonical_require(readiness.get(field) is False, f"local rehearsal cannot promote readiness.{field}")
+
+        if not RESULT.exists():
+            _canonical_require(readiness.get("exactSourcePassCommitted") is False, "missing result cannot be committed PASS")
+            _canonical_require(readiness.get("localCrossProcessStoreSemanticsProven") is False, "missing result cannot prove local semantics")
+            print("Memory OS local multi-process shared-store validation PASS (foundation only)")
+            print("exact-source result: absent")
+            print("production-equivalent evidence: false")
+            return 0
+
+        result = _canonical_load(RESULT)
+        _canonical_require(result.get("schemaVersion") == contract.get("resultsSchemaVersion"), "result schema drift")
+        source = result.get("sourceCommitSha")
+        _canonical_require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
+        _canonical_require(_canonical_source_is_ancestor(source), "sourceCommitSha must be an ancestor of current HEAD")
+        _canonical_require(result.get("classification") == "LOCAL_MULTI_PROCESS_SHARED_STORE_REHEARSAL", "result classification drift")
+        _canonical_require(result.get("dependencyMode") == "TEST_ONLY_LOOPBACK_HTTP_BROKER_MEMORY_STORE", "result dependency mode drift")
+        _canonical_require(result.get("result") == "PASS", "result must be PASS")
+        result_assertions = result.get("assertions")
+        _canonical_require(isinstance(result_assertions, dict), "result assertions missing")
+        for key, expected in assertions.items():
+            _canonical_require(result_assertions.get(key) is expected, f"result assertion drift: {key}")
+        _canonical_require(result.get("productionEvidence") is False, "local result cannot be production evidence")
+        _canonical_require(result.get("productionEquivalentRuntimeEvidence") is False, "local result cannot be production-equivalent evidence")
+        _canonical_require(result.get("productionReady") is False, "local result cannot make production ready")
+        _canonical_require(readiness.get("exactSourcePassCommitted") is True, "result exists but readiness.exactSourcePassCommitted is false")
+        _canonical_require(readiness.get("localCrossProcessStoreSemanticsProven") is True, "result exists but local semantics readiness is false")
+
+        print("Memory OS local multi-process shared-store validation PASS")
+        print(f"source commit: {source}")
+        print("cross-process local store semantics: proven")
+        print("distributed shared store implemented: false")
         print("production-equivalent evidence: false")
+        print("production decision: NO_GO")
         return 0
 
-    result = load(RESULT)
-    require(result.get("schemaVersion") == contract.get("resultsSchemaVersion"), "result schema drift")
-    source = result.get("sourceCommitSha")
-    require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
-    require(_source_is_ancestor(source), "sourceCommitSha must be an ancestor of current HEAD")
-    require(result.get("classification") == "LOCAL_MULTI_PROCESS_SHARED_STORE_REHEARSAL", "result classification drift")
-    require(result.get("dependencyMode") == "TEST_ONLY_LOOPBACK_HTTP_BROKER_MEMORY_STORE", "result dependency mode drift")
-    require(result.get("result") == "PASS", "result must be PASS")
-    result_assertions = result.get("assertions")
-    require(isinstance(result_assertions, dict), "result assertions missing")
-    for key, expected in assertions.items():
-        require(result_assertions.get(key) is expected, f"result assertion drift: {key}")
-    require(result.get("productionEvidence") is False, "local result cannot be production evidence")
-    require(result.get("productionEquivalentRuntimeEvidence") is False, "local result cannot be production-equivalent evidence")
-    require(result.get("productionReady") is False, "local result cannot make production ready")
-    require(readiness.get("exactSourcePassCommitted") is True, "result exists but readiness.exactSourcePassCommitted is false")
-    require(readiness.get("localCrossProcessStoreSemanticsProven") is True, "result exists but local semantics readiness is false")
+    return _main
 
-    print("Memory OS local multi-process shared-store validation PASS")
-    print(f"source commit: {source}")
-    print("cross-process local store semantics: proven")
-    print("distributed shared store implemented: false")
-    print("production-equivalent evidence: false")
-    print("production decision: NO_GO")
-    return 0
+
+main = _build_main()
+del _build_main
 
 
 if __name__ == "__main__":
