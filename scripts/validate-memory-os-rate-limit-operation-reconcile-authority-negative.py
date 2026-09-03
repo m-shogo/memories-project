@@ -6,7 +6,9 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -63,30 +65,47 @@ def expect_substitution_rejection(
         STATUS_PATH.write_bytes(original_status)
 
 
+def restore_file(path: Path, payload: bytes, mode: int) -> None:
+    path.write_bytes(payload)
+    os.chmod(path, mode)
+
+
 def prove_aggregate_validator_chain(reconciler: Any) -> None:
-    expected = [
-        reconciler.OPERATIONS_VALIDATOR.resolve(),
-        reconciler.RATE_LIMIT_VALIDATOR.resolve(),
-        reconciler.OPERABILITY_VALIDATOR.resolve(),
-        reconciler.ENTRY_DOCS_VALIDATOR.resolve(),
-    ]
-    observed: list[Path] = []
-    original_validate_evidence = reconciler.validate_evidence_authority
-    original_run_validator = reconciler.run_validator
-
-    def capture_run(path: Path, _label: str) -> None:
-        observed.append(path.resolve())
-
+    validators = (
+        (reconciler.EVIDENCE_VALIDATOR, "evidence"),
+        (reconciler.OPERATIONS_VALIDATOR, "operations"),
+        (reconciler.RATE_LIMIT_VALIDATOR, "rate-limit"),
+        (reconciler.OPERABILITY_VALIDATOR, "operability"),
+        (reconciler.ENTRY_DOCS_VALIDATOR, "entry-docs"),
+    )
+    originals = {
+        path: (path.read_bytes(), path.stat().st_mode & 0o777)
+        for path, _label in validators
+    }
+    previous_log = os.environ.get("MEMORY_OS_RATE_LIMIT_VALIDATOR_ORDER")
     try:
-        reconciler.validate_evidence_authority = lambda _evidence: None
-        reconciler.run_validator = capture_run
-        reconciler.validate_written_authority()
+        with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-validator-order-") as temp_dir:
+            log = Path(temp_dir) / "order.log"
+            os.environ["MEMORY_OS_RATE_LIMIT_VALIDATOR_ORDER"] = str(log)
+            for path, label in validators:
+                path.write_text(
+                    "import os\n"
+                    "from pathlib import Path\n"
+                    f"Path(os.environ['MEMORY_OS_RATE_LIMIT_VALIDATOR_ORDER']).open('a', encoding='utf-8').write('{label}\\n')\n",
+                    encoding="utf-8",
+                )
+            reconciler.validate_written_authority()
+            observed = log.read_text(encoding="utf-8").splitlines()
+            expected = [label for _path, label in validators]
+            require(observed == expected,
+                    f"rate-limit operation aggregate validator chain drift: {observed!r} != {expected!r}")
     finally:
-        reconciler.validate_evidence_authority = original_validate_evidence
-        reconciler.run_validator = original_run_validator
-
-    require(observed == expected,
-            f"rate-limit operation aggregate validator chain drift: {observed!r} != {expected!r}")
+        if previous_log is None:
+            os.environ.pop("MEMORY_OS_RATE_LIMIT_VALIDATOR_ORDER", None)
+        else:
+            os.environ["MEMORY_OS_RATE_LIMIT_VALIDATOR_ORDER"] = previous_log
+        for path, (payload, mode) in originals.items():
+            restore_file(path, payload, mode)
 
 
 def prove_atomic_transport_and_mode(reconciler: Any) -> None:
@@ -123,31 +142,67 @@ def prove_atomic_transport_and_mode(reconciler: Any) -> None:
             f"atomic writer left temporary residue after successful replacement: {sorted(after_temps - before_temps)}")
 
 
+def prove_direct_transaction_helper_rejection(reconciler: Any) -> None:
+    original_operations = OPERATIONS_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    operations = copy.deepcopy(json.loads(original_operations.decode("utf-8")))
+    status = copy.deepcopy(json.loads(original_status.decode("utf-8")))
+    status["asOf"] = "2099-12-31"
+    cases = (
+        ("atomic_write_json", lambda *_args, **_kwargs: None, "atomic JSON writer execution authority drift"),
+        ("atomic_write_bytes", lambda *_args, **_kwargs: None, "atomic byte writer execution authority drift"),
+        ("validate_written_authority", lambda: None, "post-write validator execution authority drift"),
+        ("run_validator", lambda *_args, **_kwargs: None, "validator runner execution authority drift"),
+    )
+    for attribute, substitute, expected in cases:
+        original = getattr(reconciler, attribute)
+        try:
+            setattr(reconciler, attribute, substitute)
+            try:
+                reconciler.transactional_write(operations, status)
+            except reconciler.ReconcileFailure as exc:
+                require(expected in str(exc),
+                        f"direct transaction {attribute} substitution rejected for unrelated reason: {exc}")
+            else:
+                raise NegativeFailure(f"direct transaction accepted {attribute} substitution")
+            require(OPERATIONS_PATH.read_bytes() == original_operations,
+                    f"operations contract mutated after direct {attribute} substitution")
+            require(STATUS_PATH.read_bytes() == original_status,
+                    f"production status mutated after direct {attribute} substitution")
+        finally:
+            setattr(reconciler, attribute, original)
+
+
 def prove_transaction_rollback(reconciler: Any) -> None:
     original_operations = OPERATIONS_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     original_operations_mode = OPERATIONS_PATH.stat().st_mode & 0o777
     original_status_mode = STATUS_PATH.stat().st_mode & 0o777
-    operations = json.loads(original_operations.decode("utf-8"))
-    status = json.loads(original_status.decode("utf-8"))
-    operations = copy.deepcopy(operations)
-    status = copy.deepcopy(status)
-    operations["readiness"]["evidenceLedgerImplemented"] = True
+    operations = copy.deepcopy(json.loads(original_operations.decode("utf-8")))
+    status = copy.deepcopy(json.loads(original_status.decode("utf-8")))
     status["asOf"] = "2099-12-31"
-    original_validate_written = reconciler.validate_written_authority
 
-    def fail_after_write() -> None:
-        raise reconciler.ReconcileFailure("synthetic aggregate operability rejection")
-
+    validator_paths = (
+        reconciler.EVIDENCE_VALIDATOR,
+        reconciler.OPERATIONS_VALIDATOR,
+        reconciler.RATE_LIMIT_VALIDATOR,
+        reconciler.OPERABILITY_VALIDATOR,
+    )
+    originals = {
+        path: (path.read_bytes(), path.stat().st_mode & 0o777)
+        for path in validator_paths
+    }
     try:
-        reconciler.validate_written_authority = fail_after_write
+        for path in validator_paths[:-1]:
+            path.write_text("raise SystemExit(0)\n", encoding="utf-8")
+        reconciler.OPERABILITY_VALIDATOR.write_text("raise SystemExit(9)\n", encoding="utf-8")
         try:
             reconciler.transactional_write(operations, status)
         except reconciler.ReconcileFailure as exc:
-            require("synthetic aggregate operability rejection" in str(exc),
-                    "rate-limit operation rollback failed for unrelated reason")
+            require("operability aggregate post-write validation failed" in str(exc),
+                    f"rate-limit operation rollback failed for unrelated reason: {exc}")
         else:
-            raise NegativeFailure("rate-limit operation transaction accepted aggregate rejection")
+            raise NegativeFailure("rate-limit operation transaction accepted canonical operability rejection")
         require(OPERATIONS_PATH.read_bytes() == original_operations,
                 "rate-limit operations contract was not rolled back byte-for-byte")
         require(STATUS_PATH.read_bytes() == original_status,
@@ -157,7 +212,8 @@ def prove_transaction_rollback(reconciler: Any) -> None:
         require((STATUS_PATH.stat().st_mode & 0o777) == original_status_mode,
                 "rate-limit production status mode drifted during rollback")
     finally:
-        reconciler.validate_written_authority = original_validate_written
+        for path, (payload, mode) in originals.items():
+            restore_file(path, payload, mode)
         if OPERATIONS_PATH.read_bytes() != original_operations:
             reconciler.atomic_write_bytes(OPERATIONS_PATH, original_operations)
         if STATUS_PATH.read_bytes() != original_status:
@@ -183,8 +239,9 @@ def main() -> int:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
     prove_aggregate_validator_chain(reconciler)
     prove_atomic_transport_and_mode(reconciler)
+    prove_direct_transaction_helper_rejection(reconciler)
     prove_transaction_rollback(reconciler)
-    print("PASS: rate-limit operation reconcile pins full canonical authority chain, mode-preserving atomic publication, and aggregate rollback")
+    print("PASS: rate-limit operation reconcile pins full canonical authority chain, direct transaction helpers, mode-preserving atomic publication, and aggregate rollback")
     return 0
 
 
