@@ -294,86 +294,126 @@ commit_candidate = _build_commit_candidate(
 del _build_commit_candidate
 
 
-def main() -> int:
-    enforce_data_authorities()
-    result = load(RESULT_PATH)
-    source_sha = result.get("commitSha")
-    require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
-            "process-group reaping result source SHA invalid")
-    require(source_is_ancestor(source_sha),
-            "process-group reaping result source SHA is not an ancestor of HEAD")
+def _build_main(
+    data_guard: Callable[[], None],
+    load_impl: Callable[[Path], dict[str, Any]],
+    require_impl: Callable[[bool, str], None],
+    source_ancestor_impl: Callable[[str], bool],
+    validator_runner: Callable[[str], None],
+    append_once_impl: Callable[[list[Any], str], bool],
+    commit_impl: Callable[..., None],
+    sha_fullmatch: Callable[[str], Any],
+    root: Path,
+    contract_path: Path,
+    result_path: Path,
+    status_path: Path,
+    satisfied_missing: str,
+    existing_items: tuple[str, ...],
+    evidence_refs: tuple[str, ...],
+) -> Callable[[], int]:
+    def main() -> int:
+        data_guard()
+        result = load_impl(result_path)
+        source_sha = result.get("commitSha")
+        require_impl(isinstance(source_sha, str) and sha_fullmatch(source_sha) is not None,
+                     "process-group reaping result source SHA invalid")
+        require_impl(source_ancestor_impl(source_sha),
+                     "process-group reaping result source SHA is not an ancestor of HEAD")
 
-    # The canonical validator owns contract/result semantics. Validate the exact
-    # source before interpreting any derived fields or mutating canonical state.
-    run_authority_validators(source_sha)
+        # The canonical validator owns contract/result semantics. Validate the exact
+        # source before interpreting any derived fields or mutating canonical state.
+        validator_runner(source_sha)
 
-    contract = load(CONTRACT_PATH)
-    readiness = contract.get("readiness")
-    refs = contract.get("evidenceRefs")
-    require(isinstance(readiness, dict) and isinstance(refs, list),
-            "process-group reaping contract readiness/refs missing")
-    changed = False
-    for key in ("exactSourcePassResultCommitted", "childProcessOrphanScanCompleted"):
-        if readiness.get(key) is not True:
-            readiness[key] = True
+        contract = load_impl(contract_path)
+        readiness = contract.get("readiness")
+        refs = contract.get("evidenceRefs")
+        require_impl(isinstance(readiness, dict) and isinstance(refs, list),
+                     "process-group reaping contract readiness/refs missing")
+        changed = False
+        for key in ("exactSourcePassResultCommitted", "childProcessOrphanScanCompleted"):
+            if readiness.get(key) is not True:
+                readiness[key] = True
+                changed = True
+        if append_once_impl(refs, str(result_path.relative_to(root))):
             changed = True
-    if append_once(refs, str(RESULT_PATH.relative_to(ROOT))):
-        changed = True
-    require(readiness.get("hostRestartExecuted") is False and
-            readiness.get("productionArtifactExecuted") is False and
-            readiness.get("productionReady") is False,
-            "local reaping evidence cannot promote production boundaries")
+        require_impl(readiness.get("hostRestartExecuted") is False and
+                     readiness.get("productionArtifactExecuted") is False and
+                     readiness.get("productionReady") is False,
+                     "local reaping evidence cannot promote production boundaries")
 
-    status = load(STATUS_PATH)
-    require(status.get("productionDecision") == "NO_GO",
-            "process-group reaping evidence cannot change production decision")
-    gate = next((item for item in status.get("areas", [])
-                 if isinstance(item, dict) and item.get("id") == "OPS-P0-009"), None)
-    require(isinstance(gate, dict) and gate.get("status") == "PARTIAL" and
-            gate.get("blocking") is True,
-            "OPS-P0-009 must remain blocking PARTIAL")
-    existing = gate.get("existingEvidence")
-    missing = gate.get("missingEvidence")
-    evidence_refs = gate.get("evidenceRefs")
-    require(isinstance(existing, list) and isinstance(missing, list) and isinstance(evidence_refs, list),
-            "OPS-P0-009 authority arrays missing")
+        status = load_impl(status_path)
+        require_impl(status.get("productionDecision") == "NO_GO",
+                     "process-group reaping evidence cannot change production decision")
+        gate = next((item for item in status.get("areas", [])
+                     if isinstance(item, dict) and item.get("id") == "OPS-P0-009"), None)
+        require_impl(isinstance(gate, dict) and gate.get("status") == "PARTIAL" and
+                     gate.get("blocking") is True,
+                     "OPS-P0-009 must remain blocking PARTIAL")
+        existing = gate.get("existingEvidence")
+        missing = gate.get("missingEvidence")
+        status_evidence_refs = gate.get("evidenceRefs")
+        require_impl(isinstance(existing, list) and isinstance(missing, list) and
+                     isinstance(status_evidence_refs, list),
+                     "OPS-P0-009 authority arrays missing")
 
-    while SATISFIED_MISSING in missing:
-        missing.remove(SATISFIED_MISSING)
-        changed = True
-    for item in EXISTING:
-        if append_once(existing, item):
+        while satisfied_missing in missing:
+            missing.remove(satisfied_missing)
             changed = True
-    for ref in REFS:
-        require((ROOT / ref).is_file(), f"process-group reaping evidence path missing: {ref}")
-        if append_once(evidence_refs, ref):
-            changed = True
+        for item in existing_items:
+            if append_once_impl(existing, item):
+                changed = True
+        for ref in evidence_refs:
+            require_impl((root / ref).is_file(), f"process-group reaping evidence path missing: {ref}")
+            if append_once_impl(status_evidence_refs, ref):
+                changed = True
 
-    joined = "\n".join(missing)
-    for phrase in (
-        "production multi-instance",
-        "production-shaped object-store",
-        "production-shaped PostgreSQL",
-        "parser host or container restart",
-        "host or container restart",
-        "mixed-version failure",
-    ):
-        require(phrase in joined, f"required production-shaped failure gap disappeared: {phrase}")
-    require(SATISFIED_MISSING not in missing,
-            "completed child-process orphan/reaping gap remained stale")
+        joined = "\n".join(missing)
+        for phrase in (
+            "production multi-instance",
+            "production-shaped object-store",
+            "production-shaped PostgreSQL",
+            "parser host or container restart",
+            "host or container restart",
+            "mixed-version failure",
+        ):
+            require_impl(phrase in joined, f"required production-shaped failure gap disappeared: {phrase}")
+        require_impl(satisfied_missing not in missing,
+                     "completed child-process orphan/reaping gap remained stale")
 
-    if not changed:
-        run_authority_validators(source_sha)
-        print("Parser process-group reaping authority already reconciled")
+        if not changed:
+            validator_runner(source_sha)
+            print("Parser process-group reaping authority already reconciled")
+            return 0
+
+        status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        commit_impl(contract, status, source_sha)
+        print("Registered exact-source parser process-group reaping evidence")
+        print("child-process orphan/reaping gap: satisfied locally")
+        print("OPS-P0-009: PARTIAL")
+        print("production decision: NO_GO")
         return 0
 
-    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    commit_candidate(contract, status, source_sha)
-    print("Registered exact-source parser process-group reaping evidence")
-    print("child-process orphan/reaping gap: satisfied locally")
-    print("OPS-P0-009: PARTIAL")
-    print("production decision: NO_GO")
-    return 0
+    return main
+
+
+main = _build_main(
+    enforce_data_authorities,
+    load,
+    require,
+    source_is_ancestor,
+    run_authority_validators,
+    append_once,
+    commit_candidate,
+    SHA_RE.fullmatch,
+    ROOT,
+    CANONICAL_CONTRACT_PATH,
+    CANONICAL_RESULT_PATH,
+    CANONICAL_STATUS_PATH,
+    SATISFIED_MISSING,
+    tuple(EXISTING),
+    tuple(REFS),
+)
+del _build_main
 
 
 if __name__ == "__main__":
