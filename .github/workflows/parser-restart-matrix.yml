@@ -131,12 +131,35 @@ jobs:
           import datetime as dt
           import json
           import os
+          import stat
           import subprocess
+          import tempfile
           import time
           from pathlib import Path
 
           root = Path.cwd()
           workdir = root / "services/import-api"
+
+          def atomic_write_text(path: Path, text: str) -> None:
+              path.parent.mkdir(parents=True, exist_ok=True)
+              mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+              fd, temp_name = tempfile.mkstemp(
+                  dir=path.parent,
+                  prefix=f".{path.name}.",
+                  suffix=".tmp",
+              )
+              temp_path = Path(temp_name)
+              try:
+                  with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                      handle.write(text)
+                      handle.flush()
+                      os.fsync(handle.fileno())
+                  os.chmod(temp_path, mode)
+                  os.replace(temp_path, path)
+              finally:
+                  if temp_path.exists():
+                      temp_path.unlink()
+
           source_sha = subprocess.check_output(
               ["git", "rev-parse", "HEAD"], cwd=root, text=True
           ).strip()
@@ -197,10 +220,9 @@ jobs:
               "productionEvidence": False,
           }
           diagnostic_path = root / "docs/fixtures/memory-os-operability/parser-restart-matrix-diagnostic.last.json"
-          diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
-          diagnostic_path.write_text(
+          atomic_write_text(
+              diagnostic_path,
               json.dumps(diagnostic, indent=2, ensure_ascii=False) + "\n",
-              encoding="utf-8",
           )
 
           if success:
@@ -226,9 +248,9 @@ jobs:
                   ],
               }
               result_path = root / "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
-              result_path.write_text(
+              atomic_write_text(
+                  result_path,
                   json.dumps(result, indent=2, ensure_ascii=False) + "\n",
-                  encoding="utf-8",
               )
 
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
