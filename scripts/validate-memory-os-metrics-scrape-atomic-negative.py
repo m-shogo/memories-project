@@ -100,6 +100,36 @@ def run_transport_case(name: str, module: ModuleType, has_subprocess: bool) -> N
         finally:
             module.subprocess.run = original_run
             module.CANONICAL_SUBPROCESS_RUN = original_canonical_run
+    else:
+        original_spec = module.importlib.util.spec_from_file_location
+        original_canonical_spec = module.CANONICAL_SPEC_FROM_FILE_LOCATION
+        fake_spec = lambda *_args, **_kwargs: None
+        try:
+            module.importlib.util.spec_from_file_location = fake_spec
+            module.CANONICAL_SPEC_FROM_FILE_LOCATION = fake_spec
+            expect_rejection(
+                module.enforce_runtime_authorities,
+                "canonical validator spec loader authority drift",
+                f"{name}-paired-spec-loader",
+            )
+        finally:
+            module.importlib.util.spec_from_file_location = original_spec
+            module.CANONICAL_SPEC_FROM_FILE_LOCATION = original_canonical_spec
+
+        original_module = module.importlib.util.module_from_spec
+        original_canonical_module = module.CANONICAL_MODULE_FROM_SPEC
+        fake_module = lambda *_args, **_kwargs: object()
+        try:
+            module.importlib.util.module_from_spec = fake_module
+            module.CANONICAL_MODULE_FROM_SPEC = fake_module
+            expect_rejection(
+                module.enforce_runtime_authorities,
+                "canonical validator module loader authority drift",
+                f"{name}-paired-module-loader",
+            )
+        finally:
+            module.importlib.util.module_from_spec = original_module
+            module.CANONICAL_MODULE_FROM_SPEC = original_canonical_module
 
 
 def run_atomic_helper_failure(name: str, module: ModuleType, path: Path) -> None:
@@ -181,7 +211,7 @@ def main() -> int:
             require(f"{attr}.write_text(" not in source, f"{name}: direct {attr} write_text regression")
             require(f"{attr}.write_bytes(" not in source, f"{name}: direct {attr} write_bytes rollback regression")
 
-    print("PASS: metrics primary/scrape/operations/alerting use immutable atomic transport and rollback")
+    print("PASS: metrics primary/scrape/operations/alerting use immutable validation and atomic transport")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
