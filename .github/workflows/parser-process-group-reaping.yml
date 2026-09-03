@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: parser-process-group-reaping-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
@@ -40,6 +40,8 @@ concurrency:
 jobs:
   validate-pr:
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -79,12 +81,14 @@ jobs:
           python scripts/reconcile-memory-os-parser-process-group-reaping.py
           python scripts/validate-memory-os-parser-process-group-reaping.py
           python scripts/validate-memory-os-operability.py
-          git diff --exit-code -- \
-            contracts/operations/parser-process-group-reaping-contract.v1.json \
-            contracts/operations/production-operability-status.json
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   execute:
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
