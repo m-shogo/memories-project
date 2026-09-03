@@ -60,7 +60,8 @@ def replace_prefixed_once(values: list[Any], prefix: str, value: str) -> None:
         values.append(value)
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(path: Path, payload: bytes, _replace=os.replace) -> None:
+    require(os.replace is _replace, "atomic replacement execution transport drift")
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -71,28 +72,42 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temp, mode)
-        os.replace(temp, path)
+        _replace(temp, path)
     finally:
         temp.unlink(missing_ok=True)
 
 
-def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
-    atomic_write_bytes(path, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+def atomic_write_json(path: Path, value: dict[str, Any], _atomic_write_bytes=atomic_write_bytes) -> None:
+    require(atomic_write_bytes is _atomic_write_bytes, "atomic writer execution authority drift")
+    _atomic_write_bytes(path, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
 
 
-def validate_runtime_authority() -> None:
-    for path, expected, label in (
-        (CONTRACT, ROOT / "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json", "local shared-store contract"),
-        (RESULT, ROOT / "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json", "local shared-store result"),
-        (STATUS, ROOT / "contracts/operations/production-operability-status.json", "production status"),
-        (VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py", "local shared-store validator"),
-        (RATE_LIMIT_OPERATIONS_VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit-operations.py", "rate-limit operations validator"),
-        (RATE_LIMIT_VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit.py", "rate-limit validator"),
-        (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
-    ):
+def validate_runtime_authority(
+    _expected_root=ROOT,
+    _expected_authorities=(
+        (CONTRACT, "local shared-store contract", False),
+        (RESULT, "local shared-store result", True),
+        (STATUS, "production status", False),
+        (VALIDATOR, "local shared-store validator", False),
+        (RATE_LIMIT_OPERATIONS_VALIDATOR, "rate-limit operations validator", False),
+        (RATE_LIMIT_VALIDATOR, "rate-limit validator", False),
+        (OPERABILITY_VALIDATOR, "operability validator", False),
+    ),
+) -> None:
+    require(ROOT == _expected_root and ROOT.resolve() == _expected_root.resolve(), "repository root authority drift")
+    current_paths = (
+        CONTRACT,
+        RESULT,
+        STATUS,
+        VALIDATOR,
+        RATE_LIMIT_OPERATIONS_VALIDATOR,
+        RATE_LIMIT_VALIDATOR,
+        OPERABILITY_VALIDATOR,
+    )
+    for path, (expected, label, optional) in zip(current_paths, _expected_authorities, strict=True):
         require(path == expected, f"canonical {label} identity drift")
         require(not path.is_symlink(), f"canonical {label} must not be a symlink")
-        if path == RESULT and not path.exists():
+        if optional and not path.exists():
             continue
         require(path.is_file(), f"canonical {label} missing")
         try:
@@ -101,8 +116,9 @@ def validate_runtime_authority() -> None:
             raise Fail(f"cannot resolve canonical {label}") from exc
 
 
-def run_validator(path: Path) -> None:
-    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, check=False)
+def run_validator(path: Path, _run=subprocess.run) -> None:
+    require(subprocess.run is _run, "validator subprocess execution transport drift")
+    completed = _run([sys.executable, str(path)], cwd=ROOT, check=False)
     require(type(completed.returncode) is int and completed.returncode == 0,
             f"canonical validator rejected local shared-store authority: {path.name}")
 
@@ -164,16 +180,25 @@ def normalized_status(current: dict[str, Any], result_present: bool) -> dict[str
     return status
 
 
-def main() -> int:
-    validate_runtime_authority()
+def main(
+    _runtime_guard=validate_runtime_authority,
+    _run_validator=run_validator,
+    _atomic_write_json=atomic_write_json,
+    _atomic_write_bytes=atomic_write_bytes,
+) -> int:
+    require(validate_runtime_authority is _runtime_guard, "runtime guard execution authority drift")
+    require(run_validator is _run_validator, "validator execution helper authority drift")
+    require(atomic_write_json is _atomic_write_json, "JSON atomic writer authority drift")
+    require(atomic_write_bytes is _atomic_write_bytes, "byte atomic writer authority drift")
+    _runtime_guard()
     result_present = RESULT.is_file()
     contract = normalized_contract(load(CONTRACT), result_present)
     status = normalized_status(load(STATUS), result_present)
 
     original_contract = CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
-    atomic_write_json(CONTRACT, contract)
-    atomic_write_json(STATUS, status)
+    _atomic_write_json(CONTRACT, contract)
+    _atomic_write_json(STATUS, status)
     try:
         for validator in (
             VALIDATOR,
@@ -181,10 +206,10 @@ def main() -> int:
             RATE_LIMIT_VALIDATOR,
             OPERABILITY_VALIDATOR,
         ):
-            run_validator(validator)
+            _run_validator(validator)
     except Exception:
-        atomic_write_bytes(CONTRACT, original_contract)
-        atomic_write_bytes(STATUS, original_status)
+        _atomic_write_bytes(CONTRACT, original_contract)
+        _atomic_write_bytes(STATUS, original_status)
         raise
 
     print("Memory OS local multi-process shared-store reconciliation PASS")
