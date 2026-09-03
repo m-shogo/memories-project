@@ -73,37 +73,52 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
-def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
-    require(path == canonical, f"{label} authority substitution")
-    require(canonical.is_file(), f"canonical {label} missing")
-    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+def require_exact_authority(
+    path: Path,
+    canonical: Path,
+    label: str,
+    *,
+    _require=require,
+) -> None:
+    _require(path == canonical, f"{label} authority substitution")
+    _require(canonical.is_file(), f"canonical {label} missing")
+    _require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
     try:
         resolved = canonical.resolve(strict=True)
     except OSError as exc:
         raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
-    require(resolved == canonical, f"canonical {label} escaped repository path")
+    _require(resolved == canonical, f"canonical {label} escaped repository path")
 
 
-def enforce_runtime_authorities() -> None:
+def enforce_runtime_authorities(
+    *,
+    _require_exact_authority=require_exact_authority,
+    _canonical_contract=CANONICAL_CONTRACT_PATH,
+    _canonical_result=CANONICAL_RESULT_PATH,
+    _canonical_status=CANONICAL_STATUS_PATH,
+    _canonical_apply_validator=CANONICAL_APPLY_VALIDATOR,
+    _canonical_version_validator=CANONICAL_VERSION_VALIDATOR,
+    _canonical_operability_validator=CANONICAL_OPERABILITY_VALIDATOR,
+) -> None:
     for path, canonical, label in (
-        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "mixed-version Apply contract"),
-        (RESULT_PATH, CANONICAL_RESULT_PATH, "mixed-version Apply result"),
-        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
-        (APPLY_VALIDATOR, CANONICAL_APPLY_VALIDATOR, "mixed-version Apply validator"),
-        (VERSION_VALIDATOR, CANONICAL_VERSION_VALIDATOR, "version compatibility validator"),
-        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+        (CONTRACT_PATH, _canonical_contract, "mixed-version Apply contract"),
+        (RESULT_PATH, _canonical_result, "mixed-version Apply result"),
+        (STATUS_PATH, _canonical_status, "production status"),
+        (APPLY_VALIDATOR, _canonical_apply_validator, "mixed-version Apply validator"),
+        (VERSION_VALIDATOR, _canonical_version_validator, "version compatibility validator"),
+        (OPERABILITY_VALIDATOR, _canonical_operability_validator, "operability validator"),
     ):
-        require_exact_authority(path, canonical, label)
+        _require_exact_authority(path, canonical, label)
 
 
-def load(path: Path) -> dict[str, Any]:
+def load(path: Path, *, _root=ROOT, _require=require) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+        raise ReconcileFailure(f"missing file: {path.relative_to(_root)}") from exc
     except json.JSONDecodeError as exc:
-        raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+        raise ReconcileFailure(f"invalid JSON in {path.relative_to(_root)}: {exc}") from exc
+    _require(isinstance(value, dict), f"root must be an object: {path.relative_to(_root)}")
     return value
 
 
@@ -134,18 +149,18 @@ def atomic_write_bytes(
             pass
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
-    atomic_write_bytes(
+def write(path: Path, value: dict[str, Any], *, _atomic_write_bytes=atomic_write_bytes) -> None:
+    _atomic_write_bytes(
         path,
         (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
     )
 
 
-def is_ancestor(base: str, head: str) -> bool:
+def is_ancestor(base: str, head: str, *, _run=subprocess.run, _root=ROOT) -> bool:
     try:
-        return subprocess.run(
+        return _run(
             ["git", "merge-base", "--is-ancestor", base, head],
-            cwd=ROOT,
+            cwd=_root,
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -161,27 +176,40 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
-def run_validator(path: Path, *args: str) -> None:
-    enforce_runtime_authorities()
-    completed = subprocess.run(
-        [sys.executable, str(path), *args],
-        cwd=ROOT,
+def run_validator(
+    path: Path,
+    *args: str,
+    _enforce_runtime_authorities=enforce_runtime_authorities,
+    _run=subprocess.run,
+    _python=sys.executable,
+    _root=ROOT,
+    _require=require,
+) -> None:
+    _enforce_runtime_authorities()
+    completed = _run(
+        [_python, str(path), *args],
+        cwd=_root,
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
-    require(type(completed.returncode) is int and completed.returncode == 0,
-            f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}")
+    _require(type(completed.returncode) is int and completed.returncode == 0,
+             f"canonical validator rejected authority: {path.relative_to(_root)}\n{completed.stdout[-4000:]}")
 
 
-def validate_authority_chain(current_sha: str, *, require_reconciled: bool) -> None:
+def validate_authority_chain(
+    current_sha: str,
+    *,
+    require_reconciled: bool,
+    _run_validator=run_validator,
+) -> None:
     args = ["--expected-commit-sha", current_sha]
     if require_reconciled:
         args.append("--require-reconciled")
-    run_validator(APPLY_VALIDATOR, *args)
-    run_validator(VERSION_VALIDATOR)
-    run_validator(OPERABILITY_VALIDATOR)
+    _run_validator(APPLY_VALIDATOR, *args)
+    _run_validator(VERSION_VALIDATOR)
+    _run_validator(OPERABILITY_VALIDATOR)
 
 
 def main() -> int:
