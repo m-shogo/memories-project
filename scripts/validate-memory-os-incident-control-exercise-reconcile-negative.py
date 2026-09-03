@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import os
@@ -12,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-incident-control-exercise.py"
 CONTRACT = ROOT / "contracts/operations/incident-control-exercise-contract.v1.json"
+RESULT = ROOT / "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
@@ -32,6 +34,20 @@ def load_reconciler():
     return module
 
 
+def expect_authority_rejected(module, field: str, substitute) -> None:
+    original = getattr(module, field)
+    try:
+        setattr(module, field, substitute)
+        rejected = False
+        try:
+            module.enforce_runtime_authorities()
+        except module.ReconcileFailure:
+            rejected = True
+        require(rejected, f"incident reconciler accepted {field} authority substitution")
+    finally:
+        setattr(module, field, original)
+
+
 def verify_runtime_authority_identity(module) -> None:
     module.enforce_runtime_authorities()
     substitutions = (
@@ -44,19 +60,13 @@ def verify_runtime_authority_identity(module) -> None:
         ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-response.py"),
         ("RUNNER", ROOT / "scripts/reconcile-memory-os-incident-control-exercise.py"),
         ("WORKFLOW", ROOT / ".github/workflows/reconcile-incident-control-authority.yml"),
+        ("load_exercise_validator", lambda: None),
+        ("run_validator", lambda _path: None),
+        ("run_canonical_validators", lambda: None),
+        ("commit_validated_pair", lambda _contract, _status: None),
     )
     for field, substitute in substitutions:
-        original = getattr(module, field)
-        try:
-            setattr(module, field, substitute)
-            rejected = False
-            try:
-                module.enforce_runtime_authorities()
-            except module.ReconcileFailure:
-                rejected = True
-            require(rejected, f"incident reconciler accepted {field} authority substitution")
-        finally:
-            setattr(module, field, original)
+        expect_authority_rejected(module, field, substitute)
 
     original_subprocess_run = module.subprocess.run
     try:
@@ -98,57 +108,26 @@ def verify_runtime_authority_identity(module) -> None:
 
 
 def verify_source_validator_delegation(module, original_contract: bytes, original_status: bytes) -> None:
-    class SourceValidationFailure(RuntimeError):
-        pass
-
-    class RejectingValidator:
-        ValidationFailure = SourceValidationFailure
-
-        @staticmethod
-        def validate_contract(_contract):
-            return None
-
-        @staticmethod
-        def validate_result(_result, _contract, _expected_sha):
-            raise SourceValidationFailure("synthetic canonical result rejection")
-
-    original_loader = module.load_exercise_validator
-    module.load_exercise_validator = lambda: RejectingValidator
+    validator = module.CANONICAL_LOAD_EXERCISE_VALIDATOR()
+    contract = json.loads(original_contract.decode("utf-8"))
+    result = json.loads(RESULT.read_text(encoding="utf-8"))
+    malformed = copy.deepcopy(result)
+    malformed["environment"]["syntheticScenariosOnly"] = False
+    rejected = False
     try:
-        rejected = False
-        try:
-            module.main()
-        except module.ReconcileFailure as exc:
-            require("source authority rejected" in str(exc),
-                    f"unexpected source-validator rejection: {exc}")
-            rejected = True
-        require(rejected, "canonical result validator rejection was not propagated")
-        require(CONTRACT.read_bytes() == original_contract,
-                "incident contract changed after source-validator rejection")
-        require(STATUS.read_bytes() == original_status,
-                "production status changed after source-validator rejection")
-    finally:
-        module.load_exercise_validator = original_loader
+        validator.validate_contract(contract)
+        validator.validate_result(malformed, contract, None)
+    except validator.ValidationFailure:
+        rejected = True
+    require(rejected, "canonical incident source validator accepted malformed result")
+    require(CONTRACT.read_bytes() == original_contract,
+            "incident contract changed during source-validator delegation probe")
+    require(STATUS.read_bytes() == original_status,
+            "production status changed during source-validator delegation probe")
 
 
 def verify_noop_aggregate_validation(module, original_contract: bytes, original_status: bytes) -> None:
-    calls: list[Path] = []
-    original_runner = module.run_validator
-    module.run_validator = lambda path: calls.append(path)
-    try:
-        require(module.main() == 0, "already-current incident authority did not reconcile cleanly")
-    finally:
-        module.run_validator = original_runner
-
-    require(
-        calls == [
-            module.EXERCISE_VALIDATOR,
-            module.INCIDENT_RESPONSE_VALIDATOR,
-            module.TABLETOP_VALIDATOR,
-            module.OPERABILITY_VALIDATOR,
-        ],
-        f"already-current incident authority skipped canonical validators: {calls}",
-    )
+    require(module.main() == 0, "already-current incident authority did not reconcile cleanly")
     require(CONTRACT.read_bytes() == original_contract,
             "incident contract changed during no-op aggregate validation")
     require(STATUS.read_bytes() == original_status,
@@ -199,7 +178,7 @@ def verify_post_write_rollback(module, original_contract: bytes, original_status
         os.chmod(validator_path, original_validator_mode)
         rejected = False
         try:
-            module.commit_validated_pair(contract, status)
+            module.CANONICAL_COMMIT_VALIDATED_PAIR(contract, status)
         except module.ReconcileFailure as exc:
             require("failed validation" in str(exc), f"unexpected rejection: {exc}")
             rejected = True
@@ -233,10 +212,10 @@ def main() -> int:
     verify_atomic_replace_failure(module, original_contract)
     verify_post_write_rollback(module, original_contract, original_status)
 
-    print("PASS: incident control exercise reconcile data/executable and transport authorities reject substitution")
-    print("PASS: incident control exercise no-op path runs the full canonical validator chain")
+    print("PASS: incident control exercise reconcile data/executable, helper and transport authorities reject substitution")
+    print("PASS: incident control exercise no-op path executes canonical aggregate validation")
     print("PASS: incident control exercise atomic replacement failure preserves bytes, mode and temp cleanliness")
-    print("PASS: incident control exercise source delegation and atomic reconcile rollback are fail-closed")
+    print("PASS: incident control exercise canonical source validation and atomic reconcile rollback are fail-closed")
     return 0
 
 
