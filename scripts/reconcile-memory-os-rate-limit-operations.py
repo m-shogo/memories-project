@@ -29,6 +29,7 @@ RATE_LIMIT_VALIDATOR_PATH = ROOT / RATE_LIMIT_VALIDATOR_REL
 OPERABILITY_VALIDATOR_PATH = ROOT / OPERABILITY_VALIDATOR_REL
 ENTRY_DOCS_VALIDATOR_PATH = ROOT / ENTRY_DOCS_VALIDATOR_REL
 WORKFLOW_PATH = ROOT / WORKFLOW_REL
+CANONICAL_OS_REPLACE = os.replace
 
 OLD_GAP = "operational disable/rollback runbook"
 STALE_LEDGER_GAP = "production emergency control plane with automatic expiry and append-only operation evidence ledger"
@@ -135,17 +136,25 @@ def validate_written_authority() -> None:
         run_validator(validator, label)
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(
+    path: Path,
+    payload: bytes,
+    _replace=CANONICAL_OS_REPLACE,
+) -> None:
+    if CANONICAL_OS_REPLACE is not _replace or os.replace is not _replace:
+        raise ReconcileFailure("rate-limit operations os.replace transport execution authority drift")
+    mode = path.stat().st_mode & 0o7777
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
     )
     temporary = Path(temporary_name)
     try:
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        _replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -187,9 +196,13 @@ _CANONICAL_TRANSACTIONAL_WRITE = transactional_write
 _CANONICAL_SUBPROCESS_RUN = subprocess.run
 
 
-def enforce_execution_authorities() -> None:
+def enforce_execution_authorities(
+    expected_replace=CANONICAL_OS_REPLACE,
+) -> None:
     if ROOT != _CANONICAL_ROOT:
         raise ReconcileFailure("rate-limit operations repository execution authority drift")
+    if CANONICAL_OS_REPLACE is not expected_replace or os.replace is not expected_replace:
+        raise ReconcileFailure("rate-limit operations os.replace transport execution authority drift")
     helpers = (
         (require, _CANONICAL_REQUIRE, "require"),
         (require_exact_repo_file, _CANONICAL_REQUIRE_EXACT_REPO_FILE, "path checker"),
