@@ -175,63 +175,75 @@ def require_runtime_authorities(
             raise Fail(f"distributed runtime validator {name} execution authority drift")
 
 
-def main(_guard=require_runtime_authorities) -> int:
-    if _guard is not require_runtime_authorities or _guard is not main.__defaults__[0]:
-        raise Fail("distributed runtime validator runtime guard authority drift")
-    _guard()
-    contract = load(CONTRACT)
-    registry = load(REGISTRY)
-    require(contract.get("schemaVersion") == "memory-os-rate-limit-distributed-runtime-admission.v1", "contract schema drift")
-    require(contract.get("recordSchemaVersion") == "memory-os-rate-limit-distributed-runtime-record.v1", "record schemaVersion drift")
-    require(contract.get("independentReviewSchemaVersion") == "memory-os-rate-limit-runtime-independent-review.v1", "independent review schema drift")
-    require(contract.get("sourcePolicyContract") == str(POLICY.relative_to(ROOT)), "policy binding drift")
-    require(contract.get("environmentGenerationRegistry") == str(GEN_REGISTRY.relative_to(ROOT)), "generation registry binding drift")
-    require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
-    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock binding drift")
-    require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
-    require(contract.get("validator") == str(VALIDATOR.relative_to(ROOT)), "validator binding drift")
-    require(contract.get("reconcile") == str(RECONCILER.relative_to(ROOT)), "reconciler binding drift")
-    require(contract.get("workflow") == str(WORKFLOW.relative_to(ROOT)), "workflow binding drift")
-    writer = load_writer()
-    validate_writer_authority(writer)
-    reconciler = load_module(RECONCILER, "memory_os_rate_limit_runtime_reconciler_authority")
-    validate_reconciler_authority(reconciler)
-    assertions = contract.get("requiredRuntimeAssertions")
-    require(isinstance(assertions, dict) and assertions and all(value is True for value in assertions.values()), "required runtime assertions must remain true")
-    drills = contract.get("requiredDrillClasses")
-    require(drills == [
-        "CROSS_INSTANCE_SHARED_BUDGET",
-        "RUNTIME_RESTART_CONTINUITY",
-        "SHARED_STORE_UNAVAILABLE_FAIL_CLOSED",
-        "TRUSTED_PROXY_MISCONFIGURATION_FAIL_CLOSED",
-        "EMERGENCY_MODE_AUTOMATIC_EXPIRY",
-        "NORMAL_MODE_RESTORATION",
-    ], "required drill class set drift")
-    promotion = contract.get("promotionRules")
-    require(isinstance(promotion, dict), "promotionRules missing")
-    for key, value in promotion.items():
-        if key == "automaticProductionReadyForbidden":
-            require(value is True, "automatic production-ready prohibition must remain true")
-        else:
-            require(value is False, f"unsafe distributed-runtime promotion enabled: {key}")
+def _build_main(
+    _canonical_guard=require_runtime_authorities,
+    _canonical_guard_defaults=require_runtime_authorities.__defaults__,
+):
+    def _main() -> int:
+        if require_runtime_authorities is not _canonical_guard:
+            raise Fail("distributed runtime validator runtime guard authority drift")
+        if _canonical_guard.__defaults__ != _canonical_guard_defaults:
+            raise Fail("distributed runtime validator runtime guard default authority drift")
+        _canonical_guard()
+        contract = load(CONTRACT)
+        registry = load(REGISTRY)
+        require(contract.get("schemaVersion") == "memory-os-rate-limit-distributed-runtime-admission.v1", "contract schema drift")
+        require(contract.get("recordSchemaVersion") == "memory-os-rate-limit-distributed-runtime-record.v1", "record schemaVersion drift")
+        require(contract.get("independentReviewSchemaVersion") == "memory-os-rate-limit-runtime-independent-review.v1", "independent review schema drift")
+        require(contract.get("sourcePolicyContract") == str(POLICY.relative_to(ROOT)), "policy binding drift")
+        require(contract.get("environmentGenerationRegistry") == str(GEN_REGISTRY.relative_to(ROOT)), "generation registry binding drift")
+        require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
+        require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock binding drift")
+        require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
+        require(contract.get("validator") == str(VALIDATOR.relative_to(ROOT)), "validator binding drift")
+        require(contract.get("reconcile") == str(RECONCILER.relative_to(ROOT)), "reconciler binding drift")
+        require(contract.get("workflow") == str(WORKFLOW.relative_to(ROOT)), "workflow binding drift")
+        writer = load_writer()
+        validate_writer_authority(writer)
+        reconciler = load_module(RECONCILER, "memory_os_rate_limit_runtime_reconciler_authority")
+        validate_reconciler_authority(reconciler)
+        assertions = contract.get("requiredRuntimeAssertions")
+        require(isinstance(assertions, dict) and assertions and all(value is True for value in assertions.values()), "required runtime assertions must remain true")
+        drills = contract.get("requiredDrillClasses")
+        require(drills == [
+            "CROSS_INSTANCE_SHARED_BUDGET",
+            "RUNTIME_RESTART_CONTINUITY",
+            "SHARED_STORE_UNAVAILABLE_FAIL_CLOSED",
+            "TRUSTED_PROXY_MISCONFIGURATION_FAIL_CLOSED",
+            "EMERGENCY_MODE_AUTOMATIC_EXPIRY",
+            "NORMAL_MODE_RESTORATION",
+        ], "required drill class set drift")
+        promotion = contract.get("promotionRules")
+        require(isinstance(promotion, dict), "promotionRules missing")
+        for key, value in promotion.items():
+            if key == "automaticProductionReadyForbidden":
+                require(value is True, "automatic production-ready prohibition must remain true")
+            else:
+                require(value is False, f"unsafe distributed-runtime promotion enabled: {key}")
 
-    runtimes = validate_registry_for_append(registry)
-    pe = sum(1 for record in runtimes if record["environmentClass"] == "PRODUCTION_EQUIVALENT")
-    prod = sum(1 for record in runtimes if record["environmentClass"] == "PRODUCTION")
+        runtimes = validate_registry_for_append(registry)
+        pe = sum(1 for record in runtimes if record["environmentClass"] == "PRODUCTION_EQUIVALENT")
+        prod = sum(1 for record in runtimes if record["environmentClass"] == "PRODUCTION")
 
-    current = contract.get("currentAuthority")
-    readiness = contract.get("readiness")
-    require(isinstance(current, dict) and isinstance(readiness, dict), "contract authority missing")
-    require(current.get("admittedRuntimeCount") in {0, len(runtimes)}, "current admitted count drift before reconcile")
-    require(current.get("productionReady") is False and current.get("productionDecision") == "NO_GO", "production boundary drift")
-    require(readiness.get("productionReady") is False, "readiness cannot promote production")
-    print("Memory OS distributed rate-limit runtime validation PASS")
-    print(f"admitted runtimes: {len(runtimes)}")
-    print(f"production-equivalent runtimes: {pe}")
-    print(f"production runtimes: {prod}")
-    print("application production ready: false")
-    print("production decision: NO_GO")
-    return 0
+        current = contract.get("currentAuthority")
+        readiness = contract.get("readiness")
+        require(isinstance(current, dict) and isinstance(readiness, dict), "contract authority missing")
+        require(current.get("admittedRuntimeCount") in {0, len(runtimes)}, "current admitted count drift before reconcile")
+        require(current.get("productionReady") is False and current.get("productionDecision") == "NO_GO", "production boundary drift")
+        require(readiness.get("productionReady") is False, "readiness cannot promote production")
+        print("Memory OS distributed rate-limit runtime validation PASS")
+        print(f"admitted runtimes: {len(runtimes)}")
+        print(f"production-equivalent runtimes: {pe}")
+        print(f"production runtimes: {prod}")
+        print("application production ready: false")
+        print("production decision: NO_GO")
+        return 0
+
+    return _main
+
+
+main = _build_main()
+del _build_main
 
 
 if __name__ == "__main__":
