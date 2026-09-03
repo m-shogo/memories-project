@@ -180,46 +180,65 @@ def normalized_status(current: dict[str, Any], result_present: bool) -> dict[str
     return status
 
 
-def main(
-    _runtime_guard=validate_runtime_authority,
-    _run_validator=run_validator,
-    _atomic_write_json=atomic_write_json,
-    _atomic_write_bytes=atomic_write_bytes,
-) -> int:
-    require(validate_runtime_authority is _runtime_guard, "runtime guard execution authority drift")
-    require(run_validator is _run_validator, "validator execution helper authority drift")
-    require(atomic_write_json is _atomic_write_json, "JSON atomic writer authority drift")
-    require(atomic_write_bytes is _atomic_write_bytes, "byte atomic writer authority drift")
-    _runtime_guard()
-    result_present = RESULT.is_file()
-    contract = normalized_contract(load(CONTRACT), result_present)
-    status = normalized_status(load(STATUS), result_present)
+def _build_main(
+    _canonical_runtime_guard=validate_runtime_authority,
+    _canonical_run_validator=run_validator,
+    _canonical_atomic_write_json=atomic_write_json,
+    _canonical_atomic_write_bytes=atomic_write_bytes,
+    _canonical_runtime_guard_defaults=validate_runtime_authority.__defaults__,
+    _canonical_run_validator_defaults=run_validator.__defaults__,
+    _canonical_atomic_write_json_defaults=atomic_write_json.__defaults__,
+    _canonical_atomic_write_bytes_defaults=atomic_write_bytes.__defaults__,
+):
+    def _main() -> int:
+        require(validate_runtime_authority is _canonical_runtime_guard, "runtime guard execution authority drift")
+        require(run_validator is _canonical_run_validator, "validator execution helper authority drift")
+        require(atomic_write_json is _canonical_atomic_write_json, "JSON atomic writer authority drift")
+        require(atomic_write_bytes is _canonical_atomic_write_bytes, "byte atomic writer authority drift")
+        require(_canonical_runtime_guard.__defaults__ == _canonical_runtime_guard_defaults,
+                "runtime guard default authority drift")
+        require(_canonical_run_validator.__defaults__ == _canonical_run_validator_defaults,
+                "validator execution default authority drift")
+        require(_canonical_atomic_write_json.__defaults__ == _canonical_atomic_write_json_defaults,
+                "JSON atomic writer default authority drift")
+        require(_canonical_atomic_write_bytes.__defaults__ == _canonical_atomic_write_bytes_defaults,
+                "byte atomic writer default authority drift")
+        _canonical_runtime_guard()
+        result_present = RESULT.is_file()
+        contract = normalized_contract(load(CONTRACT), result_present)
+        status = normalized_status(load(STATUS), result_present)
 
-    original_contract = CONTRACT.read_bytes()
-    original_status = STATUS.read_bytes()
-    _atomic_write_json(CONTRACT, contract)
-    _atomic_write_json(STATUS, status)
-    try:
-        for validator in (
-            VALIDATOR,
-            RATE_LIMIT_OPERATIONS_VALIDATOR,
-            RATE_LIMIT_VALIDATOR,
-            OPERABILITY_VALIDATOR,
-        ):
-            _run_validator(validator)
-    except Exception:
-        _atomic_write_bytes(CONTRACT, original_contract)
-        _atomic_write_bytes(STATUS, original_status)
-        raise
+        original_contract = CONTRACT.read_bytes()
+        original_status = STATUS.read_bytes()
+        _canonical_atomic_write_json(CONTRACT, contract)
+        _canonical_atomic_write_json(STATUS, status)
+        try:
+            for validator in (
+                VALIDATOR,
+                RATE_LIMIT_OPERATIONS_VALIDATOR,
+                RATE_LIMIT_VALIDATOR,
+                OPERABILITY_VALIDATOR,
+            ):
+                _canonical_run_validator(validator)
+        except Exception:
+            _canonical_atomic_write_bytes(CONTRACT, original_contract)
+            _canonical_atomic_write_bytes(STATUS, original_status)
+            raise
 
-    print("Memory OS local multi-process shared-store reconciliation PASS")
-    print(f"exact-source result committed: {str(result_present).lower()}")
-    print(f"local cross-process store semantics proven: {str(result_present).lower()}")
-    print("distributed shared store implemented: false")
-    print("production-equivalent runtime evidence: false")
-    print("OPS-P0-005: PARTIAL")
-    print("productionDecision: NO_GO")
-    return 0
+        print("Memory OS local multi-process shared-store reconciliation PASS")
+        print(f"exact-source result committed: {str(result_present).lower()}")
+        print(f"local cross-process store semantics proven: {str(result_present).lower()}")
+        print("distributed shared store implemented: false")
+        print("production-equivalent runtime evidence: false")
+        print("OPS-P0-005: PARTIAL")
+        print("productionDecision: NO_GO")
+        return 0
+
+    return _main
+
+
+main = _build_main()
+del _build_main
 
 
 if __name__ == "__main__":
