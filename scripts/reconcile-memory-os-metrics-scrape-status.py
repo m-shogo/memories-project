@@ -87,7 +87,10 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(resolved == canonical, f"canonical {label} escaped repository path")
 
 
-def enforce_runtime_authorities() -> None:
+def enforce_runtime_authorities(
+    expected_replace=CANONICAL_OS_REPLACE,
+    expected_atomic_writer=CANONICAL_ATOMIC_WRITE_BYTES,
+) -> None:
     for path, canonical, label in (
         (STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status"),
         (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "metrics scrape contract"),
@@ -96,8 +99,10 @@ def enforce_runtime_authorities() -> None:
         (ENTRY_DOCS_VALIDATOR, CANONICAL_ENTRY_DOCS_VALIDATOR, "entry docs validator"),
     ):
         require_exact_authority(path, canonical, label)
-    require(os.replace is CANONICAL_OS_REPLACE, "os.replace transport authority drift")
-    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "atomic writer authority drift")
+    require(CANONICAL_OS_REPLACE is expected_replace, "canonical os.replace transport authority drift")
+    require(os.replace is expected_replace, "os.replace transport authority drift")
+    require(CANONICAL_ATOMIC_WRITE_BYTES is expected_atomic_writer, "canonical atomic writer authority drift")
+    require(atomic_write_bytes is expected_atomic_writer, "atomic writer authority drift")
 
 
 def load(path: Path) -> dict[str, Any]:
