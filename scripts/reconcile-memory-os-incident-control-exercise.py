@@ -111,27 +111,6 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
 CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 
 
-def enforce_runtime_authorities() -> None:
-    for path, relative, field in (
-        (CONTRACT_PATH, CONTRACT_REL, "incident exercise contract"),
-        (RESULT_PATH, RESULT_REL, "incident exercise result"),
-        (STATUS_PATH, STATUS_REL, "production operability status"),
-        (EXERCISE_VALIDATOR, EXERCISE_VALIDATOR_REL, "incident exercise validator"),
-        (INCIDENT_RESPONSE_VALIDATOR, INCIDENT_RESPONSE_VALIDATOR_REL, "incident response validator"),
-        (TABLETOP_VALIDATOR, TABLETOP_VALIDATOR_REL, "incident tabletop validator"),
-        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
-        (RUNNER, RUNNER_REL, "incident exercise runner"),
-        (WORKFLOW, WORKFLOW_REL, "incident exercise workflow"),
-    ):
-        require_exact_repo_file(path, relative, field)
-    require(subprocess.run is CANONICAL_SUBPROCESS_RUN,
-            "incident exercise subprocess transport authority drift")
-    require(os.replace is CANONICAL_OS_REPLACE,
-            "incident exercise atomic replacement transport authority drift")
-    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES,
-            "incident exercise atomic writer authority drift")
-
-
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -158,6 +137,9 @@ def load_exercise_validator() -> Any:
     return module
 
 
+CANONICAL_LOAD_EXERCISE_VALIDATOR = load_exercise_validator
+
+
 def render(value: dict[str, Any]) -> bytes:
     return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
@@ -175,6 +157,40 @@ def run_validator(path: Path) -> None:
             f"reconciled incident authority failed validation: {path.name}")
 
 
+CANONICAL_RUN_VALIDATOR = run_validator
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT_PATH, CONTRACT_REL, "incident exercise contract"),
+        (RESULT_PATH, RESULT_REL, "incident exercise result"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (EXERCISE_VALIDATOR, EXERCISE_VALIDATOR_REL, "incident exercise validator"),
+        (INCIDENT_RESPONSE_VALIDATOR, INCIDENT_RESPONSE_VALIDATOR_REL, "incident response validator"),
+        (TABLETOP_VALIDATOR, TABLETOP_VALIDATOR_REL, "incident tabletop validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (RUNNER, RUNNER_REL, "incident exercise runner"),
+        (WORKFLOW, WORKFLOW_REL, "incident exercise workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
+    require(subprocess.run is CANONICAL_SUBPROCESS_RUN,
+            "incident exercise subprocess transport authority drift")
+    require(os.replace is CANONICAL_OS_REPLACE,
+            "incident exercise atomic replacement transport authority drift")
+    require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES,
+            "incident exercise atomic writer authority drift")
+    require(load_exercise_validator is CANONICAL_LOAD_EXERCISE_VALIDATOR,
+            "incident exercise validator-loader authority drift")
+    require(run_validator is CANONICAL_RUN_VALIDATOR,
+            "incident exercise validator execution helper authority drift")
+    if "CANONICAL_RUN_CANONICAL_VALIDATORS" in globals():
+        require(run_canonical_validators is CANONICAL_RUN_CANONICAL_VALIDATORS,
+                "incident exercise validator-chain helper authority drift")
+    if "CANONICAL_COMMIT_VALIDATED_PAIR" in globals():
+        require(commit_validated_pair is CANONICAL_COMMIT_VALIDATED_PAIR,
+                "incident exercise transaction helper authority drift")
+
+
 def run_canonical_validators() -> None:
     enforce_runtime_authorities()
     for validator in (
@@ -183,7 +199,10 @@ def run_canonical_validators() -> None:
         TABLETOP_VALIDATOR,
         OPERABILITY_VALIDATOR,
     ):
-        run_validator(validator)
+        CANONICAL_RUN_VALIDATOR(validator)
+
+
+CANONICAL_RUN_CANONICAL_VALIDATORS = run_canonical_validators
 
 
 def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
@@ -193,18 +212,21 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
     try:
         CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, render(contract))
         CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, render(status))
-        run_canonical_validators()
+        CANONICAL_RUN_CANONICAL_VALIDATORS()
     except BaseException:
         CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, original_contract)
         CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, original_status)
         raise
 
 
+CANONICAL_COMMIT_VALIDATED_PAIR = commit_validated_pair
+
+
 def main() -> int:
     enforce_runtime_authorities()
     result = load(RESULT_PATH)
     contract = load(CONTRACT_PATH)
-    validator = load_exercise_validator()
+    validator = CANONICAL_LOAD_EXERCISE_VALIDATOR()
     try:
         validator.validate_contract(contract)
         validator.validate_result(result, contract, None)
@@ -271,12 +293,12 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not contract_changed and not status_changed:
-        run_canonical_validators()
+        CANONICAL_RUN_CANONICAL_VALIDATORS()
         print("Incident control exercise authority already reconciled")
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    commit_validated_pair(contract, status)
+    CANONICAL_COMMIT_VALIDATED_PAIR(contract, status)
     print("Registered automated incident control exercise; OPS-P0-002 remains PARTIAL")
     return 0
 
