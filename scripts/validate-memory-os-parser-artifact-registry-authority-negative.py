@@ -301,8 +301,8 @@ def prove_nonempty_progression(reconciler: Any, base: dict[str, Any]) -> None:
             "satisfied parser artifact/replay gaps were not removed")
     require(reconciler.RETENTION_GAP in missing,
             "stronger parser retention blocker disappeared")
-    require(NONCANONICAL_RELEASE_BINDING_GAP not in missing,
-            "parser reconcile reintroduced a noncanonical release-binding blocker")
+    require(NONCANONICAL_RELEASE_BINDING_GAP in missing,
+            "parser release artifact-set/retirement blocker disappeared without evidence")
 
 
 def prove_transaction_rollback(reconciler: Any) -> None:
