@@ -101,6 +101,10 @@ def main() -> int:
         contract_path.write_bytes(contract_bytes)
         status_path.write_bytes(status_bytes)
 
+        # The rollback transaction fixture intentionally lives outside the
+        # repository. Point diagnostic path rendering at that fixture root
+        # after canonical authority-substitution checks have already passed.
+        module.ROOT = root
         module.RESULT_PATH = result_path
         module.CONTRACT_PATH = contract_path
         module.STATUS_PATH = status_path
