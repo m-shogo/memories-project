@@ -874,7 +874,11 @@
         "traffic-drain and rollback timing evidence with monitored stop conditions and independent review",
         "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence",
         "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema",
-        "independent review of the first release registration and writer execution evidence"
+        "independent review of the first release registration and writer execution evidence",
+        "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
+        "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
+        "approved-release process termination during in-progress Apply with production-shaped connection-pool cleanup and deterministic recovery evidence",
+        "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
