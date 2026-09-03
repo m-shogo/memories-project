@@ -32,20 +32,77 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: rate-limit-local-multiprocess-shared-store-${{ github.ref }}
+  group: rate-limit-local-multiprocess-shared-store-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
-  rehearse:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact PR authority source
+        uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/import-api/go.mod
+          cache-dependency-path: services/import-api/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean PR source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+      - name: Compile and validate shared-store authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py \
+            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py \
+            scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py \
+            scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py
+          python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py
+          python scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit.py
+          python scripts/validate-memory-os-operability.py
+      - name: Execute cross-process shared-store code regression
+        working-directory: services/import-api
+        run: |
+          set -euo pipefail
+          go test ./internal/ratelimit -run '^TestLocalSharedStoreCrossProcessBudgetRestartAndOutage$' -count=1
+      - name: Require read-only whole-worktree authority
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  rehearse:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact rehearsal source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
@@ -58,15 +115,12 @@ jobs:
         run: |
           set -euo pipefail
           SOURCE_SHA="$(git rev-parse HEAD)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$SOURCE_SHA" = "${{ github.event.pull_request.head.sha }}"
-          else
-            test "$SOURCE_SHA" = "${{ github.sha }}"
-            git fetch origin so
-            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-              echo "Branch advanced before local shared-store rehearsal; refusing stale source."
-              exit 75
-            fi
+          test "$SOURCE_SHA" = "${{ github.sha }}"
+          test -z "$(git status --porcelain)"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced before local shared-store rehearsal; refusing stale source."
+            exit 75
           fi
           echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
       - name: Compile and validate evidence authority
@@ -85,13 +139,20 @@ jobs:
         run: |
           set -euo pipefail
           go test ./internal/ratelimit -run '^TestLocalSharedStoreCrossProcessBudgetRestartAndOutage$' -count=1
-      - name: Write privacy-safe exact-source result
+      - name: Write privacy-safe exact-source result atomically
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced before local shared-store result publication; refusing stale evidence."
+            exit 75
+          fi
           SOURCE_SHA="$SOURCE_SHA" python - <<'PY'
           import datetime as dt
           import json
           import os
+          import stat
+          import tempfile
           from pathlib import Path
 
           value = {
@@ -127,7 +188,19 @@ jobs:
           }
           path = Path("docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json")
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+          payload = json.dumps(value, indent=2) + "\n"
+          fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+          temp = Path(temp_name)
+          try:
+              with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.chmod(temp, mode)
+              os.replace(temp, path)
+          finally:
+              temp.unlink(missing_ok=True)
           PY
       - name: Reconcile bounded local evidence
         run: |
@@ -138,7 +211,6 @@ jobs:
           python scripts/validate-memory-os-rate-limit.py
           python scripts/validate-memory-os-operability.py
       - name: Commit exact-source rehearsal authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
