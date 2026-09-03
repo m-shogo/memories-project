@@ -14,13 +14,21 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Callable
 
-REPO = Path(__file__).resolve().parents[1]
-CONTRACT = REPO / "contracts/operations/rate-limit-policy-contract.v1.json"
-NEGATIVE = REPO / "docs/fixtures/memory-os-operability/rate-limit-policies.negative.v1.json"
-STATUS = REPO / "contracts/operations/production-operability-status.json"
-ENFORCE_GO = REPO / "services/import-api/internal/ratelimit/enforce.go"
-OBSLOG_CODES = REPO / "services/import-api/internal/obslog/codes.go"
+DEFAULT_REPO = Path(__file__).resolve().parents[1]
+DEFAULT_CONTRACT = DEFAULT_REPO / "contracts/operations/rate-limit-policy-contract.v1.json"
+DEFAULT_NEGATIVE = DEFAULT_REPO / "docs/fixtures/memory-os-operability/rate-limit-policies.negative.v1.json"
+DEFAULT_STATUS = DEFAULT_REPO / "contracts/operations/production-operability-status.json"
+DEFAULT_ENFORCE_GO = DEFAULT_REPO / "services/import-api/internal/ratelimit/enforce.go"
+DEFAULT_OBSLOG_CODES = DEFAULT_REPO / "services/import-api/internal/obslog/codes.go"
+
+REPO = DEFAULT_REPO
+CONTRACT = DEFAULT_CONTRACT
+NEGATIVE = DEFAULT_NEGATIVE
+STATUS = DEFAULT_STATUS
+ENFORCE_GO = DEFAULT_ENFORCE_GO
+OBSLOG_CODES = DEFAULT_OBSLOG_CODES
 
 MAX_CAPACITY = 1_000_000
 MAX_REFILL = 1_000_000
@@ -93,38 +101,86 @@ def check_policy_set(policies: list, contract: dict, inventory: list) -> list[st
                 if not isinstance(refill, (int, float)) or refill <= 0 or refill > MAX_REFILL:
                     reasons.append(f"{pid}: {guard} refill out of range")
             if policy.get("routeClass") in ("PUBLIC_UNAUTHENTICATED", "PUBLIC_AUTHENTICATED"):
-                # A public route must fail closed (possibly via emergency local),
-                # never exempt-open.
                 if policy.get("failureMode") not in ("fail_closed", "fail_closed_emergency_local"):
                     reasons.append(f"{pid}: public route must fail closed, got {policy.get('failureMode')}")
                 enabled_public_routes.add(route)
 
-    # Every public unauthenticated route in the inventory must have an enabled
-    # policy.
     for entry in inventory:
         if entry["routeClass"] == "PUBLIC_UNAUTHENTICATED" and entry["routeTemplate"] not in enabled_public_routes:
             reasons.append(f"public unauthenticated route without an enabled policy: {entry['routeTemplate']}")
     return reasons
 
 
+def canonical_repo_file(path: Path, expected: Path, label: str) -> Path:
+    if path != expected:
+        raise Fail(f"{label} authority drift: {path} != {expected}")
+    if path.is_symlink():
+        raise Fail(f"{label} authority must not be symlink: {path}")
+    try:
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise Fail(f"{label} authority missing: {path}") from exc
+    try:
+        resolved.relative_to(DEFAULT_REPO.resolve(strict=True))
+    except ValueError as exc:
+        raise Fail(f"{label} authority escapes repository: {path}") from exc
+    if resolved != expected.resolve(strict=True):
+        raise Fail(f"{label} resolved authority drift: {resolved}")
+    if not resolved.is_file():
+        raise Fail(f"{label} authority is not file: {path}")
+    return resolved
+
+
+_CANONICAL_LOAD: Callable[[Path], dict] = load
+_CANONICAL_GO_CONSTS = go_consts
+_CANONICAL_CHECK_POLICY_SET = check_policy_set
+_CANONICAL_PATH_CHECKER = canonical_repo_file
+
+
+def enforce_runtime_authorities() -> None:
+    if REPO != DEFAULT_REPO or REPO.resolve() != DEFAULT_REPO.resolve():
+        raise Fail("repository root authority drift")
+    authorities = (
+        (CONTRACT, DEFAULT_CONTRACT, "rate-limit contract"),
+        (NEGATIVE, DEFAULT_NEGATIVE, "rate-limit negative fixture"),
+        (STATUS, DEFAULT_STATUS, "production status"),
+        (ENFORCE_GO, DEFAULT_ENFORCE_GO, "rate-limit Go source"),
+        (OBSLOG_CODES, DEFAULT_OBSLOG_CODES, "observability code source"),
+    )
+    for path, expected, label in authorities:
+        _CANONICAL_PATH_CHECKER(path, expected, label)
+    if load is not _CANONICAL_LOAD:
+        raise Fail("JSON loader execution authority drift")
+    if go_consts is not _CANONICAL_GO_CONSTS:
+        raise Fail("Go constant parser execution authority drift")
+    if check_policy_set is not _CANONICAL_CHECK_POLICY_SET:
+        raise Fail("policy-set checker execution authority drift")
+    if canonical_repo_file is not _CANONICAL_PATH_CHECKER:
+        raise Fail("path checker execution authority drift")
+
+
+_CANONICAL_RUNTIME_GUARD = enforce_runtime_authorities
+
+
 def main() -> int:
     try:
-        contract = load(CONTRACT)
+        if enforce_runtime_authorities is not _CANONICAL_RUNTIME_GUARD:
+            raise Fail("runtime guard execution authority drift")
+        _CANONICAL_RUNTIME_GUARD()
+        contract = _CANONICAL_LOAD(CONTRACT)
 
-        # Drift: Go route classes / failure modes / event codes vs contract.
         enforce_src = ENFORCE_GO.read_text(encoding="utf-8")
-        go_classes = go_consts(enforce_src, "RouteClass")
+        go_classes = _CANONICAL_GO_CONSTS(enforce_src, "RouteClass")
         if go_classes != set(contract["routeClasses"]):
             raise Fail(f"route class drift: go={go_classes} contract={set(contract['routeClasses'])}")
-        go_modes = go_consts(enforce_src, "FailureMode")
+        go_modes = _CANONICAL_GO_CONSTS(enforce_src, "FailureMode")
         if go_modes != set(contract["failureModes"]):
             raise Fail(f"failure mode drift: go={go_modes} contract={set(contract['failureModes'])}")
         obslog_src = OBSLOG_CODES.read_text(encoding="utf-8")
-        rate_codes = {c for c in go_consts(obslog_src, "EventCode") if c.startswith("OBS_RATE_LIMIT")}
+        rate_codes = {c for c in _CANONICAL_GO_CONSTS(obslog_src, "EventCode") if c.startswith("OBS_RATE_LIMIT")}
         if rate_codes != set(contract["observabilityEventCodes"]):
             raise Fail(f"rate-limit event code drift: go={rate_codes} contract={set(contract['observabilityEventCodes'])}")
 
-        # Rejection response invariants.
         rej = contract["rejectionResponse"]
         if rej["httpStatus"] != 429 or rej["publicErrorCode"] != "SEC_RATE_LIMITED":
             raise Fail("rejection response must be 429 SEC_RATE_LIMITED")
@@ -134,7 +190,6 @@ def main() -> int:
         if rej.get("bodyRevealsInternalState") is not False:
             raise Fail("rejection body must not reveal internal state")
 
-        # Metric cardinality: no forbidden label may also be allowed.
         card = contract["metricCardinality"]
         if set(card["allowedLabels"]) & set(card["forbiddenLabels"]):
             raise Fail("a metric label is both allowed and forbidden")
@@ -142,27 +197,23 @@ def main() -> int:
             if bad in card["allowedLabels"]:
                 raise Fail(f"high-cardinality label allowed: {bad}")
 
-        # Privacy invariants must hold.
         priv = contract["privacy"]
         if priv["rawIpStored"] or priv["rawIpLogged"] or not priv["networkKeyIsKeyedDigest"] \
                 or priv["digestIsDurableIdentifier"] or not priv["trustedProxyBoundaryExplicit"] \
                 or priv["arbitraryForwardedHeaderTrusted"]:
             raise Fail("privacy invariants violated in contract")
 
-        # The shipped policy set itself must be clean.
-        reasons = check_policy_set(contract["policies"], contract, contract["routeInventory"])
+        reasons = _CANONICAL_CHECK_POLICY_SET(contract["policies"], contract, contract["routeInventory"])
         if reasons:
             raise Fail(f"shipped policy set invalid: {reasons}")
 
-        # Every negative case must be rejected.
-        negative = load(NEGATIVE)
+        negative = _CANONICAL_LOAD(NEGATIVE)
         for case in negative["cases"]:
             inv = case.get("routeInventory", contract["routeInventory"])
-            if not check_policy_set(case["policies"], contract, inv):
+            if not _CANONICAL_CHECK_POLICY_SET(case["policies"], contract, inv):
                 raise Fail(f"negative case was not rejected: {case['reason']}")
 
-        # OPS-P0-005 readiness honesty.
-        status = load(STATUS)
+        status = _CANONICAL_LOAD(STATUS)
         gate = next((a for a in status["areas"] if a.get("id") == "OPS-P0-005"), None)
         if gate is None:
             raise Fail("OPS-P0-005 missing from operability status")
