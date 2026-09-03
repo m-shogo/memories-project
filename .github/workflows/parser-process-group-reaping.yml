@@ -136,11 +136,32 @@ jobs:
           import os
           import re
           import subprocess
+          import tempfile
           import time
           from pathlib import Path
 
           root = Path.cwd()
           workdir = root / "services/import-api"
+
+          def atomic_write_json(path: Path, value: dict) -> None:
+              path.parent.mkdir(parents=True, exist_ok=True)
+              payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+              mode = (path.stat().st_mode & 0o7777) if path.exists() else 0o644
+              fd, temp_name = tempfile.mkstemp(
+                  prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+              )
+              temp_path = Path(temp_name)
+              try:
+                  with os.fdopen(fd, "wb") as handle:
+                      handle.write(payload)
+                      handle.flush()
+                      os.fsync(handle.fileno())
+                  os.chmod(temp_path, mode)
+                  os.replace(temp_path, path)
+              finally:
+                  if temp_path.exists():
+                      temp_path.unlink()
+
           source_sha = subprocess.check_output(
               ["git", "rev-parse", "HEAD"], cwd=root, text=True
           ).strip()
@@ -190,11 +211,7 @@ jobs:
               "productionEvidence": False,
           }
           diagnostic_path = root / "docs/fixtures/memory-os-operability/parser-process-group-reaping-diagnostic.last.json"
-          diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
-          diagnostic_path.write_text(
-              json.dumps(diagnostic, indent=2, ensure_ascii=False) + "\n",
-              encoding="utf-8",
-          )
+          atomic_write_json(diagnostic_path, diagnostic)
 
           if success:
               result = {
@@ -230,10 +247,7 @@ jobs:
                   ],
               }
               result_path = root / "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
-              result_path.write_text(
-                  json.dumps(result, indent=2, ensure_ascii=False) + "\n",
-                  encoding="utf-8",
-              )
+              atomic_write_json(result_path, result)
 
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
               output.write(f"source_sha={source_sha}\n")
