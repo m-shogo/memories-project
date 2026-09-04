@@ -1,0 +1,70 @@
+name: Sustained Local Soak Execution Diagnostic Negative
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/sustained-local-soak.yml"
+      - ".github/workflows/reconcile-sustained-local-soak-authority.yml"
+      - ".github/workflows/sustained-local-soak-execution-diagnostic-negative.yml"
+      - "scripts/validate-memory-os-sustained-local-soak-reconcile-negative.py"
+      - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+      - "scripts/update-memory-os-sustained-local-soak-aggregate.py"
+      - "scripts/review-memory-os-sustained-local-soak-trends.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/sustained-local-soak.yml"
+      - ".github/workflows/reconcile-sustained-local-soak-authority.yml"
+      - ".github/workflows/sustained-local-soak-execution-diagnostic-negative.yml"
+      - "scripts/validate-memory-os-sustained-local-soak-reconcile-negative.py"
+      - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+      - "scripts/update-memory-os-sustained-local-soak-aggregate.py"
+      - "scripts/review-memory-os-sustained-local-soak-trends.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sustained-local-soak-execution-diagnostic-negative-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: true
+
+jobs:
+  negative:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Require exact clean source
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Enforce execution diagnostic and authority transaction negatives
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-sustained-local-soak-reconcile-negative.py \
+            scripts/reconcile-memory-os-sustained-local-soak-status.py \
+            scripts/update-memory-os-sustained-local-soak-aggregate.py \
+            scripts/review-memory-os-sustained-local-soak-trends.py
+          python scripts/validate-memory-os-sustained-local-soak-reconcile-negative.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
