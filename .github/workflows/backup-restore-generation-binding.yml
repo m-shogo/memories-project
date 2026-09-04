@@ -102,7 +102,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: backup-restore-generation-binding-${{ github.event.pull_request.number || 'so' }}
@@ -169,6 +169,8 @@ jobs:
 
   validate:
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -352,9 +354,12 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/backup-restore-generation-reconcile-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
+          existing_mode = path.stat().st_mode & 0o777 if path.exists() else None
           payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
           fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
           try:
+              if existing_mode is not None:
+                  os.fchmod(fd, existing_mode)
               with os.fdopen(fd, 'wb') as handle:
                   handle.write(payload)
                   handle.flush()
