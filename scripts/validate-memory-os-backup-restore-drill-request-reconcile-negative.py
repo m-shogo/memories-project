@@ -7,6 +7,7 @@ import copy
 import importlib.util
 import json
 import shutil
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -28,6 +29,10 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
 
 
 def load_reconciler() -> Any:
@@ -73,32 +78,41 @@ def expect_direct_authority_rejected(
 
 
 def prove_atomic_write_failure(reconciler: Any, contract_before: bytes, registry_before: bytes, status_before: bytes) -> None:
-    original_replace = reconciler.os.replace
+    with tempfile.TemporaryDirectory(prefix=".memory-os-drill-request-atomic-", dir=ROOT) as tmp:
+        fixture = Path(tmp) / CONTRACT.name
+        shutil.copy2(CONTRACT, fixture)
+        fixture.chmod(0o640)
+        fixture_before = fixture.read_bytes()
+        reconciler.write_text(fixture, fixture_before.decode("utf-8") + " ")
+        require(mode(fixture) == 0o640, "successful atomic drill-request write changed existing file mode")
 
-    def reject_replace(source: str | Path, destination: str | Path) -> None:
-        raise OSError("synthetic atomic replace rejection")
+        stable_bytes = fixture.read_bytes()
+        stable_mode = mode(fixture)
+        original_replace = reconciler.os.replace
 
-    reconciler.os.replace = reject_replace
-    try:
+        def reject_replace(source: str | Path, destination: str | Path) -> None:
+            raise OSError("synthetic atomic replace rejection")
+
+        reconciler.os.replace = reject_replace
         try:
-            reconciler.write_text(CONTRACT, contract_before.decode("utf-8") + " ")
-        except reconciler.Fail as exc:
-            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
-        else:
-            raise Fail("synthetic atomic replace failure unexpectedly accepted")
-    finally:
-        reconciler.os.replace = original_replace
+            try:
+                reconciler.write_text(fixture, stable_bytes.decode("utf-8") + " ")
+            except reconciler.Fail as exc:
+                require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("synthetic atomic replace failure unexpectedly accepted")
+        finally:
+            reconciler.os.replace = original_replace
 
-    require(CONTRACT.read_bytes() == contract_before, "atomic replace rejection mutated canonical drill-request contract")
-    require(REGISTRY.read_bytes() == registry_before, "atomic replace rejection mutated canonical drill-request registry")
-    require(STATUS.read_bytes() == status_before, "atomic replace rejection mutated canonical production status")
-    leftovers = (
-        list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
-        + list(REGISTRY.parent.glob(f".{REGISTRY.name}.*.tmp"))
-        + list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
-    )
-    require(not leftovers, f"atomic replace rejection left temporary drill-request authority files: {leftovers}")
-    print("PASS boundary: failed atomic drill-request write preserves canonical bytes and cleans temporary files")
+        require(fixture.read_bytes() == stable_bytes, "atomic replace rejection mutated drill-request fixture bytes")
+        require(mode(fixture) == stable_mode == 0o640, "atomic replace rejection changed drill-request fixture mode")
+        leftovers = list(fixture.parent.glob(f".{fixture.name}.*.tmp"))
+        require(not leftovers, f"atomic replace rejection left temporary drill-request authority files: {leftovers}")
+
+    require(CONTRACT.read_bytes() == contract_before, "atomic writer negative mutated canonical drill-request contract")
+    require(REGISTRY.read_bytes() == registry_before, "atomic writer negative mutated canonical drill-request registry")
+    require(STATUS.read_bytes() == status_before, "atomic writer negative mutated canonical production status")
+    print("PASS boundary: drill-request atomic write preserves mode; failed replace preserves bytes/mode and cleans temporary files")
 
 
 def main() -> int:
@@ -220,16 +234,23 @@ def main() -> int:
             # aggregate operability failure forces rollback.
             for path in (contract, registry, status):
                 minify_json(path)
+                path.chmod(0o640)
 
             original_contract = contract.read_bytes()
             original_registry = registry.read_bytes()
             original_status = status.read_bytes()
+            original_contract_mode = mode(contract)
+            original_registry_mode = mode(registry)
+            original_status_mode = mode(status)
             observed_commands: list[list[str]] = []
 
             def aggregate_failure_after_drill_success(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
                 require(contract.read_bytes() != original_contract, "post-validator invoked before contract reconcile write")
                 require(registry.read_bytes() != original_registry, "post-validator invoked before registry reconcile write")
                 require(status.read_bytes() != original_status, "post-validator invoked before production status reconcile write")
+                require(mode(contract) == original_contract_mode, "contract mode changed before post-validation")
+                require(mode(registry) == original_registry_mode, "registry mode changed before post-validation")
+                require(mode(status) == original_status_mode, "production status mode changed before post-validation")
                 command = [str(item) for item in (args[0] if args else [])]
                 observed_commands.append(command)
                 if len(observed_commands) == 1:
@@ -259,6 +280,9 @@ def main() -> int:
             require(contract.read_bytes() == original_contract, "contract mutation survived failed aggregate validation")
             require(registry.read_bytes() == original_registry, "registry mutation survived failed aggregate validation")
             require(status.read_bytes() == original_status, "production status mutation survived failed aggregate validation")
+            require(mode(contract) == original_contract_mode == 0o640, "contract mode changed across rollback")
+            require(mode(registry) == original_registry_mode == 0o640, "registry mode changed across rollback")
+            require(mode(status) == original_status_mode == 0o640, "production status mode changed across rollback")
     finally:
         reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.CONTRACT = original_contract_path
@@ -271,12 +295,13 @@ def main() -> int:
     print(f"direct reconciler data/executable authority substitutions rejected: {len(authority_cases)}")
     print("corrupt recovery objective authority rejected before derived writes: true")
     print("shared objective authority corruption cases: 6")
-    print("non-atomic drill-request authority write accepted: false")
+    print("successful atomic drill-request authority write preserves existing mode: true")
+    print("failed atomic drill-request replace preserves bytes and mode: true")
     print("drill request validator succeeds before aggregate failure: true")
     print("aggregate operability failure observed after all authority writes: true")
-    print("contract byte-for-byte rollback: true")
-    print("registry byte-for-byte rollback: true")
-    print("production status byte-for-byte rollback: true")
+    print("contract byte-for-byte and mode rollback: true")
+    print("registry byte-for-byte and mode rollback: true")
+    print("production status byte-for-byte and mode rollback: true")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
