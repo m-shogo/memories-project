@@ -100,6 +100,7 @@ def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
     temp_name: str | None = None
+    mode = path.stat().st_mode & 0o777 if path.exists() else None
     try:
         fd, temp_name = tempfile.mkstemp(
             prefix=f".{path.name}.",
@@ -107,6 +108,8 @@ def write_text(path: Path, text: str) -> None:
             dir=path.parent,
             text=True,
         )
+        if mode is not None:
+            os.fchmod(fd, mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
             handle.flush()
