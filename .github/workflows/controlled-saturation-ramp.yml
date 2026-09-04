@@ -266,6 +266,8 @@ jobs:
           import json
           import os
           import re
+          import stat
+          import tempfile
           from pathlib import Path
           text = Path("/tmp/memory-os-controlled-saturation.log").read_text(encoding="utf-8", errors="replace")
           text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
@@ -288,7 +290,23 @@ jobs:
           }
           path = Path("docs/fixtures/memory-os-operability/controlled-saturation-ramp-diagnostic.last.json")
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          payload = (json.dumps(value, indent=2) + "\n").encode("utf-8")
+          existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+          tmp_path = None
+          try:
+              with tempfile.NamedTemporaryFile(mode="wb", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False) as handle:
+                  tmp_path = Path(handle.name)
+                  if existing_mode is not None:
+                      os.fchmod(handle.fileno(), existing_mode)
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(tmp_path, path)
+              tmp_path = None
+          finally:
+              if tmp_path is not None:
+                  try: tmp_path.unlink()
+                  except FileNotFoundError: pass
           PY
           git add docs/fixtures/memory-os-operability/controlled-saturation-ramp-diagnostic.last.json
           git config user.name "github-actions[bot]"
