@@ -130,7 +130,9 @@ def main() -> int:
     validate_atomic_writer(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_mode_preserving_success(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_atomic_writer(updater, updater.AGGREGATE_PATH, "sustained-soak aggregate")
+    validate_mode_preserving_success(updater, updater.AGGREGATE_PATH, "sustained-soak aggregate")
     validate_atomic_writer(reviewer, reviewer.REVIEW_PATH, "sustained-soak trend review")
+    validate_mode_preserving_success(reviewer, reviewer.REVIEW_PATH, "sustained-soak trend review")
 
     expect_authority_rejection(updater, "RESULT_DIR", updater.ROOT / "docs")
     expect_authority_rejection(updater, "AGGREGATE_PATH", updater.CONTRACT_PATH)
@@ -207,7 +209,7 @@ def main() -> int:
     print("PASS: sustained local soak execution and authority diagnostics are atomic and crash-safe")
     print("PASS: sustained local soak reconciler, aggregate updater and trend reviewer reject authority substitution")
     print("PASS: sustained local soak atomic replacement failure preserves canonical authority bytes and mode")
-    print("PASS: sustained local soak successful authority replacement preserves existing mode")
+    print("PASS: sustained local soak derived authority writers preserve existing mode")
     print("PASS: sustained local soak reconcile rollback preserves canonical authority bytes and mode")
     print("production evidence generated: false")
     print("production decision changed: false")
