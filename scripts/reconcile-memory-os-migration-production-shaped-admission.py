@@ -136,8 +136,11 @@ def load_writer() -> ModuleType:
 
 
 def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
     descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
+        if existing_mode is not None:
+            os.fchmod(descriptor, existing_mode)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
             handle.flush()
