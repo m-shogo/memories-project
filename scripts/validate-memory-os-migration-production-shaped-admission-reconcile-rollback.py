@@ -34,7 +34,24 @@ def load_reconciler() -> ModuleType:
     return module
 
 
-def executable_substitution_rejected(module: ModuleType, originals: dict[Path, bytes]) -> None:
+def require_authorities_unchanged(
+    originals: dict[Path, bytes],
+    modes: dict[Path, int],
+    label: str,
+) -> None:
+    for path, expected_bytes in originals.items():
+        require(path.read_bytes() == expected_bytes, f"{label}: mutated {path.relative_to(ROOT)} bytes")
+        require(
+            path.stat().st_mode & 0o7777 == modes[path],
+            f"{label}: mutated {path.relative_to(ROOT)} mode",
+        )
+
+
+def executable_substitution_rejected(
+    module: ModuleType,
+    originals: dict[Path, bytes],
+    modes: dict[Path, int],
+) -> None:
     cases = (
         ("VALIDATOR", "migration admission validator authority drift"),
         ("LIFECYCLE_VALIDATOR", "migration lifecycle validator authority drift"),
@@ -54,13 +71,16 @@ def executable_substitution_rejected(module: ModuleType, originals: dict[Path, b
                 require(expected in str(exc), f"unexpected {attr} substitution rejection: {exc}")
             else:
                 raise Fail(f"migration reconciler accepted substituted executable authority: {attr}")
-            for path, expected_bytes in originals.items():
-                require(path.read_bytes() == expected_bytes, f"{attr}: rejected executable authority mutated {path.relative_to(ROOT)}")
+            require_authorities_unchanged(originals, modes, f"{attr}: rejected executable authority")
         finally:
             setattr(module, attr, original)
 
 
-def data_authority_substitution_rejected(module: ModuleType, originals: dict[Path, bytes]) -> None:
+def data_authority_substitution_rejected(
+    module: ModuleType,
+    originals: dict[Path, bytes],
+    modes: dict[Path, int],
+) -> None:
     cases = (
         ("CONTRACT", "migration admission contract authority drift"),
         ("REGISTRY", "migration admission registry authority drift"),
@@ -82,13 +102,26 @@ def data_authority_substitution_rejected(module: ModuleType, originals: dict[Pat
                 require(expected in str(exc), f"unexpected {attr} substitution rejection: {exc}")
             else:
                 raise Fail(f"migration reconciler accepted substituted data authority: {attr}")
-            for path, expected_bytes in originals.items():
-                require(path.read_bytes() == expected_bytes, f"{attr}: rejected data authority mutated {path.relative_to(ROOT)}")
+            require_authorities_unchanged(originals, modes, f"{attr}: rejected data authority")
         finally:
             setattr(module, attr, original)
 
 
-def aggregate_rollback_rejected(module: ModuleType, originals: dict[Path, bytes]) -> None:
+def successful_replace_preserves_mode(
+    module: ModuleType,
+    originals: dict[Path, bytes],
+    modes: dict[Path, int],
+) -> None:
+    for path, payload in originals.items():
+        module.atomic_replace_bytes(path, payload)
+    require_authorities_unchanged(originals, modes, "successful atomic replace")
+
+
+def aggregate_rollback_rejected(
+    module: ModuleType,
+    originals: dict[Path, bytes],
+    modes: dict[Path, int],
+) -> None:
     original_run = module.subprocess.run
 
     def injected_run(args, *pargs, **kwargs):
@@ -112,17 +145,19 @@ def aggregate_rollback_rejected(module: ModuleType, originals: dict[Path, bytes]
     finally:
         module.subprocess.run = original_run
 
-    for path, expected in originals.items():
-        require(path.read_bytes() == expected, f"reconciler failed to roll back {path.relative_to(ROOT)}")
+    require_authorities_unchanged(originals, modes, "aggregate rollback")
 
 
 def main() -> int:
     module = load_reconciler()
-    originals = {path: path.read_bytes() for path in (CONTRACT, LIFECYCLE, STATUS)}
-    executable_substitution_rejected(module, originals)
-    data_authority_substitution_rejected(module, originals)
-    aggregate_rollback_rejected(module, originals)
-    print("PASS: migration production-shaped reconciler rejects executable/data authority substitution and rolls back contract, lifecycle, and status after aggregate validation failure")
+    authorities = (CONTRACT, LIFECYCLE, STATUS)
+    originals = {path: path.read_bytes() for path in authorities}
+    modes = {path: path.stat().st_mode & 0o7777 for path in authorities}
+    successful_replace_preserves_mode(module, originals, modes)
+    executable_substitution_rejected(module, originals, modes)
+    data_authority_substitution_rejected(module, originals, modes)
+    aggregate_rollback_rejected(module, originals, modes)
+    print("PASS: migration production-shaped reconciler preserves authority modes, rejects executable/data authority substitution, and rolls back contract, lifecycle, and status bytes/modes after aggregate validation failure")
     return 0
 
 
