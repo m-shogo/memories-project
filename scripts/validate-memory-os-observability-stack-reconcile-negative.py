@@ -41,6 +41,27 @@ def load_reconciler():
     return module
 
 
+def authority_mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
+def require_pair_unchanged(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    contract_mode: int,
+    status_mode: int,
+    label: str,
+) -> None:
+    if CONTRACT.read_bytes() != contract_bytes:
+        raise RuntimeError(f"{label} mutated observability stack contract bytes")
+    if STATUS.read_bytes() != status_bytes:
+        raise RuntimeError(f"{label} mutated production operability status bytes")
+    if authority_mode(CONTRACT) != contract_mode:
+        raise RuntimeError(f"{label} mutated observability stack contract mode")
+    if authority_mode(STATUS) != status_mode:
+        raise RuntimeError(f"{label} mutated production operability status mode")
+
+
 def expect_writer_rejected(writer, registry, label: str) -> None:
     try:
         writer.validate_registry_for_append(registry, validate_rows=False)
@@ -114,7 +135,12 @@ def expect_validator_rejected(label: str) -> None:
     raise RuntimeError(f"validator accepted corrupt observability stack authority: {label}")
 
 
-def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: bytes) -> None:
+def expect_reconciler_authority_rejected(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    contract_mode: int,
+    status_mode: int,
+) -> None:
     reconciler = load_reconciler()
     substitutions = (
         ("CONTRACT", reconciler.STATUS, "observability stack contract authority drift"),
@@ -141,11 +167,61 @@ def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: by
                     raise RuntimeError(f"{field} substitution rejected at wrong boundary: {exc}") from exc
             else:
                 raise RuntimeError(f"reconciler accepted {field} authority substitution")
-            if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
-                raise RuntimeError(f"{field} substitution mutated observability stack authority")
+            require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, f"{field} substitution")
         finally:
             setattr(reconciler, field, original)
     reconciler.enforce_runtime_authorities()
+
+
+def expect_atomic_pair_transport(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    contract_mode: int,
+    status_mode: int,
+) -> None:
+    reconciler = load_reconciler()
+    try:
+        CONTRACT.chmod(0o640)
+        STATUS.chmod(0o640)
+        reconciler.atomic_replace_bytes(CONTRACT, contract_bytes)
+        reconciler.atomic_replace_bytes(STATUS, status_bytes)
+        require_pair_unchanged(contract_bytes, status_bytes, 0o640, 0o640, "successful atomic publication")
+
+        original_replace = reconciler.os.replace
+        replace_calls = 0
+
+        def reject_second_replace(source, destination):
+            nonlocal replace_calls
+            replace_calls += 1
+            if replace_calls == 2:
+                raise OSError("synthetic second authority replace rejection")
+            return original_replace(source, destination)
+
+        reconciler.os.replace = reject_second_replace
+        try:
+            try:
+                reconciler.commit_validated_pair(
+                    json.loads(contract_bytes.decode("utf-8")),
+                    json.loads(status_bytes.decode("utf-8")),
+                )
+            except OSError as exc:
+                if "synthetic second authority replace rejection" not in str(exc):
+                    raise
+            else:
+                raise RuntimeError("observability pair publication accepted a rejected second atomic replace")
+        finally:
+            reconciler.os.replace = original_replace
+
+        require_pair_unchanged(contract_bytes, status_bytes, 0o640, 0o640, "second replace rollback")
+        leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")) + list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+        if leftovers:
+            raise RuntimeError(f"observability pair publication left temporary authority files: {leftovers}")
+    finally:
+        CONTRACT.chmod(contract_mode)
+        STATUS.chmod(status_mode)
+        CONTRACT.write_bytes(contract_bytes)
+        STATUS.write_bytes(status_bytes)
+    require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, "atomic transport cleanup")
 
 
 def create_descendant_commit() -> str:
@@ -165,7 +241,12 @@ def create_descendant_commit() -> str:
     ).strip()
 
 
-def expect_post_write_rollback(contract_bytes: bytes, status_bytes: bytes) -> None:
+def expect_post_write_rollback(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    contract_mode: int,
+    status_mode: int,
+) -> None:
     validator_bytes = VALIDATOR.read_bytes()
     wrapper = f'''#!/usr/bin/env python3
 from pathlib import Path
@@ -187,18 +268,22 @@ raise SystemExit(0 if count == 0 else 1)
         )
         if completed.returncode == 0:
             raise RuntimeError("reconciler accepted injected post-write validator failure")
-        if CONTRACT.read_bytes() != contract_bytes:
-            raise RuntimeError("post-write validator failure left observability stack contract mutated")
-        if STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("post-write validator failure left production operability status mutated")
+        require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, "post-write validator failure")
     finally:
         VALIDATOR.write_bytes(validator_bytes)
         POST_WRITE_MARKER.unlink(missing_ok=True)
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
+        CONTRACT.chmod(contract_mode)
+        STATUS.chmod(status_mode)
 
 
-def expect_aggregate_post_write_rollback(contract_bytes: bytes, status_bytes: bytes) -> None:
+def expect_aggregate_post_write_rollback(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    contract_mode: int,
+    status_mode: int,
+) -> None:
     operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
     try:
         OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
@@ -212,14 +297,13 @@ def expect_aggregate_post_write_rollback(contract_bytes: bytes, status_bytes: by
         )
         if completed.returncode == 0:
             raise RuntimeError("reconciler accepted injected aggregate operability failure")
-        if CONTRACT.read_bytes() != contract_bytes:
-            raise RuntimeError("aggregate failure left observability stack contract mutated")
-        if STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("aggregate failure left production operability status mutated")
+        require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, "aggregate failure")
     finally:
         OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
+        CONTRACT.chmod(contract_mode)
+        STATUS.chmod(status_mode)
 
 
 def main() -> int:
@@ -227,6 +311,8 @@ def main() -> int:
     registry_bytes = REGISTRY.read_bytes()
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
+    contract_mode = authority_mode(CONTRACT)
+    status_mode = authority_mode(STATUS)
     registry = json.loads(registry_bytes.decode("utf-8"))
 
     cases = []
@@ -247,7 +333,8 @@ def main() -> int:
         expect_writer_rejected(writer, candidate, label)
 
     expect_writer_append_rollback(writer, registry, registry_bytes)
-    expect_reconciler_authority_rejected(contract_bytes, status_bytes)
+    expect_atomic_pair_transport(contract_bytes, status_bytes, contract_mode, status_mode)
+    expect_reconciler_authority_rejected(contract_bytes, status_bytes, contract_mode, status_mode)
 
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if not writer.source_is_ancestor(source):
@@ -264,6 +351,7 @@ def main() -> int:
         expect_validator_rejected("append lock binding drift")
     finally:
         CONTRACT.write_bytes(contract_bytes)
+        CONTRACT.chmod(contract_mode)
 
     try:
         TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
@@ -302,22 +390,22 @@ def main() -> int:
         )
         if completed.returncode == 0:
             raise RuntimeError("reconciler accepted corrupt observability stack registry")
-        if CONTRACT.read_bytes() != contract_bytes:
-            raise RuntimeError("rejected reconcile mutated observability stack contract")
-        if STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("rejected reconcile mutated production operability status")
+        require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, "rejected reconcile")
     finally:
         REGISTRY.write_bytes(registry_bytes)
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
+        CONTRACT.chmod(contract_mode)
+        STATUS.chmod(status_mode)
 
-    expect_post_write_rollback(contract_bytes, status_bytes)
-    expect_aggregate_post_write_rollback(contract_bytes, status_bytes)
+    expect_post_write_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
+    expect_aggregate_post_write_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
 
     print("PASS: observability stack registry/source-binding/review/lock corruption is rejected without mutation")
     print("PASS: observability stack reconciler rejects all canonical executable/data authority substitutions without mutation")
     print("PASS: observability stack direct append rolls back on post-append validation failure")
-    print("PASS: observability stack post-write and aggregate validation failures roll back contract and status")
+    print("PASS: observability stack authority publication preserves modes and rolls back a rejected second atomic replace")
+    print("PASS: observability stack post-write and aggregate validation failures roll back contract and status bytes/modes")
     print("generic repository JSON accepted as independent review: false")
     print("automatic production promotion authorized: false")
     return 0
