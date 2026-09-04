@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -121,19 +123,37 @@ def validate_current_authority() -> None:
     require(completed.returncode == 0, "canonical human tabletop authority is invalid before reconcile")
 
 
+def atomic_write(path: Path, payload: bytes, mode: int) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
 def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
     original_contract = CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
+    contract_mode = CONTRACT.stat().st_mode & 0o7777
+    status_mode = STATUS.stat().st_mode & 0o7777
     try:
-        CONTRACT.write_bytes(render(contract))
-        STATUS.write_bytes(render(status))
+        atomic_write(CONTRACT, render(contract), contract_mode)
+        atomic_write(STATUS, render(status), status_mode)
         for validator in POST_WRITE_VALIDATORS:
             completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
             require(completed.returncode == 0,
                     f"reconciled human tabletop authority failed validation: {validator.name}")
     except BaseException:
-        CONTRACT.write_bytes(original_contract)
-        STATUS.write_bytes(original_status)
+        atomic_write(CONTRACT, original_contract, contract_mode)
+        atomic_write(STATUS, original_status, status_mode)
         raise
 
 
