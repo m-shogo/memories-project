@@ -116,6 +116,7 @@ def read_text(path: Path) -> str:
 def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
+    mode = path.stat().st_mode & 0o7777 if path.exists() else None
     temp_name: str | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
@@ -124,6 +125,8 @@ def write_text(path: Path, text: str) -> None:
             dir=path.parent,
             text=True,
         )
+        if mode is not None:
+            os.fchmod(fd, mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
             handle.flush()
@@ -311,7 +314,7 @@ def main() -> int:
     print("canonical environment generation data/executable authorities enforced: true")
     print("registration implies preflight eligibility: false")
     print("cross-generation evidence reuse: forbidden")
-    print("generation contract/status writes use atomic same-directory replace: true")
+    print("generation contract/status writes use atomic same-directory replace with mode preservation: true")
     print("failed aggregate validation leaves generation/status mutation behind: false")
     print("aggregate operability validation is inside reconciliation transaction: true")
     print("OPS-P0-006: PARTIAL")
