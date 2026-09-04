@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,10 @@ if SPEC is None or SPEC.loader is None:
     raise SystemExit("LOCAL LONG SOAK LOAD PROJECTION NEGATIVE FAILED: cannot load projection module")
 module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(module)
+
+
+def file_mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
 
 
 def expect_reject(label: str, mutate) -> None:
@@ -67,6 +72,7 @@ def expect_projection_input_reject(label: str, rows) -> None:
 
 def authority_substitution_rejected() -> None:
     load_bytes = CANONICAL_LOAD.read_bytes()
+    load_mode = file_mode(CANONICAL_LOAD)
     substitutions = (
         ("SOAK_PATH", CANONICAL_LOAD, "sustained-soak contract authority drift"),
         ("LOAD_PATH", CANONICAL_SOAK, "load contract authority drift"),
@@ -86,12 +92,15 @@ def authority_substitution_rejected() -> None:
                 raise AssertionError(f"substituted projection authority accepted: {attr}")
             if CANONICAL_LOAD.read_bytes() != load_bytes:
                 raise AssertionError(f"canonical load authority changed after rejected substitution: {attr}")
+            if file_mode(CANONICAL_LOAD) != load_mode:
+                raise AssertionError(f"canonical load authority mode changed after rejected substitution: {attr}")
         finally:
             setattr(module, attr, original)
 
 
 def atomic_replacement_failure_rejected() -> None:
     original_bytes = CANONICAL_LOAD.read_bytes()
+    original_mode = file_mode(CANONICAL_LOAD)
     temp_glob = f".{CANONICAL_LOAD.name}.*.tmp"
     before = {path.name for path in CANONICAL_LOAD.parent.glob(temp_glob)}
     real_replace = module.os.replace
@@ -113,13 +122,31 @@ def atomic_replacement_failure_rejected() -> None:
 
     if CANONICAL_LOAD.read_bytes() != original_bytes:
         raise AssertionError("atomic replacement failure changed canonical load authority")
+    if file_mode(CANONICAL_LOAD) != original_mode:
+        raise AssertionError("atomic replacement failure changed canonical load authority mode")
     after = {path.name for path in CANONICAL_LOAD.parent.glob(temp_glob)}
     if after != before:
         raise AssertionError("atomic replacement failure leaked temporary load authority")
 
 
+def successful_replacement_preserves_mode() -> None:
+    original_bytes = CANONICAL_LOAD.read_bytes()
+    original_mode = file_mode(CANONICAL_LOAD)
+    test_mode = 0o640
+    CANONICAL_LOAD.chmod(test_mode)
+    try:
+        module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes)
+        if CANONICAL_LOAD.read_bytes() != original_bytes:
+            raise AssertionError("successful load projection replacement changed canonical bytes")
+        if file_mode(CANONICAL_LOAD) != test_mode:
+            raise AssertionError("successful load projection replacement changed canonical mode")
+    finally:
+        module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes, original_mode)
+
+
 def transaction_rollback_rejected() -> None:
     original_bytes = CANONICAL_LOAD.read_bytes()
+    original_mode = file_mode(CANONICAL_LOAD)
     original_source_validator = module.validate_source_authority
     original_load_validator = module.validate_projected_load_authority
     module.validate_source_authority = lambda: None
@@ -138,11 +165,13 @@ def transaction_rollback_rejected() -> None:
             raise AssertionError("post-write load projection validator failure was accepted")
         if CANONICAL_LOAD.read_bytes() != original_bytes:
             raise AssertionError("canonical load authority was not restored after rejected projection")
+        if file_mode(CANONICAL_LOAD) != original_mode:
+            raise AssertionError("canonical load authority mode was not restored after rejected projection")
     finally:
         module.validate_source_authority = original_source_validator
         module.validate_projected_load_authority = original_load_validator
-        if CANONICAL_LOAD.read_bytes() != original_bytes:
-            module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes)
+        if CANONICAL_LOAD.read_bytes() != original_bytes or file_mode(CANONICAL_LOAD) != original_mode:
+            module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes, original_mode)
 
 
 def main() -> int:
@@ -199,13 +228,15 @@ def main() -> int:
 
     authority_substitution_rejected()
     atomic_replacement_failure_rejected()
+    successful_replacement_preserves_mode()
     transaction_rollback_rejected()
 
     print("Memory OS local long-soak load projection negative suite PASS")
     print("canonical scenario ID binding enforced: true")
     print("canonical source/load authority identity enforced: true")
-    print("crash-safe atomic load replacement enforced: true")
-    print("post-write load validation rollback enforced: true")
+    print("crash-safe atomic load replacement preserves bytes and mode: true")
+    print("successful atomic load replacement preserves existing mode: true")
+    print("post-write load validation rollback preserves bytes and mode: true")
     print("aggregate external scenario corruption accepted: false")
     print("legacy LOCAL_LONG_SOAK alias may be removed only when non-production: true")
     print("production evidence promotion accepted: false")
