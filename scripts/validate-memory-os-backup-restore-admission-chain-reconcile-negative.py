@@ -31,6 +31,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
 def load_module(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path}")
@@ -177,8 +181,21 @@ def prove_atomic_write_failure(reconciler: object) -> None:
     print("PASS boundary: failed atomic write leaves no temporary authority file")
 
 
+def prove_mode_preserving_write(reconciler: object) -> None:
+    with tempfile.TemporaryDirectory(prefix=".tmp-admission-chain-mode-", dir=TMP_PARENT) as tmpdir:
+        target = Path(tmpdir) / "mode-preservation.json"
+        target.write_text("{}\n", encoding="utf-8")
+        target.chmod(0o640)
+        reconciler.write_text(target, '{"preserved": true}\n')
+        require(mode(target) == 0o640, f"atomic admission-chain write changed file mode: {oct(mode(target))}")
+        leftovers = list(target.parent.glob(f".{target.name}.*.tmp"))
+        require(not leftovers, f"mode-preserving admission-chain write left temporary files: {leftovers}")
+    print("PASS boundary: atomic admission-chain write preserves existing file mode")
+
+
 def prove_post_validation_rollback(reconciler: object) -> None:
     contract_before = CONTRACT.read_bytes()
+    contract_mode_before = mode(CONTRACT)
     status_before = STATUS.read_bytes()
     original_run_validator = reconciler.run_validator
     calls: list[tuple[Path, str]] = []
@@ -208,8 +225,11 @@ def prove_post_validation_rollback(reconciler: object) -> None:
         f"admission-chain post-write validator order drift: {calls}",
     )
     require(CONTRACT.read_bytes() == contract_before, "admission-chain contract rollback drift")
+    require(mode(CONTRACT) == contract_mode_before, "admission-chain contract mode rollback drift")
     require(STATUS.read_bytes() == status_before, "production status mutated during admission-chain rollback test")
-    print("PASS rollback: aggregate Operability rejection restores admission-chain contract byte-for-byte")
+    leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    require(not leftovers, f"admission-chain rollback left temporary authority files: {leftovers}")
+    print("PASS rollback: aggregate Operability rejection restores admission-chain contract bytes and mode")
     print("PASS boundary: post-write validator order is admission-chain then aggregate Operability")
 
 
@@ -246,11 +266,13 @@ def main() -> int:
             expect_domain_fail("admission-chain reconciler authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
     prove_atomic_write_failure(reconciler)
+    prove_mode_preserving_write(reconciler)
     prove_post_validation_rollback(reconciler)
 
     print("direct admission-chain data/executable substitutions accepted: false")
     print("shared append-only registry corruption auto-healed by reconciler: false")
     print("non-atomic derived admission-chain contract write accepted: false")
+    print("admission-chain authority mode loss accepted: false")
     print("Admission-chain validator/reconcile negative suite PASS")
     return 0
 
