@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,10 @@ def load_aggregate_updater():
 
 def load_trend_reviewer():
     return load_module(TREND_REVIEWER, "memory_os_sustained_local_soak_trend_reviewer")
+
+
+def file_mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
 
 
 def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
@@ -70,6 +75,7 @@ def validate_atomic_diagnostic_workflow(path: Path, label: str) -> None:
 
 def validate_atomic_writer(module, path: Path, label: str) -> None:
     original = path.read_bytes()
+    original_mode = file_mode(path)
     temp_glob = f".{path.name}.*.tmp"
     before = {candidate.name for candidate in path.parent.glob(temp_glob)}
     real_replace = module.os.replace
@@ -91,9 +97,28 @@ def validate_atomic_writer(module, path: Path, label: str) -> None:
 
     if path.read_bytes() != original:
         raise AssertionError(f"atomic replace failure changed canonical {label}")
+    if file_mode(path) != original_mode:
+        raise AssertionError(f"atomic replace failure changed canonical {label} mode")
     after = {candidate.name for candidate in path.parent.glob(temp_glob)}
     if after != before:
         raise AssertionError(f"atomic replace failure leaked temporary {label} authority")
+
+
+def validate_mode_preserving_success(module, path: Path, label: str) -> None:
+    original = path.read_bytes()
+    original_mode = file_mode(path)
+    test_mode = 0o640
+    path.chmod(test_mode)
+    try:
+        module.atomic_replace_bytes(path, original)
+        if path.read_bytes() != original:
+            raise AssertionError(f"successful atomic replacement changed canonical {label} bytes")
+        if file_mode(path) != test_mode:
+            raise AssertionError(f"successful atomic replacement changed canonical {label} mode")
+    finally:
+        path.chmod(original_mode)
+        if path.read_bytes() != original:
+            module.atomic_replace_bytes(path, original, original_mode)
 
 
 def main() -> int:
@@ -103,6 +128,7 @@ def main() -> int:
     validate_atomic_diagnostic_workflow(WORKFLOW, "sustained soak authority")
     validate_atomic_diagnostic_workflow(MAIN_WORKFLOW, "sustained soak execution")
     validate_atomic_writer(module, module.CONTRACT_PATH, "sustained-soak contract")
+    validate_mode_preserving_success(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_atomic_writer(updater, updater.AGGREGATE_PATH, "sustained-soak aggregate")
     validate_atomic_writer(reviewer, reviewer.REVIEW_PATH, "sustained-soak trend review")
 
@@ -119,7 +145,10 @@ def main() -> int:
     expect_authority_rejection(reviewer, "REVIEW_PATH", reviewer.CONTRACT_PATH)
 
     paths = (module.CONTRACT_PATH, module.LOAD_PATH, module.STATUS_PATH)
-    original = {path: path.read_bytes() for path in paths}
+    original = {
+        path: (path.read_bytes(), file_mode(path))
+        for path in paths
+    }
 
     expect_authority_rejection(module, "CONTRACT_PATH", module.LOAD_PATH)
     expect_authority_rejection(module, "LOAD_PATH", module.STATUS_PATH)
@@ -134,8 +163,11 @@ def main() -> int:
     expect_authority_rejection(module, "OPERABILITY_VALIDATOR", module.SOAK_VALIDATOR)
 
     for path in paths:
-        if path.read_bytes() != original[path]:
+        original_bytes, original_mode = original[path]
+        if path.read_bytes() != original_bytes:
             raise AssertionError(f"authority substitution changed canonical bytes: {path.relative_to(ROOT)}")
+        if file_mode(path) != original_mode:
+            raise AssertionError(f"authority substitution changed canonical mode: {path.relative_to(ROOT)}")
 
     observed_post_write_failure = False
     real_run_validator = module.run_validator
@@ -160,18 +192,23 @@ def main() -> int:
         if not observed_post_write_failure:
             raise AssertionError("synthetic post-write validator was not reached")
         for path in paths:
-            if path.read_bytes() != original[path]:
+            original_bytes, original_mode = original[path]
+            if path.read_bytes() != original_bytes:
                 raise AssertionError(f"reconcile rollback changed canonical authority: {path.relative_to(ROOT)}")
+            if file_mode(path) != original_mode:
+                raise AssertionError(f"reconcile rollback changed canonical authority mode: {path.relative_to(ROOT)}")
     finally:
         module.run_validator = real_run_validator
         for path in paths:
-            if path.read_bytes() != original[path]:
-                module.atomic_replace_bytes(path, original[path])
+            original_bytes, original_mode = original[path]
+            if path.read_bytes() != original_bytes or file_mode(path) != original_mode:
+                module.atomic_replace_bytes(path, original_bytes, original_mode)
 
     print("PASS: sustained local soak execution and authority diagnostics are atomic and crash-safe")
     print("PASS: sustained local soak reconciler, aggregate updater and trend reviewer reject authority substitution")
-    print("PASS: sustained local soak atomic replacement failure preserves canonical authority")
-    print("PASS: sustained local soak reconcile rollback is fail-closed")
+    print("PASS: sustained local soak atomic replacement failure preserves canonical authority bytes and mode")
+    print("PASS: sustained local soak successful authority replacement preserves existing mode")
+    print("PASS: sustained local soak reconcile rollback preserves canonical authority bytes and mode")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
