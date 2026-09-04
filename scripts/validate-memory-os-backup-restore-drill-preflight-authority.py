@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ EXPECTED_ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_e
 EXPECTED_GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 EXPECTED_OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 EXPECTED_DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+TEMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
 class Fail(RuntimeError):
@@ -94,6 +96,20 @@ def require_reconciler_execution_authority(reconciler: Any) -> None:
     print(f"reconciler execution helper substitutions rejected: {len(helper_cases)}")
 
 
+def require_reconciler_mode_preservation(reconciler: Any) -> None:
+    require(TEMP_PARENT.is_dir(), "restore drill preflight temporary fixture parent missing")
+    with tempfile.TemporaryDirectory(prefix=".tmp-preflight-authority-mode-", dir=TEMP_PARENT) as tmpdir:
+        target = Path(tmpdir) / "mode-preservation.json"
+        target.write_text("{}\n", encoding="utf-8")
+        target.chmod(0o640)
+        reconciler.write_text(target, '{"preserved": true}\n')
+        actual_mode = target.stat().st_mode & 0o7777
+        require(actual_mode == 0o640, f"restore drill preflight atomic write changed file mode: {oct(actual_mode)}")
+        leftovers = list(target.parent.glob(f".{target.name}.*.tmp"))
+        require(not leftovers, f"restore drill preflight mode-preserving write left temporary files: {leftovers}")
+    print("reconciler mode-preserving atomic write: true")
+
+
 def require_atomic_diagnostic_publication() -> None:
     canonical_repo_file(WORKFLOW, "restore drill preflight workflow")
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -139,6 +155,7 @@ def main() -> int:
         require_module_authority(reconciler, name, expected, "restore drill preflight reconciler")
 
     require_reconciler_execution_authority(reconciler)
+    require_reconciler_mode_preservation(reconciler)
     require_atomic_diagnostic_publication()
     print("PASS: restore drill preflight data/executable authorities are canonical")
     print(f"validator executable authorities checked: {len(expected_validator_authorities)}")
