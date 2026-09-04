@@ -105,9 +105,12 @@ jobs:
 
           def atomic_write_text(path: Path, text: str) -> None:
               path.parent.mkdir(parents=True, exist_ok=True)
+              existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
               fd, name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
               temporary = Path(name)
               try:
+                  if existing_mode is not None:
+                      os.fchmod(fd, existing_mode)
                   with os.fdopen(fd, 'w', encoding='utf-8') as handle:
                       handle.write(text)
                       handle.flush()
@@ -155,9 +158,12 @@ jobs:
           from pathlib import Path
 
           def atomic_write_text(path: Path, text: str) -> None:
+              existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
               fd, name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
               temporary = Path(name)
               try:
+                  if existing_mode is not None:
+                      os.fchmod(fd, existing_mode)
                   with os.fdopen(fd, 'w', encoding='utf-8') as handle:
                       handle.write(text)
                       handle.flush()
