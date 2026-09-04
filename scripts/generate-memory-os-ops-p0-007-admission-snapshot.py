@@ -86,6 +86,7 @@ def atomic_write_text(path: Path, text: str) -> None:
     relative = path.relative_to(ROOT)
     if not path.parent.is_dir():
         raise SystemExit(f"strict snapshot authority parent missing: {relative.parent}")
+    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
     temp_name: str | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
@@ -94,6 +95,8 @@ def atomic_write_text(path: Path, text: str) -> None:
             dir=path.parent,
             text=True,
         )
+        if existing_mode is not None:
+            os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
             handle.flush()
