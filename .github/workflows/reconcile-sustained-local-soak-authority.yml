@@ -306,7 +306,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os, re, tempfile
+          import json, os, re, stat, tempfile
           from pathlib import Path
           text = Path('/tmp/memory-os-sustained-local-soak-authority.log').read_text(encoding='utf-8', errors='replace')
           text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
@@ -328,8 +328,11 @@ jobs:
           path = Path('docs/fixtures/memory-os-operability/sustained-local-soak-authority-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
           payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
           fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
           try:
+              if existing_mode is not None:
+                  os.fchmod(fd, existing_mode)
               with os.fdopen(fd, 'wb') as handle:
                   handle.write(payload)
                   handle.flush()
