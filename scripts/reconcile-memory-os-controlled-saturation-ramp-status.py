@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -75,8 +76,10 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(path: Path, payload: bytes, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if mode is None and path.exists():
+        mode = stat.S_IMODE(path.stat().st_mode)
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -87,6 +90,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             delete=False,
         ) as handle:
             tmp_path = Path(handle.name)
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -153,7 +158,10 @@ def write_transactionally(
     controlled: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any], expected_sha: str
 ) -> None:
     enforce_runtime_authorities()
-    originals = {path: path.read_bytes() for path in TRANSACTION_PATHS}
+    originals = {
+        path: (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+        for path in TRANSACTION_PATHS
+    }
     try:
         write(CONTROLLED_CONTRACT, controlled)
         write(LOAD_CONTRACT, load_contract)
@@ -161,9 +169,9 @@ def write_transactionally(
         validate_post_write(expected_sha)
     except BaseException:
         rollback_error: BaseException | None = None
-        for path, content in originals.items():
+        for path, (content, mode) in originals.items():
             try:
-                atomic_write_bytes(path, content)
+                atomic_write_bytes(path, content, mode)
             except BaseException as exc:
                 if rollback_error is None:
                     rollback_error = exc
