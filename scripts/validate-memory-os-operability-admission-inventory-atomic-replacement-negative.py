@@ -37,33 +37,59 @@ def main() -> int:
     generator = load_generator()
     output_before = CANONICAL_OUTPUT.read_bytes()
     status_before = CANONICAL_STATUS.read_bytes()
+    output_mode_before = CANONICAL_OUTPUT.stat().st_mode & 0o7777
     original_replace = generator.os.replace
 
-    def reject_replace(source: str | Path, destination: str | Path) -> None:
-        raise OSError("synthetic atomic replace rejection")
-
-    generator.os.replace = reject_replace
     try:
+        CANONICAL_OUTPUT.chmod(0o640)
+        generator.atomic_write_text(CANONICAL_OUTPUT, output_before.decode("utf-8"))
+        require(CANONICAL_OUTPUT.read_bytes() == output_before, "successful atomic write mutated canonical operability inventory bytes")
+        require(
+            CANONICAL_OUTPUT.stat().st_mode & 0o7777 == 0o640,
+            "successful atomic write did not preserve canonical operability inventory mode",
+        )
+
+        def reject_replace(source: str | Path, destination: str | Path) -> None:
+            raise OSError("synthetic atomic replace rejection")
+
+        generator.os.replace = reject_replace
         try:
-            generator.atomic_write_text(CANONICAL_OUTPUT, output_before.decode("utf-8") + " ")
-        except SystemExit as exc:
-            require(
-                "cannot atomically write contracts/operations/operability-admission-inventory.v1.json" in str(exc),
-                f"atomic inventory write rejected at wrong boundary: {exc}",
-            )
-        else:
-            raise Fail("synthetic operability inventory atomic replace failure unexpectedly accepted")
+            try:
+                generator.atomic_write_text(CANONICAL_OUTPUT, output_before.decode("utf-8") + " ")
+            except SystemExit as exc:
+                require(
+                    "cannot atomically write contracts/operations/operability-admission-inventory.v1.json" in str(exc),
+                    f"atomic inventory write rejected at wrong boundary: {exc}",
+                )
+            else:
+                raise Fail("synthetic operability inventory atomic replace failure unexpectedly accepted")
+        finally:
+            generator.os.replace = original_replace
+
+        require(CANONICAL_OUTPUT.read_bytes() == output_before, "atomic replace rejection mutated canonical operability inventory")
+        require(
+            CANONICAL_OUTPUT.stat().st_mode & 0o7777 == 0o640,
+            "atomic replace rejection mutated canonical operability inventory mode",
+        )
+        require(CANONICAL_STATUS.read_bytes() == status_before, "atomic replace rejection mutated canonical production status")
+        leftovers = list(CANONICAL_OUTPUT.parent.glob(f".{CANONICAL_OUTPUT.name}.*.tmp"))
+        require(not leftovers, f"atomic replace rejection left temporary operability inventory authority files: {leftovers}")
     finally:
         generator.os.replace = original_replace
+        CANONICAL_OUTPUT.chmod(output_mode_before)
 
-    require(CANONICAL_OUTPUT.read_bytes() == output_before, "atomic replace rejection mutated canonical operability inventory")
-    require(CANONICAL_STATUS.read_bytes() == status_before, "atomic replace rejection mutated canonical production status")
-    leftovers = list(CANONICAL_OUTPUT.parent.glob(f".{CANONICAL_OUTPUT.name}.*.tmp"))
-    require(not leftovers, f"atomic replace rejection left temporary operability inventory authority files: {leftovers}")
+    require(CANONICAL_OUTPUT.read_bytes() == output_before, "atomic mode test cleanup mutated canonical operability inventory")
+    require(
+        CANONICAL_OUTPUT.stat().st_mode & 0o7777 == output_mode_before,
+        "atomic mode test cleanup did not restore canonical operability inventory mode",
+    )
+    require(CANONICAL_STATUS.read_bytes() == status_before, "atomic mode test cleanup mutated canonical production status")
 
     print("Memory OS operability admission inventory atomic replacement negative PASS")
+    print("mode-preserving atomic inventory authority write: true")
     print("non-atomic inventory authority write accepted: false")
     print("canonical inventory mutated on failed atomic replace: false")
+    print("canonical inventory mode mutated on failed atomic replace: false")
     print("production evidence: false")
     print("production ready: false")
     print("production decision: NO_GO")
