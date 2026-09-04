@@ -38,6 +38,10 @@ def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
 def load_generator_module():
     spec = importlib.util.spec_from_file_location("memory_os_ops_p0_007_snapshot_negative_generator", GENERATOR)
     if spec is None or spec.loader is None:
@@ -136,17 +140,34 @@ def run_generator_full_admission_chain_required() -> None:
         raise Fail("full admission helper substitution mutated deterministic snapshot")
 
 
+def run_generator_atomic_write_mode_preservation() -> None:
+    snapshot_before = SNAPSHOT.read_bytes()
+    original_mode = mode(SNAPSHOT)
+    module = load_generator_module()
+    try:
+        SNAPSHOT.chmod(0o640)
+        module.atomic_write_text(SNAPSHOT, snapshot_before.decode("utf-8"))
+        if SNAPSHOT.read_bytes() != snapshot_before:
+            raise Fail("successful atomic strict snapshot rewrite changed canonical bytes")
+        if mode(SNAPSHOT) != 0o640:
+            raise Fail(f"successful atomic strict snapshot rewrite changed mode: {oct(mode(SNAPSHOT))}")
+    finally:
+        SNAPSHOT.chmod(original_mode)
+
+
 def run_generator_atomic_write_failure() -> None:
     snapshot_before = SNAPSHOT.read_bytes()
     status_before = STATUS.read_bytes()
+    original_mode = mode(SNAPSHOT)
     module = load_generator_module()
     original_replace = module.os.replace
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
         raise OSError("synthetic strict snapshot atomic replace rejection")
 
-    module.os.replace = reject_replace
     try:
+        SNAPSHOT.chmod(0o640)
+        module.os.replace = reject_replace
         try:
             module.atomic_write_text(SNAPSHOT, snapshot_before.decode("utf-8") + " ")
         except SystemExit as exc:
@@ -158,7 +179,12 @@ def run_generator_atomic_write_failure() -> None:
         module.os.replace = original_replace
 
     if SNAPSHOT.read_bytes() != snapshot_before:
+        SNAPSHOT.chmod(original_mode)
         raise Fail("atomic replace rejection mutated canonical strict snapshot")
+    if mode(SNAPSHOT) != 0o640:
+        SNAPSHOT.chmod(original_mode)
+        raise Fail(f"atomic replace rejection changed canonical strict snapshot mode: {oct(mode(SNAPSHOT))}")
+    SNAPSHOT.chmod(original_mode)
     if STATUS.read_bytes() != status_before:
         raise Fail("atomic replace rejection mutated canonical production status")
     leftovers = list(SNAPSHOT.parent.glob(f".{SNAPSHOT.name}.*.tmp"))
@@ -349,6 +375,7 @@ def main() -> int:
 
     try:
         run_validator(True, "clean baseline")
+        run_generator_atomic_write_mode_preservation()
         run_generator_atomic_write_failure()
         run_generator_full_admission_chain_required()
         run_generator_post_write_validator_substitution_rejected()
@@ -389,7 +416,8 @@ def main() -> int:
     print("snapshot unknown/missing field drift rejected: true")
     print("snapshot boolean count drift rejected: true")
     print("snapshot downstream requirement/next-action drift rejected: true")
-    print("failed atomic snapshot replace preserves canonical bytes and removes temporary files: true")
+    print("successful atomic snapshot rewrite preserves canonical mode: true")
+    print("failed atomic snapshot replace preserves canonical bytes/mode and removes temporary files: true")
     print("canonical authority files preserved byte-for-byte: true")
     print("rejected generator attempts leave snapshot byte-for-byte unchanged: true")
     print("canonical six-blocker content and ordering preserved: true")
