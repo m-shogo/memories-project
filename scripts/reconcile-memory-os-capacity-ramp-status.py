@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -85,8 +86,10 @@ def run_validator(path: Path, label: str, *args: str) -> None:
     require(completed.returncode == 0, f"{label} failed")
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(path: Path, payload: bytes, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if mode is None and path.exists():
+        mode = stat.S_IMODE(path.stat().st_mode)
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -97,6 +100,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             delete=False,
         ) as handle:
             tmp_path = Path(handle.name)
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -120,7 +125,10 @@ def write_and_validate_transactionally(
 ) -> None:
     enforce_runtime_authorities()
     paths = (CONTRACT_PATH, LOAD_PATH, STATUS_PATH)
-    original_bytes = {path: path.read_bytes() for path in paths}
+    original = {
+        path: (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+        for path in paths
+    }
     try:
         atomic_write_json(CONTRACT_PATH, contract)
         atomic_write_json(LOAD_PATH, load_contract)
@@ -132,7 +140,8 @@ def write_and_validate_transactionally(
         rollback_error: BaseException | None = None
         for path in paths:
             try:
-                atomic_write_bytes(path, original_bytes[path])
+                payload, mode = original[path]
+                atomic_write_bytes(path, payload, mode)
             except BaseException as exc:
                 if rollback_error is None:
                     rollback_error = exc
