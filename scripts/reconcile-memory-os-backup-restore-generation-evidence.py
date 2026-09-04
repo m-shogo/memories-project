@@ -118,6 +118,7 @@ def read_text(path: Path) -> str:
 def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
+    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
     temp_name: str | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
@@ -126,6 +127,8 @@ def write_text(path: Path, text: str) -> None:
             dir=path.parent,
             text=True,
         )
+        if existing_mode is not None:
+            os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
             handle.flush()
@@ -378,7 +381,7 @@ def main() -> int:
     print("human production promotion authorized: false")
     print("candidate counters rederived from append-only records: true")
     print("corrupt append-only registry auto-healed by reconcile: false")
-    print("generation registry/contract/binding/status writes use atomic same-directory replace: true")
+    print("generation registry/contract/binding/status writes use mode-preserving atomic same-directory replace: true")
     print("failed post-validation leaves derived generation/status mutation behind: false")
     print("production evidence: false")
     print("OPS-P0-007: incomplete")
