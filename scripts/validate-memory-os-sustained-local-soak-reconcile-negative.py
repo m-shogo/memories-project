@@ -143,7 +143,11 @@ def main() -> int:
         "sustained soak authority",
         require_mode_preservation=True,
     )
-    validate_atomic_diagnostic_workflow(MAIN_WORKFLOW, "sustained soak execution")
+    validate_atomic_diagnostic_workflow(
+        MAIN_WORKFLOW,
+        "sustained soak execution",
+        require_mode_preservation=True,
+    )
     validate_atomic_writer(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_mode_preserving_success(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_atomic_writer(updater, updater.AGGREGATE_PATH, "sustained-soak aggregate")
@@ -223,8 +227,7 @@ def main() -> int:
             if path.read_bytes() != original_bytes or file_mode(path) != original_mode:
                 module.atomic_replace_bytes(path, original_bytes, original_mode)
 
-    print("PASS: sustained local soak execution and authority diagnostics are atomic and crash-safe")
-    print("PASS: sustained soak authority diagnostic preserves existing mode")
+    print("PASS: sustained local soak execution and authority diagnostics are atomic, crash-safe, and mode-preserving")
     print("PASS: sustained local soak reconciler, aggregate updater and trend reviewer reject authority substitution")
     print("PASS: sustained local soak atomic replacement failure preserves canonical authority bytes and mode")
     print("PASS: sustained local soak derived authority writers preserve existing mode")
