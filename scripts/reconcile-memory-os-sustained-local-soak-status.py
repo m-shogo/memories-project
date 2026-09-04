@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -134,11 +135,15 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+def atomic_replace_bytes(path: Path, payload: bytes, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if mode is None and path.exists():
+        mode = stat.S_IMODE(path.stat().st_mode)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -188,7 +193,10 @@ def write_and_validate_transactionally(
     contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any]
 ) -> None:
     paths = (CONTRACT_PATH, LOAD_PATH, STATUS_PATH)
-    original_bytes = {path: path.read_bytes() for path in paths}
+    originals = {
+        path: (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+        for path in paths
+    }
     try:
         write(CONTRACT_PATH, contract)
         write(LOAD_PATH, load_contract)
@@ -198,7 +206,8 @@ def write_and_validate_transactionally(
         run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
     except Exception:
         for path in paths:
-            atomic_replace_bytes(path, original_bytes[path])
+            payload, mode = originals[path]
+            atomic_replace_bytes(path, payload, mode)
         raise
 
 
