@@ -223,6 +223,7 @@ jobs:
           import json
           import os
           import re
+          import stat
           import tempfile
           from pathlib import Path
           text = Path("/tmp/memory-os-capacity-ramp.log").read_text(encoding="utf-8", errors="replace")
@@ -243,10 +244,13 @@ jobs:
           path = Path("docs/fixtures/memory-os-operability/capacity-ramp-diagnostic.last.json")
           path.parent.mkdir(parents=True, exist_ok=True)
           payload = (json.dumps(value, indent=2) + "\n").encode("utf-8")
+          existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
           tmp_path = None
           try:
               with tempfile.NamedTemporaryFile(mode="wb", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False) as handle:
                   tmp_path = Path(handle.name)
+                  if existing_mode is not None:
+                      os.fchmod(handle.fileno(), existing_mode)
                   handle.write(payload)
                   handle.flush()
                   os.fsync(handle.fileno())
