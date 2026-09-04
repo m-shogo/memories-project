@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -64,11 +65,15 @@ def enforce_runtime_authorities() -> None:
     require_exact_optional_file(REVIEW_PATH, CANONICAL_REVIEW_PATH, "sustained soak trend review")
 
 
-def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+def atomic_replace_bytes(path: Path, payload: bytes, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if mode is None and path.exists():
+        mode = stat.S_IMODE(path.stat().st_mode)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
