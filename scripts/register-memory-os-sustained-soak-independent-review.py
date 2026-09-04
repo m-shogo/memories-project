@@ -14,6 +14,7 @@ import fcntl
 import importlib.util
 import json
 import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -157,7 +158,7 @@ def append_record(registry: dict[str, Any], kind: str, record: dict[str, Any]) -
 
 def validate_candidate(candidate: dict[str, Any]) -> Path:
     enforce_runtime_authorities()
-    validator = load_validator()
+    registry_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
     handle = tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
@@ -168,6 +169,7 @@ def validate_candidate(candidate: dict[str, Any]) -> Path:
     )
     path = Path(handle.name)
     try:
+        os.fchmod(handle.fileno(), registry_mode)
         json.dump(candidate, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
         handle.flush()
@@ -198,7 +200,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
     candidate_path.unlink(missing_ok=True)
 
 
-def atomic_restore(payload: bytes) -> None:
+def atomic_restore(payload: bytes, mode: int) -> None:
     enforce_runtime_authorities()
     descriptor, temp_name = tempfile.mkstemp(
         prefix=".sustained-soak-independent-review-rollback-",
@@ -207,6 +209,7 @@ def atomic_restore(payload: bytes) -> None:
     )
     try:
         with os.fdopen(descriptor, "wb") as handle:
+            os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -223,6 +226,7 @@ def replace_registry_transactionally(candidate_path: Path) -> None:
     enforce_runtime_authorities()
     try:
         original = REGISTRY.read_bytes()
+        original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
     except OSError as exc:
         raise Fail("cannot snapshot sustained-soak review registry before append") from exc
 
@@ -232,7 +236,7 @@ def replace_registry_transactionally(candidate_path: Path) -> None:
         os.replace(candidate_path, REGISTRY)
         validate_registry_for_append(load(REGISTRY))
     except Exception as exc:
-        atomic_restore(original)
+        atomic_restore(original, original_mode)
         if isinstance(exc, (Fail, validator.Fail)):
             raise Fail(f"post-append canonical registry validation failed: {exc}") from exc
         raise
