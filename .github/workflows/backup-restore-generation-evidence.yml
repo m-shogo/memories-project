@@ -114,7 +114,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: backup-restore-generation-evidence-${{ github.event.pull_request.number || 'so' }}
@@ -197,22 +197,20 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-binding.py
           python scripts/validate-memory-os-backup-restore-generation-binding-negative.py
           python scripts/validate-memory-os-operability.py
-          git diff --exit-code -- \
-            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
-            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
-            contracts/operations/backup-restore-generation-binding-contract.v1.json \
-            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
-            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json \
-            contracts/operations/production-operability-status.json
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
 
   validate:
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -221,7 +219,7 @@ jobs:
       - name: Capture exact recovery authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.sha }}"
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
