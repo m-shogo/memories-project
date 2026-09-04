@@ -28,15 +28,17 @@ def require(condition: bool, message: str) -> None:
 
 def validate_atomic_diagnostic_publication(publish: str) -> None:
     required_fragments = (
+        "existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None",
         "tempfile.mkstemp(",
         "dir=path.parent",
+        "os.fchmod(fd, existing_mode)",
         "handle.flush()",
         "os.fsync(handle.fileno())",
         "os.replace(tmp_name, path)",
         "os.unlink(tmp_name)",
     )
     missing = [fragment for fragment in required_fragments if fragment not in publish]
-    require(not missing, f"strict snapshot diagnostic publication is not crash-safe: missing {missing}")
+    require(not missing, f"strict snapshot diagnostic publication is not crash-safe/mode-preserving: missing {missing}")
     require(
         "path.write_text(json.dumps(value" not in publish,
         "strict snapshot diagnostic publication regressed to direct write_text",
@@ -85,7 +87,7 @@ def main() -> int:
     print("full request-bound generation evidence validation required: true")
     print("full typed eight-domain admission validation required: true")
     print("exact-source publication CAS required: true")
-    print("crash-safe diagnostic publication required: true")
+    print("crash-safe mode-preserving diagnostic publication required: true")
     print("production evidence created: false")
     print("production ready: false")
     print("production decision: NO_GO")
