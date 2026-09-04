@@ -54,18 +54,31 @@ def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
-def validate_atomic_diagnostic_workflow(path: Path, label: str) -> None:
+def validate_atomic_diagnostic_workflow(
+    path: Path,
+    label: str,
+    *,
+    require_mode_preservation: bool = False,
+) -> None:
     if not path.is_file():
         raise AssertionError(f"{label} workflow missing")
     text = path.read_text(encoding="utf-8")
-    required = (
+    required = [
         "tempfile.mkstemp(",
         "dir=path.parent",
         "handle.flush()",
         "os.fsync(handle.fileno())",
         "os.replace(tmp_name, path)",
         "os.unlink(tmp_name)",
-    )
+    ]
+    if require_mode_preservation:
+        required.extend(
+            [
+                "stat.S_IMODE(path.stat().st_mode)",
+                "if path.exists() else None",
+                "os.fchmod(fd, existing_mode)",
+            ]
+        )
     missing = [fragment for fragment in required if fragment not in text]
     if missing:
         raise AssertionError(f"{label} diagnostic is not crash-safe: missing {missing}")
@@ -125,7 +138,11 @@ def main() -> int:
     module = load_reconciler()
     updater = load_aggregate_updater()
     reviewer = load_trend_reviewer()
-    validate_atomic_diagnostic_workflow(WORKFLOW, "sustained soak authority")
+    validate_atomic_diagnostic_workflow(
+        WORKFLOW,
+        "sustained soak authority",
+        require_mode_preservation=True,
+    )
     validate_atomic_diagnostic_workflow(MAIN_WORKFLOW, "sustained soak execution")
     validate_atomic_writer(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_mode_preserving_success(module, module.CONTRACT_PATH, "sustained-soak contract")
@@ -207,6 +224,7 @@ def main() -> int:
                 module.atomic_replace_bytes(path, original_bytes, original_mode)
 
     print("PASS: sustained local soak execution and authority diagnostics are atomic and crash-safe")
+    print("PASS: sustained soak authority diagnostic preserves existing mode")
     print("PASS: sustained local soak reconciler, aggregate updater and trend reviewer reject authority substitution")
     print("PASS: sustained local soak atomic replacement failure preserves canonical authority bytes and mode")
     print("PASS: sustained local soak derived authority writers preserve existing mode")
