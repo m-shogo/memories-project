@@ -317,9 +317,12 @@ def validate_registry_for_append(registry: dict[str, Any], *, validate_rows: boo
 
 
 def atomic_write(value: dict[str, Any]) -> None:
+    existing_mode = REGISTRY.stat().st_mode & 0o7777 if REGISTRY.exists() else None
     descriptor, temp_name = tempfile.mkstemp(prefix=".observability-stack.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            if existing_mode is not None:
+                os.fchmod(handle.fileno(), existing_mode)
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
