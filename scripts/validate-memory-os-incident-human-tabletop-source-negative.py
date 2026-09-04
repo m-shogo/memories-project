@@ -18,6 +18,10 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 POST_WRITE_MARKER = Path("/tmp/memory-os-incident-human-tabletop-post-write-negative.count")
 
 
+def file_mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
 def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
@@ -79,10 +83,50 @@ def expect_reconcile_authority_identity() -> None:
     module.enforce_runtime_authorities()
 
 
-def expect_post_write_rollback() -> None:
-    validator_bytes = VALIDATOR.read_bytes()
+def expect_second_replace_rollback() -> None:
+    module = load_reconciler()
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
+    contract_mode = file_mode(CONTRACT)
+    status_mode = file_mode(STATUS)
+    original_replace = module.os.replace
+    calls = 0
+
+    def fail_second_replace(source, target):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("synthetic second authority replace rejection")
+        return original_replace(source, target)
+
+    try:
+        module.os.replace = fail_second_replace
+        try:
+            module.commit_validated_pair(module.load(CONTRACT), module.load(STATUS))
+        except OSError:
+            pass
+        else:
+            raise RuntimeError("human tabletop reconciler accepted second authority replace rejection")
+    finally:
+        module.os.replace = original_replace
+
+    if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
+        raise RuntimeError("second authority replace rejection did not restore human tabletop authority bytes")
+    if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
+        raise RuntimeError("second authority replace rejection did not restore human tabletop authority modes")
+    if list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")):
+        raise RuntimeError("second authority replace rejection left contract temp residue")
+    if list(STATUS.parent.glob(f".{STATUS.name}.*.tmp")):
+        raise RuntimeError("second authority replace rejection left status temp residue")
+
+
+def expect_post_write_rollback() -> None:
+    validator_bytes = VALIDATOR.read_bytes()
+    validator_mode = file_mode(VALIDATOR)
+    contract_bytes = CONTRACT.read_bytes()
+    status_bytes = STATUS.read_bytes()
+    contract_mode = file_mode(CONTRACT)
+    status_mode = file_mode(STATUS)
     wrapper = f'''#!/usr/bin/env python3
 from pathlib import Path
 marker = Path({str(POST_WRITE_MARKER)!r})
@@ -107,17 +151,25 @@ raise SystemExit(0 if count == 0 else 1)
             raise RuntimeError("post-write failure left human tabletop contract mutated")
         if STATUS.read_bytes() != status_bytes:
             raise RuntimeError("post-write failure left production operability status mutated")
+        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
+            raise RuntimeError("post-write failure changed human tabletop authority modes")
     finally:
         VALIDATOR.write_bytes(validator_bytes)
+        os.chmod(VALIDATOR, validator_mode)
         POST_WRITE_MARKER.unlink(missing_ok=True)
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
+        os.chmod(CONTRACT, contract_mode)
+        os.chmod(STATUS, status_mode)
 
 
 def expect_aggregate_post_write_rollback() -> None:
     operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
+    operability_mode = file_mode(OPERABILITY_VALIDATOR)
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
+    contract_mode = file_mode(CONTRACT)
+    status_mode = file_mode(STATUS)
     try:
         OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
         completed = subprocess.run(
@@ -134,10 +186,15 @@ def expect_aggregate_post_write_rollback() -> None:
             raise RuntimeError("aggregate failure left human tabletop contract mutated")
         if STATUS.read_bytes() != status_bytes:
             raise RuntimeError("aggregate failure left production operability status mutated")
+        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
+            raise RuntimeError("aggregate failure changed human tabletop authority modes")
     finally:
         OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
+        os.chmod(OPERABILITY_VALIDATOR, operability_mode)
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
+        os.chmod(CONTRACT, contract_mode)
+        os.chmod(STATUS, status_mode)
 
 
 def main() -> int:
@@ -151,10 +208,12 @@ def main() -> int:
     if writer.source_is_ancestor(future):
         raise RuntimeError("future/side commit was accepted as human tabletop source authority")
     expect_reconcile_authority_identity()
+    expect_second_replace_rollback()
     expect_post_write_rollback()
     expect_aggregate_post_write_rollback()
     print("PASS: human tabletop source authority is ancestor-only without creating human evidence")
     print("PASS: human tabletop reconcile executable authorities reject substitution")
+    print("PASS: human tabletop second replace rejection rolls back contract/status bytes and modes")
     print("PASS: human tabletop post-write and aggregate validation failures roll back contract and status")
     return 0
 
