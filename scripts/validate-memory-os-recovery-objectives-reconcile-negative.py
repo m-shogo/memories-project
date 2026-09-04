@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -46,9 +47,23 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
-def assert_canonical_unchanged(contract_bytes: bytes, status_bytes: bytes, label: str) -> None:
+def file_mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
+def assert_canonical_unchanged(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    label: str,
+    contract_mode: int | None = None,
+    status_mode: int | None = None,
+) -> None:
     require(CONTRACT.read_bytes() == contract_bytes, f"{label} changed canonical recovery objective contract")
     require(STATUS.read_bytes() == status_bytes, f"{label} changed canonical production status")
+    if contract_mode is not None:
+        require(file_mode(CONTRACT) == contract_mode, f"{label} changed canonical recovery objective contract mode")
+    if status_mode is not None:
+        require(file_mode(STATUS) == status_mode, f"{label} changed canonical production status mode")
 
 
 def validate_atomic_diagnostic_publication() -> None:
@@ -56,21 +71,42 @@ def validate_atomic_diagnostic_publication() -> None:
     required_fragments = (
         "tempfile.mkstemp(",
         "dir=path.parent",
+        "existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None",
+        "os.fchmod(fd, existing_mode)",
         "handle.flush()",
         "os.fsync(handle.fileno())",
         "os.replace(tmp_name, path)",
         "os.unlink(tmp_name)",
     )
     missing = [fragment for fragment in required_fragments if fragment not in text]
-    require(not missing, f"recovery objective diagnostic publication is not crash-safe: missing {missing}")
+    require(not missing, f"recovery objective diagnostic publication is not crash-safe or mode-preserving: missing {missing}")
     require(
         "path.write_text(json.dumps(value" not in text,
         "recovery objective diagnostic publication regressed to direct write_text",
     )
-    print("PASS boundary: recovery objective failure diagnostic publication is crash-safe")
+    print("PASS boundary: recovery objective failure diagnostic publication is crash-safe and mode-preserving")
 
 
-def prove_atomic_write_failure(reconciler: object, canonical_contract: bytes, canonical_status: bytes) -> None:
+def prove_atomic_write_mode_preservation(reconciler: object) -> None:
+    with tempfile.TemporaryDirectory(prefix=".tmp-objective-mode-", dir=TMP_PARENT) as tmpdir:
+        path = Path(tmpdir) / "authority.json"
+        path.write_text('{"before":true}\n', encoding="utf-8")
+        os.chmod(path, 0o640)
+        reconciler.write_text(path, '{"after":true}\n')
+        require(path.read_text(encoding="utf-8") == '{"after":true}\n', "objective mode-preservation fixture payload drift")
+        require(file_mode(path) == 0o640, "atomic recovery objective authority replace changed existing file mode")
+        leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(not leftovers, "mode-preserving recovery objective write left temporary files")
+    print("PASS boundary: atomic recovery objective authority replace preserves existing file mode")
+
+
+def prove_atomic_write_failure(
+    reconciler: object,
+    canonical_contract: bytes,
+    canonical_status: bytes,
+    canonical_contract_mode: int,
+    canonical_status_mode: int,
+) -> None:
     original_replace = reconciler.os.replace
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
@@ -87,11 +123,17 @@ def prove_atomic_write_failure(reconciler: object, canonical_contract: bytes, ca
     finally:
         reconciler.os.replace = original_replace
 
-    assert_canonical_unchanged(canonical_contract, canonical_status, "atomic replace rejection")
+    assert_canonical_unchanged(
+        canonical_contract,
+        canonical_status,
+        "atomic replace rejection",
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
     contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
     status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
     require(not contract_leftovers and not status_leftovers, "atomic write rejection left temporary recovery objective authority files")
-    print("PASS boundary: failed atomic recovery objective write preserves canonical bytes and cleans temporary files")
+    print("PASS boundary: failed atomic recovery objective write preserves canonical bytes/mode and cleans temporary files")
 
 
 def main() -> int:
@@ -102,6 +144,8 @@ def main() -> int:
 
     canonical_contract = CONTRACT.read_bytes()
     canonical_status = STATUS.read_bytes()
+    canonical_contract_mode = file_mode(CONTRACT)
+    canonical_status_mode = file_mode(STATUS)
     validate_atomic_diagnostic_publication()
 
     substitutions = (
@@ -117,7 +161,13 @@ def main() -> int:
         setattr(reconciler, attribute, replacement)
         try:
             expect_domain_fail(f"{attribute.lower()} substitution", reconciler.main, reconciler.Fail, expected)
-            assert_canonical_unchanged(canonical_contract, canonical_status, attribute.lower())
+            assert_canonical_unchanged(
+                canonical_contract,
+                canonical_status,
+                attribute.lower(),
+                canonical_contract_mode,
+                canonical_status_mode,
+            )
         finally:
             setattr(reconciler, attribute, original)
 
@@ -132,7 +182,13 @@ def main() -> int:
             reconciler.Fail,
             "recovery objective contract authority drift",
         )
-        assert_canonical_unchanged(canonical_contract, canonical_status, "paired fixture substitution")
+        assert_canonical_unchanged(
+            canonical_contract,
+            canonical_status,
+            "paired fixture substitution",
+            canonical_contract_mode,
+            canonical_status_mode,
+        )
     finally:
         reconciler.CONTRACT = original_contract_path
         reconciler.STATUS = original_status_path
@@ -168,7 +224,14 @@ def main() -> int:
             outside.write_text("{}\n", encoding="utf-8")
             expect_domain_fail("objective authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
-    prove_atomic_write_failure(reconciler, canonical_contract, canonical_status)
+    prove_atomic_write_mode_preservation(reconciler)
+    prove_atomic_write_failure(
+        reconciler,
+        canonical_contract,
+        canonical_status,
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
 
     original_run_validator = reconciler.run_validator
     validator_calls: list[tuple[Path, str]] = []
@@ -198,13 +261,20 @@ def main() -> int:
         ],
         f"recovery objective post-write validator order drift: {validator_calls}",
     )
-    assert_canonical_unchanged(canonical_contract, canonical_status, "aggregate rollback")
-    print("PASS rollback: aggregate operability rejection restores recovery objective contract/status byte-for-byte")
+    assert_canonical_unchanged(
+        canonical_contract,
+        canonical_status,
+        "aggregate rollback",
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
+    print("PASS rollback: aggregate operability rejection restores recovery objective contract/status byte-for-byte and mode-for-mode")
     print("PASS boundary: post-write validator order is recovery objective then aggregate Operability")
     print("paired recovery objective fixture substitution accepted: false")
     print("recovery objective data/executable substitution accepted: false")
     print("recovery objective evidence reordering accepted: false")
     print("non-atomic recovery objective authority write accepted: false")
+    print("recovery objective authority mode drift accepted: false")
     print("non-atomic recovery objective diagnostic write accepted: false")
     print("Recovery objective reconcile negative suite PASS")
     print("objective created or defaulted: false")
