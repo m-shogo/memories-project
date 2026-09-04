@@ -200,6 +200,7 @@ jobs:
           import json
           import os
           import re
+          import stat
           import tempfile
           from pathlib import Path
           text = Path('/tmp/memory-os-sustained-local-soak-smoke.log').read_text(encoding='utf-8', errors='replace')
@@ -226,8 +227,11 @@ jobs:
           path = Path('docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
           payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
           fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
           try:
+              if existing_mode is not None:
+                  os.fchmod(fd, existing_mode)
               with os.fdopen(fd, 'wb') as handle:
                   handle.write(payload)
                   handle.flush()
@@ -316,7 +320,7 @@ jobs:
             fi
             sleep 1
           done
-          docker logs memory-os-sustained-local-soak-minio
+          docker logs memory-os-sustained-soak-minio
           exit 1
 
       - name: Execute one 60-minute LOCAL_LONG_SOAK run
@@ -443,6 +447,7 @@ jobs:
           import json
           import os
           import re
+          import stat
           import tempfile
           from pathlib import Path
           text = Path('/tmp/memory-os-sustained-local-soak.log').read_text(encoding='utf-8', errors='replace')
@@ -470,8 +475,11 @@ jobs:
           path = Path('docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
           payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
           fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
           try:
+              if existing_mode is not None:
+                  os.fchmod(fd, existing_mode)
               with os.fdopen(fd, 'wb') as handle:
                   handle.write(payload)
                   handle.flush()
