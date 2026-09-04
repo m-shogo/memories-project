@@ -103,9 +103,10 @@ def expect_generator_execution_rejected(module: Any, field: str, replacement: An
     require(rejected, f"inventory generator accepted substituted runtime authority {field}")
 
 
-def restore_input(input_before: bytes) -> None:
+def restore_input(input_before: bytes, input_mode_before: int) -> None:
     INPUT.unlink(missing_ok=True)
     INPUT.write_bytes(input_before)
+    INPUT.chmod(input_mode_before)
     ALIAS_TARGET.unlink(missing_ok=True)
 
 
@@ -181,6 +182,7 @@ def main() -> int:
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
     input_before = INPUT.read_bytes()
+    input_mode_before = INPUT.stat().st_mode & 0o7777
     output_before = generator.OUTPUT.read_bytes()
 
     try:
@@ -197,10 +199,14 @@ def main() -> int:
         require(generator.exists(INPUT_REL.as_posix()) is False, "symlinked foundation path counted as canonical foundation")
         require(generator.OUTPUT.read_bytes() == output_before, "input authority rejection mutated canonical inventory")
     finally:
-        restore_input(input_before)
+        restore_input(input_before, input_mode_before)
 
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input was not restored")
     require(INPUT.read_bytes() == input_before, "canonical inventory input bytes changed after negative probe")
+    require(
+        INPUT.stat().st_mode & 0o7777 == input_mode_before,
+        "canonical inventory input mode changed after negative probe",
+    )
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture cleanup failed")
     require(generator.OUTPUT.read_bytes() == output_before, "negative probe mutated canonical inventory")
 
@@ -219,6 +225,7 @@ def main() -> int:
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
     print("rejected probe mutated canonical input authority: false")
+    print("rejected probe mutated canonical input authority mode: false")
     print("rejected probe mutated canonical inventory: false")
     print("production evidence: false")
     print("production decision: NO_GO")
