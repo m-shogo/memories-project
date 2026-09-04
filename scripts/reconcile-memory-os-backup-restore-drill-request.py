@@ -119,6 +119,7 @@ def write_text(path: Path, text: str) -> None:
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
     temp_name: str | None = None
     try:
+        target_mode = path.stat().st_mode & 0o7777
         fd, temp_name = tempfile.mkstemp(
             prefix=f".{path.name}.",
             suffix=".tmp",
@@ -126,6 +127,7 @@ def write_text(path: Path, text: str) -> None:
             text=True,
         )
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            os.fchmod(handle.fileno(), target_mode)
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
