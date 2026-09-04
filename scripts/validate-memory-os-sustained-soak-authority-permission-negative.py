@@ -36,10 +36,13 @@ def main() -> int:
     require("github.event.pull_request.head.sha" not in reconcile, "non-PR publisher must not depend on pull-request authority")
     require("git rev-parse origin/so" in reconcile, "non-PR publisher must retain stale-source CAS")
     require("os.replace(tmp_name, path)" in reconcile, "failure diagnostic must retain atomic replacement")
+    require("stat.S_IMODE(path.stat().st_mode)" in reconcile, "failure diagnostic must preserve existing target mode")
+    require("if path.exists() else None" in reconcile, "failure diagnostic must handle first publication without inventing a prior mode")
+    require("os.fchmod(fd, existing_mode)" in reconcile, "failure diagnostic temp file must inherit the existing target mode")
 
     print("PASS: repeated-soak PR validation is exact-head and read-only")
     print("PASS: repeated-soak publication is non-PR-only with job-scoped write authority")
-    print("PASS: stale-source CAS and atomic diagnostic publication remain enforced")
+    print("PASS: stale-source CAS and atomic mode-preserving diagnostic publication remain enforced")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
