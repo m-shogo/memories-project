@@ -24,6 +24,10 @@ TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.incident-contact-rou
 POST_WRITE_MARKER = Path("/tmp/memory-os-incident-contact-routing-post-write-negative.count")
 
 
+def file_mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
 def load_writer():
     spec = importlib.util.spec_from_file_location("incident_contact_routing_writer", WRITER)
     if spec is None or spec.loader is None:
@@ -50,7 +54,7 @@ def expect_writer_rejected(writer, registry, label: str) -> None:
     raise RuntimeError(f"writer accepted corrupt contact routing registry: {label}")
 
 
-def expect_writer_append_rollback(writer, registry, registry_bytes: bytes) -> None:
+def expect_writer_append_rollback(writer, registry, registry_bytes: bytes, registry_mode: int) -> None:
     original_validator = writer.validate_registry_for_append
     calls = 0
 
@@ -73,9 +77,12 @@ def expect_writer_append_rollback(writer, registry, registry_bytes: bytes) -> No
             raise RuntimeError("writer accepted injected post-append contact-routing registry validation failure")
         if REGISTRY.read_bytes() != registry_bytes:
             raise RuntimeError("post-append validation failure left contact-routing registry mutated")
+        if file_mode(REGISTRY) != registry_mode:
+            raise RuntimeError("post-append validation failure changed contact-routing registry mode")
     finally:
         writer.validate_registry_for_append = original_validator
         REGISTRY.write_bytes(registry_bytes)
+        os.chmod(REGISTRY, registry_mode)
 
 
 def expect_ref_rejected(writer, ref: str, source: str, label: str) -> None:
@@ -146,6 +153,47 @@ def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: by
     reconciler.enforce_runtime_authorities()
 
 
+def expect_second_replace_rollback(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    contract_mode: int,
+    status_mode: int,
+) -> None:
+    reconciler = load_reconciler()
+    original_replace = reconciler.os.replace
+    calls = 0
+
+    def fail_second_replace(source, target):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("synthetic second authority replace rejection")
+        return original_replace(source, target)
+
+    try:
+        reconciler.os.replace = fail_second_replace
+        try:
+            reconciler.commit_validated_pair(
+                json.loads(contract_bytes.decode("utf-8")),
+                json.loads(status_bytes.decode("utf-8")),
+            )
+        except OSError:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted second authority replace rejection")
+    finally:
+        reconciler.os.replace = original_replace
+
+    if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
+        raise RuntimeError("second authority replace rejection did not restore contract/status bytes")
+    if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
+        raise RuntimeError("second authority replace rejection did not restore contract/status modes")
+    if list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")):
+        raise RuntimeError("second authority replace rejection left contract temp residue")
+    if list(STATUS.parent.glob(f".{STATUS.name}.*.tmp")):
+        raise RuntimeError("second authority replace rejection left status temp residue")
+
+
 def create_descendant_commit() -> str:
     tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
     env = os.environ.copy()
@@ -163,8 +211,14 @@ def create_descendant_commit() -> str:
     ).strip()
 
 
-def expect_post_write_rollback(contract_bytes: bytes, status_bytes: bytes) -> None:
+def expect_post_write_rollback(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    contract_mode: int,
+    status_mode: int,
+) -> None:
     validator_bytes = VALIDATOR.read_bytes()
+    validator_mode = file_mode(VALIDATOR)
     wrapper = f'''#!/usr/bin/env python3
 from pathlib import Path
 marker = Path({str(POST_WRITE_MARKER)!r})
@@ -189,15 +243,26 @@ raise SystemExit(0 if count == 0 else 1)
             raise RuntimeError("post-write validator failure left contact routing contract mutated")
         if STATUS.read_bytes() != status_bytes:
             raise RuntimeError("post-write validator failure left production operability status mutated")
+        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
+            raise RuntimeError("post-write validator failure changed contract/status permission mode")
     finally:
         VALIDATOR.write_bytes(validator_bytes)
+        os.chmod(VALIDATOR, validator_mode)
         POST_WRITE_MARKER.unlink(missing_ok=True)
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
+        os.chmod(CONTRACT, contract_mode)
+        os.chmod(STATUS, status_mode)
 
 
-def expect_aggregate_post_write_rollback(contract_bytes: bytes, status_bytes: bytes) -> None:
+def expect_aggregate_post_write_rollback(
+    contract_bytes: bytes,
+    status_bytes: bytes,
+    contract_mode: int,
+    status_mode: int,
+) -> None:
     operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
+    operability_mode = file_mode(OPERABILITY_VALIDATOR)
     try:
         OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
         completed = subprocess.run(
@@ -214,10 +279,15 @@ def expect_aggregate_post_write_rollback(contract_bytes: bytes, status_bytes: by
             raise RuntimeError("aggregate failure left contact routing contract mutated")
         if STATUS.read_bytes() != status_bytes:
             raise RuntimeError("aggregate failure left production operability status mutated")
+        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
+            raise RuntimeError("aggregate failure changed contract/status permission mode")
     finally:
         OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
+        os.chmod(OPERABILITY_VALIDATOR, operability_mode)
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
+        os.chmod(CONTRACT, contract_mode)
+        os.chmod(STATUS, status_mode)
 
 
 def main() -> int:
@@ -226,6 +296,10 @@ def main() -> int:
     observability_registry_bytes = OBS_REGISTRY.read_bytes()
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
+    registry_mode = file_mode(REGISTRY)
+    observability_registry_mode = file_mode(OBS_REGISTRY)
+    contract_mode = file_mode(CONTRACT)
+    status_mode = file_mode(STATUS)
     registry = json.loads(registry_bytes.decode("utf-8"))
 
     cases = []
@@ -245,8 +319,9 @@ def main() -> int:
     for label, candidate in cases:
         expect_writer_rejected(writer, candidate, label)
 
-    expect_writer_append_rollback(writer, registry, registry_bytes)
+    expect_writer_append_rollback(writer, registry, registry_bytes, registry_mode)
     expect_reconciler_authority_rejected(contract_bytes, status_bytes)
+    expect_second_replace_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
 
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if not writer.source_is_ancestor(source):
@@ -263,6 +338,7 @@ def main() -> int:
         expect_validator_rejected("append lock binding drift")
     finally:
         CONTRACT.write_bytes(contract_bytes)
+        os.chmod(CONTRACT, contract_mode)
 
     try:
         TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
@@ -300,6 +376,7 @@ def main() -> int:
             raise RuntimeError("contact routing accepted corrupt observability stack authority")
     finally:
         OBS_REGISTRY.write_bytes(observability_registry_bytes)
+        os.chmod(OBS_REGISTRY, observability_registry_mode)
 
     try:
         corrupted = copy.deepcopy(registry)
@@ -320,21 +397,31 @@ def main() -> int:
             raise RuntimeError("rejected reconcile mutated contact routing contract")
         if STATUS.read_bytes() != status_bytes:
             raise RuntimeError("rejected reconcile mutated production operability status")
+        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
+            raise RuntimeError("rejected reconcile changed contract/status permission mode")
     finally:
         REGISTRY.write_bytes(registry_bytes)
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
+        os.chmod(REGISTRY, registry_mode)
+        os.chmod(CONTRACT, contract_mode)
+        os.chmod(STATUS, status_mode)
 
-    expect_post_write_rollback(contract_bytes, status_bytes)
-    expect_aggregate_post_write_rollback(contract_bytes, status_bytes)
+    expect_post_write_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
+    expect_aggregate_post_write_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
 
-    if REGISTRY.read_bytes() != registry_bytes:
+    if REGISTRY.read_bytes() != registry_bytes or file_mode(REGISTRY) != registry_mode:
         raise RuntimeError("negative validation failed to restore contact routing registry")
-    if OBS_REGISTRY.read_bytes() != observability_registry_bytes:
+    if OBS_REGISTRY.read_bytes() != observability_registry_bytes or file_mode(OBS_REGISTRY) != observability_registry_mode:
         raise RuntimeError("negative validation failed to restore observability stack registry")
+    if CONTRACT.read_bytes() != contract_bytes or file_mode(CONTRACT) != contract_mode:
+        raise RuntimeError("negative validation failed to restore contact routing contract")
+    if STATUS.read_bytes() != status_bytes or file_mode(STATUS) != status_mode:
+        raise RuntimeError("negative validation failed to restore production operability status")
     print("PASS: contact routing rejects local/upstream/review/lock authority corruption without mutation")
     print("PASS: contact routing reconciler rejects all canonical executable/data authority substitutions without mutation")
     print("PASS: contact routing direct append rolls back on post-append validation failure")
+    print("PASS: contact routing second replace rejection rolls back contract/status bytes and modes")
     print("PASS: contact routing post-write and aggregate validation failures roll back contract and status")
     print("generic repository JSON accepted as privacy/operability review: false")
     print("automatic production promotion authorized: false")
