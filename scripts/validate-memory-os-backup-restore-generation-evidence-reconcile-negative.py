@@ -34,6 +34,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
 def load_reconciler():
     spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_reconcile_negative", RECONCILER)
     require(spec is not None and spec.loader is not None, "cannot load generation evidence reconciler")
@@ -133,6 +137,18 @@ def prove_atomic_write_failure(reconciler: object) -> None:
     print("PASS boundary: failed atomic generation-evidence write preserves canonical bytes and cleans temporary files")
 
 
+def prove_mode_preserving_write(reconciler: object) -> None:
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-mode-", dir=TMP_PARENT) as tmpdir:
+        target = Path(tmpdir) / "mode-preservation.json"
+        target.write_text("{}\n", encoding="utf-8")
+        target.chmod(0o640)
+        reconciler.write_text(target, '{"preserved": true}\n')
+        require(mode(target) == 0o640, f"atomic generation-evidence write changed file mode: {oct(mode(target))}")
+        leftovers = list(target.parent.glob(f".{target.name}.*.tmp"))
+        require(not leftovers, f"mode-preserving generation-evidence write left temporary files: {leftovers}")
+    print("PASS boundary: atomic generation-evidence write preserves existing file mode")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
@@ -140,6 +156,7 @@ def main() -> int:
 
     prove_direct_authority_identity(reconciler)
     prove_atomic_write_failure(reconciler)
+    prove_mode_preserving_write(reconciler)
 
     original_enforcer = reconciler.enforce_runtime_authorities
     original_post_validator = reconciler.run_post_validator
@@ -152,12 +169,16 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-reconcile-", dir=TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
             originals: dict[Path, bytes] = {}
+            original_modes: dict[Path, int] = {}
             targets: dict[str, Path] = {}
             for attr, source in CANONICAL.items():
                 target = tmp / source.name
                 shutil.copyfile(source, target)
+                if attr in MUTATED:
+                    target.chmod(0o640)
                 setattr(reconciler, attr, target)
                 originals[target] = target.read_bytes()
+                original_modes[target] = mode(target)
                 targets[attr] = target
 
             corruption_cases = (
@@ -177,9 +198,11 @@ def main() -> int:
                 payload[field] = invalid_value
                 registry_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
                 before = {path: path.read_bytes() for path in originals}
+                before_modes = {path: mode(path) for path in originals}
                 expect_domain_fail(name, reconciler.main, reconciler.Fail)
                 for path, expected in before.items():
                     require(path.read_bytes() == expected, f"reconcile auto-healed corrupt authority: {path.name} during {name}")
+                    require(mode(path) == before_modes[path], f"reconcile changed authority mode while rejecting {name}: {path.name}")
 
             for path, expected in originals.items():
                 path.write_bytes(expected)
@@ -206,6 +229,12 @@ def main() -> int:
             for attr in MUTATED:
                 path = targets[attr]
                 require(path.read_bytes() == originals[path], f"rollback drifted derived authority: {path.name}")
+                require(mode(path) == original_modes[path], f"rollback drifted derived authority mode: {path.name}")
+            leftovers: list[Path] = []
+            for attr in MUTATED:
+                path = targets[attr]
+                leftovers.extend(path.parent.glob(f".{path.name}.*.tmp"))
+            require(not leftovers, f"rollback left temporary generation-evidence authority files: {leftovers}")
     finally:
         reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.run_post_validator = original_post_validator
@@ -213,9 +242,10 @@ def main() -> int:
             setattr(reconciler, attr, value)
 
     print("PASS reject: corrupt generation append-only authority is never auto-healed by reconcile")
-    print("PASS rollback: generation evidence reconcile restores registry/contract/binding/status after aggregate validation failure")
+    print("PASS rollback: generation evidence reconcile restores registry/contract/binding/status bytes and modes after aggregate validation failure")
     print("direct generation-evidence data/writer/validator substitutions accepted: false")
     print("non-atomic generation-evidence authority write accepted: false")
+    print("generation-evidence authority mode loss accepted: false")
     print("Generation evidence reconcile negative suite PASS")
     return 0
 
