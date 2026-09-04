@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +108,26 @@ def render(value: dict[str, Any]) -> bytes:
     return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        if existing_mode is not None:
+            os.fchmod(descriptor, existing_mode)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = ""
+    finally:
+        if temp_name:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+
+
 def append_once(values: list[Any], value: str) -> None:
     if value not in values:
         values.append(value)
@@ -121,15 +143,15 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
     original_contract = CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
     try:
-        CONTRACT.write_bytes(render(contract))
-        STATUS.write_bytes(render(status))
+        atomic_replace_bytes(CONTRACT, render(contract))
+        atomic_replace_bytes(STATUS, render(status))
         for validator in POST_WRITE_VALIDATORS:
             completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
             require(completed.returncode == 0,
                     f"reconciled observability stack authority failed validation: {validator.name}")
     except BaseException:
-        CONTRACT.write_bytes(original_contract)
-        STATUS.write_bytes(original_status)
+        atomic_replace_bytes(CONTRACT, original_contract)
+        atomic_replace_bytes(STATUS, original_status)
         raise
 
 
