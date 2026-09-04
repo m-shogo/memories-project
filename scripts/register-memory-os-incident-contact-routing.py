@@ -364,8 +364,10 @@ def validate_registry_for_append(registry: dict[str, Any], *, validate_rows: boo
 
 
 def atomic_write(value: dict[str, Any]) -> None:
+    existing_mode = REGISTRY.stat().st_mode & 0o7777
     descriptor, temp_name = tempfile.mkstemp(prefix=".incident-contact-routing.", suffix=".tmp", dir=REGISTRY.parent)
     try:
+        os.fchmod(descriptor, existing_mode)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
