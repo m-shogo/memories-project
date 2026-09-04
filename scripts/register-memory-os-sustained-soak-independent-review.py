@@ -158,6 +158,7 @@ def append_record(registry: dict[str, Any], kind: str, record: dict[str, Any]) -
 
 def validate_candidate(candidate: dict[str, Any]) -> Path:
     enforce_runtime_authorities()
+    validator = load_validator()
     registry_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
     handle = tempfile.NamedTemporaryFile(
         mode="w",
