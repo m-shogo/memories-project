@@ -111,6 +111,7 @@ def load(path: Path) -> dict[str, Any]:
 def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
+    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
     temp_name: str | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
@@ -119,6 +120,8 @@ def write_text(path: Path, text: str) -> None:
             dir=path.parent,
             text=True,
         )
+        if existing_mode is not None:
+            os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
             handle.flush()
@@ -311,7 +314,7 @@ def _reconcile() -> int:
     print("upstream authority validated before reconcile mutation: true")
     print("canonical reconciler data/executable authorities enforced: true")
     print("canonical reconciler execution helpers enforced: true")
-    print("preflight/status writes use atomic same-directory replace: true")
+    print("preflight/status writes use mode-preserving atomic same-directory replace: true")
     print("preflight and aggregate operability validated inside transaction: true")
     print("failed post-validation leaves derived preflight/status mutation behind: false")
     print("registered generation inventory alone creates restore-planning authority: false")
