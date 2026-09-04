@@ -54,15 +54,21 @@ def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
-def validate_atomic_diagnostic_workflow(
-    path: Path,
+def extract_workflow_step(text: str, start_marker: str, end_marker: str, label: str) -> str:
+    if start_marker not in text:
+        raise AssertionError(f"{label} diagnostic step missing")
+    section = text.split(start_marker, 1)[1]
+    if end_marker not in section:
+        raise AssertionError(f"{label} diagnostic step boundary missing")
+    return section.split(end_marker, 1)[0]
+
+
+def validate_atomic_diagnostic_text(
+    text: str,
     label: str,
     *,
     require_mode_preservation: bool = False,
 ) -> None:
-    if not path.is_file():
-        raise AssertionError(f"{label} workflow missing")
-    text = path.read_text(encoding="utf-8")
     required = [
         "tempfile.mkstemp(",
         "dir=path.parent",
@@ -84,6 +90,21 @@ def validate_atomic_diagnostic_workflow(
         raise AssertionError(f"{label} diagnostic is not crash-safe: missing {missing}")
     if "path.write_text(json.dumps(value" in text:
         raise AssertionError(f"{label} diagnostic regressed to direct write_text")
+
+
+def validate_atomic_diagnostic_workflow(
+    path: Path,
+    label: str,
+    *,
+    require_mode_preservation: bool = False,
+) -> None:
+    if not path.is_file():
+        raise AssertionError(f"{label} workflow missing")
+    validate_atomic_diagnostic_text(
+        path.read_text(encoding="utf-8"),
+        label,
+        require_mode_preservation=require_mode_preservation,
+    )
 
 
 def validate_atomic_writer(module, path: Path, label: str) -> None:
@@ -143,11 +164,33 @@ def main() -> int:
         "sustained soak authority",
         require_mode_preservation=True,
     )
-    validate_atomic_diagnostic_workflow(
-        MAIN_WORKFLOW,
-        "sustained soak execution",
+
+    if not MAIN_WORKFLOW.is_file():
+        raise AssertionError("sustained soak execution workflow missing")
+    main_workflow = MAIN_WORKFLOW.read_text(encoding="utf-8")
+    smoke_diagnostic = extract_workflow_step(
+        main_workflow,
+        "      - name: Record privacy-safe smoke diagnostic\n",
+        "      - name: Enforce foundation smoke\n",
+        "sustained soak smoke",
+    )
+    long_run_diagnostic = extract_workflow_step(
+        main_workflow,
+        "      - name: Record privacy-safe long-run diagnostic\n",
+        "      - name: Enforce long-run success\n",
+        "sustained soak long-run",
+    )
+    validate_atomic_diagnostic_text(
+        smoke_diagnostic,
+        "sustained soak smoke",
         require_mode_preservation=True,
     )
+    validate_atomic_diagnostic_text(
+        long_run_diagnostic,
+        "sustained soak long-run",
+        require_mode_preservation=True,
+    )
+
     validate_atomic_writer(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_mode_preserving_success(module, module.CONTRACT_PATH, "sustained-soak contract")
     validate_atomic_writer(updater, updater.AGGREGATE_PATH, "sustained-soak aggregate")
@@ -227,7 +270,7 @@ def main() -> int:
             if path.read_bytes() != original_bytes or file_mode(path) != original_mode:
                 module.atomic_replace_bytes(path, original_bytes, original_mode)
 
-    print("PASS: sustained local soak execution and authority diagnostics are atomic, crash-safe, and mode-preserving")
+    print("PASS: sustained local soak authority, smoke, and long-run diagnostics are independently atomic and mode-preserving")
     print("PASS: sustained local soak reconciler, aggregate updater and trend reviewer reject authority substitution")
     print("PASS: sustained local soak atomic replacement failure preserves canonical authority bytes and mode")
     print("PASS: sustained local soak derived authority writers preserve existing mode")
