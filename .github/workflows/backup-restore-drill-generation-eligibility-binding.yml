@@ -247,6 +247,7 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/backup-restore-drill-generation-eligibility-binding-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
+          existing_mode = path.stat().st_mode & 0o777 if path.exists() else None
           temp_path = None
           try:
               with tempfile.NamedTemporaryFile(
@@ -258,6 +259,8 @@ jobs:
                   delete=False,
               ) as handle:
                   temp_path = Path(handle.name)
+                  if existing_mode is not None:
+                      os.fchmod(handle.fileno(), existing_mode)
                   json.dump(value, handle, indent=2)
                   handle.write('\n')
                   handle.flush()
