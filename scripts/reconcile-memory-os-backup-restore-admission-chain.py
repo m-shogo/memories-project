@@ -109,6 +109,7 @@ def read_text(path: Path) -> str:
 def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
+    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
     temp_name: str | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
@@ -117,6 +118,8 @@ def write_text(path: Path, text: str) -> None:
             dir=path.parent,
             text=True,
         )
+        if existing_mode is not None:
+            os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
             handle.flush()
@@ -364,7 +367,7 @@ def main() -> int:
     print("boolean aggregate counts accepted by reconciler: false")
     print("authority reads and executable refs repository-contained: true")
     print("invalid UTF-8 authority accepted: false")
-    print("admission-chain contract writes use atomic same-directory replace: true")
+    print("admission-chain contract writes use mode-preserving atomic same-directory replace: true")
     print("failed chain/operability post-validation leaves derived contract mutation behind: false")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
