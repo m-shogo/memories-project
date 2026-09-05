@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,10 @@ def load_module(path: Path, name: str) -> Any:
 
 def temp_residue(path: Path) -> list[Path]:
     return list(path.parent.glob(f".{path.name}.*.tmp"))
+
+
+def mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
 
 
 def verify_support_runtime_authority_substitutions() -> None:
@@ -126,20 +132,23 @@ def verify_support_atomic_replace_failure() -> None:
         SUPPORT_CONTRACT: SUPPORT_CONTRACT.read_bytes(),
         STATUS: STATUS.read_bytes(),
     }
+    original_modes = {path: mode(path) for path in originals}
     residues_before = set(temp_residue(SUPPORT_CONTRACT) + temp_residue(STATUS))
-
     original_replace = reconciler.os.replace
     calls = 0
 
-    def fail_first_replace(src: str | bytes | Path, dst: str | bytes | Path) -> None:
+    def fail_second_replace(src: str | bytes | Path, dst: str | bytes | Path) -> None:
         nonlocal calls
         calls += 1
-        if calls == 1:
-            raise OSError("synthetic support-window atomic replacement failure")
+        if calls == 2:
+            raise OSError("synthetic support-window second replacement failure")
         original_replace(src, dst)
 
-    reconciler.os.replace = fail_first_replace
     try:
+        for path in originals:
+            os.chmod(path, 0o640)
+        test_modes = {path: mode(path) for path in originals}
+        reconciler.os.replace = fail_second_replace
         rejected = False
         try:
             reconciler.write_and_validate_transactionally(
@@ -149,19 +158,63 @@ def verify_support_atomic_replace_failure() -> None:
         except Exception as exc:
             rejected = True
             require(
-                "synthetic support-window atomic replacement failure" in str(exc),
+                "synthetic support-window second replacement failure" in str(exc),
                 f"unexpected support-window atomic rejection: {exc}",
             )
-        require(rejected, "support-window reconciliation accepted synthetic atomic replacement failure")
+        require(rejected, "support-window reconciliation accepted synthetic second replacement failure")
         for path, payload in originals.items():
             require(path.read_bytes() == payload, f"support-window atomic failure mutated {path.relative_to(ROOT)}")
+            require(mode(path) == test_modes[path], f"support-window atomic failure changed mode: {path.relative_to(ROOT)}")
         residues_after = set(temp_residue(SUPPORT_CONTRACT) + temp_residue(STATUS))
         require(residues_after == residues_before, "support-window atomic failure left temporary authority residue")
     finally:
         reconciler.os.replace = original_replace
         for path, payload in originals.items():
             if path.read_bytes() != payload:
-                reconciler.atomic_write_bytes(path, payload)
+                reconciler.atomic_write_bytes(path, payload, original_modes[path])
+            os.chmod(path, original_modes[path])
+
+
+def verify_support_post_write_rollback() -> None:
+    reconciler = load_module(SUPPORT_RECONCILER, "memory_os_support_window_validator_rollback_negative")
+    originals = {
+        SUPPORT_CONTRACT: SUPPORT_CONTRACT.read_bytes(),
+        STATUS: STATUS.read_bytes(),
+    }
+    original_modes = {path: mode(path) for path in originals}
+    original_runner = reconciler.run_validator
+    calls = 0
+
+    def fail_second_validator(path: Path, label: str) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise reconciler.Fail("synthetic support-window post-write validator failure")
+
+    try:
+        for path in originals:
+            os.chmod(path, 0o640)
+        test_modes = {path: mode(path) for path in originals}
+        reconciler.run_validator = fail_second_validator
+        try:
+            reconciler.write_and_validate_transactionally(
+                reconciler.load(SUPPORT_CONTRACT),
+                reconciler.load(STATUS),
+            )
+        except reconciler.Fail as exc:
+            require("synthetic support-window post-write validator failure" in str(exc),
+                    f"unexpected support-window validator rollback rejection: {exc}")
+        else:
+            raise NegativeFailure("support-window reconciliation accepted synthetic post-write validator failure")
+        for path, payload in originals.items():
+            require(path.read_bytes() == payload, f"support-window validator rollback changed bytes: {path.relative_to(ROOT)}")
+            require(mode(path) == test_modes[path], f"support-window validator rollback changed mode: {path.relative_to(ROOT)}")
+            require(not temp_residue(path), f"support-window validator rollback left temp residue: {path.relative_to(ROOT)}")
+    finally:
+        reconciler.run_validator = original_runner
+        for path, payload in originals.items():
+            path.write_bytes(payload)
+            os.chmod(path, original_modes[path])
 
 
 def verify_client_atomic_replace_failure() -> None:
@@ -240,12 +293,14 @@ def main() -> int:
     verify_support_runtime_authority_substitutions()
     verify_client_runtime_authority_substitutions()
     verify_support_atomic_replace_failure()
+    verify_support_post_write_rollback()
     verify_client_atomic_replace_failure()
     verify_support_order_preservation()
     print("Memory OS client compatibility reconcile negative PASS")
     print("support-window runtime authority substitutions: rejected")
     print("client-baseline runtime authority substitutions: rejected")
-    print("support-window atomic replacement failure: rejected without authority mutation")
+    print("support-window second replacement failure: rejected with bytes+mode rollback")
+    print("support-window post-write validator failure: rejected with bytes+mode rollback")
     print("client-baseline atomic replacement failure: rejected without authority mutation")
     print("temporary authority residue: none")
     print("support-window existingEvidence replacement: stable index")
