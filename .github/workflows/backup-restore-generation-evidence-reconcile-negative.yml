@@ -9,6 +9,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
@@ -32,6 +33,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
@@ -75,6 +77,7 @@ jobs:
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-binding.py \
@@ -82,6 +85,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py \
             scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
           python scripts/validate-memory-os-backup-restore-semantic-generation-negative.py
           python scripts/validate-memory-os-backup-restore-generation-binding-transport-negative.py
