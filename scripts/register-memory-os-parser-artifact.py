@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -396,12 +397,17 @@ def acquire_lock() -> int:
         raise RegistrationFailure("parser artifact registry lock already exists") from exc
 
 
-def atomic_write(value: dict[str, Any]) -> None:
+def registry_mode() -> int:
+    return stat.S_IMODE(REGISTRY_PATH.stat().st_mode)
+
+
+def atomic_write(value: dict[str, Any], mode: int) -> None:
     descriptor, temp_name = tempfile.mkstemp(
         prefix=".parser-artifact-registry.", suffix=".tmp",
         dir=REGISTRY_PATH.parent,
     )
     try:
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
@@ -415,12 +421,13 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
-def atomic_write_bytes(value: bytes) -> None:
+def atomic_write_bytes(value: bytes, mode: int) -> None:
     descriptor, temp_name = tempfile.mkstemp(
         prefix=".parser-artifact-registry.", suffix=".tmp",
         dir=REGISTRY_PATH.parent,
     )
     try:
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(value)
             handle.flush()
@@ -433,12 +440,12 @@ def atomic_write_bytes(value: bytes) -> None:
             pass
 
 
-def append_registry_transactionally(registry: dict[str, Any], original_bytes: bytes) -> None:
-    atomic_write(registry)
+def append_registry_transactionally(registry: dict[str, Any], original_bytes: bytes, original_mode: int) -> None:
+    atomic_write(registry, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY_PATH))
     except Exception:
-        atomic_write_bytes(original_bytes)
+        atomic_write_bytes(original_bytes, original_mode)
         raise
 
 
@@ -483,6 +490,7 @@ def main() -> int:
         os.write(lock_fd, f"{record['artifactId']}\n".encode("ascii"))
         os.fsync(lock_fd)
         original_registry_bytes = REGISTRY_PATH.read_bytes()
+        original_registry_mode = registry_mode()
         registry = load(REGISTRY_PATH)
         validate_registry_for_append(registry)
         artifacts = registry["artifacts"]
@@ -508,7 +516,7 @@ def main() -> int:
             1 for item in artifacts if item.get("replayEvidenceRefs")
         )
         registry["latestReviewedArtifactId"] = record["artifactId"]
-        append_registry_transactionally(registry, original_registry_bytes)
+        append_registry_transactionally(registry, original_registry_bytes, original_registry_mode)
     finally:
         os.close(lock_fd)
         try:
