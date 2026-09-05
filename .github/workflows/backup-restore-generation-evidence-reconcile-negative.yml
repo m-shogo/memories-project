@@ -82,6 +82,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py \
             scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
+          python scripts/validate-memory-os-backup-restore-semantic-generation-negative.py
           python scripts/validate-memory-os-backup-restore-generation-binding-transport-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
