@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -107,8 +109,24 @@ def validate_registry_before_reconcile(registry: dict[str, Any]) -> list[dict[st
         raise Fail(f"existing failure-drill registry rejected before reconcile: {exc}") from exc
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def atomic_write_bytes(path: Path, data: bytes, mode: int) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write(path: Path, value: dict[str, Any], mode: int) -> None:
+    atomic_write_bytes(path, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"), mode)
 
 
 def append_once(values: list[Any], value: str) -> None:
@@ -139,17 +157,27 @@ def run_validator(path: Path, failure_label: str) -> None:
 
 
 def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
-    originals = {path: path.read_bytes() for path in outputs}
+    originals = {
+        path: (path.read_bytes(), path.stat().st_mode & 0o7777)
+        for path in outputs
+    }
     try:
         for path, value in outputs.items():
-            write(path, value)
+            write(path, value, originals[path][1])
         run_validator(VALIDATOR, "failure-drill authority rejected after reconcile")
         run_validator(CHAOS_VALIDATOR, "chaos authority rejected after failure-drill reconcile")
         run_validator(OPERABILITY_VALIDATOR, "operability authority rejected after failure-drill reconcile")
     except Exception as exc:
-        for path, data in originals.items():
-            path.write_bytes(data)
-        raise Fail(f"failure-drill reconcile validation failed; restored prior authority: {exc}") from exc
+        rollback_errors: list[str] = []
+        for path, (data, mode) in originals.items():
+            try:
+                atomic_write_bytes(path, data, mode)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        detail = f"failure-drill reconcile validation failed; restored prior authority: {exc}"
+        if rollback_errors:
+            detail += "; rollback errors: " + "; ".join(rollback_errors)
+        raise Fail(detail) from exc
 
 
 def main() -> int:
