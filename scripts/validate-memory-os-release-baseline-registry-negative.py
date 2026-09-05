@@ -6,6 +6,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +36,14 @@ def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+def temp_residue() -> list[Path]:
+    return sorted(REGISTRY.parent.glob(".release-baseline-registry.*.tmp"))
 
 
 def load_writer() -> ModuleType:
@@ -115,26 +125,69 @@ def expect_contract_rejected(
 
 def expect_append_rollback(writer: ModuleType, contract: dict[str, Any]) -> None:
     original = REGISTRY.read_bytes()
+    original_mode = mode(REGISTRY)
     candidate = copy.deepcopy(load(REGISTRY))
     candidate["approvedReleaseCount"] = candidate.get("approvedReleaseCount", 0) + 1
     original_validator = writer.validate_registry_for_append
 
-    def fail_after_write(registry: dict[str, Any], candidate_contract: dict[str, Any]) -> None:
-        raise writer.RegistrationFailure("synthetic post-append release validation failure")
-
     try:
+        os.chmod(REGISTRY, 0o640)
+        test_mode = mode(REGISTRY)
+
+        def fail_after_write(registry: dict[str, Any], candidate_contract: dict[str, Any]) -> None:
+            raise writer.RegistrationFailure("synthetic post-append release validation failure")
+
         writer.validate_registry_for_append = fail_after_write
         try:
-            writer.append_registry_transactionally(candidate, contract, original)
+            writer.append_registry_transactionally(candidate, contract, original, test_mode)
         except writer.RegistrationFailure:
             pass
         else:
             raise Fail("release writer accepted synthetic post-append validation failure")
         require(REGISTRY.read_bytes() == original,
                 "release registry did not roll back byte-for-byte after post-append failure")
+        require(mode(REGISTRY) == test_mode,
+                "release registry did not preserve mode after post-append rollback")
+        require(not temp_residue(),
+                "release registry rollback left temporary residue")
     finally:
         writer.validate_registry_for_append = original_validator
         REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
+
+
+def expect_replace_rejected_without_mutation(writer: ModuleType, contract: dict[str, Any]) -> None:
+    original = REGISTRY.read_bytes()
+    original_mode = mode(REGISTRY)
+    candidate = copy.deepcopy(load(REGISTRY))
+    candidate["approvedReleaseCount"] = candidate.get("approvedReleaseCount", 0) + 1
+    original_replace = writer.os.replace
+
+    try:
+        os.chmod(REGISTRY, 0o640)
+        test_mode = mode(REGISTRY)
+
+        def reject_replace(source: str | os.PathLike[str], destination: str | os.PathLike[str]) -> None:
+            raise OSError("synthetic release registry replace rejection")
+
+        writer.os.replace = reject_replace
+        try:
+            writer.append_registry_transactionally(candidate, contract, original, test_mode)
+        except OSError as exc:
+            require("synthetic release registry replace rejection" in str(exc),
+                    "unexpected release replace rejection reason")
+        else:
+            raise Fail("release writer ignored replace rejection")
+        require(REGISTRY.read_bytes() == original,
+                "release replace rejection mutated canonical bytes")
+        require(mode(REGISTRY) == test_mode,
+                "release replace rejection mutated canonical mode")
+        require(not temp_residue(),
+                "release replace rejection left temporary residue")
+    finally:
+        writer.os.replace = original_replace
+        REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
 
 
 def expect_reconcile_rejected_without_mutation(
@@ -336,6 +389,7 @@ def main() -> int:
     validate_lock_binding(writer, contract)
     expect_lock_binding_rejected(writer, contract)
     expect_append_rollback(writer, contract)
+    expect_replace_rejected_without_mutation(writer, contract)
     validate_reconcile_validator_chain(reconciler)
     validate_record_shape_authority(writer, contract)
     validate_nonempty_progression(reconciler)
@@ -367,7 +421,7 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    print("PASS: release baseline contract/record/registry corruption, transactional append rollback, approved-inventory progression and aggregate rollback are fail-closed")
+    print("PASS: release baseline contract/record/registry corruption, mode-safe transactional append rollback/replace rejection, approved-inventory progression and aggregate rollback are fail-closed")
     return 0
 
 
