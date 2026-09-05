@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "client-baseline-registry",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "9567c1a7acda5324b16dc1c6439cefbdabbd35d2",
+  "output": "STAGE: py_compile\nSTAGE: writer-authority-negative\nMemory OS client baseline writer authority negative suite PASS\nwriter CLI contract/registry/validator/lock substitution accepted: false\nclient baseline created: false\nproduction evidence generated: false\nSTAGE: source-lineage-negative\nClient baseline lineage, contract binding, registry corruption, and append lock negative PASS\nSTAGE: source-bound-evidence-negative\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-client-baseline-evidence-binding-negative.py\", line 319, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-client-baseline-evidence-binding-negative.py\", line 303, in main\n    prove_append_rollback(writer)\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-client-baseline-evidence-binding-negative.py\", line 168, in prove_append_rollback\n    writer.append_registry_transactionally(candidate, original)\nTypeError: append_registry_transactionally() missing 1 required positional argument: 'original_mode'\n",
+  "containsSecrets": false,
+  "approvedClientBaselineCount": 0,
+  "clientServerSkewEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
