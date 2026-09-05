@@ -206,15 +206,70 @@ def expect_writer_transactional_authority_rejected(validator: Any, writer: Any) 
         writer.append_registry_transactionally = original
 
 
+def registry_mode() -> int:
+    return REGISTRY.stat().st_mode & 0o7777
+
+
+def registry_temp_names() -> set[str]:
+    return {path.name for path in REGISTRY.parent.glob(".failure-drill-registry.*.tmp")}
+
+
+def expect_atomic_mode_preserved(writer: Any, original: bytes) -> None:
+    original_mode = registry_mode()
+    before_temps = registry_temp_names()
+    try:
+        os.chmod(REGISTRY, 0o640)
+        writer.atomic_write(json.loads(original.decode("utf-8")))
+        if registry_mode() != 0o640:
+            raise RuntimeError("successful failure-drill atomic write changed registry mode")
+        if registry_temp_names() != before_temps:
+            raise RuntimeError("successful failure-drill atomic write left temp residue")
+    finally:
+        REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
+
+
+def expect_replace_failure_preserves_authority(writer: Any, original: bytes) -> None:
+    original_mode = registry_mode()
+    original_replace = writer.os.replace
+    before_temps = registry_temp_names()
+
+    def reject_replace(_: str, __: Path) -> None:
+        raise OSError("synthetic replace rejection")
+
+    try:
+        os.chmod(REGISTRY, 0o640)
+        writer.os.replace = reject_replace
+        try:
+            writer.atomic_write(json.loads(original.decode("utf-8")))
+        except OSError:
+            pass
+        else:
+            raise RuntimeError("synthetic failure-drill replace rejection was accepted")
+        if REGISTRY.read_bytes() != original:
+            raise RuntimeError("failed failure-drill replace mutated canonical registry bytes")
+        if registry_mode() != 0o640:
+            raise RuntimeError("failed failure-drill replace changed canonical registry mode")
+        if registry_temp_names() != before_temps:
+            raise RuntimeError("failed failure-drill replace left temp residue")
+    finally:
+        writer.os.replace = original_replace
+        REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
+
+
 def expect_append_rollback(writer: Any, original: bytes) -> None:
     candidate = json.loads(original.decode("utf-8"))
     candidate["productionReady"] = True
     original_validator = writer.validate_registry_before_append
+    original_mode = registry_mode()
+    before_temps = registry_temp_names()
 
     def fail_after_write(_: dict[str, Any]) -> list[dict[str, Any]]:
         raise writer.Fail("synthetic post-append validation failure")
 
     try:
+        os.chmod(REGISTRY, 0o640)
         writer.validate_registry_before_append = fail_after_write
         try:
             writer.append_registry_transactionally(candidate, original)
@@ -224,9 +279,14 @@ def expect_append_rollback(writer: Any, original: bytes) -> None:
             raise RuntimeError("synthetic post-append validation failure was accepted")
         if REGISTRY.read_bytes() != original:
             raise RuntimeError("failure-drill registry did not roll back after post-append validation failure")
+        if registry_mode() != 0o640:
+            raise RuntimeError("failure-drill rollback did not preserve canonical registry mode")
+        if registry_temp_names() != before_temps:
+            raise RuntimeError("failure-drill rollback left temp residue")
     finally:
         writer.validate_registry_before_append = original_validator
         REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
 
 
 def expect_side_commit_rejected(writer: Any) -> None:
@@ -322,6 +382,8 @@ def main() -> int:
     reconciler = load_module(RECONCILER_PATH, "failure_drill_reconciler_negative")
     original = REGISTRY.read_bytes()
     generation_original = GEN_REGISTRY.read_bytes()
+    original_mode = registry_mode()
+    generation_original_mode = GEN_REGISTRY.stat().st_mode & 0o7777
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda r: r.__setitem__("schemaVersion", "broken")),
         ("append-only disabled", lambda r: r.__setitem__("appendOnly", False)),
@@ -353,13 +415,17 @@ def main() -> int:
         expect_writer_lock_rejected(validator, writer)
         expect_writer_generation_writer_rejected(validator, writer)
         expect_writer_transactional_authority_rejected(validator, writer)
+        expect_atomic_mode_preserved(writer, original)
+        expect_replace_failure_preserves_authority(writer, original)
         expect_append_rollback(writer, original)
         expect_side_commit_rejected(writer)
         expect_review_namespace_rejected(writer)
         review_case_count = validate_review_payload_negatives(writer)
     finally:
         REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
         GEN_REGISTRY.write_bytes(generation_original)
+        os.chmod(GEN_REGISTRY, generation_original_mode)
 
     print("PASS: production-shaped failure-drill registry corruption is rejected before append/reconcile")
     print(f"failure-drill corruption cases: {len(cases)}")
@@ -369,7 +435,9 @@ def main() -> int:
     print("writer append lock substitution accepted: false")
     print("generation writer substitution accepted: false")
     print("transactional append authority disabled: false")
-    print("post-append validation failure persisted registry mutation: false")
+    print("successful atomic write changed registry mode: false")
+    print("failed atomic replace changed registry bytes or mode: false")
+    print("post-append validation failure persisted registry bytes or mode mutation: false")
     print("generic repository review authority accepted: false")
     print("detached source commit accepted: false")
     print("reconciler auto-heal: false")
