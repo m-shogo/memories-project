@@ -98,11 +98,11 @@ def atomic_write_bytes(path: Path, payload: bytes, *, _replace=os.replace) -> No
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        if mode is not None:
-            os.chmod(tmp_name, mode)
         _replace(tmp_name, path)
     finally:
         try:
