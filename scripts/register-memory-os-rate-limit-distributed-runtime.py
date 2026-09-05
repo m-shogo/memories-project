@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -319,9 +320,14 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
         require(forbidden not in serialized, f"record contains forbidden runtime material: {forbidden}")
 
 
-def atomic_write(value: dict[str, Any]) -> None:
+def registry_mode() -> int:
+    return stat.S_IMODE(REGISTRY.stat().st_mode)
+
+
+def atomic_write(value: dict[str, Any], mode: int) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".rate-limit-runtime.", suffix=".tmp", dir=REGISTRY.parent)
     try:
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
@@ -335,9 +341,10 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
-def atomic_restore(original: bytes) -> None:
+def atomic_restore(original: bytes, mode: int) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".rate-limit-runtime-rollback.", suffix=".tmp", dir=REGISTRY.parent)
     try:
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(original)
             handle.flush()
@@ -350,12 +357,12 @@ def atomic_restore(original: bytes) -> None:
             pass
 
 
-def commit_registry_update(registry: dict[str, Any], original: bytes) -> None:
-    atomic_write(registry)
+def commit_registry_update(registry: dict[str, Any], original: bytes, mode: int) -> None:
+    atomic_write(registry, mode)
     try:
         validate_registry_after_append(load(REGISTRY))
     except Exception:
-        atomic_restore(original)
+        atomic_restore(original, mode)
         raise
 
 
@@ -384,6 +391,7 @@ def main() -> int:
         os.write(lock_fd, (record["runtimeId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         original_registry = REGISTRY.read_bytes()
+        original_mode = registry_mode()
         registry = json.loads(original_registry.decode("utf-8"))
         require(isinstance(registry, dict), "distributed runtime registry root must be object")
         runtimes = validate_registry_before_append(registry)
@@ -394,7 +402,7 @@ def main() -> int:
         registry["productionEquivalentRuntimeCount"] = sum(1 for item in runtimes if item.get("environmentClass") == "PRODUCTION_EQUIVALENT")
         registry["productionRuntimeCount"] = sum(1 for item in runtimes if item.get("environmentClass") == "PRODUCTION")
         registry["productionReady"] = False
-        commit_registry_update(registry, original_registry)
+        commit_registry_update(registry, original_registry, original_mode)
     finally:
         os.close(lock_fd)
         try:
