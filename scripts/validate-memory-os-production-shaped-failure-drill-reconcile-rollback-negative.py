@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,19 @@ def load_module(path: Path, name: str) -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
+def temp_names(path: Path) -> set[str]:
+    return {candidate.name for candidate in path.parent.glob(f".{path.name}.*.tmp")}
+
+
+def restore(path: Path, data: bytes, original_mode: int) -> None:
+    path.write_bytes(data)
+    os.chmod(path, original_mode)
 
 
 def status_gate(status: dict[str, Any]) -> dict[str, Any]:
@@ -84,8 +98,51 @@ def prove_corrupt_status_rollback(reconciler: Any, contract_before: bytes, statu
         STATUS.write_bytes(status_before)
 
 
+def prove_second_replace_rollback(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
+    contract_mode = mode(CONTRACT)
+    status_mode = mode(STATUS)
+    contract_temps = temp_names(CONTRACT)
+    status_temps = temp_names(STATUS)
+    original_replace = reconciler.os.replace
+    replace_count = 0
+
+    def fail_second_replace(source: str, destination: Path) -> None:
+        nonlocal replace_count
+        replace_count += 1
+        if replace_count == 2:
+            raise OSError("synthetic second authority replace rejection")
+        original_replace(source, destination)
+
+    try:
+        os.chmod(CONTRACT, 0o640)
+        os.chmod(STATUS, 0o640)
+        reconciler.os.replace = fail_second_replace
+        try:
+            reconciler.main()
+        except reconciler.Fail:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted second authority replace rejection")
+        if replace_count < 2:
+            raise RuntimeError("reconciler did not attempt both canonical authority replacements")
+        if CONTRACT.read_bytes() != contract_before or STATUS.read_bytes() != status_before:
+            raise RuntimeError("reconciler retained partial bytes after second authority replace rejection")
+        if mode(CONTRACT) != 0o640 or mode(STATUS) != 0o640:
+            raise RuntimeError("reconciler changed authority mode during second replace rollback")
+        if temp_names(CONTRACT) != contract_temps or temp_names(STATUS) != status_temps:
+            raise RuntimeError("reconciler left temp residue after second authority replace rejection")
+    finally:
+        reconciler.os.replace = original_replace
+        restore(CONTRACT, contract_before, contract_mode)
+        restore(STATUS, status_before, status_mode)
+
+
 def prove_aggregate_validator_rollback(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
     original_run = reconciler.subprocess.run
+    contract_mode = mode(CONTRACT)
+    status_mode = mode(STATUS)
+    contract_temps = temp_names(CONTRACT)
+    status_temps = temp_names(STATUS)
     calls: list[Path] = []
 
     class Result:
@@ -103,6 +160,8 @@ def prove_aggregate_validator_rollback(reconciler: Any, contract_before: bytes, 
 
     reconciler.subprocess.run = fake_run
     try:
+        os.chmod(CONTRACT, 0o640)
+        os.chmod(STATUS, 0o640)
         try:
             reconciler.main()
         except reconciler.Fail as exc:
@@ -118,13 +177,19 @@ def prove_aggregate_validator_rollback(reconciler: Any, contract_before: bytes, 
             raise RuntimeError("reconciler retained failure-drill contract after chaos aggregate rejection")
         if STATUS.read_bytes() != status_before:
             raise RuntimeError("reconciler retained production status after chaos aggregate rejection")
+        if mode(CONTRACT) != 0o640 or mode(STATUS) != 0o640:
+            raise RuntimeError("reconciler aggregate rollback did not preserve authority modes")
+        if temp_names(CONTRACT) != contract_temps or temp_names(STATUS) != status_temps:
+            raise RuntimeError("reconciler aggregate rollback left temp residue")
     finally:
         reconciler.subprocess.run = original_run
-        CONTRACT.write_bytes(contract_before)
-        STATUS.write_bytes(status_before)
+        restore(CONTRACT, contract_before, contract_mode)
+        restore(STATUS, status_before, status_mode)
 
 
 def prove_legacy_empty_evidence_is_monotonic(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
+    contract_mode = mode(CONTRACT)
+    status_mode = mode(STATUS)
     status = json.loads(status_before.decode("utf-8"))
     gate = status_gate(status)
     existing = gate.get("existingEvidence")
@@ -146,21 +211,30 @@ def prove_legacy_empty_evidence_is_monotonic(reconciler: Any, contract_before: b
             raise RuntimeError("reconciler did not install stable registry-derived evidence")
         if reconciled.get("productionDecision") != "NO_GO":
             raise RuntimeError("evidence normalization changed productionDecision")
+        if mode(CONTRACT) != contract_mode or mode(STATUS) != status_mode:
+            raise RuntimeError("successful failure-drill reconcile changed canonical authority mode")
     finally:
-        CONTRACT.write_bytes(contract_before)
-        STATUS.write_bytes(status_before)
+        restore(CONTRACT, contract_before, contract_mode)
+        restore(STATUS, status_before, status_mode)
 
 
 def main() -> int:
     reconciler = load_module(RECONCILER, "failure_drill_reconcile_rollback_negative")
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
-    prove_authority_substitutions(reconciler, contract_before, status_before)
-    prove_corrupt_status_rollback(reconciler, contract_before, status_before)
-    prove_aggregate_validator_rollback(reconciler, contract_before, status_before)
-    prove_legacy_empty_evidence_is_monotonic(reconciler, contract_before, status_before)
+    contract_mode = mode(CONTRACT)
+    status_mode = mode(STATUS)
+    try:
+        prove_authority_substitutions(reconciler, contract_before, status_before)
+        prove_corrupt_status_rollback(reconciler, contract_before, status_before)
+        prove_second_replace_rollback(reconciler, contract_before, status_before)
+        prove_aggregate_validator_rollback(reconciler, contract_before, status_before)
+        prove_legacy_empty_evidence_is_monotonic(reconciler, contract_before, status_before)
+    finally:
+        restore(CONTRACT, contract_before, contract_mode)
+        restore(STATUS, status_before, status_mode)
 
-    print("PASS: failure-drill reconcile is exact-authority bound, transactional across direct and aggregate validators, and removes superseded empty-registry evidence")
+    print("PASS: failure-drill reconcile is exact-authority bound, mode-preserving and transactional across second-replace/direct/aggregate failures, and removes superseded empty-registry evidence")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
