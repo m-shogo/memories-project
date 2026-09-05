@@ -350,9 +350,15 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
         require(forbidden not in serialized, f"record contains forbidden runtime material: {forbidden}")
 
 
+def registry_mode() -> int:
+    return REGISTRY.stat().st_mode & 0o7777
+
+
 def atomic_write(value: dict[str, Any]) -> None:
+    existing_mode = registry_mode()
     descriptor, temp_name = tempfile.mkstemp(prefix=".failure-drill-registry.", suffix=".tmp", dir=REGISTRY.parent)
     try:
+        os.fchmod(descriptor, existing_mode)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
@@ -367,8 +373,10 @@ def atomic_write(value: dict[str, Any]) -> None:
 
 
 def atomic_write_bytes(value: bytes) -> None:
+    existing_mode = registry_mode()
     descriptor, temp_name = tempfile.mkstemp(prefix=".failure-drill-registry.", suffix=".tmp", dir=REGISTRY.parent)
     try:
+        os.fchmod(descriptor, existing_mode)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(value)
             handle.flush()
