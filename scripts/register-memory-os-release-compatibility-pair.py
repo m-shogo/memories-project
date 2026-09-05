@@ -283,9 +283,12 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
 
 
 def atomic_write(value: dict[str, Any]) -> None:
+    mode = REGISTRY.stat().st_mode & 0o777 if REGISTRY.exists() else None
     descriptor, temp_name = tempfile.mkstemp(prefix=".release-pair.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
@@ -299,9 +302,12 @@ def atomic_write(value: dict[str, Any]) -> None:
 
 
 def atomic_restore(payload: bytes) -> None:
+    mode = REGISTRY.stat().st_mode & 0o777 if REGISTRY.exists() else None
     descriptor, temp_name = tempfile.mkstemp(prefix=".release-pair-rollback.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(descriptor, "wb") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
