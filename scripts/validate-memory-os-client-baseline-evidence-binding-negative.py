@@ -283,6 +283,7 @@ def prove_reconcile_rollback() -> None:
     reconciler = load_module(RECONCILER, "memory_os_client_baseline_reconciler_negative")
     paths = (reconciler.CONTRACT, reconciler.SUPPORT, reconciler.STATUS)
     original = {path: path.read_bytes() for path in paths}
+    original_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in paths}
     observed_post_write_failure = False
 
     def controlled_validator(path: Path, label: str) -> None:
@@ -291,8 +292,11 @@ def prove_reconcile_rollback() -> None:
             observed_post_write_failure = True
             raise reconciler.Fail("synthetic post-write operability validation failure")
 
-    reconciler.run_validator = controlled_validator
     try:
+        for path in paths:
+            os.chmod(path, 0o640)
+        test_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in paths}
+        reconciler.run_validator = controlled_validator
         try:
             reconciler.main()
         except reconciler.Fail as exc:
@@ -308,10 +312,59 @@ def prove_reconcile_rollback() -> None:
                 path.read_bytes() == original[path],
                 f"client reconcile rollback changed canonical authority: {path.relative_to(ROOT)}",
             )
+            require(
+                stat.S_IMODE(path.stat().st_mode) == test_modes[path],
+                f"client reconcile rollback changed canonical authority mode: {path.relative_to(ROOT)}",
+            )
+            require(
+                not list(path.parent.glob(f".{path.name}.*.tmp")),
+                f"client reconcile rollback left temporary residue: {path.relative_to(ROOT)}",
+            )
     finally:
         for path in paths:
-            if path.read_bytes() != original[path]:
-                path.write_bytes(original[path])
+            path.write_bytes(original[path])
+            os.chmod(path, original_modes[path])
+
+
+def prove_reconcile_second_replace_rollback() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_client_baseline_reconciler_replace_negative")
+    paths = (reconciler.CONTRACT, reconciler.SUPPORT, reconciler.STATUS)
+    original = {path: path.read_bytes() for path in paths}
+    original_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in paths}
+    original_replace = reconciler.os.replace
+    replace_count = 0
+
+    def reject_second_replace(source: str | os.PathLike[str], destination: str | os.PathLike[str]) -> None:
+        nonlocal replace_count
+        replace_count += 1
+        if replace_count == 2:
+            raise OSError("synthetic client authority second replace rejection")
+        original_replace(source, destination)
+
+    try:
+        for path in paths:
+            os.chmod(path, 0o640)
+        test_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in paths}
+        reconciler.os.replace = reject_second_replace
+        try:
+            reconciler.main()
+        except OSError as exc:
+            require("synthetic client authority second replace rejection" in str(exc),
+                    f"unexpected second replace rejection: {exc}")
+        else:
+            raise RuntimeError("client reconcile ignored second authority replace rejection")
+        for path in paths:
+            require(path.read_bytes() == original[path],
+                    f"client second-replace rollback changed canonical bytes: {path.relative_to(ROOT)}")
+            require(stat.S_IMODE(path.stat().st_mode) == test_modes[path],
+                    f"client second-replace rollback changed canonical mode: {path.relative_to(ROOT)}")
+            require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                    f"client second-replace rollback left temporary residue: {path.relative_to(ROOT)}")
+    finally:
+        reconciler.os.replace = original_replace
+        for path in paths:
+            path.write_bytes(original[path])
+            os.chmod(path, original_modes[path])
 
 
 def main() -> int:
@@ -346,6 +399,7 @@ def main() -> int:
     prove_replace_rejection(writer)
     prove_reconcile_authority_substitution()
     prove_reconcile_rollback()
+    prove_reconcile_second_replace_rollback()
 
     require(EVIDENCE.read_bytes() == original, "client evidence fixture was not restored")
     status = subprocess.run(
