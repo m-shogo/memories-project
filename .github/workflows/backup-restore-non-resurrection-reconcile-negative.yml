@@ -10,6 +10,10 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
       - "scripts/validate-memory-os-local-apple-replay-restore.py"
       - "scripts/validate-memory-os-local-coherent-recovery-set.py"
@@ -30,6 +34,10 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
       - "scripts/validate-memory-os-local-apple-replay-restore.py"
       - "scripts/validate-memory-os-local-coherent-recovery-set.py"
@@ -70,11 +78,21 @@ jobs:
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py \
             scripts/validate-memory-os-local-apple-replay-restore.py \
             scripts/validate-memory-os-local-coherent-recovery-set.py \
             scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
           python scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
