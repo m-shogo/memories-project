@@ -6,6 +6,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 from pathlib import Path
 from typing import Any, Callable
@@ -155,6 +157,7 @@ def prove_contract_rollback_guard(writer: Any) -> None:
 
 def prove_append_rollback(writer: Any) -> None:
     original = REGISTRY.read_bytes()
+    original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
     candidate = json.loads(original.decode("utf-8"))
     candidate["approvedClientBaselineCount"] = 999
     original_validator = writer.validate_registry_for_append
@@ -162,10 +165,12 @@ def prove_append_rollback(writer: Any) -> None:
     def controlled_validator(_value: dict[str, Any]) -> None:
         raise writer.Failure("synthetic post-append client registry validation failure")
 
-    writer.validate_registry_for_append = controlled_validator
     try:
+        os.chmod(REGISTRY, 0o640)
+        test_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
+        writer.validate_registry_for_append = controlled_validator
         try:
-            writer.append_registry_transactionally(candidate, original)
+            writer.append_registry_transactionally(candidate, original, test_mode)
         except writer.Failure as exc:
             require("synthetic post-append client registry validation failure" in str(exc),
                     f"unexpected append rollback failure: {exc}")
@@ -173,10 +178,47 @@ def prove_append_rollback(writer: Any) -> None:
             raise RuntimeError("client registry append unexpectedly succeeded after synthetic post-write failure")
         require(REGISTRY.read_bytes() == original,
                 "client registry append rollback did not restore original bytes")
+        require(stat.S_IMODE(REGISTRY.stat().st_mode) == test_mode,
+                "client registry append rollback did not restore original mode")
+        require(not list(REGISTRY.parent.glob(".client-baseline-registry.*.tmp")),
+                "client registry append rollback left temporary residue")
     finally:
         writer.validate_registry_for_append = original_validator
-        if REGISTRY.read_bytes() != original:
-            REGISTRY.write_bytes(original)
+        REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
+
+
+def prove_replace_rejection(writer: Any) -> None:
+    original = REGISTRY.read_bytes()
+    original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
+    candidate = json.loads(original.decode("utf-8"))
+    candidate["approvedClientBaselineCount"] = 999
+    original_replace = writer.os.replace
+
+    def reject_replace(source: str | os.PathLike[str], destination: str | os.PathLike[str]) -> None:
+        raise OSError("synthetic client registry replace rejection")
+
+    try:
+        os.chmod(REGISTRY, 0o640)
+        test_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
+        writer.os.replace = reject_replace
+        try:
+            writer.append_registry_transactionally(candidate, original, test_mode)
+        except OSError as exc:
+            require("synthetic client registry replace rejection" in str(exc),
+                    f"unexpected client replace rejection: {exc}")
+        else:
+            raise RuntimeError("client registry replace rejection was ignored")
+        require(REGISTRY.read_bytes() == original,
+                "client registry replace rejection mutated canonical bytes")
+        require(stat.S_IMODE(REGISTRY.stat().st_mode) == test_mode,
+                "client registry replace rejection mutated canonical mode")
+        require(not list(REGISTRY.parent.glob(".client-baseline-registry.*.tmp")),
+                "client registry replace rejection left temporary residue")
+    finally:
+        writer.os.replace = original_replace
+        REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
 
 
 def prove_reconcile_authority_substitution() -> None:
@@ -301,6 +343,7 @@ def main() -> int:
 
     prove_contract_rollback_guard(writer)
     prove_append_rollback(writer)
+    prove_replace_rejection(writer)
     prove_reconcile_authority_substitution()
     prove_reconcile_rollback()
 
@@ -311,7 +354,7 @@ def main() -> int:
     )
     require(status.returncode == 0 and status.stdout.strip() == "",
             "negative suite left working-tree changes")
-    print("PASS: client baseline historical semantics, evidence binding, authority identity, append rollback and reconcile rollback are fail-closed")
+    print("PASS: client baseline historical semantics, evidence binding, authority identity, mode-safe append rollback/replace rejection and reconcile rollback are fail-closed")
     return 0
 
 
