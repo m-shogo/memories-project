@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -142,8 +143,10 @@ def load_module(path: Path, name: str) -> Any:
     return module
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(path: Path, payload: bytes, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if mode is None and path.exists():
+        mode = stat.S_IMODE(path.stat().st_mode)
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -154,6 +157,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             delete=False,
         ) as handle:
             tmp_path = Path(handle.name)
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -167,9 +172,9 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 pass
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
+def write(path: Path, value: dict[str, Any], mode: int | None = None) -> None:
     payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-    atomic_write_bytes(path, payload)
+    atomic_write_bytes(path, payload, mode)
 
 
 def append_once(values: list[Any], value: str) -> None:
@@ -202,10 +207,11 @@ def write_and_validate_transactionally(
     _guard()
     paths = (CONTRACT, SUPPORT, STATUS)
     originals = {path: path.read_bytes() for path in paths}
+    original_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in paths}
     try:
-        write(CONTRACT, contract)
-        write(SUPPORT, support)
-        write(STATUS, status)
+        write(CONTRACT, contract, original_modes[CONTRACT])
+        write(SUPPORT, support, original_modes[SUPPORT])
+        write(STATUS, status, original_modes[STATUS])
         run_validator(VALIDATOR, "post-write client registry validator")
         run_validator(SUPPORT_VALIDATOR, "post-write support-window validator")
         run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
@@ -213,7 +219,7 @@ def write_and_validate_transactionally(
         rollback_error: Exception | None = None
         for path in paths:
             try:
-                atomic_write_bytes(path, originals[path])
+                atomic_write_bytes(path, originals[path], original_modes[path])
             except Exception as exc:
                 if rollback_error is None:
                     rollback_error = exc
