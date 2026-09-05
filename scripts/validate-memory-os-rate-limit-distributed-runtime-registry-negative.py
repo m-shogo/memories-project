@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -164,6 +166,9 @@ def prove_writer_post_append_rollback(writer: Any, original: bytes) -> None:
     candidate = json.loads(original.decode("utf-8"))
     candidate["admittedRuntimeCount"] = 1
     original_post_validator = writer.validate_registry_after_append
+    original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
+    os.chmod(REGISTRY, 0o640)
+    protected_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
 
     def reject_after_append(_registry: dict[str, Any]) -> list[dict[str, Any]]:
         raise writer.Fail("synthetic post-append validation failure")
@@ -171,16 +176,51 @@ def prove_writer_post_append_rollback(writer: Any, original: bytes) -> None:
     writer.validate_registry_after_append = reject_after_append
     try:
         try:
-            writer.commit_registry_update(candidate, original)
+            writer.commit_registry_update(candidate, original, protected_mode)
         except writer.Fail:
             pass
         else:
             raise RuntimeError("writer accepted synthetic post-append validation failure")
         if REGISTRY.read_bytes() != original:
             raise RuntimeError("writer failed to rollback registry after post-append validation failure")
+        if stat.S_IMODE(REGISTRY.stat().st_mode) != protected_mode:
+            raise RuntimeError("writer failed to rollback registry mode after post-append validation failure")
     finally:
         writer.validate_registry_after_append = original_post_validator
         REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
+
+
+def prove_writer_replace_rejection(writer: Any, original: bytes) -> None:
+    candidate = json.loads(original.decode("utf-8"))
+    candidate["admittedRuntimeCount"] = 1
+    original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
+    os.chmod(REGISTRY, 0o640)
+    protected_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
+    original_replace = writer.os.replace
+
+    def reject_replace(_source: str | Path, _target: str | Path) -> None:
+        raise OSError("synthetic replace rejection")
+
+    writer.os.replace = reject_replace
+    try:
+        try:
+            writer.atomic_write(candidate, protected_mode)
+        except OSError:
+            pass
+        else:
+            raise RuntimeError("writer accepted synthetic registry replace failure")
+        if REGISTRY.read_bytes() != original:
+            raise RuntimeError("failed registry replace mutated canonical bytes")
+        if stat.S_IMODE(REGISTRY.stat().st_mode) != protected_mode:
+            raise RuntimeError("failed registry replace mutated canonical mode")
+        residues = list(REGISTRY.parent.glob(".rate-limit-runtime.*.tmp"))
+        if residues:
+            raise RuntimeError(f"failed registry replace left temp residue: {residues}")
+    finally:
+        writer.os.replace = original_replace
+        REGISTRY.write_bytes(original)
+        os.chmod(REGISTRY, original_mode)
 
 
 def prove_reconciler_no_autoheal(reconciler: Any, original: bytes) -> None:
@@ -280,6 +320,7 @@ def main() -> int:
         prove_executable_authority_rejection(validator, writer, reconciler)
         prove_contract_lock_binding_rejection(validator)
         prove_writer_post_append_rollback(writer, original)
+        prove_writer_replace_rejection(writer, original)
         prove_reconciler_no_autoheal(reconciler, original)
         prove_reconciler_status_rollback(reconciler)
         prove_reconciler_aggregate_rollback(reconciler)
@@ -291,7 +332,8 @@ def main() -> int:
     print("executable/data authority substitution: rejected")
     print("direct reconciler executable/data substitution: rejected")
     print("contract append lock substitution: rejected")
-    print("writer post-append rollback: true")
+    print("writer post-append bytes/mode rollback: true")
+    print("writer replace rejection bytes/mode/temp cleanup: true")
     print("reconciler auto-heal: false")
     print("reconciler partial writes: false")
     print("reconciler aggregate rollback: true")
