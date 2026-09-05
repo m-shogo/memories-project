@@ -7,6 +7,8 @@ import copy
 import hashlib
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -119,6 +121,7 @@ def expect_contract_guard_rejection(writer: Any) -> None:
 
 def expect_append_rollback(writer: Any, base: dict[str, Any]) -> None:
     original = REGISTRY_PATH.read_bytes()
+    original_mode = stat.S_IMODE(REGISTRY_PATH.stat().st_mode)
     candidate = copy.deepcopy(base)
     candidate["reviewedArtifactCount"] = candidate.get("reviewedArtifactCount", 0) + 1
     original_validator = writer.validate_registry_for_append
@@ -127,18 +130,58 @@ def expect_append_rollback(writer: Any, base: dict[str, Any]) -> None:
         raise writer.RegistrationFailure("synthetic post-append parser validation failure")
 
     try:
+        os.chmod(REGISTRY_PATH, 0o640)
+        test_mode = stat.S_IMODE(REGISTRY_PATH.stat().st_mode)
         writer.validate_registry_for_append = fail_after_write
         try:
-            writer.append_registry_transactionally(candidate, original)
+            writer.append_registry_transactionally(candidate, original, test_mode)
         except writer.RegistrationFailure:
             pass
         else:
             raise NegativeFailure("parser writer accepted synthetic post-append validation failure")
         require(REGISTRY_PATH.read_bytes() == original,
                 "parser registry did not roll back byte-for-byte after post-append failure")
+        require(stat.S_IMODE(REGISTRY_PATH.stat().st_mode) == test_mode,
+                "parser registry did not preserve mode after post-append rollback")
+        require(not list(REGISTRY_PATH.parent.glob(".parser-artifact-registry.*.tmp")),
+                "parser registry rollback left temporary residue")
     finally:
         writer.validate_registry_for_append = original_validator
         REGISTRY_PATH.write_bytes(original)
+        os.chmod(REGISTRY_PATH, original_mode)
+
+
+def expect_replace_rejection(writer: Any, base: dict[str, Any]) -> None:
+    original = REGISTRY_PATH.read_bytes()
+    original_mode = stat.S_IMODE(REGISTRY_PATH.stat().st_mode)
+    candidate = copy.deepcopy(base)
+    candidate["reviewedArtifactCount"] = candidate.get("reviewedArtifactCount", 0) + 1
+    original_replace = writer.os.replace
+
+    def reject_replace(source: str | os.PathLike[str], destination: str | os.PathLike[str]) -> None:
+        raise OSError("synthetic parser registry replace rejection")
+
+    try:
+        os.chmod(REGISTRY_PATH, 0o640)
+        test_mode = stat.S_IMODE(REGISTRY_PATH.stat().st_mode)
+        writer.os.replace = reject_replace
+        try:
+            writer.append_registry_transactionally(candidate, original, test_mode)
+        except OSError as exc:
+            require("synthetic parser registry replace rejection" in str(exc),
+                    f"unexpected parser replace rejection: {exc}")
+        else:
+            raise NegativeFailure("parser writer ignored replace rejection")
+        require(REGISTRY_PATH.read_bytes() == original,
+                "parser replace rejection mutated canonical bytes")
+        require(stat.S_IMODE(REGISTRY_PATH.stat().st_mode) == test_mode,
+                "parser replace rejection mutated canonical mode")
+        require(not list(REGISTRY_PATH.parent.glob(".parser-artifact-registry.*.tmp")),
+                "parser replace rejection left temporary residue")
+    finally:
+        writer.os.replace = original_replace
+        REGISTRY_PATH.write_bytes(original)
+        os.chmod(REGISTRY_PATH, original_mode)
 
 
 def expect_validator_rejection(label: str) -> None:
@@ -371,6 +414,7 @@ def main() -> int:
     require(isinstance(base, dict), "parser registry must be object")
     writer.validate_registry_for_append(copy.deepcopy(base))
     expect_append_rollback(writer, base)
+    expect_replace_rejection(writer, base)
     expect_contract_guard_rejection(writer)
 
     cases: tuple[tuple[str, Callable[[dict[str, Any]], None]], ...] = (
@@ -456,7 +500,7 @@ def main() -> int:
     require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
             json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
             "parser registry was not restored after reconcile negatives")
-    print("Parser artifact authority rejects CLI substitution, corruption/historical drift, enforces transactional append rollback, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, validates aggregate authority transactionally, and rolls back post-write failure")
+    print("Parser artifact authority rejects CLI substitution, corruption/historical drift, enforces mode-safe transactional append rollback/replace rejection, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, validates aggregate authority transactionally, and rolls back post-write failure")
     return 0
 
 
