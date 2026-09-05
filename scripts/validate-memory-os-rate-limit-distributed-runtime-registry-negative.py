@@ -270,9 +270,76 @@ def prove_reconciler_status_rollback(reconciler: Any) -> None:
         STATUS.write_bytes(status_before)
 
 
+def prove_reconciler_second_replace_rollback(reconciler: Any) -> None:
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
+    original_contract_mode = stat.S_IMODE(CONTRACT.stat().st_mode)
+    original_status_mode = stat.S_IMODE(STATUS.stat().st_mode)
+    os.chmod(CONTRACT, 0o640)
+    os.chmod(STATUS, 0o640)
+    protected_contract_mode = stat.S_IMODE(CONTRACT.stat().st_mode)
+    protected_status_mode = stat.S_IMODE(STATUS.stat().st_mode)
+    contract = json.loads(contract_before.decode("utf-8"))
+    status = json.loads(status_before.decode("utf-8"))
+    contract["rollbackProbe"] = "must-not-persist"
+    status["rollbackProbe"] = "must-not-persist"
+    replace_count = 0
+
+    def fail_second_replace(source: str | Path, target: str | Path) -> None:
+        nonlocal replace_count
+        replace_count += 1
+        if replace_count == 2:
+            raise OSError("synthetic second authority replace rejection")
+        os.replace(source, target)
+
+    def transactional_write(path: Path, value: dict[str, Any]) -> None:
+        reconciler.write(
+            path,
+            value,
+            _atomic_write=lambda target, payload: reconciler.atomic_write_bytes(
+                target,
+                payload,
+                _replace=fail_second_replace,
+            ),
+        )
+
+    try:
+        try:
+            reconciler.commit_outputs_transactionally(
+                {CONTRACT: contract, STATUS: status},
+                _write=transactional_write,
+            )
+        except reconciler.Fail:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted synthetic second authority replace failure")
+        if replace_count != 2:
+            raise RuntimeError(f"second-replace negative exercised unexpected replace count: {replace_count}")
+        if CONTRACT.read_bytes() != contract_before or STATUS.read_bytes() != status_before:
+            raise RuntimeError("second replace failure did not rollback exact authority bytes")
+        if stat.S_IMODE(CONTRACT.stat().st_mode) != protected_contract_mode:
+            raise RuntimeError("second replace failure did not preserve contract mode")
+        if stat.S_IMODE(STATUS.stat().st_mode) != protected_status_mode:
+            raise RuntimeError("second replace failure did not preserve status mode")
+        residues = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")) + list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+        if residues:
+            raise RuntimeError(f"second replace failure left authority temp residue: {residues}")
+    finally:
+        CONTRACT.write_bytes(contract_before)
+        STATUS.write_bytes(status_before)
+        os.chmod(CONTRACT, original_contract_mode)
+        os.chmod(STATUS, original_status_mode)
+
+
 def prove_reconciler_aggregate_rollback(reconciler: Any) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
+    original_contract_mode = stat.S_IMODE(CONTRACT.stat().st_mode)
+    original_status_mode = stat.S_IMODE(STATUS.stat().st_mode)
+    os.chmod(CONTRACT, 0o640)
+    os.chmod(STATUS, 0o640)
+    protected_contract_mode = stat.S_IMODE(CONTRACT.stat().st_mode)
+    protected_status_mode = stat.S_IMODE(STATUS.stat().st_mode)
     contract = json.loads(contract_before.decode("utf-8"))
     status = json.loads(status_before.decode("utf-8"))
     contract["rollbackProbe"] = "must-not-persist"
@@ -291,10 +358,16 @@ def prove_reconciler_aggregate_rollback(reconciler: Any) -> None:
             raise RuntimeError("aggregate failure left distributed runtime contract mutated")
         if STATUS.read_bytes() != status_before:
             raise RuntimeError("aggregate failure left production operability status mutated")
+        if stat.S_IMODE(CONTRACT.stat().st_mode) != protected_contract_mode:
+            raise RuntimeError("aggregate rollback changed distributed runtime contract mode")
+        if stat.S_IMODE(STATUS.stat().st_mode) != protected_status_mode:
+            raise RuntimeError("aggregate rollback changed production operability status mode")
     finally:
         validator_path.write_bytes(validator_before)
         CONTRACT.write_bytes(contract_before)
         STATUS.write_bytes(status_before)
+        os.chmod(CONTRACT, original_contract_mode)
+        os.chmod(STATUS, original_status_mode)
 
 
 def main() -> int:
@@ -323,6 +396,7 @@ def main() -> int:
         prove_writer_replace_rejection(writer, original)
         prove_reconciler_no_autoheal(reconciler, original)
         prove_reconciler_status_rollback(reconciler)
+        prove_reconciler_second_replace_rollback(reconciler)
         prove_reconciler_aggregate_rollback(reconciler)
     finally:
         REGISTRY.write_bytes(original)
@@ -336,7 +410,8 @@ def main() -> int:
     print("writer replace rejection bytes/mode/temp cleanup: true")
     print("reconciler auto-heal: false")
     print("reconciler partial writes: false")
-    print("reconciler aggregate rollback: true")
+    print("reconciler second replace bytes/mode/temp rollback: true")
+    print("reconciler aggregate bytes/mode rollback: true")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
