@@ -6,6 +6,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -49,46 +51,19 @@ def fail_post_write() -> None:
 
 def validate_gap_projection(reconciler: ModuleType) -> None:
     gaps = [
-        {
-            "id": "COMPAT-GAP-APPROVED-RELEASE-PAIR",
-            "blocking": True,
-            "current": 2,
-            "requiredMinimum": 2,
-        },
-        {
-            "id": "COMPAT-GAP-ROLLBACK-PAIR",
-            "blocking": True,
-            "current": 1,
-            "requiredMinimum": 1,
-        },
-        {
-            "id": "COMPAT-GAP-ROLLING-DEPLOYMENT",
-            "blocking": True,
-            "current": False,
-            "required": True,
-        },
+        {"id": "COMPAT-GAP-APPROVED-RELEASE-PAIR", "blocking": True, "current": 2, "requiredMinimum": 2},
+        {"id": "COMPAT-GAP-ROLLBACK-PAIR", "blocking": True, "current": 1, "requiredMinimum": 1},
+        {"id": "COMPAT-GAP-ROLLING-DEPLOYMENT", "blocking": True, "current": False, "required": True},
     ]
     reconciler.remove_satisfied_pair_count_gaps(gaps)
     require([gap.get("id") for gap in gaps] == ["COMPAT-GAP-ROLLING-DEPLOYMENT"],
             "satisfied release/pair count gaps were not removed deterministically")
-
     unsatisfied = [
-        {
-            "id": "COMPAT-GAP-APPROVED-RELEASE-PAIR",
-            "blocking": True,
-            "current": 1,
-            "requiredMinimum": 2,
-        },
-        {
-            "id": "COMPAT-GAP-ROLLBACK-PAIR",
-            "blocking": True,
-            "current": 0,
-            "requiredMinimum": 1,
-        },
+        {"id": "COMPAT-GAP-APPROVED-RELEASE-PAIR", "blocking": True, "current": 1, "requiredMinimum": 2},
+        {"id": "COMPAT-GAP-ROLLBACK-PAIR", "blocking": True, "current": 0, "requiredMinimum": 1},
     ]
     reconciler.remove_satisfied_pair_count_gaps(unsatisfied)
-    require(len(unsatisfied) == 2,
-            "unsatisfied release/pair count gaps were removed")
+    require(len(unsatisfied) == 2, "unsatisfied release/pair count gaps were removed")
 
 
 def validate_evidence_ordering(reconciler: ModuleType) -> None:
@@ -96,14 +71,10 @@ def validate_evidence_ordering(reconciler: ModuleType) -> None:
     replacement = f"{prefix} replacement"
     values = ["before", f"{prefix} stale", "after"]
     reconciler.replace_prefixed_once(values, prefix, replacement)
-    require(values == ["before", replacement, "after"],
-            "release-pair evidence update moved its deterministic authority entry")
-
+    require(values == ["before", replacement, "after"], "release-pair evidence update moved its deterministic authority entry")
     absent = ["before", "after"]
     reconciler.replace_prefixed_once(absent, prefix, replacement)
-    require(absent == ["before", "after", replacement],
-            "release-pair evidence was not appended when its authority entry was absent")
-
+    require(absent == ["before", "after", replacement], "release-pair evidence was not appended when its authority entry was absent")
     duplicates = [f"{prefix} first", "middle", f"{prefix} second"]
     try:
         reconciler.replace_prefixed_once(duplicates, prefix, replacement)
@@ -111,25 +82,18 @@ def validate_evidence_ordering(reconciler: ModuleType) -> None:
         pass
     else:
         raise Fail("release-pair evidence accepted duplicate deterministic authority prefixes")
-    require(duplicates == [f"{prefix} first", "middle", f"{prefix} second"],
-            "duplicate-prefix rejection mutated release-pair evidence ordering")
+    require(duplicates == [f"{prefix} first", "middle", f"{prefix} second"], "duplicate-prefix rejection mutated release-pair evidence ordering")
 
 
 def validate_canonical_validator_chain(reconciler: ModuleType) -> None:
-    expected = [
-        reconciler.VALIDATOR,
-        reconciler.INDEPENDENT_REVIEW_VALIDATOR,
-        reconciler.VERSION_EXECUTION_VALIDATOR,
-        reconciler.OPERABILITY_VALIDATOR,
-    ]
+    expected = [reconciler.VALIDATOR, reconciler.INDEPENDENT_REVIEW_VALIDATOR, reconciler.VERSION_EXECUTION_VALIDATOR, reconciler.OPERABILITY_VALIDATOR]
     observed: list[Path] = []
     original_run = reconciler.subprocess.run
 
     def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
         require(cwd == ROOT, "canonical validator cwd drift")
         require(check is True, "canonical validators must fail closed")
-        require(len(command) == 2 and command[0] == sys.executable,
-                "canonical validator command drift")
+        require(len(command) == 2 and command[0] == sys.executable, "canonical validator command drift")
         observed.append(Path(command[1]))
 
     reconciler.subprocess.run = fake_run
@@ -137,9 +101,31 @@ def validate_canonical_validator_chain(reconciler: ModuleType) -> None:
         reconciler.run_canonical_validators()
     finally:
         reconciler.subprocess.run = original_run
+    require(observed == expected, "release pair transaction does not enforce pair/review/version/operability validators in order")
 
-    require(observed == expected,
-            "release pair transaction does not enforce pair/review/version/operability validators in order")
+
+def mutated_authorities() -> tuple[dict, dict, dict]:
+    contract = copy.deepcopy(load(CONTRACT))
+    gaps = copy.deepcopy(load(GAPS))
+    status = copy.deepcopy(load(STATUS))
+    authority = contract.get("currentAuthority")
+    require(isinstance(authority, dict), "pair currentAuthority missing")
+    authority["latestPairId"] = "rcp_transaction_rollback_probe"
+    gaps["releaseCompatibilityEvidence"] = not bool(gaps.get("releaseCompatibilityEvidence"))
+    gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
+    require(isinstance(gate, dict), "OPS-P0-008 missing")
+    existing = gate.get("existingEvidence")
+    require(isinstance(existing, list), "OPS-P0-008 existingEvidence missing")
+    existing.append("synthetic release-pair rollback probe")
+    return contract, gaps, status
+
+
+def assert_exact_authorities(originals: dict[Path, bytes], modes: dict[Path, int], label: str) -> None:
+    for path, payload in originals.items():
+        require(path.read_bytes() == payload, f"{label} left authority bytes mutated: {path.relative_to(ROOT)}")
+        require(stat.S_IMODE(path.stat().st_mode) == modes[path], f"{label} changed authority mode: {path.relative_to(ROOT)}")
+        residues = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(not residues, f"{label} left temp residue for {path.relative_to(ROOT)}: {residues}")
 
 
 def main() -> int:
@@ -147,41 +133,54 @@ def main() -> int:
     validate_gap_projection(reconciler)
     validate_evidence_ordering(reconciler)
     validate_canonical_validator_chain(reconciler)
-    originals = {path: path.read_bytes() for path in (CONTRACT, GAPS, STATUS)}
-
-    contract = copy.deepcopy(load(CONTRACT))
-    gaps = copy.deepcopy(load(GAPS))
-    status = copy.deepcopy(load(STATUS))
-
-    authority = contract.get("currentAuthority")
-    require(isinstance(authority, dict), "pair currentAuthority missing")
-    authority["latestPairId"] = "rcp_transaction_rollback_probe"
-    gaps["releaseCompatibilityEvidence"] = not bool(gaps.get("releaseCompatibilityEvidence"))
-    gate = next(
-        (item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"),
-        None,
-    )
-    require(isinstance(gate, dict), "OPS-P0-008 missing")
-    existing = gate.get("existingEvidence")
-    require(isinstance(existing, list), "OPS-P0-008 existingEvidence missing")
-    existing.append("synthetic release-pair rollback probe")
+    paths = (CONTRACT, GAPS, STATUS)
+    originals = {path: path.read_bytes() for path in paths}
+    original_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in paths}
+    for path in paths:
+        os.chmod(path, 0o640)
+    protected_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in paths}
 
     try:
-        reconciler.commit_authority_transaction(
-            contract,
-            gaps,
-            status,
-            validator_runner=fail_post_write,
-        )
-    except RuntimeError as exc:
-        require("synthetic post-write validator failure" in str(exc), "unexpected rollback failure reason")
-    else:
-        raise Fail("release pair reconcile accepted synthetic post-write validation failure")
+        contract, gaps, status = mutated_authorities()
+        try:
+            reconciler.commit_authority_transaction(contract, gaps, status, validator_runner=fail_post_write)
+        except RuntimeError as exc:
+            require("synthetic post-write validator failure" in str(exc), "unexpected rollback failure reason")
+        else:
+            raise Fail("release pair reconcile accepted synthetic post-write validation failure")
+        assert_exact_authorities(originals, protected_modes, "post-write validator rollback")
 
-    for path, payload in originals.items():
-        require(path.read_bytes() == payload, f"partial release-pair authority write survived rollback: {path.relative_to(ROOT)}")
+        contract, gaps, status = mutated_authorities()
+        replace_count = 0
 
-    print("PASS: release compatibility pair gap projection/order is deterministic and aggregate reconcile rollback is transactional")
+        def fail_second_replace(source: str | Path, target: str | Path) -> None:
+            nonlocal replace_count
+            replace_count += 1
+            if replace_count == 2:
+                raise OSError("synthetic second release-pair authority replace failure")
+            os.replace(source, target)
+
+        def transactional_write(path: Path, value: dict) -> None:
+            reconciler.write(
+                path,
+                value,
+                _atomic_write=lambda target, payload: reconciler.atomic_write_bytes(target, payload, _replace=fail_second_replace),
+            )
+
+        try:
+            reconciler.commit_authority_transaction(contract, gaps, status, _write=transactional_write)
+        except OSError as exc:
+            require("synthetic second release-pair authority replace failure" in str(exc), "unexpected second-replace failure reason")
+        else:
+            raise Fail("release pair reconcile accepted synthetic second authority replace failure")
+        require(replace_count == 2, f"second-replace negative exercised unexpected replace count: {replace_count}")
+        assert_exact_authorities(originals, protected_modes, "second replace rollback")
+    finally:
+        for path, payload in originals.items():
+            path.write_bytes(payload)
+            os.chmod(path, original_modes[path])
+
+    print("PASS: release compatibility pair gap projection/order is deterministic and aggregate reconcile rollback preserves exact bytes/modes across validator and second-replace failures")
     return 0
 
 
