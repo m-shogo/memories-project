@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -338,10 +339,11 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     require(valid_count(covered_count) and covered_count == derived_covered, "candidateCoveredCount drift")
     return rows
 
-def atomic_write(value: dict[str, Any]) -> None:
+def atomic_write(value: dict[str, Any], mode: int) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-non-resurrection.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), mode)
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
@@ -353,10 +355,11 @@ def atomic_write(value: dict[str, Any]) -> None:
         except FileNotFoundError:
             pass
 
-def atomic_restore(payload: bytes) -> None:
+def atomic_restore(payload: bytes, mode: int) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-non-resurrection-rollback.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
+            os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -370,13 +373,14 @@ def atomic_restore(payload: bytes) -> None:
 def write_registry_transactionally(value: dict[str, Any]) -> None:
     try:
         original = REGISTRY.read_bytes()
+        original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
     except OSError as exc:
         raise Fail("cannot snapshot typed non-resurrection registry before append") from exc
-    atomic_write(value)
+    atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
     except Exception:
-        atomic_restore(original)
+        atomic_restore(original, original_mode)
         raise
 
 def main() -> int:
