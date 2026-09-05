@@ -25,10 +25,7 @@ jobs:
   dispatch-current-authority-reconcile:
     if: >-
       github.event_name != 'workflow_run' ||
-      (
-        github.event.workflow_run.head_branch == 'so' &&
-        github.event.workflow_run.conclusion == 'success'
-      )
+      github.event.workflow_run.head_branch == 'so'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
