@@ -6,6 +6,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -277,6 +279,9 @@ def main() -> int:
         expect_rejected(name, lambda corrupt=corrupt: writer.validate_registry_for_append(corrupt))
 
     original_registry_bytes = REGISTRY.read_bytes()
+    original_registry_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
+    os.chmod(REGISTRY, 0o640)
+    protected_registry_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
     original_atomic_write = writer.atomic_write
     original_post_validator = writer.validate_registry_for_append
     observed = {"changed": False}
@@ -297,15 +302,37 @@ def main() -> int:
         require(observed["changed"], "transactional append negative did not exercise a registry write")
         require(REGISTRY.read_bytes() == original_registry_bytes,
                 "release pair registry was not restored after post-append validation failure")
+        require(stat.S_IMODE(REGISTRY.stat().st_mode) == protected_registry_mode,
+                "release pair registry mode was not restored after post-append validation failure")
     finally:
         writer.atomic_write = original_atomic_write
         writer.validate_registry_for_append = original_post_validator
         if REGISTRY.read_bytes() != original_registry_bytes:
             writer.atomic_restore(original_registry_bytes)
 
+    original_replace = writer.os.replace
+
+    def reject_replace(_source: str | Path, _target: str | Path) -> None:
+        raise OSError("synthetic release pair replace rejection")
+
+    try:
+        writer.os.replace = reject_replace
+        expect_rejected("registry replace rejection", lambda: writer.atomic_write(candidate))
+        require(REGISTRY.read_bytes() == original_registry_bytes,
+                "release pair replace rejection mutated canonical registry bytes")
+        require(stat.S_IMODE(REGISTRY.stat().st_mode) == protected_registry_mode,
+                "release pair replace rejection mutated canonical registry mode")
+        residues = list(REGISTRY.parent.glob(".release-pair.*.tmp"))
+        require(not residues, f"release pair replace rejection left temp residue: {residues}")
+    finally:
+        writer.os.replace = original_replace
+        if REGISTRY.read_bytes() != original_registry_bytes:
+            writer.atomic_restore(original_registry_bytes)
+        os.chmod(REGISTRY, original_registry_mode)
+
     require(REGISTRY.read_bytes() == original_registry_bytes,
             "negative suite mutated canonical pair registry")
-    print("PASS: release compatibility pair authority rejects reconciler substitution, contract substitution, registry corruption, evidence drift, and restores the registry after post-append validation failure")
+    print("PASS: release compatibility pair authority rejects reconciler substitution, contract substitution, registry corruption, evidence drift, and preserves registry bytes/mode across append rollback and replace rejection")
     return 0
 
 
