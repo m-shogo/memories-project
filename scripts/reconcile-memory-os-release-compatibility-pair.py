@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
@@ -105,8 +107,28 @@ def load_module(path: Path, name: str) -> ModuleType:
     return module
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def atomic_write_bytes(path: Path, payload: bytes, *, _replace=os.replace) -> None:
+    mode = path.stat().st_mode & 0o777 if path.exists() else None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _replace(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write(path: Path, value: dict[str, Any], *, _atomic_write=atomic_write_bytes) -> None:
+    payload = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    _atomic_write(path, payload)
 
 
 def append_once(values: list[Any], value: str) -> None:
@@ -115,10 +137,7 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def replace_prefixed_once(values: list[Any], prefix: str, value: str) -> None:
-    matches = [
-        index for index, item in enumerate(values)
-        if isinstance(item, str) and item.startswith(prefix)
-    ]
+    matches = [index for index, item in enumerate(values) if isinstance(item, str) and item.startswith(prefix)]
     require(len(matches) <= 1, f"duplicate deterministic authority prefix: {prefix}")
     if matches:
         values[matches[0]] = value
@@ -137,50 +156,33 @@ def gap_unsatisfied(gap: dict[str, Any]) -> bool:
 
 
 def remove_satisfied_pair_count_gaps(blocking_gaps: list[Any]) -> None:
-    blocking_gaps[:] = [
-        gap for gap in blocking_gaps
-        if not (
-            isinstance(gap, dict)
-            and gap.get("id") in PAIR_COUNT_GAP_IDS
-            and not gap_unsatisfied(gap)
-        )
-    ]
+    blocking_gaps[:] = [gap for gap in blocking_gaps if not (isinstance(gap, dict) and gap.get("id") in PAIR_COUNT_GAP_IDS and not gap_unsatisfied(gap))]
 
 
 def run_canonical_validators() -> None:
-    for validator in (
-        VALIDATOR,
-        INDEPENDENT_REVIEW_VALIDATOR,
-        VERSION_EXECUTION_VALIDATOR,
-        OPERABILITY_VALIDATOR,
-    ):
+    for validator in (VALIDATOR, INDEPENDENT_REVIEW_VALIDATOR, VERSION_EXECUTION_VALIDATOR, OPERABILITY_VALIDATOR):
         subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
 
 
 def commit_authority_transaction(
-    contract: dict[str, Any],
-    gaps: dict[str, Any],
-    status: dict[str, Any],
-    *,
+    contract: dict[str, Any], gaps: dict[str, Any], status: dict[str, Any], *,
     validator_runner: Callable[[], None] | None = None,
+    _write=write,
+    _atomic_write=atomic_write_bytes,
 ) -> None:
     """Write all derived pair authorities atomically with rollback on post-write failure."""
-    originals = {
-        CONTRACT: CONTRACT.read_bytes(),
-        GAPS: GAPS.read_bytes(),
-        STATUS: STATUS.read_bytes(),
-    }
+    originals = {CONTRACT: CONTRACT.read_bytes(), GAPS: GAPS.read_bytes(), STATUS: STATUS.read_bytes()}
     try:
-        write(CONTRACT, contract)
-        write(GAPS, gaps)
-        write(STATUS, status)
+        for path, value in ((CONTRACT, contract), (GAPS, gaps), (STATUS, status)):
+            _write(path, value)
+        enforce_runtime_authorities()
         if validator_runner is None:
             run_canonical_validators()
         else:
             validator_runner()
     except BaseException:
         for path, payload in originals.items():
-            path.write_bytes(payload)
+            _atomic_write(path, payload)
         raise
 
 
@@ -192,7 +194,6 @@ def main() -> int:
         writer.validate_registry_for_append(registry)
     except Exception as exc:
         raise Fail(f"release pair append-only authority invalid: {exc}") from exc
-
     pairs = registry.get("pairs")
     require(isinstance(pairs, list), "pair registry pairs invalid")
     releases = writer.validated_release_registry()
@@ -239,10 +240,7 @@ def main() -> int:
         elif gap.get("id") == "COMPAT-GAP-ROLLBACK-PAIR":
             gap["current"] = pair_count
     remove_satisfied_pair_count_gaps(blocking_gaps)
-    gaps["blockingGapCount"] = sum(
-        1 for gap in blocking_gaps
-        if isinstance(gap, dict) and gap.get("blocking") is True and gap_unsatisfied(gap)
-    )
+    gaps["blockingGapCount"] = sum(1 for gap in blocking_gaps if isinstance(gap, dict) and gap.get("blocking") is True and gap_unsatisfied(gap))
     gaps["releaseCompatibilityEvidence"] = pair_count > 0
     gaps["productionEvidence"] = False
     gaps["productionReady"] = False
@@ -261,11 +259,7 @@ def main() -> int:
         f"{EVIDENCE_PREFIX} approved releases={release_count}, approved predecessor/successor rollback pairs={pair_count}; pair admission revalidates the canonical source-bound approved-release registry, requires two distinct approved release baselines, ELIGIBLE predecessor rollback status, committed digest-bound rolling/rollback/persisted-route/database/artifact evidence, and exactly two typed pair-bound Security/Operability APPROVED reviews from distinct reviewers; candidate/local execution remains separate non-release authority and productionEvidence/productionReady remain false"
     ))
     if pair_count > 0:
-        obsolete_prefixes = (
-            "approved predecessor release record",
-            "rollback-eligible approved release",
-            "approved predecessor and successor release pair",
-        )
+        obsolete_prefixes = ("approved predecessor release record", "rollback-eligible approved release", "approved predecessor and successor release pair")
         missing[:] = [item for item in missing if not (isinstance(item, str) and item.startswith(obsolete_prefixes))]
     for ref in REFS:
         require((ROOT / ref).is_file(), f"release pair authority ref missing: {ref}")
