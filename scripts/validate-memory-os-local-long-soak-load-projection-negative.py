@@ -6,6 +6,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +16,7 @@ CANONICAL_SOAK = ROOT / "contracts/operations/sustained-local-soak-contract.v1.j
 CANONICAL_LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 SOAK_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak.py"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_LOCAL_SOAK_NEGATIVE = ROOT / "scripts/validate-memory-os-operability-local-soak-negative.py"
 SPEC = importlib.util.spec_from_file_location("local_long_soak_projection", MODULE_PATH)
 if SPEC is None or SPEC.loader is None:
     raise SystemExit("LOCAL LONG SOAK LOAD PROJECTION NEGATIVE FAILED: cannot load projection module")
@@ -174,6 +177,10 @@ def transaction_rollback_rejected() -> None:
             module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes, original_mode)
 
 
+def semantic_operability_negative_passes() -> None:
+    subprocess.run([sys.executable, str(OPERABILITY_LOCAL_SOAK_NEGATIVE)], cwd=ROOT, check=True)
+
+
 def main() -> int:
     valid = copy.deepcopy(module.derived_row(local_evidence=True))
     module.assert_local_only_boundary(valid)
@@ -230,6 +237,7 @@ def main() -> int:
     atomic_replacement_failure_rejected()
     successful_replacement_preserves_mode()
     transaction_rollback_rejected()
+    semantic_operability_negative_passes()
 
     print("Memory OS local long-soak load projection negative suite PASS")
     print("canonical scenario ID binding enforced: true")
@@ -237,6 +245,7 @@ def main() -> int:
     print("crash-safe atomic load replacement preserves bytes and mode: true")
     print("successful atomic load replacement preserves existing mode: true")
     print("post-write load validation rollback preserves bytes and mode: true")
+    print("semantic pending operability state is negative-covered: true")
     print("aggregate external scenario corruption accepted: false")
     print("legacy LOCAL_LONG_SOAK alias may be removed only when non-production: true")
     print("production evidence promotion accepted: false")
