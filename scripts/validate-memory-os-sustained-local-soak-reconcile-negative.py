@@ -155,6 +155,55 @@ def validate_mode_preserving_success(module, path: Path, label: str) -> None:
             module.atomic_replace_bytes(path, original, original_mode)
 
 
+def validate_second_replace_transaction_rollback(module, paths: tuple[Path, ...]) -> None:
+    original = {
+        path: (path.read_bytes(), file_mode(path))
+        for path in paths
+    }
+    temp_before = {
+        path: {candidate.name for candidate in path.parent.glob(f".{path.name}.*.tmp")}
+        for path in paths
+    }
+    contract = module.load(module.CONTRACT_PATH)
+    load_contract = module.load(module.LOAD_PATH)
+    status = module.load(module.STATUS_PATH)
+    contract["_syntheticTransactionProbe"] = True
+
+    real_replace = module.os.replace
+    replace_count = 0
+
+    def fail_second_replace(source, destination) -> None:
+        nonlocal replace_count
+        replace_count += 1
+        if replace_count == 2:
+            raise OSError("synthetic second authority replace failure")
+        real_replace(source, destination)
+
+    module.os.replace = fail_second_replace
+    try:
+        try:
+            module.write_and_validate_transactionally(contract, load_contract, status)
+        except OSError as exc:
+            if "synthetic second authority replace failure" not in str(exc):
+                raise AssertionError(f"unexpected multi-authority write failure: {exc}") from exc
+        else:
+            raise AssertionError("multi-authority transaction unexpectedly succeeded after second replace failure")
+    finally:
+        module.os.replace = real_replace
+
+    if replace_count < 2:
+        raise AssertionError("synthetic second authority replace failure was not reached")
+    for path in paths:
+        original_bytes, original_mode = original[path]
+        if path.read_bytes() != original_bytes:
+            raise AssertionError(f"second-replace rollback changed canonical authority: {path.relative_to(ROOT)}")
+        if file_mode(path) != original_mode:
+            raise AssertionError(f"second-replace rollback changed canonical authority mode: {path.relative_to(ROOT)}")
+        temp_after = {candidate.name for candidate in path.parent.glob(f".{path.name}.*.tmp")}
+        if temp_after != temp_before[path]:
+            raise AssertionError(f"second-replace rollback leaked temporary authority: {path.relative_to(ROOT)}")
+
+
 def main() -> int:
     module = load_reconciler()
     updater = load_aggregate_updater()
@@ -235,6 +284,8 @@ def main() -> int:
         if file_mode(path) != original_mode:
             raise AssertionError(f"authority substitution changed canonical mode: {path.relative_to(ROOT)}")
 
+    validate_second_replace_transaction_rollback(module, paths)
+
     observed_post_write_failure = False
     real_run_validator = module.run_validator
 
@@ -274,6 +325,7 @@ def main() -> int:
     print("PASS: sustained local soak reconciler, aggregate updater and trend reviewer reject authority substitution")
     print("PASS: sustained local soak atomic replacement failure preserves canonical authority bytes and mode")
     print("PASS: sustained local soak derived authority writers preserve existing mode")
+    print("PASS: sustained local soak second-replace failure rolls back all canonical authority bytes and modes")
     print("PASS: sustained local soak reconcile rollback preserves canonical authority bytes and mode")
     print("production evidence generated: false")
     print("production decision changed: false")
