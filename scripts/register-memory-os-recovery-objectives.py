@@ -292,10 +292,11 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     return rows
 
 
-def atomic_write(value: dict[str, Any]) -> None:
+def atomic_write(value: dict[str, Any], mode: int) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".recovery-objectives.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), mode)
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
@@ -308,10 +309,11 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
-def atomic_restore(payload: bytes) -> None:
+def atomic_restore(payload: bytes, mode: int) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".recovery-objectives-rollback.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(descriptor, "wb") as handle:
+            os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -326,13 +328,14 @@ def atomic_restore(payload: bytes) -> None:
 def write_registry_transactionally(value: dict[str, Any]) -> None:
     try:
         original = REGISTRY.read_bytes()
+        original_mode = REGISTRY.stat().st_mode & 0o7777
     except OSError as exc:
         raise Fail("cannot snapshot recovery objectives registry before append") from exc
-    atomic_write(value)
+    atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
     except Exception:
-        atomic_restore(original)
+        atomic_restore(original, original_mode)
         raise
 
 
