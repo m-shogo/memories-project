@@ -158,6 +158,28 @@ def local_sustained_soak_completed(repo_root: Path, refs: list[str]) -> bool:
     )
 
 
+def local_sustained_soak_pending(repo_root: Path, refs: list[str]) -> bool:
+    contract_path = repo_root / LONG_SOAK_CONTRACT_PATH
+    if not contract_path.is_file() or LONG_SOAK_CONTRACT_PATH.as_posix() not in refs:
+        return False
+    contract = load_json(contract_path)
+    readiness = contract.get("readiness")
+    if not isinstance(readiness, dict):
+        return False
+    required_false_claims = (
+        "productionSustainedSoakEvidence",
+        "leakProofAvailable",
+        "productionReady",
+    )
+    if any(readiness.get(claim) is not False for claim in required_false_claims):
+        return False
+    return not (
+        readiness.get("secondIndependentLongRunCommitted") is True
+        and readiness.get("trendReviewCompleted") is True
+        and readiness.get("localSustainedSoakEvidence") is True
+    )
+
+
 def validate_load_gate(
     repo_root: Path,
     area: dict[str, Any],
@@ -194,11 +216,6 @@ def validate_load_gate(
         )
 
     if area.get("status") == "READY":
-        # These contracts intentionally describe ephemeral local dependencies.
-        # Their PASS results improve confidence but never establish a production
-        # capacity boundary, production object-store controls or dependency
-        # equivalence. A future READY transition must add distinct production
-        # evidence rather than relabel these local contracts.
         if (
             postgres_contract.get("productionEvidence") is False
             or object_contract.get("productionEvidence") is False
@@ -229,9 +246,9 @@ def validate_load_gate(
                 raise ValidationFailure(
                     "OPS-P0-006: local descriptive trend review must retain independent leak/stability review gap"
                 )
-        elif not any("sustained soak" in item for item in missing):
+        elif not local_sustained_soak_pending(repo_root, refs):
             raise ValidationFailure(
-                "OPS-P0-006: missingEvidence must retain the open gap: sustained soak"
+                "OPS-P0-006: incomplete local sustained-soak authority must remain semantically pending"
             )
 
 
