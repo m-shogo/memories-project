@@ -64,57 +64,15 @@ def planned_env() -> dict[str, Any]:
         "environmentId": "pe-negative-a",
         "generationId": "pegen-negative-a-v1",
         "status": "PLANNED",
-        "topology": {
-            "regionClass": "regional-nonproduction",
-            "nonLoopback": False,
-            "productionTraffic": False,
-            "productionCredentials": False,
-        },
-        "postgresql": {
-            "tlsVerified": False,
-            "runtimeRoleBypassRLS": False,
-            "forceRLSVerified": False,
-            "connectionBudgetDeclared": False,
-            "poolTelemetryVerified": False,
-            "restoreEvidenceRef": None,
-        },
-        "objectStorage": {
-            "tlsVerified": False,
-            "scopedCredentialsVerified": False,
-            "versioningVerified": False,
-            "retentionLifecycleVerified": False,
-            "exactVersionDeleteVerified": False,
-            "restoreEvidenceRef": None,
-        },
-        "queueWorkers": {
-            "boundedBackpressureVerified": False,
-            "queueTelemetryVerified": False,
-            "deletionBacklogTelemetryVerified": False,
-            "leaseRetryVerified": False,
-        },
-        "network": {
-            "tlsVerificationRequired": True,
-            "latencyProfileRef": None,
-            "failureInjectionRef": None,
-        },
-        "identityAndSecrets": {
-            "dedicatedNonProductionCredentials": False,
-            "credentialScopeRef": None,
-            "containsSecretMaterial": False,
-        },
-        "backupRestore": {
-            "sameGenerationLinked": False,
-            "isolatedRestoreVerified": False,
-            "evidenceRef": None,
-        },
+        "topology": {"regionClass": "regional-nonproduction", "nonLoopback": False, "productionTraffic": False, "productionCredentials": False},
+        "postgresql": {"tlsVerified": False, "runtimeRoleBypassRLS": False, "forceRLSVerified": False, "connectionBudgetDeclared": False, "poolTelemetryVerified": False, "restoreEvidenceRef": None},
+        "objectStorage": {"tlsVerified": False, "scopedCredentialsVerified": False, "versioningVerified": False, "retentionLifecycleVerified": False, "exactVersionDeleteVerified": False, "restoreEvidenceRef": None},
+        "queueWorkers": {"boundedBackpressureVerified": False, "queueTelemetryVerified": False, "deletionBacklogTelemetryVerified": False, "leaseRetryVerified": False},
+        "network": {"tlsVerificationRequired": True, "latencyProfileRef": None, "failureInjectionRef": None},
+        "identityAndSecrets": {"dedicatedNonProductionCredentials": False, "credentialScopeRef": None, "containsSecretMaterial": False},
+        "backupRestore": {"sameGenerationLinked": False, "isolatedRestoreVerified": False, "evidenceRef": None},
         "materialDeltas": [],
-        "evidenceBoundary": {
-            "productionEvidence": False,
-            "productionEquivalentDependencies": False,
-            "independentReviewCompleted": False,
-            "independentReviewRef": None,
-            "productionReady": False,
-        },
+        "evidenceBoundary": {"productionEvidence": False, "productionEquivalentDependencies": False, "independentReviewCompleted": False, "independentReviewRef": None, "productionReady": False},
     }
 
 
@@ -137,20 +95,8 @@ def equivalent_env() -> dict[str, Any]:
     value["backupRestore"]["sameGenerationLinked"] = True
     value["backupRestore"]["isolatedRestoreVerified"] = True
     value["backupRestore"]["evidenceRef"] = "README.md"
-    value["materialDeltas"] = [{
-        "deltaId": "NEGATIVE-MATERIAL-001",
-        "description": "synthetic reviewed topology delta for negative-suite coverage",
-        "classification": "MATERIAL",
-        "accepted": True,
-        "independentReviewRef": "SECURITY.md",
-    }]
-    value["evidenceBoundary"] = {
-        "productionEvidence": False,
-        "productionEquivalentDependencies": True,
-        "independentReviewCompleted": True,
-        "independentReviewRef": ".gitignore",
-        "productionReady": False,
-    }
+    value["materialDeltas"] = [{"deltaId": "NEGATIVE-MATERIAL-001", "description": "synthetic reviewed topology delta for negative-suite coverage", "classification": "MATERIAL", "accepted": True, "independentReviewRef": "SECURITY.md"}]
+    value["evidenceBoundary"] = {"productionEvidence": False, "productionEquivalentDependencies": True, "independentReviewCompleted": True, "independentReviewRef": ".gitignore", "productionReady": False}
     return value
 
 
@@ -186,124 +132,83 @@ def main() -> int:
     planned = planned_env()
     require(env_validator.validate_environment_record(planned) is False, "PLANNED environment must be structurally valid but preflight-ineligible")
     print("PASS non-eligible: PLANNED generation environment")
-
     equivalent = equivalent_env()
     require(env_validator.validate_environment_record(equivalent) is True, "complete equivalent environment must satisfy semantic preflight predicate")
     print("PASS eligible: complete validated equivalent environment")
 
-    missing_section = copy.deepcopy(planned)
-    del missing_section["queueWorkers"]
+    missing_section = copy.deepcopy(planned); del missing_section["queueWorkers"]
     expect_rejected("missing required nested section", lambda: env_validator.validate_environment_record(missing_section))
-
-    unknown_field = copy.deepcopy(planned)
-    unknown_field["unexpected"] = True
+    unknown_field = copy.deepcopy(planned); unknown_field["unexpected"] = True
     expect_rejected("unknown top-level field", lambda: env_validator.validate_environment_record(unknown_field))
-
-    prod_traffic = copy.deepcopy(planned)
-    prod_traffic["topology"]["productionTraffic"] = True
+    prod_traffic = copy.deepcopy(planned); prod_traffic["topology"]["productionTraffic"] = True
     expect_rejected("production traffic enabled", lambda: env_validator.validate_environment_record(prod_traffic))
-
-    secret_material = copy.deepcopy(planned)
-    secret_material["identityAndSecrets"]["containsSecretMaterial"] = True
+    secret_material = copy.deepcopy(planned); secret_material["identityAndSecrets"]["containsSecretMaterial"] = True
     expect_rejected("secret material present", lambda: env_validator.validate_environment_record(secret_material))
-
-    incomplete_equivalent = copy.deepcopy(equivalent)
-    incomplete_equivalent["postgresql"]["forceRLSVerified"] = False
+    incomplete_equivalent = copy.deepcopy(equivalent); incomplete_equivalent["postgresql"]["forceRLSVerified"] = False
     expect_rejected("equivalent classification with incomplete dependency control", lambda: env_validator.validate_environment_record(incomplete_equivalent))
-
-    missing_ref = copy.deepcopy(equivalent)
-    missing_ref["network"]["latencyProfileRef"] = None
+    missing_ref = copy.deepcopy(equivalent); missing_ref["network"]["latencyProfileRef"] = None
     expect_rejected("equivalent classification with missing evidence ref", lambda: env_validator.validate_environment_record(missing_ref))
-
-    missing_review_ref = copy.deepcopy(equivalent)
-    missing_review_ref["evidenceBoundary"]["independentReviewRef"] = None
+    missing_review_ref = copy.deepcopy(equivalent); missing_review_ref["evidenceBoundary"]["independentReviewRef"] = None
     expect_rejected("independent review completed without review evidence ref", lambda: env_validator.validate_environment_record(missing_review_ref))
-
-    material_without_review = copy.deepcopy(equivalent)
-    material_without_review["materialDeltas"][0]["independentReviewRef"] = None
+    material_without_review = copy.deepcopy(equivalent); material_without_review["materialDeltas"][0]["independentReviewRef"] = None
     expect_rejected("accepted material delta without independent review", lambda: env_validator.validate_environment_record(material_without_review))
-
-    implementation_review_reuse = copy.deepcopy(equivalent)
-    implementation_review_reuse["evidenceBoundary"]["independentReviewRef"] = implementation_review_reuse["postgresql"]["restoreEvidenceRef"]
+    implementation_review_reuse = copy.deepcopy(equivalent); implementation_review_reuse["evidenceBoundary"]["independentReviewRef"] = implementation_review_reuse["postgresql"]["restoreEvidenceRef"]
     expect_rejected("environment review reused as implementation restore evidence", lambda: env_validator.validate_environment_record(implementation_review_reuse))
-
-    material_review_reuse = copy.deepcopy(equivalent)
-    material_review_reuse["evidenceBoundary"]["independentReviewRef"] = material_review_reuse["materialDeltas"][0]["independentReviewRef"]
+    material_review_reuse = copy.deepcopy(equivalent); material_review_reuse["evidenceBoundary"]["independentReviewRef"] = material_review_reuse["materialDeltas"][0]["independentReviewRef"]
     expect_rejected("environment review reused as material-delta review evidence", lambda: env_validator.validate_environment_record(material_review_reuse))
 
     real_env_root = env_validator.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-semantic-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-semantic-ref-external-") as external_tmp:
-        root_path = Path(root_tmp)
-        external_path = Path(external_tmp) / "external-evidence.txt"
-        (root_path / "evidence.txt").write_text("local evidence\n", encoding="utf-8")
-        external_path.write_text("external evidence\n", encoding="utf-8")
+        root_path = Path(root_tmp); external_path = Path(external_tmp) / "external-evidence.txt"
+        (root_path / "evidence.txt").write_text("local evidence\n", encoding="utf-8"); external_path.write_text("external evidence\n", encoding="utf-8")
         env_validator.ROOT = root_path
         try:
             expect_rejected("absolute semantic environment evidence ref", lambda: env_validator.repo_ref(str((root_path / "evidence.txt").resolve()), "negative.absolute", required=True))
             expect_rejected("parent-traversal semantic environment evidence ref", lambda: env_validator.repo_ref("nested/../evidence.txt", "negative.parent", required=True))
-            escape_link = root_path / "escaped-evidence.txt"
-            escape_link.symlink_to(external_path)
+            escape_link = root_path / "escaped-evidence.txt"; escape_link.symlink_to(external_path)
             expect_rejected("semantic environment evidence symlink escapes repository root", lambda: env_validator.repo_ref("escaped-evidence.txt", "negative.symlink", required=True))
-            loop_link = root_path / "loop-evidence.txt"
-            loop_link.symlink_to(loop_link.name)
+            loop_link = root_path / "loop-evidence.txt"; loop_link.symlink_to(loop_link.name)
             expect_rejected("semantic environment evidence symlink loop", lambda: env_validator.repo_ref("loop-evidence.txt", "negative.loop", required=True))
         finally:
             env_validator.ROOT = real_env_root
 
     real_root = writer.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-generation-ref-external-") as external_tmp:
-        root_path = Path(root_tmp)
-        external_path = Path(external_tmp) / "external-environment.json"
-        (root_path / "environment.json").write_text("{}\n", encoding="utf-8")
-        external_path.write_text("{}\n", encoding="utf-8")
+        root_path = Path(root_tmp); external_path = Path(external_tmp) / "external-environment.json"
+        (root_path / "environment.json").write_text("{}\n", encoding="utf-8"); external_path.write_text("{}\n", encoding="utf-8")
         writer.ROOT = root_path
         try:
             expect_rejected("absolute generation environment ref", lambda: writer.repo_ref(str((root_path / "environment.json").resolve()), "environmentRecordRef"))
             expect_rejected("parent-traversal generation environment ref", lambda: writer.repo_ref("nested/../environment.json", "environmentRecordRef"))
-            escape_link = root_path / "escaped-environment.json"
-            escape_link.symlink_to(external_path)
+            escape_link = root_path / "escaped-environment.json"; escape_link.symlink_to(external_path)
             expect_rejected("generation environment symlink escapes repository root", lambda: writer.repo_ref("escaped-environment.json", "environmentRecordRef"))
-            loop_link = root_path / "loop-environment.json"
-            loop_link.symlink_to(loop_link.name)
+            loop_link = root_path / "loop-environment.json"; loop_link.symlink_to(loop_link.name)
             expect_rejected("generation environment ref symlink loop", lambda: writer.repo_ref("loop-environment.json", "environmentRecordRef"))
         finally:
             writer.ROOT = real_root
 
     with tempfile.TemporaryDirectory(prefix="memory-os-semantic-load-negative-") as tmp:
         tmp_path = Path(tmp)
-        invalid_utf8 = tmp_path / "invalid-utf8.json"
-        invalid_utf8.write_bytes(b"{\xff}\n")
+        invalid_utf8 = tmp_path / "invalid-utf8.json"; invalid_utf8.write_bytes(b"{\xff}\n")
         expect_rejected("invalid UTF-8 semantic environment record", lambda: env_validator.load_file(invalid_utf8))
-        directory_record = tmp_path / "directory-record.json"
-        directory_record.mkdir()
+        directory_record = tmp_path / "directory-record.json"; directory_record.mkdir()
         expect_rejected("unreadable semantic environment record directory", lambda: env_validator.load_file(directory_record))
 
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-negative-") as tmp:
-        tmp_path = Path(tmp)
-        env_path = tmp_path / "environment.json"
+        tmp_path = Path(tmp); env_path = tmp_path / "environment.json"
         env_path.write_text(json.dumps(planned, indent=2) + "\n", encoding="utf-8")
-        real_repo_ref = writer.repo_ref
-        real_source_binding = writer.require_repo_file_bound_to_source
+        real_repo_ref = writer.repo_ref; real_source_binding = writer.require_repo_file_bound_to_source
         writer.repo_ref = lambda value, field: env_path if field == "environmentRecordRef" else real_repo_ref(value, field)
-        writer.require_repo_file_bound_to_source = (
-            lambda source_commit, path, field: None
-            if field == "environmentRecordRef" and path == env_path
-            else real_source_binding(source_commit, path, field)
-        )
+        writer.require_repo_file_bound_to_source = lambda source_commit, path, field: None if field == "environmentRecordRef" and path == env_path else real_source_binding(source_commit, path, field)
         try:
             valid_generation = generation_record(commit_sha, env_path, planned)
             require(writer.validate_record(valid_generation) is False, "PLANNED generation registration must remain preflight-ineligible")
             print("PASS registration: PLANNED generation history is allowed without preflight eligibility")
-
             real_loader = writer.load_environment_validator
             class BrokenValidator:
-                class Fail(RuntimeError):
-                    pass
-
+                class Fail(RuntimeError): pass
                 @staticmethod
-                def validate_environment_record(*args: Any, **kwargs: Any) -> bool:
-                    raise TypeError("synthetic implementation failure")
-
+                def validate_environment_record(*args: Any, **kwargs: Any) -> bool: raise TypeError("synthetic implementation failure")
             writer.load_environment_validator = lambda: BrokenValidator
             try:
                 writer.validate_record(valid_generation)
@@ -315,21 +220,14 @@ def main() -> int:
                 raise Fail("semantic validator implementation failure was unexpectedly accepted")
             finally:
                 writer.load_environment_validator = real_loader
-
-            mutable_alias = copy.deepcopy(valid_generation)
-            mutable_alias["generationId"] = "pegen-latest-negative"
+            mutable_alias = copy.deepcopy(valid_generation); mutable_alias["generationId"] = "pegen-latest-negative"
             expect_rejected("mutable generation alias", lambda: writer.validate_record(mutable_alias))
-
-            digest_mismatch = copy.deepcopy(valid_generation)
-            digest_mismatch["environmentRecordSha256"] = "f" * 64
+            digest_mismatch = copy.deepcopy(valid_generation); digest_mismatch["environmentRecordSha256"] = "f" * 64
             expect_rejected("environment record digest mismatch", lambda: writer.validate_record(digest_mismatch))
-
-            production_flag = copy.deepcopy(valid_generation)
-            production_flag["productionEvidence"] = True
+            production_flag = copy.deepcopy(valid_generation); production_flag["productionEvidence"] = True
             expect_rejected("production evidence relabel", lambda: writer.validate_record(production_flag))
         finally:
-            writer.require_repo_file_bound_to_source = real_source_binding
-            writer.repo_ref = real_repo_ref
+            writer.require_repo_file_bound_to_source = real_source_binding; writer.repo_ref = real_repo_ref
 
     healthy_registry = {
         "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
@@ -343,7 +241,6 @@ def main() -> int:
     }
     require(writer.validate_registry_for_append(copy.deepcopy(healthy_registry)) == [], "healthy empty generation registry append authority must remain valid")
     print("PASS append authority: healthy empty generation registry")
-
     registry_cases = (
         ("generation registry schema drift before append", "schemaVersion", "memory-os-production-equivalent-environment-generation-registry.v0"),
         ("generation registry class drift before append", "registryClass", "UNTRUSTED_GENERATION_AUTHORITY"),
@@ -354,9 +251,59 @@ def main() -> int:
         ("generation registry current pointer drift before append", "currentGenerationId", "pegen_unregistered"),
     )
     for name, field, invalid_value in registry_cases:
-        mutated = copy.deepcopy(healthy_registry)
-        mutated[field] = invalid_value
+        mutated = copy.deepcopy(healthy_registry); mutated[field] = invalid_value
         expect_rejected(name, lambda value=mutated: writer.validate_registry_for_append(value))
+
+    original_registry = writer.REGISTRY
+    original_validate_registry = writer.validate_registry_for_append
+    original_replace = writer.os.replace
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-registry-transaction-") as registry_tmp:
+        temp_registry = Path(registry_tmp) / "generation-registry.json"
+        temp_registry.write_text(json.dumps(healthy_registry, indent=2) + "\n", encoding="utf-8")
+        temp_registry.chmod(0o640)
+        before = temp_registry.read_bytes()
+        before_mode = writer.stat.S_IMODE(temp_registry.stat().st_mode)
+        candidate = copy.deepcopy(healthy_registry)
+        candidate["limitations"] = ["synthetic transaction-only negative-suite mutation"]
+        writer.REGISTRY = temp_registry
+        try:
+            writer.write_registry_transactionally(candidate)
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "generation registry mode changed after successful transactional write")
+            require(not list(temp_registry.parent.glob(".environment-generation*.tmp")), "generation registry successful write left temporary residue")
+            print("PASS preserve: generation registry successful transaction retains mode and no temporary residue")
+
+            temp_registry.write_bytes(before); temp_registry.chmod(before_mode)
+            writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic post-write validation failure"))
+            expect_rejected("generation registry post-write validation rollback", lambda: writer.write_registry_transactionally(candidate))
+            require(temp_registry.read_bytes() == before, "generation registry bytes changed after validator rollback")
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "generation registry mode changed after validator rollback")
+            require(not list(temp_registry.parent.glob(".environment-generation*.tmp")), "generation registry rollback left temporary residue")
+            print("PASS preserve: generation registry validator failure rolls back exact bytes and mode")
+
+            temp_registry.write_bytes(before); temp_registry.chmod(before_mode)
+            writer.validate_registry_for_append = original_validate_registry
+            def reject_replace(source: str | Path, destination: str | Path) -> None:
+                if Path(destination) == temp_registry:
+                    raise OSError("synthetic generation registry replace rejection")
+                original_replace(source, destination)
+            writer.os.replace = reject_replace
+            try:
+                writer.write_registry_transactionally(candidate)
+            except OSError as exc:
+                require("synthetic generation registry replace rejection" in str(exc), f"unexpected generation replace rejection: {exc}")
+                print("PASS reject: generation registry candidate replace rejection")
+            else:
+                raise Fail("generation registry candidate replace rejection unexpectedly succeeded")
+            finally:
+                writer.os.replace = original_replace
+            require(temp_registry.read_bytes() == before, "generation registry bytes changed after candidate replace rejection")
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "generation registry mode changed after candidate replace rejection")
+            require(not list(temp_registry.parent.glob(".environment-generation*.tmp")), "generation registry replace rejection left temporary residue")
+            print("PASS preserve: generation registry replace rejection retains bytes and mode without temporary residue")
+        finally:
+            writer.REGISTRY = original_registry
+            writer.validate_registry_for_append = original_validate_registry
+            writer.os.replace = original_replace
 
     print("Memory OS production-equivalent environment generation negative suite PASS")
     print("canonical registry mutated: false")
@@ -372,6 +319,9 @@ def main() -> int:
     print("unexpected implementation exception accepted as valid rejection: false")
     print("generation registry append authority drift accepted: false")
     print("boolean generation registry counts accepted before append: false")
+    print("generation registry mode drift accepted: false")
+    print("generation registry replace rejection mutated canonical state: false")
+    print("generation registry temporary residue retained: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
