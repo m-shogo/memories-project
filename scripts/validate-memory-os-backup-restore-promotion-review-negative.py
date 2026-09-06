@@ -179,24 +179,61 @@ def main() -> int:
 
     original_registry_path = writer.REGISTRY
     original_validate_registry = writer.validate_registry_for_append
+    original_replace = writer.os.replace
     with tempfile.TemporaryDirectory(prefix="memory-os-promotion-review-append-rollback-") as registry_tmp:
         temp_registry = Path(registry_tmp) / "promotion-registry.json"
         write_json(temp_registry, registry)
+        temp_registry.chmod(0o640)
         before = temp_registry.read_bytes()
+        before_mode = writer.stat.S_IMODE(temp_registry.stat().st_mode)
         writer.REGISTRY = temp_registry
-        writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic post-append validation failure"))
         try:
             candidate = copy.deepcopy(registry)
-            candidate["limitations"] = ["synthetic write that must be rolled back"]
+            candidate["limitations"] = ["synthetic mode-preservation write"]
+            writer.write_registry_transactionally(candidate)
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "promotion registry mode changed after successful transactional append")
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")), "promotion registry successful append left temporary residue")
+            print("PASS preserve: promotion registry successful append retains mode and leaves no temporary residue")
+
+            temp_registry.write_bytes(before)
+            temp_registry.chmod(before_mode)
+            writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic post-append validation failure"))
             expect_rejected(
                 "promotion registry post-append validation rollback",
                 lambda: writer.write_registry_transactionally(candidate),
             )
             require(temp_registry.read_bytes() == before, "promotion registry bytes changed after rejected transactional append")
-            print("PASS preserve: promotion registry append failure rolled back byte-for-byte")
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "promotion registry mode changed after rejected transactional append")
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")), "promotion registry rollback left temporary residue")
+            print("PASS preserve: promotion registry append failure rolled back bytes and mode")
+
+            temp_registry.write_bytes(before)
+            temp_registry.chmod(before_mode)
+            writer.validate_registry_for_append = original_validate_registry
+
+            def reject_replace(source: str | Path, destination: str | Path) -> None:
+                if Path(destination) == temp_registry:
+                    raise OSError("synthetic promotion registry replace rejection")
+                original_replace(source, destination)
+
+            writer.os.replace = reject_replace
+            try:
+                writer.write_registry_transactionally(candidate)
+            except OSError as exc:
+                require("synthetic promotion registry replace rejection" in str(exc), f"unexpected promotion replace rejection: {exc}")
+                print("PASS reject: promotion registry candidate replace rejection")
+            else:
+                raise Fail("promotion registry candidate replace rejection unexpectedly succeeded")
+            finally:
+                writer.os.replace = original_replace
+            require(temp_registry.read_bytes() == before, "promotion registry bytes changed after candidate replace rejection")
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "promotion registry mode changed after candidate replace rejection")
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")), "promotion registry replace rejection left temporary residue")
+            print("PASS preserve: promotion registry replace rejection retains bytes and mode without temporary residue")
         finally:
             writer.REGISTRY = original_registry_path
             writer.validate_registry_for_append = original_validate_registry
+            writer.os.replace = original_replace
 
     require(writer.EVIDENCE_ROOT.is_dir(), "monitored backup/restore evidence namespace missing")
     with tempfile.TemporaryDirectory(prefix=".promotion-review-negative-", dir=writer.EVIDENCE_ROOT) as tmp:
@@ -364,6 +401,9 @@ def main() -> int:
     print("promotion review lock substitution accepted: false")
     print("corrupt promotion registry accepted on append: false")
     print("post-append promotion registry validation failure persisted: false")
+    print("promotion registry mode drift accepted: false")
+    print("promotion registry replace rejection mutated canonical state: false")
+    print("promotion registry temporary residue retained: false")
     print("review can change traffic: false")
     print("GO recommendation implies production ready: false")
     print("production evidence: false")
