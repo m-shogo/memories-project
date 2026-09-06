@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Negative checks for fail-closed local long-soak load projection boundaries."""
+"""Negative checks for local long-soak projection and delegated operability boundaries."""
 
 from __future__ import annotations
 
@@ -177,7 +177,7 @@ def transaction_rollback_rejected() -> None:
             module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes, original_mode)
 
 
-def semantic_operability_negative_passes() -> None:
+def delegated_local_soak_negatives_pass() -> None:
     subprocess.run([sys.executable, str(OPERABILITY_LOCAL_SOAK_NEGATIVE)], cwd=ROOT, check=True)
 
 
@@ -237,7 +237,7 @@ def main() -> int:
     atomic_replacement_failure_rejected()
     successful_replacement_preserves_mode()
     transaction_rollback_rejected()
-    semantic_operability_negative_passes()
+    delegated_local_soak_negatives_pass()
 
     print("Memory OS local long-soak load projection negative suite PASS")
     print("canonical scenario ID binding enforced: true")
@@ -245,7 +245,7 @@ def main() -> int:
     print("crash-safe atomic load replacement preserves bytes and mode: true")
     print("successful atomic load replacement preserves existing mode: true")
     print("post-write load validation rollback preserves bytes and mode: true")
-    print("semantic pending operability state is negative-covered: true")
+    print("semantic pending operability and review-registry transaction state are negative-covered: true")
     print("aggregate external scenario corruption accepted: false")
     print("legacy LOCAL_LONG_SOAK alias may be removed only when non-production: true")
     print("production evidence promotion accepted: false")
