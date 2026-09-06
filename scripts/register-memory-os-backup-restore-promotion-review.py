@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -350,13 +351,14 @@ def reconcile_current_decision(registry: dict[str, Any]) -> tuple[list[dict[str,
     return rows, expected_current
 
 
-def atomic_write(value: dict[str, Any]) -> None:
+def atomic_write(value: dict[str, Any], mode: int) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-promotion-review.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
+            os.fchmod(handle.fileno(), mode)
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
     finally:
@@ -366,12 +368,13 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
-def atomic_restore(payload: bytes) -> None:
+def atomic_restore(payload: bytes, mode: int) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-promotion-review-rollback.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
             handle.flush()
+            os.fchmod(handle.fileno(), mode)
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
     finally:
@@ -384,13 +387,14 @@ def atomic_restore(payload: bytes) -> None:
 def write_registry_transactionally(value: dict[str, Any]) -> None:
     try:
         original = REGISTRY.read_bytes()
+        original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
     except OSError as exc:
         raise Fail("cannot snapshot promotion review registry before append") from exc
-    atomic_write(value)
+    atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
     except Exception:
-        atomic_restore(original)
+        atomic_restore(original, original_mode)
         raise
 
 
