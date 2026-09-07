@@ -22,6 +22,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def file_mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
 def load_writer():
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_append_rollback_negative", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load environment-generation writer")
@@ -45,6 +49,8 @@ def main() -> int:
         registry = Path(tmp) / "generation-registry.v1.json"
         original = b'{"sentinel":"before"}\n'
         registry.write_bytes(original)
+        registry.chmod(0o640)
+        original_mode = file_mode(registry)
 
         original_registry = writer.REGISTRY
         original_validate = writer.validate_registry_for_append
@@ -62,13 +68,17 @@ def main() -> int:
             else:
                 raise Fail("post-append generation registry validation failure was accepted")
             require(registry.read_bytes() == original, "failed generation append did not restore original registry bytes")
+            require(file_mode(registry) == original_mode == 0o640, "failed generation append did not restore original registry mode")
+            leftovers = list(registry.parent.glob(".environment-generation*.tmp"))
+            require(not leftovers, f"failed generation append left temporary registry files: {leftovers}")
         finally:
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validate
 
     print("Memory OS environment generation append rollback negative PASS")
     print("post-append canonical registry revalidation: enforced")
-    print("failed append registry rollback: byte-for-byte")
+    print("failed append registry rollback: byte-for-byte and mode-for-mode")
+    print("failed append temporary registry residue: false")
     print("generation created: false")
     print("production evidence: false")
     print("production readiness: false")
