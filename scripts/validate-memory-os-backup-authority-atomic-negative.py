@@ -22,6 +22,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def file_mode(path: Path) -> int:
+    return path.stat().st_mode & 0o777
+
+
 def load_module(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load module: {path.name}")
@@ -243,6 +247,7 @@ def normalizer_noop_validation(module) -> None:
 
 def normalizer_atomic_replace_failure(module) -> None:
     original = module.STATUS_PATH.read_bytes()
+    original_mode = file_mode(module.STATUS_PATH)
     real_normalize = module.normalize
     real_replace = module.os.replace
     replace_calls = 0
@@ -257,6 +262,7 @@ def normalizer_atomic_replace_failure(module) -> None:
             raise OSError("synthetic atomic replacement failure")
         real_replace(source, destination)
 
+    module.STATUS_PATH.chmod(0o640)
     module.normalize = fake_normalize
     module.os.replace = fail_first_replace
     try:
@@ -267,6 +273,8 @@ def normalizer_atomic_replace_failure(module) -> None:
         require(replace_calls == 1, f"unexpected normalizer initial replace count: {replace_calls}")
         require(module.STATUS_PATH.read_bytes() == original,
                 "normalizer atomic replacement failure mutated production status")
+        require(file_mode(module.STATUS_PATH) == 0o640,
+                "normalizer atomic replacement failure changed production status mode")
         require(
             not list(module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp")),
             "normalizer atomic replacement failure left a temporary authority file",
@@ -276,15 +284,17 @@ def normalizer_atomic_replace_failure(module) -> None:
         module.os.replace = real_replace
         if module.STATUS_PATH.read_bytes() != original:
             module.atomic_write_bytes(module.STATUS_PATH, original)
+        module.STATUS_PATH.chmod(original_mode)
 
 
 def normalizer_atomic_rollback(module) -> None:
     original = module.STATUS_PATH.read_bytes()
+    original_mode = file_mode(module.STATUS_PATH)
     real_normalize = module.normalize
     real_run_validator = module.run_validator
     real_replace = module.os.replace
     validator_calls: list[Path] = []
-    replace_calls = 0
+    replace_modes: list[int] = []
 
     def fake_normalize(status):
         return changed_candidate(status, "backup authority rollback")
@@ -295,10 +305,10 @@ def normalizer_atomic_rollback(module) -> None:
             raise module.ReconcileFailure("synthetic post-write operability rejection")
 
     def tracked_replace(source, destination) -> None:
-        nonlocal replace_calls
-        replace_calls += 1
         real_replace(source, destination)
+        replace_modes.append(file_mode(Path(destination)))
 
+    module.STATUS_PATH.chmod(0o640)
     module.normalize = fake_normalize
     module.run_validator = fake_run_validator
     module.os.replace = tracked_replace
@@ -311,10 +321,12 @@ def normalizer_atomic_rollback(module) -> None:
             validator_calls == [module.BACKUP_VALIDATOR, module.OPERABILITY_VALIDATOR],
             "backup authority validator transaction order drift",
         )
-        require(replace_calls == 2,
-                f"normalizer publication and rollback must each use atomic replacement: {replace_calls}")
+        require(replace_modes == [0o640, 0o640],
+                f"normalizer publication/rollback mode drift: {replace_modes}")
         require(module.STATUS_PATH.read_bytes() == original,
                 "normalizer atomic rollback did not restore production status byte-for-byte")
+        require(file_mode(module.STATUS_PATH) == 0o640,
+                "normalizer atomic rollback did not restore production status mode")
         require(
             not list(module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp")),
             "normalizer atomic rollback left a temporary authority file",
@@ -325,6 +337,7 @@ def normalizer_atomic_rollback(module) -> None:
         module.os.replace = real_replace
         if module.STATUS_PATH.read_bytes() != original:
             module.atomic_write_bytes(module.STATUS_PATH, original)
+        module.STATUS_PATH.chmod(original_mode)
 
 
 def coherent_noop_validation(module) -> None:
@@ -358,6 +371,7 @@ def coherent_noop_validation(module) -> None:
 
 def coherent_atomic_replace_failure(module) -> None:
     original = module.STATUS.read_bytes()
+    original_mode = file_mode(module.STATUS)
     real_normalized = module.normalized
     real_initial_validator = module.run_validator
     real_replace = module.os.replace
@@ -378,6 +392,7 @@ def coherent_atomic_replace_failure(module) -> None:
             raise OSError("synthetic coherent atomic replacement failure")
         real_replace(source, destination)
 
+    module.STATUS.chmod(0o640)
     module.normalized = fake_normalized
     module.run_validator = fake_initial_validator
     module.os.replace = fail_first_replace
@@ -389,6 +404,8 @@ def coherent_atomic_replace_failure(module) -> None:
         require(replace_calls == 1, f"unexpected coherent initial replace count: {replace_calls}")
         require(module.STATUS.read_bytes() == original,
                 "coherent atomic replacement failure mutated production status")
+        require(file_mode(module.STATUS) == 0o640,
+                "coherent atomic replacement failure changed production status mode")
         require(
             not list(module.STATUS.parent.glob(f".{module.STATUS.name}.*.tmp")),
             "coherent atomic replacement failure left a temporary authority file",
@@ -399,15 +416,17 @@ def coherent_atomic_replace_failure(module) -> None:
         module.os.replace = real_replace
         if module.STATUS.read_bytes() != original:
             module.atomic_write_bytes(module.STATUS, original)
+        module.STATUS.chmod(original_mode)
 
 
 def coherent_atomic_rollback(module) -> None:
     original = module.STATUS.read_bytes()
+    original_mode = file_mode(module.STATUS)
     real_normalized = module.normalized
     real_run_validator = module.run_validator
     real_replace = module.os.replace
     validator_calls: list[Path] = []
-    replace_calls = 0
+    replace_modes: list[int] = []
 
     def fake_normalized(status):
         return changed_candidate(status, "coherent authority rollback")
@@ -418,10 +437,10 @@ def coherent_atomic_rollback(module) -> None:
             raise module.Fail("synthetic coherent post-write operability rejection")
 
     def tracked_replace(source, destination) -> None:
-        nonlocal replace_calls
-        replace_calls += 1
         real_replace(source, destination)
+        replace_modes.append(file_mode(Path(destination)))
 
+    module.STATUS.chmod(0o640)
     module.normalized = fake_normalized
     module.run_validator = fake_run_validator
     module.os.replace = tracked_replace
@@ -434,10 +453,12 @@ def coherent_atomic_rollback(module) -> None:
             validator_calls == [module.VALIDATOR, module.BACKUP_VALIDATOR, module.OPERABILITY_VALIDATOR],
             "coherent authority validator transaction order drift",
         )
-        require(replace_calls == 2,
-                f"coherent publication and rollback must each use atomic replacement: {replace_calls}")
+        require(replace_modes == [0o640, 0o640],
+                f"coherent publication/rollback mode drift: {replace_modes}")
         require(module.STATUS.read_bytes() == original,
                 "coherent atomic rollback did not restore production status byte-for-byte")
+        require(file_mode(module.STATUS) == 0o640,
+                "coherent atomic rollback did not restore production status mode")
         require(
             not list(module.STATUS.parent.glob(f".{module.STATUS.name}.*.tmp")),
             "coherent atomic rollback left a temporary authority file",
@@ -448,6 +469,7 @@ def coherent_atomic_rollback(module) -> None:
         module.os.replace = real_replace
         if module.STATUS.read_bytes() != original:
             module.atomic_write_bytes(module.STATUS, original)
+        module.STATUS.chmod(original_mode)
 
 
 def main() -> int:
@@ -477,9 +499,9 @@ def main() -> int:
     print("coherent subprocess execution transport: enforced")
     print("coherent runtime authority guard identity: enforced")
     print("normalizer no-op aggregate validation: enforced")
-    print("normalizer atomic replacement/rollback: enforced")
+    print("normalizer atomic replacement/rollback bytes+mode: enforced")
     print("coherent no-op aggregate validation: enforced")
-    print("coherent atomic replacement/rollback: enforced")
+    print("coherent atomic replacement/rollback bytes+mode: enforced")
     print("temporary authority cleanup: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
