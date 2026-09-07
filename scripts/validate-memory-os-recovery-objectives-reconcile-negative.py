@@ -136,6 +136,53 @@ def prove_atomic_write_failure(
     print("PASS boundary: failed atomic recovery objective write preserves canonical bytes/mode and cleans temporary files")
 
 
+def prove_second_replace_transaction_rollback(
+    reconciler: object,
+    canonical_contract: bytes,
+    canonical_status: bytes,
+    canonical_contract_mode: int,
+    canonical_status_mode: int,
+) -> None:
+    original_replace = reconciler.os.replace
+    replace_destinations: list[Path] = []
+
+    def fail_second_replace(source: str | Path, destination: str | Path) -> None:
+        replace_destinations.append(Path(destination))
+        if len(replace_destinations) == 2:
+            raise OSError("synthetic second authority replace rejection")
+        original_replace(source, destination)
+
+    reconciler.os.replace = fail_second_replace
+    try:
+        expect_domain_fail(
+            "recovery objective second authority replace rejection",
+            reconciler.main,
+            reconciler.Fail,
+            "cannot atomically write",
+        )
+    finally:
+        reconciler.os.replace = original_replace
+
+    require(
+        replace_destinations == [CONTRACT, STATUS, CONTRACT, STATUS],
+        f"recovery objective second-replace rollback order drift: {replace_destinations}",
+    )
+    assert_canonical_unchanged(
+        canonical_contract,
+        canonical_status,
+        "second authority replace rollback",
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
+    contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    require(
+        not contract_leftovers and not status_leftovers,
+        "second authority replace rejection left temporary recovery objective authority files",
+    )
+    print("PASS rollback: second authority replace rejection restores contract/status byte-for-byte and mode-for-mode")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "recovery objective reconciler missing")
     require(WORKFLOW.is_file(), "recovery objective workflow missing")
@@ -226,6 +273,13 @@ def main() -> int:
 
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_write_failure(
+        reconciler,
+        canonical_contract,
+        canonical_status,
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
+    prove_second_replace_transaction_rollback(
         reconciler,
         canonical_contract,
         canonical_status,
