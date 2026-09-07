@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -218,7 +219,10 @@ def main() -> int:
             registry_copy = tmp / DRILL_REGISTRY.name
             shutil.copyfile(CONTRACT, contract_copy)
             shutil.copyfile(DRILL_REGISTRY, registry_copy)
+            contract_copy.chmod(0o640)
+            registry_copy.chmod(0o640)
             original_contract = contract_copy.read_bytes()
+            original_contract_mode = stat.S_IMODE(contract_copy.stat().st_mode)
             canonical_registry: dict[str, Any] = json.loads(registry_copy.read_text(encoding="utf-8"))
 
             reconciler.CONTRACT = contract_copy
@@ -248,10 +252,15 @@ def main() -> int:
                 else:
                     raise Fail(f"corrupt drill request authority unexpectedly reconciled: {name}")
                 require(contract_copy.read_bytes() == original_contract, f"{name} mutated semantic binding contract")
+                require(
+                    stat.S_IMODE(contract_copy.stat().st_mode) == original_contract_mode,
+                    f"{name} mutated semantic binding contract mode",
+                )
                 print(f"PASS reject before reconcile: {name}")
             registry_copy.write_text(json.dumps(canonical_registry, indent=2) + "\n", encoding="utf-8")
 
             atomic_original = contract_copy.read_bytes()
+            atomic_original_mode = stat.S_IMODE(contract_copy.stat().st_mode)
             replace_calls = 0
 
             def fail_first_replace(source: str | Path, destination: str | Path) -> None:
@@ -274,20 +283,30 @@ def main() -> int:
                 require(replace_calls == 2, f"atomic replacement failure did not perform exactly one rollback replace: {replace_calls}")
                 require(contract_copy.read_bytes() == atomic_original, "failed atomic replacement mutated semantic binding contract")
                 require(
+                    stat.S_IMODE(contract_copy.stat().st_mode) == atomic_original_mode,
+                    "failed atomic replacement mutated semantic binding contract mode",
+                )
+                require(
                     not list(contract_copy.parent.glob(f".{contract_copy.name}.*.tmp")),
                     "failed atomic replacement left temporary binding authority behind",
                 )
             finally:
                 reconciler.os.replace = original_os_replace
-            print("PASS atomic replacement failure: contract bytes preserved and temp cleaned")
+            print("PASS atomic replacement failure: contract bytes+mode preserved and temp cleaned")
 
             parsed_contract = json.loads(contract_copy.read_text(encoding="utf-8"))
             contract_copy.write_text(json.dumps(parsed_contract, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+            contract_copy.chmod(0o640)
             rollback_original = contract_copy.read_bytes()
+            rollback_original_mode = stat.S_IMODE(contract_copy.stat().st_mode)
             observed: list[str] = []
 
             def aggregate_failure_after_binding_success(path: Path, expected_relative: Path, field: str) -> None:
                 require(contract_copy.read_bytes() != rollback_original, "post-validator invoked before semantic binding write")
+                require(
+                    stat.S_IMODE(contract_copy.stat().st_mode) == rollback_original_mode,
+                    "semantic binding candidate publication changed canonical authority mode",
+                )
                 observed.append(field)
                 if len(observed) == 1:
                     require(field == "drill generation binding validator", "binding validator was not first post-write validator")
@@ -307,6 +326,14 @@ def main() -> int:
                 raise Fail("forced aggregate semantic binding post-validation failure unexpectedly accepted")
             require(observed == ["drill generation binding validator", "operability validator"], "canonical post-write validator order drift")
             require(contract_copy.read_bytes() == rollback_original, "failed aggregate validation left binding contract mutation")
+            require(
+                stat.S_IMODE(contract_copy.stat().st_mode) == rollback_original_mode,
+                "failed aggregate validation changed semantic binding contract mode",
+            )
+            require(
+                not list(contract_copy.parent.glob(f".{contract_copy.name}.*.tmp")),
+                "failed aggregate validation left temporary binding authority behind",
+            )
     finally:
         reconciler.CONTRACT = original_contract_path
         reconciler.DRILL_REGISTRY = original_registry_path
@@ -321,9 +348,11 @@ def main() -> int:
     print("direct reconciler execution helper substitutions accepted: false")
     print("production CLI authority weakened for fixtures: false")
     print("corrupt planning authority can be auto-healed: false")
-    print("atomic replacement failure preserves canonical authority: true")
+    print("candidate publication preserves canonical authority mode: true")
+    print("atomic replacement failure preserves canonical authority bytes+mode: true")
     print("atomic replacement temp cleanup: true")
-    print("aggregate operability failure rolls back binding authority: true")
+    print("aggregate operability failure rolls back binding authority bytes+mode: true")
+    print("aggregate operability rollback temp cleanup: true")
     print("failed post-validation leaves binding authority mutation behind: false")
     print("request created: false")
     print("production evidence: false")
