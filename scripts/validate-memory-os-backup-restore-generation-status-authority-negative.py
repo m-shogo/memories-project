@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 
@@ -143,6 +145,7 @@ def main() -> int:
     original_status = reconciler.STATUS
     original_runner = reconciler.run_validator
     original_write = reconciler.write_text
+    original_replace = reconciler.os.replace
     try:
         with tempfile.TemporaryDirectory(prefix=".tmp-generation-status-authority-", dir=TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
@@ -150,15 +153,20 @@ def main() -> int:
             status_copy = tmp / STATUS.name
             shutil.copyfile(CONTRACT, contract_copy)
             shutil.copyfile(STATUS, status_copy)
+            os.chmod(status_copy, 0o640)
             status_before = status_copy.read_bytes()
+            status_mode_before = stat.S_IMODE(status_copy.stat().st_mode)
             observed: list[str] = []
             status_write_observed = False
+            observed_write_modes: list[int] = []
 
             def track_write(path: Path, text: str) -> None:
                 nonlocal status_write_observed
                 if path == status_copy:
                     status_write_observed = True
                 original_write(path, text)
+                if path == status_copy:
+                    observed_write_modes.append(stat.S_IMODE(path.stat().st_mode))
 
             def fail_only_aggregate(path: Path, expected_relative: Path, label: str) -> None:
                 observed.append(label)
@@ -189,14 +197,54 @@ def main() -> int:
             )
             require(status_write_observed, "generation status transaction did not invoke atomic status writer")
             require(status_copy.read_bytes() == status_before, "failed aggregate validation left production status mutation behind")
+            require(
+                observed_write_modes == [status_mode_before, status_mode_before],
+                f"generation status candidate/rollback mode drift: {observed_write_modes}",
+            )
+            require(
+                stat.S_IMODE(status_copy.stat().st_mode) == status_mode_before,
+                "failed aggregate validation changed production status mode",
+            )
+
+            replace_copy = tmp / "replace-rejection-status.json"
+            shutil.copyfile(STATUS, replace_copy)
+            os.chmod(replace_copy, 0o640)
+            replace_before = replace_copy.read_bytes()
+            replace_mode_before = stat.S_IMODE(replace_copy.stat().st_mode)
+
+            def reject_replace(src, dst) -> None:
+                if Path(dst) == replace_copy:
+                    raise OSError("synthetic generation status replace rejection")
+                original_replace(src, dst)
+
+            reconciler.os.replace = reject_replace
+            try:
+                reconciler.write_text = original_write
+                reconciler.write_text(replace_copy, replace_before.decode("utf-8"))
+            except reconciler.Fail as exc:
+                require("cannot atomically write" in str(exc), f"replace rejection surfaced at wrong boundary: {exc}")
+            else:
+                raise Fail("forced generation status replace rejection unexpectedly accepted")
+            finally:
+                reconciler.os.replace = original_replace
+
+            require(replace_copy.read_bytes() == replace_before, "replace rejection changed canonical status bytes")
+            require(
+                stat.S_IMODE(replace_copy.stat().st_mode) == replace_mode_before,
+                "replace rejection changed canonical status mode",
+            )
+            residue = list(tmp.glob(f".{replace_copy.name}.*.tmp"))
+            require(not residue, f"replace rejection left temporary residue: {[path.name for path in residue]}")
     finally:
         reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.CONTRACT = original_contract
         reconciler.STATUS = original_status
         reconciler.run_validator = original_runner
         reconciler.write_text = original_write
+        reconciler.os.replace = original_replace
 
-    print("PASS rollback: generation status restored byte-for-byte after aggregate operability rejection")
+    print("PASS rollback: generation status restored byte-for-byte and mode-for-mode after aggregate operability rejection")
+    print("PASS atomic rejection: generation status replace failure preserves bytes/mode and leaves no temp residue")
     print("generation binding canonical data/writer substitutions accepted: false")
     print("generation binding validator remains pre-write: true")
     print("backup and operability validators remain post-write: true")
