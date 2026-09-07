@@ -141,6 +141,59 @@ def exercise_writer_registry_append_guard(writer) -> None:
     reject("generation writer production ready boundary drift before append", lambda value: value.update(productionReady=True))
 
 
+def exercise_reconciler_transaction_rollback(reconciler) -> None:
+    output_names = ("REGISTRY", "CONTRACT", "BINDING", "STATUS")
+    for fail_index in (2, 3, 4):
+        with tempfile.TemporaryDirectory(prefix=f".tmp-generation-evidence-transaction-{fail_index}-", dir=TMP_PARENT) as tmpdir:
+            tmp = Path(tmpdir)
+            originals = {name: getattr(reconciler, name) for name in output_names}
+            copies: dict[str, Path] = {}
+            expected: dict[str, bytes] = {}
+            for name, source in originals.items():
+                target = tmp / source.name
+                payload = source.read_bytes()
+                target.write_bytes(payload)
+                target.chmod(0o640)
+                copies[name] = target
+                expected[name] = payload
+
+            original_enforce = reconciler.enforce_runtime_authorities
+            original_replace = reconciler.os.replace
+            replace_calls = 0
+
+            def fail_nth_replace(src: str | Path, dst: str | Path) -> None:
+                nonlocal replace_calls
+                replace_calls += 1
+                if replace_calls == fail_index:
+                    raise OSError(f"injected generation-evidence replace failure #{fail_index}")
+                original_replace(src, dst)
+
+            for name, target in copies.items():
+                setattr(reconciler, name, target)
+            reconciler.enforce_runtime_authorities = lambda: None
+            reconciler.os.replace = fail_nth_replace
+            try:
+                expect_domain_fail(
+                    f"generation evidence transaction replace #{fail_index}",
+                    reconciler.main,
+                    reconciler.Fail,
+                )
+            finally:
+                reconciler.os.replace = original_replace
+                reconciler.enforce_runtime_authorities = original_enforce
+                for name, source in originals.items():
+                    setattr(reconciler, name, source)
+
+            require(replace_calls >= fail_index + 4, f"generation evidence rollback did not restore all authorities after replace #{fail_index}: {replace_calls}")
+            for name, target in copies.items():
+                require(target.read_bytes() == expected[name], f"generation evidence {name} bytes changed after replace #{fail_index} rollback")
+                require((target.stat().st_mode & 0o7777) == 0o640, f"generation evidence {name} mode changed after replace #{fail_index} rollback")
+            leftovers = list(tmp.glob(".*.tmp"))
+            require(not leftovers, f"generation evidence replace #{fail_index} rollback left temporary files: {leftovers}")
+
+    print("PASS rollback: generation evidence 4-authority transaction restored exact bytes+mode after middle/last replace failures")
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
     require(VALIDATOR.is_file(), "generation evidence validator missing")
@@ -165,8 +218,12 @@ def main() -> int:
             exercise_loads("validator", validator, tmp, outside)
             exercise_loads("reconciler", reconciler, tmp, outside)
 
+    exercise_reconciler_transaction_rollback(reconciler)
+
     print("Generation evidence unreadable/escaped-authority negative suite PASS")
     print("generation writer append authority drift accepted: false")
+    print("generation evidence partial multi-authority transaction accepted: false")
+    print("generation evidence transaction rollback preserves exact bytes+mode: true")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
