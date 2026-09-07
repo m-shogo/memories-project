@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -110,6 +112,41 @@ def restore_input(input_before: bytes, input_mode_before: int) -> None:
     ALIAS_TARGET.unlink(missing_ok=True)
 
 
+def prove_generator_atomic_publication(generator: Any) -> None:
+    with tempfile.TemporaryDirectory(prefix=".tmp-inventory-atomic-", dir=ROOT / "contracts/operations") as tmpdir:
+        target = Path(tmpdir) / "inventory.json"
+        before = b'{"before":true}\n'
+        target.write_bytes(before)
+        target.chmod(0o640)
+        generator.atomic_write_text(target, '{"after":true}\n')
+        require(target.read_bytes() == b'{"after":true}\n', "inventory atomic publication payload drift")
+        require(target.stat().st_mode & 0o7777 == 0o640, "inventory atomic publication changed existing mode")
+        require(not list(target.parent.glob(f".{target.name}.*.tmp")), "inventory atomic publication left temporary files")
+
+        after_success = target.read_bytes()
+        mode_after_success = target.stat().st_mode & 0o7777
+        original_replace = generator.os.replace
+
+        def reject_replace(source: str | Path, destination: str | Path) -> None:
+            raise OSError("synthetic inventory replace rejection")
+
+        generator.os.replace = reject_replace
+        rejected = False
+        try:
+            generator.atomic_write_text(target, '{"rejected":true}\n')
+        except SystemExit as exc:
+            require(exc.code not in (None, 0), "inventory atomic replace rejection produced successful SystemExit")
+            require("cannot atomically write" in str(exc), f"inventory replace rejected at wrong boundary: {exc}")
+            rejected = True
+        finally:
+            generator.os.replace = original_replace
+        require(rejected, "inventory atomic replace rejection unexpectedly accepted")
+        require(target.read_bytes() == after_success, "inventory atomic replace rejection changed canonical bytes")
+        require(target.stat().st_mode & 0o7777 == mode_after_success, "inventory atomic replace rejection changed canonical mode")
+        require(not list(target.parent.glob(f".{target.name}.*.tmp")), "inventory atomic replace rejection left temporary files")
+    print("PASS generator atomic publication: mode preserved, replace rejection fail-closed, temporary files cleaned")
+
+
 def main() -> int:
     generator = load_generator()
     inventory_validator = load_inventory_validator()
@@ -179,6 +216,8 @@ def main() -> int:
     expect_generator_execution_rejected(generator, "INVENTORY_VALIDATOR", SOURCE_AUTHORITY)
     generator.enforce_generator_execution_authority()
 
+    prove_generator_atomic_publication(generator)
+
     require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
     require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
     input_before = INPUT.read_bytes()
@@ -221,6 +260,9 @@ def main() -> int:
     print("inventory validator canonical data authority substitution accepted: false")
     print("inventory generator execution helper substitution accepted: false")
     print("inventory generator canonical data authority substitution accepted: false")
+    print("inventory generator atomic authority mode loss accepted: false")
+    print("inventory generator atomic replace failure accepted: false")
+    print("inventory generator atomic replace residue accepted: false")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
