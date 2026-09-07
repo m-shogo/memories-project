@@ -148,6 +148,56 @@ def prove_atomic_write_failure(reconciler: Any, original_contract: bytes, origin
     print("PASS boundary: failed atomic promotion-review write preserves canonical bytes/modes and cleans temporary files")
 
 
+def prove_second_replace_failure_rolls_back_transaction(
+    reconciler: Any,
+    original_contract: bytes,
+    original_registry: bytes,
+) -> None:
+    original_replace = reconciler.os.replace
+    original_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
+    original_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
+    replace_calls = 0
+
+    def reject_second_replace(source: str | Path, destination: str | Path) -> None:
+        nonlocal replace_calls
+        replace_calls += 1
+        if replace_calls == 2:
+            raise OSError("synthetic second promotion-review replace rejection")
+        original_replace(source, destination)
+
+    try:
+        CANONICAL_CONTRACT.chmod(0o640)
+        CANONICAL_REGISTRY.chmod(0o640)
+        reconciler.os.replace = reject_second_replace
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require("cannot atomically write" in str(exc), f"second replace rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("synthetic second promotion-review replace failure unexpectedly accepted")
+
+        require(replace_calls == 4, f"second replace failure did not execute complete two-authority rollback: {replace_calls} replace calls")
+        assert_canonical_unchanged(
+            original_contract,
+            original_registry,
+            "second replace transaction rejection",
+            0o640,
+            0o640,
+        )
+        leftovers = (
+            list(CANONICAL_CONTRACT.parent.glob(f".{CANONICAL_CONTRACT.name}.*.tmp"))
+            + list(CANONICAL_REGISTRY.parent.glob(f".{CANONICAL_REGISTRY.name}.*.tmp"))
+        )
+        require(not leftovers, f"second replace rejection left temporary promotion-review authority files: {leftovers}")
+    finally:
+        reconciler.os.replace = original_replace
+        CANONICAL_CONTRACT.write_bytes(original_contract)
+        CANONICAL_REGISTRY.write_bytes(original_registry)
+        CANONICAL_CONTRACT.chmod(original_contract_mode)
+        CANONICAL_REGISTRY.chmod(original_registry_mode)
+    print("PASS boundary: second promotion-review replace failure rolls back both authorities with exact bytes/modes")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
@@ -166,6 +216,7 @@ def main() -> int:
 
     prove_mode_preserving_atomic_write(reconciler, original_contract, original_registry)
     prove_atomic_write_failure(reconciler, original_contract, original_registry)
+    prove_second_replace_failure_rolls_back_transaction(reconciler, original_contract, original_registry)
 
     original_run_validator = reconciler.run_validator
     original_write_text = reconciler.write_text
@@ -219,6 +270,7 @@ def main() -> int:
     print("production operability status substitution accepted: false")
     print("successful atomic promotion-review authority mode drift accepted: false")
     print("failed atomic promotion-review authority mode drift accepted: false")
+    print("second promotion-review replace transaction rollback verified: true")
     print("non-atomic promotion-review authority write accepted: false")
     print("non-atomic or mode-drifting promotion-review diagnostic write accepted: false")
     print("promotion validator ran before aggregate operability validator: true")
