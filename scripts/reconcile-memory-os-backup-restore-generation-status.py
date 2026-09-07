@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -110,6 +111,10 @@ def load(path: Path) -> dict[str, Any]:
 def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
+    try:
+        existing_mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError as exc:
+        raise Fail(f"cannot stat authority {relative}: {exc}") from exc
     temp_name: str | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
@@ -119,6 +124,7 @@ def write_text(path: Path, text: str) -> None:
             text=True,
         )
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            os.fchmod(handle.fileno(), existing_mode)
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
