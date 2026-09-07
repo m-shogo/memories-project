@@ -127,8 +127,26 @@ def make_stale_status_load(module, real_load):
     return stale_status_load
 
 
+def mode_preservation_positive(module) -> None:
+    original_status = module.STATUS_PATH.read_bytes()
+    original_mode = module.STATUS_PATH.stat().st_mode & 0o777
+    try:
+        module.STATUS_PATH.chmod(0o640)
+        module.atomic_write_bytes(module.STATUS_PATH, original_status)
+        require(module.STATUS_PATH.read_bytes() == original_status,
+                "mode-preservation probe changed production status bytes")
+        require(module.STATUS_PATH.stat().st_mode & 0o777 == 0o640,
+                "successful atomic production status write changed authority mode")
+    finally:
+        if module.STATUS_PATH.read_bytes() != original_status:
+            module.atomic_write_bytes(module.STATUS_PATH, original_status)
+        module.STATUS_PATH.chmod(original_mode)
+    print("PASS boundary: successful atomic production status write preserves authority mode")
+
+
 def atomic_replace_negative(module) -> None:
     original_status = module.STATUS_PATH.read_bytes()
+    original_mode = module.STATUS_PATH.stat().st_mode & 0o777
     real_load = module.load
     real_os_replace = module.os.replace
     replace_calls = 0
@@ -143,6 +161,7 @@ def atomic_replace_negative(module) -> None:
     module.load = make_stale_status_load(module, real_load)
     module.os.replace = fail_first_replace
     try:
+        module.STATUS_PATH.chmod(0o640)
         expect_rejected(
             "atomic production status replacement failure preserves canonical authority",
             module.main,
@@ -150,6 +169,8 @@ def atomic_replace_negative(module) -> None:
         require(replace_calls == 1, f"unexpected atomic replace call count: {replace_calls}")
         require(module.STATUS_PATH.read_bytes() == original_status,
                 "failed atomic replacement mutated production status")
+        require(module.STATUS_PATH.stat().st_mode & 0o777 == 0o640,
+                "failed atomic replacement changed production status mode")
         require(
             not list(module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp")),
             "failed atomic replacement left temporary production status authority behind",
@@ -159,10 +180,12 @@ def atomic_replace_negative(module) -> None:
         module.os.replace = real_os_replace
         if module.STATUS_PATH.read_bytes() != original_status:
             module.atomic_write_bytes(module.STATUS_PATH, original_status)
+        module.STATUS_PATH.chmod(original_mode)
 
 
 def rollback_negative(module) -> None:
     original_status = module.STATUS_PATH.read_bytes()
+    original_mode = module.STATUS_PATH.stat().st_mode & 0o777
     real_load = module.load
     real_run_validator = module.run_validator
     calls: list[Path] = []
@@ -177,6 +200,7 @@ def rollback_negative(module) -> None:
     module.load = make_stale_status_load(module, real_load)
     module.run_validator = fake_run_validator
     try:
+        module.STATUS_PATH.chmod(0o640)
         expect_rejected(
             "post-write operability rejection rolls back backup policy status",
             module.main,
@@ -190,6 +214,8 @@ def rollback_negative(module) -> None:
         require(calls == expected, "backup policy validator transaction order drift")
         require(module.STATUS_PATH.read_bytes() == original_status,
                 "production status was not rolled back byte-for-byte")
+        require(module.STATUS_PATH.stat().st_mode & 0o777 == 0o640,
+                "post-write rollback changed production status mode")
         require(
             not list(module.STATUS_PATH.parent.glob(f".{module.STATUS_PATH.name}.*.tmp")),
             "post-write rollback left temporary production status authority behind",
@@ -199,19 +225,24 @@ def rollback_negative(module) -> None:
         module.run_validator = real_run_validator
         if module.STATUS_PATH.read_bytes() != original_status:
             module.atomic_write_bytes(module.STATUS_PATH, original_status)
+        module.STATUS_PATH.chmod(original_mode)
 
 
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_backup_restore_reconcile_negative_target")
     original_status = reconciler.STATUS_PATH.read_bytes()
+    original_mode = reconciler.STATUS_PATH.stat().st_mode & 0o777
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
     data_authority_identity_negative(reconciler)
     blocker_authority_identity_negative(reconciler)
+    mode_preservation_positive(reconciler)
     atomic_replace_negative(reconciler)
     rollback_negative(reconciler)
     require(reconciler.STATUS_PATH.read_bytes() == original_status,
             "authority negatives mutated canonical Production Status")
+    require(reconciler.STATUS_PATH.stat().st_mode & 0o777 == original_mode,
+            "authority negatives changed canonical Production Status mode")
     print("Memory OS backup/restore policy reconcile negative suite PASS")
     print("canonical validator identity: enforced")
     print("canonical contract/status identity: enforced")
@@ -221,8 +252,9 @@ def main() -> int:
     print("runtime authority guard substitution accepted: false")
     print("deterministic drift repair before full validation: enforced")
     print("atomic production status replacement: enforced")
+    print("atomic production status mode preservation: enforced")
     print("atomic replacement temp cleanup: enforced")
-    print("post-write aggregate rollback: enforced")
+    print("post-write aggregate rollback bytes/mode preservation: enforced")
     print("canonical production blockers: unchanged")
     print("production decision: NO_GO")
     return 0
