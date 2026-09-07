@@ -143,6 +143,53 @@ def prove_atomic_write_failure(
     print("PASS boundary: failed atomic environment-generation write preserves canonical bytes/mode and cleans temporary files")
 
 
+def prove_second_authority_replace_rollback(
+    reconciler: object,
+    canonical_contract: bytes,
+    canonical_registry: bytes,
+    canonical_status: bytes,
+    canonical_contract_mode: int,
+    canonical_status_mode: int,
+) -> None:
+    original_replace = reconciler.os.replace
+    replace_count = 0
+
+    def reject_second_replace(source: str | Path, destination: str | Path) -> None:
+        nonlocal replace_count
+        replace_count += 1
+        if replace_count == 2:
+            raise OSError("synthetic second-authority replace rejection")
+        original_replace(source, destination)
+
+    reconciler.os.replace = reject_second_replace
+    try:
+        expect_domain_fail(
+            "environment generation second-authority replace rejection",
+            reconciler.main,
+            reconciler.Fail,
+            "cannot atomically write",
+        )
+    finally:
+        reconciler.os.replace = original_replace
+
+    require(replace_count == 4, f"second-authority failure did not execute full two-authority rollback: replace_count={replace_count}")
+    assert_canonical_unchanged(
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+        "second-authority replace rollback",
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
+    contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    require(
+        not contract_leftovers and not status_leftovers,
+        "second-authority replace rollback left temporary generation authority files",
+    )
+    print("PASS rollback: second-authority replace failure restores both authorities byte-for-byte and mode-for-mode")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(WORKFLOW.is_file(), "environment generation workflow missing")
@@ -256,6 +303,14 @@ def main() -> int:
         canonical_contract_mode,
         canonical_status_mode,
     )
+    prove_second_authority_replace_rollback(
+        reconciler,
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
 
     observed: list[str] = []
     original_run_validator = reconciler.run_validator
@@ -293,6 +348,7 @@ def main() -> int:
     print("non-atomic environment generation authority write accepted: false")
     print("environment generation authority mode drift accepted: false")
     print("non-atomic environment generation diagnostic write accepted: false")
+    print("second-authority replace failure triggers full rollback: true")
     print("aggregate operability failure triggers rollback: true")
     print("Environment generation reconcile negative suite PASS")
     print("production generation created: false")
