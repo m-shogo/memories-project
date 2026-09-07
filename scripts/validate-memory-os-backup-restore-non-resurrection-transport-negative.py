@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove typed non-resurrection execution and registry transport fail closed."""
+"""Prove typed non-resurrection execution, registry and reconcile transport fail closed."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import copy
 import importlib.util
 import json
 import os
+import shutil
 import stat
 import tempfile
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
 TEMP_PARENT = ROOT / "contracts/operations"
 
 
@@ -129,6 +131,64 @@ def exercise_registry_transaction_transport() -> None:
         assert_no_registry_temp_residue(parent)
 
 
+def exercise_reconciler_transaction_transport() -> None:
+    require(RECONCILER.is_file() and not RECONCILER.is_symlink(), "canonical typed reconciler missing or symlinked")
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_transport_negative")
+    output_names = ("REGISTRY", "GEN_REGISTRY", "CONTRACT", "STATUS")
+
+    for fail_index in (2, 3, 4):
+        with tempfile.TemporaryDirectory(prefix=f".memory-os-nonres-reconcile-transaction-{fail_index}-", dir=TEMP_PARENT) as tmp:
+            parent = Path(tmp)
+            originals = {name: getattr(reconciler, name) for name in output_names}
+            copies: dict[str, Path] = {}
+            expected: dict[str, bytes] = {}
+            for name, source in originals.items():
+                target = parent / source.name
+                shutil.copy2(source, target)
+                target.chmod(0o640)
+                copies[name] = target
+                expected[name] = target.read_bytes()
+
+            original_enforcer = reconciler.enforce_runtime_authorities
+            original_replace = reconciler.os.replace
+            replace_calls = 0
+
+            def fail_nth_replace(source: str | Path, destination: str | Path) -> None:
+                nonlocal replace_calls
+                replace_calls += 1
+                if replace_calls == fail_index:
+                    raise OSError(f"controlled typed reconcile replace failure #{fail_index}")
+                original_replace(source, destination)
+
+            for name, target in copies.items():
+                setattr(reconciler, name, target)
+            reconciler.enforce_runtime_authorities = lambda: None
+            reconciler.os.replace = fail_nth_replace
+            try:
+                expect_rejected(
+                    f"typed reconcile transaction replace #{fail_index}",
+                    reconciler.main,
+                    reconciler.Fail,
+                )
+            finally:
+                reconciler.os.replace = original_replace
+                reconciler.enforce_runtime_authorities = original_enforcer
+                for name, source in originals.items():
+                    setattr(reconciler, name, source)
+
+            require(
+                replace_calls >= fail_index + len(output_names),
+                f"typed reconcile rollback did not restore all authorities after replace #{fail_index}: {replace_calls}",
+            )
+            for name, target in copies.items():
+                require(target.read_bytes() == expected[name], f"typed reconcile {name} bytes changed after replace #{fail_index} rollback")
+                require(stat.S_IMODE(target.stat().st_mode) == 0o640, f"typed reconcile {name} mode changed after replace #{fail_index} rollback")
+            residue = list(parent.glob(".*.tmp"))
+            require(not residue, f"typed reconcile replace #{fail_index} left temporary files: {residue}")
+
+    print("PASS rollback: typed 4-authority reconcile restores exact bytes+mode after middle/last replace failures")
+
+
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
     validator = load_validator()
@@ -163,12 +223,15 @@ def main() -> int:
         validator.enforce_execution_transport = original_guard
 
     exercise_registry_transaction_transport()
+    exercise_reconciler_transaction_transport()
 
-    print("Typed non-resurrection execution/registry transport negative suite PASS")
+    print("Typed non-resurrection execution/registry/reconcile transport negative suite PASS")
     print("subprocess/import loader/guard substitution accepted: false")
     print("registry mode preserved across atomic replacement: true")
     print("replace rejection mutates canonical bytes or mode: false")
     print("post-write validation failure restores exact bytes and mode: true")
+    print("typed partial 4-authority reconcile transaction accepted: false")
+    print("typed reconcile rollback preserves exact bytes+mode and no temp residue: true")
     print("registry temp residue remains: false")
     print("typed evidence created: false")
     print("production evidence: false")
