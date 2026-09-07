@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +44,7 @@ def main() -> int:
     module = load_module()
     module.enforce_runtime_authorities()
     original_registry = CANONICAL_REGISTRY.read_bytes()
+    original_registry_mode = stat.S_IMODE(CANONICAL_REGISTRY.stat().st_mode)
     original_contract = CANONICAL_CONTRACT.read_bytes()
 
     expect_reject(module, "CONTRACT_PATH", CANONICAL_REGISTRY)
@@ -81,9 +84,47 @@ def main() -> int:
     if validator.RESULT_VALIDATOR.resolve() != CANONICAL_RESULT_VALIDATOR.resolve():
         raise AssertionError("writer imported validator with non-canonical per-run result validator authority")
 
+    candidate_path = module.validate_candidate(module.load(CANONICAL_REGISTRY))
+    try:
+        if stat.S_IMODE(candidate_path.stat().st_mode) != original_registry_mode:
+            raise AssertionError("validated candidate did not preserve canonical registry mode")
+    finally:
+        candidate_path.unlink(missing_ok=True)
+
+    candidate_path = module.validate_candidate(module.load(CANONICAL_REGISTRY))
+    forced_candidate_mode = 0o600 if original_registry_mode != 0o600 else 0o644
+    os.chmod(candidate_path, forced_candidate_mode)
+    original_validate_registry_for_append = module.validate_registry_for_append
+
+    def reject_post_append(_registry):
+        raise module.Fail("forced post-append validation failure")
+
+    module.validate_registry_for_append = reject_post_append
+    try:
+        try:
+            module.replace_registry_transactionally(candidate_path)
+        except module.Fail:
+            pass
+        else:
+            raise AssertionError("forced post-append validation failure unexpectedly accepted")
+    finally:
+        module.validate_registry_for_append = original_validate_registry_for_append
+        candidate_path.unlink(missing_ok=True)
+
+    if CANONICAL_REGISTRY.read_bytes() != original_registry:
+        raise AssertionError("post-append failure did not restore exact canonical registry bytes")
+    if stat.S_IMODE(CANONICAL_REGISTRY.stat().st_mode) != original_registry_mode:
+        raise AssertionError("post-append failure did not restore exact canonical registry mode")
+    residue = list(CANONICAL_REGISTRY.parent.glob(".sustained-soak-independent-review-rollback-*.tmp"))
+    residue += list(CANONICAL_REGISTRY.parent.glob(".sustained-soak-independent-review-registry-candidate-*.json"))
+    if residue:
+        raise AssertionError(f"transactional review writer left temporary residue: {residue}")
+
     print("PASS: sustained-soak independent-review writer rejects data/executable/lock authority substitution")
     print("PASS: paired contract/registry substitution cannot bypass canonical authority checks")
     print("PASS: imported validator remains bound to canonical contract, registry and per-run result authorities")
+    print("PASS: validated candidate preserves canonical registry permission mode")
+    print("PASS: post-append failure restores exact canonical registry bytes and mode without temporary residue")
     print("PASS: authority rejection preserves canonical append-only review authority")
     print("human review evidence generated: false")
     print("leak proof promoted: false")
