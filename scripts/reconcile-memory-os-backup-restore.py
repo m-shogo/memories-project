@@ -148,6 +148,7 @@ def validate_projected_authority() -> None:
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     temp_path: Path | None = None
     try:
+        mode = path.stat().st_mode & 0o777 if path.exists() else None
         with tempfile.NamedTemporaryFile(
             mode="wb",
             dir=path.parent,
@@ -156,6 +157,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             delete=False,
         ) as handle:
             temp_path = Path(handle.name)
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
