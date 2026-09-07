@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -100,12 +101,17 @@ def run_post_validator(path: Path, expected_relative: Path, field: str) -> None:
 
 def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        original_mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError as exc:
+        raise Fail(f"cannot stat {path.relative_to(ROOT)} before atomic replacement: {exc}") from exc
     fd, temp_name = tempfile.mkstemp(
         prefix=f".{path.name}.",
         suffix=".tmp",
         dir=path.parent,
     )
     try:
+        os.fchmod(fd, original_mode)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
