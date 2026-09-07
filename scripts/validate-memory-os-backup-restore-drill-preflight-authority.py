@@ -110,6 +110,55 @@ def require_reconciler_mode_preservation(reconciler: Any) -> None:
     print("reconciler mode-preserving atomic write: true")
 
 
+def require_reconciler_second_replace_rollback(reconciler: Any) -> None:
+    require(TEMP_PARENT.is_dir(), "restore drill preflight temporary fixture parent missing")
+    contract_bytes = EXPECTED_CONTRACT.read_bytes()
+    status_bytes = EXPECTED_STATUS.read_bytes()
+    with tempfile.TemporaryDirectory(prefix=".tmp-preflight-authority-rollback-", dir=TEMP_PARENT) as tmpdir:
+        temp_root = Path(tmpdir)
+        contract = temp_root / "backup-restore-drill-preflight-contract.v1.json"
+        status = temp_root / "production-operability-status.json"
+        contract.write_bytes(contract_bytes)
+        status.write_bytes(status_bytes)
+        contract.chmod(0o640)
+        status.chmod(0o640)
+        original_contract = reconciler.CONTRACT
+        original_status = reconciler.STATUS
+        original_replace = reconciler.os.replace
+        replace_calls = 0
+
+        def fail_second_replace(src: str | Path, dst: str | Path) -> None:
+            nonlocal replace_calls
+            replace_calls += 1
+            if replace_calls == 2:
+                raise OSError("injected second replace failure")
+            original_replace(src, dst)
+
+        reconciler.CONTRACT = contract
+        reconciler.STATUS = status
+        reconciler.os.replace = fail_second_replace
+        try:
+            try:
+                reconciler._reconcile()
+            except reconciler.Fail:
+                pass
+            else:
+                raise Fail("restore drill preflight reconciler accepted injected second replace failure")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.CONTRACT = original_contract
+            reconciler.STATUS = original_status
+
+        require(replace_calls >= 4, f"restore drill preflight rollback did not replace both authorities: {replace_calls}")
+        require(contract.read_bytes() == contract_bytes, "restore drill preflight contract bytes changed after second replace rollback")
+        require(status.read_bytes() == status_bytes, "production operability status bytes changed after second replace rollback")
+        require((contract.stat().st_mode & 0o7777) == 0o640, "restore drill preflight contract mode changed after rollback")
+        require((status.stat().st_mode & 0o7777) == 0o640, "production operability status mode changed after rollback")
+        leftovers = list(temp_root.glob(".*.tmp"))
+        require(not leftovers, f"restore drill preflight rollback left temporary files: {leftovers}")
+    print("reconciler second-replace exact bytes+mode rollback: true")
+
+
 def require_atomic_diagnostic_publication() -> None:
     canonical_repo_file(WORKFLOW, "restore drill preflight workflow")
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -156,11 +205,13 @@ def main() -> int:
 
     require_reconciler_execution_authority(reconciler)
     require_reconciler_mode_preservation(reconciler)
+    require_reconciler_second_replace_rollback(reconciler)
     require_atomic_diagnostic_publication()
     print("PASS: restore drill preflight data/executable authorities are canonical")
     print(f"validator executable authorities checked: {len(expected_validator_authorities)}")
     print(f"reconciler data/executable authorities checked: {len(expected_reconciler_authorities)}")
     print("reconciler execution helpers canonical: true")
+    print("reconciler second-replace transaction rollback covered: true")
     print("symlinked canonical authority accepted: false")
     print("crash-safe failure diagnostic publication required: true")
     print("production evidence created: false")
