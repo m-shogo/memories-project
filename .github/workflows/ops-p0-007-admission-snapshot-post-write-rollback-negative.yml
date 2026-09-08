@@ -1,0 +1,44 @@
+name: OPS P0 007 Snapshot Post Write Rollback Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/ops-p0-007-admission-snapshot-post-write-rollback-negative.yml"
+      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-post-write-rollback-negative.py"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate strict snapshot post-write rollback
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot-post-write-rollback-negative.py
+          python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py
+          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-post-write-rollback-negative.py
+          git diff --exit-code -- contracts/operations/ops-p0-007-admission-snapshot.v1.json
