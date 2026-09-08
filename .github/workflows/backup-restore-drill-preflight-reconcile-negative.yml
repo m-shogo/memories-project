@@ -1,0 +1,69 @@
+name: Backup Restore Drill Preflight Reconcile Negative
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-drill-preflight-reconcile-negative.yml"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-drill-preflight-reconcile-negative.yml"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-drill-preflight-reconcile-negative-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate preflight partial-publication rollback
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
