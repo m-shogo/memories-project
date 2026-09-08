@@ -1,0 +1,65 @@
+name: Rollback Rehearsal Negative Diagnostics
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/rollback-rehearsal-negative-diagnostics.yml"
+      - "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
+      - "contracts/operations/rollback-rehearsal-registry.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/request-memory-os-rollback-rehearsal.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-registry-negative.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-append-rollback-negative.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-derived-state-negative.py"
+      - "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rollback-rehearsal-negative-diagnostics-so
+  cancel-in-progress: false
+
+jobs:
+  negative-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Registry corruption negative
+        run: python scripts/validate-memory-os-rollback-rehearsal-registry-negative.py
+
+      - name: Transactional append rollback negative
+        run: python scripts/validate-memory-os-rollback-rehearsal-append-rollback-negative.py
+
+      - name: Derived state negative
+        run: python scripts/validate-memory-os-rollback-rehearsal-derived-state-negative.py
+
+      - name: Require clean negative-suite worktree
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
