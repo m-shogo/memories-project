@@ -44,9 +44,30 @@ def canonical_bytes() -> dict[Path, bytes]:
     }
 
 
+def canonical_modes() -> dict[Path, int]:
+    return {
+        CANONICAL_CONTRACT: CANONICAL_CONTRACT.stat().st_mode & 0o777,
+        CANONICAL_REGISTRY: CANONICAL_REGISTRY.stat().st_mode & 0o777,
+        CANONICAL_GEN_REGISTRY: CANONICAL_GEN_REGISTRY.stat().st_mode & 0o777,
+        CANONICAL_STATUS: CANONICAL_STATUS.stat().st_mode & 0o777,
+    }
+
+
 def require_unchanged(before: dict[Path, bytes], label: str) -> None:
     for path, value in before.items():
         require(path.read_bytes() == value, f"{label} mutated canonical {path.name}")
+
+
+def require_modes_unchanged(before: dict[Path, int], label: str) -> None:
+    for path, value in before.items():
+        require((path.stat().st_mode & 0o777) == value, f"{label} changed canonical mode for {path.name}")
+
+
+def require_no_temp_files(paths: dict[Path, bytes], label: str) -> None:
+    leftovers: list[Path] = []
+    for path in paths:
+        leftovers.extend(path.parent.glob(f".{path.name}.*.tmp"))
+    require(not leftovers, f"{label} left temporary typed non-resurrection authority files: {leftovers}")
 
 
 def prove_substitution_rejected(attribute: str) -> None:
@@ -110,6 +131,7 @@ def prove_corrupt_append_only_authority_rejected() -> None:
 def prove_atomic_write_failure() -> None:
     reconciler = load_reconciler("memory_os_typed_non_resurrection_atomic_write")
     before = canonical_bytes()
+    before_modes = canonical_modes()
     original_replace = reconciler.os.replace
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
@@ -127,16 +149,54 @@ def prove_atomic_write_failure() -> None:
         reconciler.os.replace = original_replace
 
     require_unchanged(before, "atomic replace rejection")
-    leftovers: list[Path] = []
-    for path in before:
-        leftovers.extend(path.parent.glob(f".{path.name}.*.tmp"))
-    require(not leftovers, f"atomic replace rejection left temporary typed non-resurrection authority files: {leftovers}")
-    print("PASS boundary: failed atomic typed non-resurrection write preserves canonical bytes and cleans temporary files")
+    require_modes_unchanged(before_modes, "atomic replace rejection")
+    require_no_temp_files(before, "atomic replace rejection")
+    print("PASS boundary: failed atomic typed non-resurrection write preserves canonical bytes/modes and cleans temporary files")
+
+
+def prove_second_replace_rollback() -> None:
+    reconciler = load_reconciler("memory_os_typed_non_resurrection_second_replace_rollback")
+    before = canonical_bytes()
+    before_modes = canonical_modes()
+    original_replace = reconciler.os.replace
+    observed_destinations: list[Path] = []
+    rejected = False
+
+    def reject_second_authority(source: str | Path, destination: str | Path) -> None:
+        nonlocal rejected
+        destination_path = Path(destination)
+        observed_destinations.append(destination_path)
+        if not rejected and destination_path == CANONICAL_GEN_REGISTRY:
+            rejected = True
+            raise OSError("synthetic second authority replace rejection")
+        original_replace(source, destination)
+
+    reconciler.os.replace = reject_second_authority
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require("synthetic second authority replace rejection" in str(exc), f"second replace rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("synthetic second authority replace failure unexpectedly accepted")
+    finally:
+        reconciler.os.replace = original_replace
+
+    require(rejected, "second authority replace rejection was not exercised")
+    require(
+        observed_destinations[:2] == [CANONICAL_REGISTRY, CANONICAL_GEN_REGISTRY],
+        f"typed non-resurrection publication order drift before second replace failure: {observed_destinations[:2]}",
+    )
+    require_unchanged(before, "second authority replace rejection")
+    require_modes_unchanged(before_modes, "second authority replace rejection")
+    require_no_temp_files(before, "second authority replace rejection")
+    print("PASS rollback: second authority replace rejection restores all typed/generation/contract/status bytes and modes")
 
 
 def prove_post_write_aggregate_rollback() -> None:
     reconciler = load_reconciler("memory_os_typed_non_resurrection_aggregate_rollback")
     before = canonical_bytes()
+    before_modes = canonical_modes()
     original_post_validator = reconciler.run_post_validator
     observed: list[tuple[Path, Path, str]] = []
 
@@ -170,8 +230,10 @@ def prove_post_write_aggregate_rollback() -> None:
         f"typed non-resurrection post-validator order drift: {observed}",
     )
     require_unchanged(before, "aggregate rejection")
+    require_modes_unchanged(before_modes, "aggregate rejection")
+    require_no_temp_files(before, "aggregate rejection")
     print("PASS boundary: post-write validator order is typed non-resurrection then aggregate Operability")
-    print("PASS rollback: aggregate rejection byte-restores typed, generation and status authorities")
+    print("PASS rollback: aggregate rejection byte/mode-restores typed, generation, contract and status authorities")
 
 
 def main() -> int:
@@ -189,6 +251,7 @@ def main() -> int:
         prove_substitution_rejected(attribute)
     prove_corrupt_append_only_authority_rejected()
     prove_atomic_write_failure()
+    prove_second_replace_rollback()
     prove_post_write_aggregate_rollback()
     print("Memory OS typed non-resurrection reconcile negative suite PASS")
     print("generic non-resurrection PASS promoted to typed coverage: false")
