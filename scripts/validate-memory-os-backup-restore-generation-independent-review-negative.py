@@ -233,12 +233,26 @@ def main() -> int:
     same_ref["operabilityReviewRef"] = "docs/evidence/backup-restore/README.md"
     expect_fail(module, registry(same_ref), "security/operability ref reuse")
 
-    production_boundary = registry(base_row())
-    production_boundary["productionReady"] = True
-    expect_fail(module, production_boundary, "productionReady promotion")
+    for field in ("productionEvidence", "productionReady"):
+        production_boundary = registry(base_row())
+        production_boundary[field] = True
+        expect_fail(module, production_boundary, f"{field} promotion")
 
     for field in module.BOUND_FIELDS:
         expect_bound_field_fail(module, field)
+
+    for field in ("productionTrafficChanged", "productionCredentialsUsed", "automaticPromotion"):
+        payload = typed_payload(base_row(), "SECURITY")
+        payload[field] = True
+        expect_review_payload_fail(module, payload, f"independent review unsafe production boundary: {field}")
+
+    payload = typed_payload(base_row(), "SECURITY")
+    payload["reviewRole"] = "OPERABILITY"
+    expect_review_payload_fail(module, payload, "independent review role mismatch")
+
+    payload = typed_payload(base_row(), "SECURITY")
+    payload["reviewResult"] = "REJECTED"
+    expect_review_payload_fail(module, payload, "independent review not approved")
 
     for invalid_reviewed_at in (
         "2026-08-15",
@@ -281,7 +295,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, candidate/promotion contract drift, post-commit edits, and production promotion")
+    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, unsafe production boundaries, wrong roles, non-approved reviews, candidate/promotion contract drift, post-commit edits, and production promotion")
     print("runtime data/executable authority substitution accepted: false")
     print("runtime execution helper substitution accepted: false")
     print("main candidate authority substitution accepted: false")
