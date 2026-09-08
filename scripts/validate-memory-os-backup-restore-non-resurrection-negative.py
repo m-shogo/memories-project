@@ -93,7 +93,22 @@ def main() -> int:
         writer.repo_ref = lambda value, field: value if isinstance(value, str) and value else (_ for _ in ()).throw(writer.Fail(f"{field} invalid"))
         prefixes = contract["domainEvidencePathPrefixes"]
         review_prefixes = contract["reviewEvidencePathPrefixes"]
-        state: dict[str, Any] = {"generation": "brge_negative_generation", "sha": SHA, "domain": None, "domainResult": "PASS", "securityReviewer": "reviewer_security", "operabilityReviewer": "reviewer_operability", "reviewGeneration": "brge_negative_generation", "reviewSha": SHA, "reviewRecordId": "brnr_negative_base", "reviewRefsDropOne": False, "reviewDigestMismatch": False, "reviewResult": "APPROVED"}
+        state: dict[str, Any] = {
+            "generation": "brge_negative_generation",
+            "sha": SHA,
+            "domain": None,
+            "domainResult": "PASS",
+            "domainProductionField": None,
+            "securityReviewer": "reviewer_security",
+            "operabilityReviewer": "reviewer_operability",
+            "reviewGeneration": "brge_negative_generation",
+            "reviewSha": SHA,
+            "reviewRecordId": "brnr_negative_base",
+            "reviewRefsDropOne": False,
+            "reviewDigestMismatch": False,
+            "reviewResult": "APPROVED",
+            "reviewProductionField": None,
+        }
 
         valid = base_record(contract)
         refs = [valid["domains"][name]["evidenceRef"] for name in contract["requiredDomains"]]
@@ -115,7 +130,10 @@ def main() -> int:
                 return real_load(path)
             matched = next((name for name, prefix in prefixes.items() if ref.startswith(prefix)), None)
             if matched:
-                return domain_payload(state["generation"], state["sha"], state["domain"] or matched, state["domainResult"])
+                payload = domain_payload(state["generation"], state["sha"], state["domain"] or matched, state["domainResult"])
+                if state["domainProductionField"] is not None:
+                    payload[state["domainProductionField"]] = True
+                return payload
             for review_type, prefix in review_prefixes.items():
                 if ref.startswith(prefix):
                     reviewed = refs[:-1] if state["reviewRefsDropOne"] else refs
@@ -123,7 +141,10 @@ def main() -> int:
                     digests = dict(expected_digests)
                     if state["reviewDigestMismatch"]:
                         digests[refs[0]] = "0" * 64
-                    return review_payload(generation=state["reviewGeneration"], source_sha=state["reviewSha"], record_id=state["reviewRecordId"], review_type=review_type, reviewer=reviewer, refs=reviewed, digests=digests, result=state["reviewResult"])
+                    payload = review_payload(generation=state["reviewGeneration"], source_sha=state["reviewSha"], record_id=state["reviewRecordId"], review_type=review_type, reviewer=reviewer, refs=reviewed, digests=digests, result=state["reviewResult"])
+                    if state["reviewProductionField"] is not None:
+                        payload[state["reviewProductionField"]] = True
+                    return payload
             return real_load(path)
 
         writer.load = fake_load
@@ -156,6 +177,10 @@ def main() -> int:
         state["sha"] = "b" * 40; expect_rejected("domain evidence source commit binding mismatch", lambda: writer.validate_record(valid)); state["sha"] = SHA
         state["domain"] = "wrongDomain"; expect_rejected("domain evidence domain binding mismatch", lambda: writer.validate_record(valid)); state["domain"] = None
         state["domainResult"] = "FAIL"; expect_rejected("domain evidence result binding mismatch", lambda: writer.validate_record(valid)); state["domainResult"] = "PASS"
+        for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
+            state["domainProductionField"] = field
+            expect_rejected(f"domain evidence {field} production boundary", lambda: writer.validate_record(valid))
+        state["domainProductionField"] = None
 
         state["reviewGeneration"] = "brge_other_generation"; expect_rejected("review generation binding mismatch", lambda: writer.validate_record(valid)); state["reviewGeneration"] = "brge_negative_generation"
         state["reviewSha"] = "b" * 40; expect_rejected("review source commit binding mismatch", lambda: writer.validate_record(valid)); state["reviewSha"] = SHA
@@ -164,6 +189,10 @@ def main() -> int:
         state["reviewDigestMismatch"] = True; expect_rejected("review domain evidence digest binding mismatch", lambda: writer.validate_record(valid)); state["reviewDigestMismatch"] = False
         state["operabilityReviewer"] = "reviewer_security"; expect_rejected("security and operability reviewer identity reuse", lambda: writer.validate_record(valid)); state["operabilityReviewer"] = "reviewer_operability"
         state["reviewResult"] = "REJECTED"; expect_rejected("review result not APPROVED", lambda: writer.validate_record(valid)); state["reviewResult"] = "APPROVED"
+        for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
+            state["reviewProductionField"] = field
+            expect_rejected(f"review evidence {field} production boundary", lambda: writer.validate_record(valid))
+        state["reviewProductionField"] = None
 
         empty_registry = {
             "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
@@ -227,6 +256,7 @@ def main() -> int:
     print("Memory OS backup/restore non-resurrection negative admission suite PASS")
     print("typed domain and independent review evidence are generation/commit/bundle/digest bound: true")
     print("typed record immutably binds review payload digests: true")
+    print("typed production boundaries fail closed across record/domain/review/registry: true")
     print("typed writer rejects aggregate/current authority drift before append: true")
     print("typed writer rolls back post-append validation failure: true")
     print("writer evidence refs canonical and repository-contained: true")
