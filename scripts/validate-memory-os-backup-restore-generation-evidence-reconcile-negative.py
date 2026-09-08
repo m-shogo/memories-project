@@ -181,6 +181,45 @@ def main() -> int:
                 original_modes[target] = mode(target)
                 targets[attr] = target
 
+            original_replace = reconciler.os.replace
+            replace_calls = 0
+
+            def fail_second_replace(source: str | Path, destination: str | Path) -> None:
+                nonlocal replace_calls
+                replace_calls += 1
+                if replace_calls == 2:
+                    raise OSError("synthetic second generation-evidence authority replace rejection")
+                original_replace(source, destination)
+
+            reconciler.os.replace = fail_second_replace
+            try:
+                try:
+                    reconciler.main()
+                except reconciler.Fail as exc:
+                    require(
+                        "synthetic second generation-evidence authority replace rejection" in str(exc),
+                        f"second-replace failure rejected at wrong boundary: {exc}",
+                    )
+                else:
+                    raise Fail("synthetic second generation-evidence authority replace failure unexpectedly accepted")
+            finally:
+                reconciler.os.replace = original_replace
+
+            require(replace_calls >= 6, f"second-replace rollback did not restore all four authorities: replace calls={replace_calls}")
+            for attr in MUTATED:
+                path = targets[attr]
+                require(path.read_bytes() == originals[path], f"second-replace rollback drifted authority bytes: {path.name}")
+                require(mode(path) == original_modes[path], f"second-replace rollback drifted authority mode: {path.name}")
+            second_replace_leftovers: list[Path] = []
+            for attr in MUTATED:
+                path = targets[attr]
+                second_replace_leftovers.extend(path.parent.glob(f".{path.name}.*.tmp"))
+            require(
+                not second_replace_leftovers,
+                f"second-replace rollback left temporary generation-evidence authority files: {second_replace_leftovers}",
+            )
+            print("PASS rollback: second generation-evidence authority replace failure restores all authority bytes and modes")
+
             corruption_cases = (
                 ("registeredEvidenceCount drift", "registeredEvidenceCount", 1),
                 ("boolean drillRequestBoundEvidenceCount", "drillRequestBoundEvidenceCount", True),
