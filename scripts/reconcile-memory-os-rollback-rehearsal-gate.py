@@ -311,7 +311,8 @@ def main() -> int:
         run_canonical_validators()
         print("Rollback rehearsal admission authority already reconciled")
         return 0
-    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    if status_changed:
+        status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
     commit_authority_transaction(candidate_contract, status)
     print("Reconciled rollback rehearsal planning authority; execution remains absent")
     print(f"approved releases: {release_count}")
