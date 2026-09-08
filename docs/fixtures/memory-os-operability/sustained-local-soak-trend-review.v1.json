@@ -2,7 +2,7 @@
   "schemaVersion": "memory-os-sustained-local-soak-trend-review.v1",
   "classification": "LOCAL_LONG_SOAK_DESCRIPTIVE_CROSS_RUN_REVIEW",
   "scenarioId": "mixed-import-lifecycle-local-long-soak",
-  "reviewedRunCount": 9,
+  "reviewedRunCount": 10,
   "reviewedRunIds": [
     "gha-31157909318-1-a",
     "gha-31157909318-1-b",
@@ -12,13 +12,15 @@
     "gha-32174904406-1",
     "gha-32516837927-1",
     "gha-32887993460-1",
-    "gha-33918828584-1"
+    "gha-33918828584-1",
+    "gha-34280070315-1"
   ],
   "reviewedSourceCommitShas": [
     "171ba6971db3a6325701ffcb2e8130fa898c27ba",
     "32c5f6655653d8bc948363396834ffdb41f8b1b6",
     "3d88029888e07e10e4cc31d660c66ae7de1ffe0a",
     "4c3a636cc4b4397d04680f904c9c556426896e64",
+    "622f9d9f83c692114e51536d238fd17db9a0a159",
     "950a1ce60cb30f8415cd605fb2d799e7f7ba5ed0",
     "9dd97a9571e58a08a1d8ee43a9f378a505a09c15",
     "e4c6c09532d2a4fe043f6c4f545e149e84dbe803"
@@ -27,12 +29,12 @@
   "allReviewedRunsPassedPerRunValidator": true,
   "allReviewedRunsPostRecoveryProbePassed": true,
   "latestPair": {
-    "runA": "gha-32887993460-1",
-    "runB": "gha-33918828584-1",
-    "rssSlopeDeltaBytesPerMinute": -4116.047260938332,
-    "heapAllocSlopeDeltaBytesPerMinute": 171.11035712157673,
-    "heapInuseSlopeDeltaBytesPerMinute": 2434.6855041901326,
-    "goroutineSlopeDeltaPerMinute": 8.480143271790421e-17
+    "runA": "gha-33918828584-1",
+    "runB": "gha-34280070315-1",
+    "rssSlopeDeltaBytesPerMinute": -1761.5718830557653,
+    "heapAllocSlopeDeltaBytesPerMinute": -60.313913199551735,
+    "heapInuseSlopeDeltaBytesPerMinute": -1031.1627580869736,
+    "goroutineSlopeDeltaPerMinute": -3.4491048434109627e-23
   },
   "runTrends": [
     {
@@ -460,6 +462,54 @@
       "scanQueueTrend": {
         "oldestPendingSecondsPerMinute": 60.00001418266111,
         "pendingPerMinute": 1.6000005841714249
+      },
+      "deletionBacklogTrend": {
+        "pendingPerMinute": 0,
+        "stuckPerMinute": 0
+      },
+      "postRunRecoveryProbePassed": true
+    },
+    {
+      "runId": "gha-34280070315-1",
+      "sourceCommitSha": "622f9d9f83c692114e51536d238fd17db9a0a159",
+      "durationSeconds": 3600.104647563,
+      "rssSlopeBytesPerMinute": 13138.705160664113,
+      "heapAllocSlopeBytesPerMinute": 2073.974736747927,
+      "heapInuseSlopeBytesPerMinute": 6714.002771694427,
+      "goroutineSlopePerMinute": 8.480139822685577e-17,
+      "latencyTrendBySurface": {
+        "deletionWorker": {
+          "p95MsPerMinute": 0.14994829330180026,
+          "p99MsPerMinute": 0.14994829330180026
+        },
+        "parserSupervisor": {
+          "p95MsPerMinute": -0.8976360906730362,
+          "p99MsPerMinute": -0.8976360906730362
+        },
+        "previewRead": {
+          "p95MsPerMinute": -0.12412783081176572,
+          "p99MsPerMinute": -0.17173061199842332
+        },
+        "signedUploadLifecycle": {
+          "p95MsPerMinute": -0.1392734026163178,
+          "p99MsPerMinute": -0.1392734026163178
+        }
+      },
+      "errorRateTrendBySurface": {
+        "deletionWorker": 0,
+        "parserSupervisor": 0,
+        "previewRead": 0,
+        "signedUploadLifecycle": 0
+      },
+      "dbConnectionTrend": {
+        "acquireDurationMsPerMinute": 97.69585698815396,
+        "acquiredConnsPerMinute": 0,
+        "emptyAcquireCountPerMinute": 37.42378229504023,
+        "totalConnsPerMinute": 0
+      },
+      "scanQueueTrend": {
+        "oldestPendingSecondsPerMinute": 60.00000590531789,
+        "pendingPerMinute": 1.6000002587894768
       },
       "deletionBacklogTrend": {
         "pendingPerMinute": 0,
