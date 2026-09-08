@@ -141,7 +141,10 @@ def main() -> int:
         reject_variant("failed domain cannot claim evidenceComplete", lambda r: r["domains"][domain_name].update(result="FAIL"))
         reject_variant("security and operability review reuse", lambda r: r.update(operabilityReviewRef=r["securityReviewRef"]))
         reject_variant("HIGH unresolved finding", lambda r: r.update(unresolvedFindings=[{"findingId": "finding_high", "severity": "HIGH", "status": "OPEN"}]))
+        reject_variant("production traffic relabel", lambda r: r.update(productionTraffic=True))
+        reject_variant("production credentials relabel", lambda r: r.update(productionCredentials=True))
         reject_variant("production evidence relabel", lambda r: r.update(productionEvidence=True))
+        reject_variant("production ready relabel", lambda r: r.update(productionReady=True))
         reject_variant("mutable latest alias", lambda r: r["domains"][domain_name].update(evidenceRef=prefixes[domain_name] + "latest.json"))
         first, second = contract["requiredDomains"][:2]
         reject_variant("domain evidence references must be distinct", lambda r: r["domains"][second].update(evidenceRef=r["domains"][first]["evidenceRef"]))
@@ -180,8 +183,10 @@ def main() -> int:
         expect_rejected("typed writer boolean completeRecordCount before append", lambda: writer.validate_registry_for_append(drift))
         drift = copy.deepcopy(empty_registry); drift["candidateCoveredCount"] = 1
         expect_rejected("typed writer candidateCoveredCount drift before append", lambda: writer.validate_registry_for_append(drift))
+        drift = copy.deepcopy(empty_registry); drift["productionEvidence"] = True
+        expect_rejected("typed writer production evidence drift before append", lambda: writer.validate_registry_for_append(drift))
         drift = copy.deepcopy(empty_registry); drift["productionReady"] = True
-        expect_rejected("typed writer production boundary drift before append", lambda: writer.validate_registry_for_append(drift))
+        expect_rejected("typed writer production ready drift before append", lambda: writer.validate_registry_for_append(drift))
 
         original_registry = writer.REGISTRY
         original_validate_registry = writer.validate_registry_for_append
