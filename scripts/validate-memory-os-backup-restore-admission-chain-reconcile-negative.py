@@ -158,6 +158,7 @@ def prove_shared_registry_fail_closed(reconciler: object) -> None:
 
 def prove_atomic_write_failure(reconciler: object) -> None:
     contract_before = CONTRACT.read_bytes()
+    contract_mode_before = mode(CONTRACT)
     original_replace = reconciler.os.replace
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
@@ -175,9 +176,10 @@ def prove_atomic_write_failure(reconciler: object) -> None:
         reconciler.os.replace = original_replace
 
     require(CONTRACT.read_bytes() == contract_before, "atomic replace failure mutated canonical admission-chain contract")
+    require(mode(CONTRACT) == contract_mode_before, "atomic replace failure changed canonical admission-chain contract mode")
     leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
     require(not leftovers, f"atomic replace failure left temporary authority files: {leftovers}")
-    print("PASS boundary: atomic replace failure preserves canonical admission-chain contract")
+    print("PASS boundary: atomic replace failure preserves canonical admission-chain contract bytes and mode")
     print("PASS boundary: failed atomic write leaves no temporary authority file")
 
 
