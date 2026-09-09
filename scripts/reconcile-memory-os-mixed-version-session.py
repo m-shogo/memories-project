@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +91,37 @@ def load(path: Path) -> dict:
         raise ReconcileFailure(f"invalid JSON in {label}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {label}")
     return value
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    label = path_label(path)
+    require(path.parent.is_dir(), f"authority parent missing: {path_label(path.parent)}")
+    temp_name: str | None = None
+    try:
+        mode = path.stat().st_mode & 0o777 if path.exists() else None
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        if mode is not None:
+            os.fchmod(fd, mode)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
+    except OSError as exc:
+        raise ReconcileFailure(f"cannot atomically write {label}: {exc}") from exc
+    finally:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
 
 def append_unique(values: list[str], additions: tuple[str, ...]) -> list[str]:
@@ -184,11 +216,11 @@ def main() -> int:
         print("Mixed-version session authority already reconciled")
         return 0
 
-    STATUS.write_bytes(candidate_bytes)
+    atomic_write_bytes(STATUS, candidate_bytes)
     try:
         validate_authority_chain(source_sha)
     except Exception:
-        STATUS.write_bytes(original_status_bytes)
+        atomic_write_bytes(STATUS, original_status_bytes)
         raise
 
     print("Mixed-version session evidence reconciled without readiness promotion")
