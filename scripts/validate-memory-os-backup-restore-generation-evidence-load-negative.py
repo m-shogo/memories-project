@@ -194,6 +194,58 @@ def exercise_reconciler_transaction_rollback(reconciler) -> None:
     print("PASS rollback: generation evidence 4-authority transaction restored exact bytes+mode after middle/last replace failures")
 
 
+def exercise_reconciler_rollback_diagnostics(reconciler) -> None:
+    output_names = ("REGISTRY", "CONTRACT", "BINDING", "STATUS")
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-rollback-diagnostics-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        originals = {name: getattr(reconciler, name) for name in output_names}
+        copies: dict[str, Path] = {}
+        for name, source in originals.items():
+            target = tmp / source.name
+            target.write_bytes(source.read_bytes())
+            target.chmod(0o640)
+            copies[name] = target
+
+        original_enforce = reconciler.enforce_runtime_authorities
+        original_post_validator = reconciler.run_post_validator
+        original_restore = reconciler.restore_original_text
+        rollback_attempted = False
+
+        def reject_post_validator(_path: Path, _expected_relative: Path, _label: str) -> None:
+            raise reconciler.Fail("synthetic generation evidence post-validator rejection")
+
+        def reject_rollback(_original_text: dict[Path, str]) -> None:
+            nonlocal rollback_attempted
+            rollback_attempted = True
+            raise reconciler.Fail("synthetic generation evidence rollback restore rejection")
+
+        for name, target in copies.items():
+            setattr(reconciler, name, target)
+        reconciler.enforce_runtime_authorities = lambda: None
+        reconciler.run_post_validator = reject_post_validator
+        reconciler.restore_original_text = reject_rollback
+        try:
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                message = str(exc)
+                require("synthetic generation evidence post-validator rejection" in message, "generation evidence rollback diagnostics lost primary validator rejection")
+                require("rollback incomplete" in message, "generation evidence rollback diagnostics missing incomplete marker")
+                require("synthetic generation evidence rollback restore rejection" in message, "generation evidence rollback diagnostics lost rollback rejection")
+            else:
+                raise Fail("generation evidence rollback diagnostic failure unexpectedly accepted")
+        finally:
+            reconciler.restore_original_text = original_restore
+            reconciler.run_post_validator = original_post_validator
+            reconciler.enforce_runtime_authorities = original_enforce
+            for name, source in originals.items():
+                setattr(reconciler, name, source)
+
+        require(rollback_attempted, "generation evidence rollback diagnostics did not attempt rollback")
+
+    print("PASS diagnostics: generation evidence reconcile preserves primary validator + rollback failure")
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
     require(VALIDATOR.is_file(), "generation evidence validator missing")
@@ -219,11 +271,13 @@ def main() -> int:
             exercise_loads("reconciler", reconciler, tmp, outside)
 
     exercise_reconciler_transaction_rollback(reconciler)
+    exercise_reconciler_rollback_diagnostics(reconciler)
 
     print("Generation evidence unreadable/escaped-authority negative suite PASS")
     print("generation writer append authority drift accepted: false")
     print("generation evidence partial multi-authority transaction accepted: false")
     print("generation evidence transaction rollback preserves exact bytes+mode: true")
+    print("generation evidence rollback diagnostics preserve primary + rollback failures: true")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
