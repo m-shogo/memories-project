@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -121,6 +122,82 @@ def prove_post_append_validation_rollback(writer) -> None:
     print("PASS rollback: post-append validation failure restores registry byte-for-byte and mode-for-mode")
 
 
+def prove_failed_registration_releases_lock_for_retry(writer) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-lock-retry-") as tmp:
+        temp_root = Path(tmp)
+        lock = temp_root / "generation.lock"
+        input_record = temp_root / "candidate.json"
+        input_record.write_text("{}\n", encoding="utf-8")
+        record = {
+            "environmentId": "fixture-env-a",
+            "generationId": "fixture-gen-a",
+        }
+
+        original_lock = writer.LOCK
+        original_git = writer.git
+        original_require_actual = writer.require_actual_cli_authorities
+        original_require_canonical = writer.require_canonical_runtime_authorities
+        original_load = writer.load
+        original_validate_record = writer.validate_record
+        original_validate_registry = writer.validate_registry_for_append
+        original_write = writer.write_registry_transactionally
+        original_argv = sys.argv[:]
+
+        def fixture_load(path: Path):
+            if Path(path) == input_record.resolve():
+                return dict(record)
+            return {"generations": []}
+
+        def reject_append(_registry):
+            raise writer.Fail("synthetic transactional generation append failure")
+
+        writer.LOCK = lock
+        writer.git = lambda *_args: ""
+        writer.require_actual_cli_authorities = lambda: None
+        writer.require_canonical_runtime_authorities = lambda: None
+        writer.load = fixture_load
+        writer.validate_record = lambda _record: False
+        writer.validate_registry_for_append = lambda _registry: []
+        writer.write_registry_transactionally = reject_append
+        sys.argv = [str(WRITER), "--record", str(input_record)]
+        try:
+            try:
+                writer.main()
+            except writer.Fail as exc:
+                require("synthetic transactional generation append failure" in str(exc), "unexpected failed registration error")
+            else:
+                raise Fail("synthetic transactional generation append failure was accepted")
+            require(not lock.exists(), "failed generation registration stranded its lock")
+
+            writer.write_registry_transactionally = lambda _registry: None
+            require(writer.main() == 0, "generation registration retry did not complete after lock release")
+            require(not lock.exists(), "successful generation registration retry stranded its lock")
+
+            lock.write_bytes(b"existing-owner\n")
+            lock.chmod(0o600)
+            existing = lock.read_bytes()
+            existing_mode = file_mode(lock)
+            try:
+                writer.main()
+            except writer.Fail as exc:
+                require("registry lock already exists" in str(exc), "unexpected existing-lock rejection")
+            else:
+                raise Fail("existing generation registry lock was accepted")
+            require(lock.read_bytes() == existing, "existing generation registry lock bytes were changed")
+            require(file_mode(lock) == existing_mode == 0o600, "existing generation registry lock mode was changed")
+        finally:
+            writer.LOCK = original_lock
+            writer.git = original_git
+            writer.require_actual_cli_authorities = original_require_actual
+            writer.require_canonical_runtime_authorities = original_require_canonical
+            writer.load = original_load
+            writer.validate_record = original_validate_record
+            writer.validate_registry_for_append = original_validate_registry
+            writer.write_registry_transactionally = original_write
+            sys.argv = original_argv
+    print("PASS lock: failed registration releases its lock, retry can reacquire it, and foreign locks remain untouched")
+
+
 def main() -> int:
     require(WRITER.is_file() and CONTRACT.is_file(), "environment-generation append authority missing")
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
@@ -136,6 +213,7 @@ def main() -> int:
     prove_successful_atomic_write_preserves_mode(writer)
     prove_atomic_replace_rejection_preserves_registry(writer)
     prove_post_append_validation_rollback(writer)
+    prove_failed_registration_releases_lock_for_retry(writer)
 
     print("Memory OS environment generation append rollback negative PASS")
     print("successful atomic append registry mode preservation: enforced")
@@ -143,6 +221,9 @@ def main() -> int:
     print("post-append canonical registry revalidation: enforced")
     print("failed append registry rollback: byte-for-byte and mode-for-mode")
     print("failed append temporary registry residue: false")
+    print("failed registration lock stranded: false")
+    print("failed registration retry lock reacquisition: enforced")
+    print("foreign generation registry lock preservation: enforced")
     print("generation created: false")
     print("production evidence: false")
     print("production readiness: false")
