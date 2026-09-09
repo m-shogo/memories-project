@@ -188,6 +188,41 @@ def prove_rollback_attempts_all_restores() -> None:
     print("PASS rollback: typed non-resurrection restore failure still attempts all four authorities")
 
 
+def prove_primary_and_rollback_failures_are_preserved() -> None:
+    reconciler = load_reconciler("memory_os_typed_non_resurrection_primary_and_rollback_failure")
+    before = canonical_bytes()
+    before_modes = canonical_modes()
+    original_post_validator = reconciler.run_post_validator
+    original_restore = reconciler.restore_original_text
+
+    def fail_primary(path: Path, expected_relative: Path, label: str) -> None:
+        raise reconciler.Fail("synthetic typed primary validator rejection")
+
+    def fail_rollback(original_text: dict[Path, str]) -> None:
+        raise reconciler.Fail("synthetic typed rollback restore rejection")
+
+    reconciler.run_post_validator = fail_primary
+    reconciler.restore_original_text = fail_rollback
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            text = str(exc)
+            require("synthetic typed primary validator rejection" in text, f"primary failure lost from rollback diagnostic: {exc}")
+            require("synthetic typed rollback restore rejection" in text, f"rollback failure lost from combined diagnostic: {exc}")
+            require("rollback incomplete" in text, f"combined rollback failure missing fail-closed marker: {exc}")
+        else:
+            raise Fail("synthetic typed primary+rollback failure unexpectedly accepted")
+    finally:
+        reconciler.run_post_validator = original_post_validator
+        reconciler.restore_original_text = original_restore
+
+    require_unchanged(before, "primary+rollback diagnostic negative")
+    require_modes_unchanged(before_modes, "primary+rollback diagnostic negative")
+    require_no_temp_files(before, "primary+rollback diagnostic negative")
+    print("PASS rollback: typed non-resurrection preserves primary and rollback failure diagnostics")
+
+
 def prove_second_replace_rollback() -> None:
     reconciler = load_reconciler("memory_os_typed_non_resurrection_second_replace_rollback")
     before = canonical_bytes()
@@ -286,6 +321,7 @@ def main() -> int:
     prove_corrupt_append_only_authority_rejected()
     prove_atomic_write_failure()
     prove_rollback_attempts_all_restores()
+    prove_primary_and_rollback_failures_are_preserved()
     prove_second_replace_rollback()
     prove_post_write_aggregate_rollback()
     print("Memory OS typed non-resurrection reconcile negative suite PASS")
