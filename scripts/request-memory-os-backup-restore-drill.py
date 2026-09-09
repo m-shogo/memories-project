@@ -526,11 +526,13 @@ def main() -> int:
         registry["currentExecutableRequestCount"] = sum(1 for row in requests if request_currently_executable(row))
         write_registry_transactionally(registry)
     finally:
-        os.close(lock_fd)
         try:
-            LOCK.unlink()
-        except FileNotFoundError:
-            pass
+            os.close(lock_fd)
+        finally:
+            try:
+                LOCK.unlink()
+            except FileNotFoundError:
+                pass
 
     print(f"Registered production-equivalent backup/restore drill request: {record['requestId']}")
     print("source/target semantically preflight eligible: true")
