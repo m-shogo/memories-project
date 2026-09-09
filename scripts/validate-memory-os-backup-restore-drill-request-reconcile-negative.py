@@ -115,6 +115,40 @@ def prove_atomic_write_failure(reconciler: Any, contract_before: bytes, registry
     print("PASS boundary: drill-request atomic write preserves mode; failed replace preserves bytes/mode and cleans temporary files")
 
 
+def prove_rollback_attempts_all_restores(reconciler: Any) -> None:
+    with tempfile.TemporaryDirectory(prefix=".memory-os-drill-request-restore-failure-", dir=ROOT) as tmp:
+        tmp_path = Path(tmp)
+        originals = {
+            tmp_path / "registry.json": "registry\n",
+            tmp_path / "contract.json": "contract\n",
+            tmp_path / "status.json": "status\n",
+        }
+        observed: list[Path] = []
+        original_write = reconciler.write_text
+
+        def fail_first_restore(path: Path, text: str) -> None:
+            observed.append(path)
+            if len(observed) == 1:
+                raise reconciler.Fail("synthetic first drill-request rollback restore rejection")
+
+        reconciler.write_text = fail_first_restore
+        try:
+            try:
+                reconciler.restore_original_text(originals)
+            except reconciler.Fail as exc:
+                require(
+                    "synthetic first drill-request rollback restore rejection" in str(exc),
+                    f"rollback restore failure reported at wrong boundary: {exc}",
+                )
+            else:
+                raise Fail("synthetic first drill-request rollback restore failure unexpectedly accepted")
+        finally:
+            reconciler.write_text = original_write
+
+        require(observed == list(originals), f"rollback restore failure skipped later drill-request authorities: {observed}")
+    print("PASS rollback: drill-request restore failure still attempts all three authorities")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "drill request reconciler missing")
     for path in (CONTRACT, REGISTRY, GEN_REGISTRY, OBJECTIVES, STATUS):
@@ -163,6 +197,7 @@ def main() -> int:
         )
 
     prove_atomic_write_failure(reconciler, canonical_contract, canonical_registry, canonical_status)
+    prove_rollback_attempts_all_restores(reconciler)
 
     original_enforcer = reconciler.enforce_runtime_authorities
     try:
@@ -297,6 +332,7 @@ def main() -> int:
     print("shared objective authority corruption cases: 6")
     print("successful atomic drill-request authority write preserves existing mode: true")
     print("failed atomic drill-request replace preserves bytes and mode: true")
+    print("rollback restore failure still attempts all three authorities: true")
     print("drill request validator succeeds before aggregate failure: true")
     print("aggregate operability failure observed after all authority writes: true")
     print("contract byte-for-byte and mode rollback: true")
