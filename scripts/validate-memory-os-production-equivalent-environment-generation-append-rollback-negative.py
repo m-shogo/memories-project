@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -34,17 +35,60 @@ def load_writer():
     return module
 
 
-def main() -> int:
-    require(WRITER.is_file() and CONTRACT.is_file(), "environment-generation append authority missing")
-    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
-    require(
-        contract.get("bindingRules", {}).get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
-        "transactional generation append contract guard missing",
-    )
+def generation_temp_files(path: Path) -> list[Path]:
+    return list(path.parent.glob(".environment-generation*.tmp"))
 
-    writer = load_writer()
-    require(callable(getattr(writer, "write_registry_transactionally", None)), "transactional generation registry writer missing")
 
+def prove_successful_atomic_write_preserves_mode(writer) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-append-mode-") as tmp:
+        registry = Path(tmp) / "generation-registry.v1.json"
+        registry.write_bytes(b'{"sentinel":"before"}\n')
+        registry.chmod(0o640)
+        original_mode = file_mode(registry)
+        original_registry = writer.REGISTRY
+        writer.REGISTRY = registry
+        try:
+            writer.atomic_write({"sentinel": "after"}, original_mode)
+            require(json.loads(registry.read_text(encoding="utf-8")) == {"sentinel": "after"}, "successful atomic generation append payload drift")
+            require(file_mode(registry) == original_mode == 0o640, "successful atomic generation append changed registry mode")
+            require(not generation_temp_files(registry), "successful atomic generation append left temporary registry files")
+        finally:
+            writer.REGISTRY = original_registry
+    print("PASS boundary: successful atomic generation append preserves registry mode and leaves no temporary residue")
+
+
+def prove_atomic_replace_rejection_preserves_registry(writer) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-append-replace-rejection-") as tmp:
+        registry = Path(tmp) / "generation-registry.v1.json"
+        original = b'{"sentinel":"before"}\n'
+        registry.write_bytes(original)
+        registry.chmod(0o640)
+        original_mode = file_mode(registry)
+        original_registry = writer.REGISTRY
+        original_replace = writer.os.replace
+        writer.REGISTRY = registry
+
+        def reject_replace(_source, _destination):
+            raise OSError("synthetic environment generation append replace rejection")
+
+        writer.os.replace = reject_replace
+        try:
+            try:
+                writer.atomic_write({"sentinel": "after"}, original_mode)
+            except OSError as exc:
+                require("synthetic environment generation append replace rejection" in str(exc), "unexpected atomic generation append replace failure")
+            else:
+                raise Fail("atomic generation append replace rejection was accepted")
+            require(registry.read_bytes() == original, "failed atomic generation append replace changed registry bytes")
+            require(file_mode(registry) == original_mode == 0o640, "failed atomic generation append replace changed registry mode")
+            require(not generation_temp_files(registry), "failed atomic generation append replace left temporary registry files")
+        finally:
+            writer.os.replace = original_replace
+            writer.REGISTRY = original_registry
+    print("PASS boundary: rejected atomic generation append preserves registry bytes/mode and leaves no temporary residue")
+
+
+def prove_post_append_validation_rollback(writer) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-append-rollback-") as tmp:
         registry = Path(tmp) / "generation-registry.v1.json"
         original = b'{"sentinel":"before"}\n'
@@ -69,13 +113,33 @@ def main() -> int:
                 raise Fail("post-append generation registry validation failure was accepted")
             require(registry.read_bytes() == original, "failed generation append did not restore original registry bytes")
             require(file_mode(registry) == original_mode == 0o640, "failed generation append did not restore original registry mode")
-            leftovers = list(registry.parent.glob(".environment-generation*.tmp"))
+            leftovers = generation_temp_files(registry)
             require(not leftovers, f"failed generation append left temporary registry files: {leftovers}")
         finally:
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validate
+    print("PASS rollback: post-append validation failure restores registry byte-for-byte and mode-for-mode")
+
+
+def main() -> int:
+    require(WRITER.is_file() and CONTRACT.is_file(), "environment-generation append authority missing")
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    require(
+        contract.get("bindingRules", {}).get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+        "transactional generation append contract guard missing",
+    )
+
+    writer = load_writer()
+    require(callable(getattr(writer, "write_registry_transactionally", None)), "transactional generation registry writer missing")
+    require(callable(getattr(writer, "atomic_write", None)), "atomic generation registry writer missing")
+
+    prove_successful_atomic_write_preserves_mode(writer)
+    prove_atomic_replace_rejection_preserves_registry(writer)
+    prove_post_append_validation_rollback(writer)
 
     print("Memory OS environment generation append rollback negative PASS")
+    print("successful atomic append registry mode preservation: enforced")
+    print("atomic append replace rejection preserves registry: byte-for-byte and mode-for-mode")
     print("post-append canonical registry revalidation: enforced")
     print("failed append registry rollback: byte-for-byte and mode-for-mode")
     print("failed append temporary registry residue: false")
