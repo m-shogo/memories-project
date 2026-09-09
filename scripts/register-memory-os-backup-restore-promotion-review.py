@@ -434,11 +434,13 @@ def main() -> int:
         registry["productionReady"] = False
         write_registry_transactionally(registry)
     finally:
-        os.close(lock_fd)
         try:
-            LOCK.unlink()
-        except FileNotFoundError:
-            pass
+            os.close(lock_fd)
+        finally:
+            try:
+                LOCK.unlink()
+            except FileNotFoundError:
+                pass
     print(f"Registered backup/restore promotion review: {record['decisionId']}")
     print(f"review decision: {record['decision']}")
     print("typed human review evidence: true")
