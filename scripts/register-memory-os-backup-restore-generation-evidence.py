@@ -718,11 +718,13 @@ def main() -> int:
         ]
         write_registry_transactionally(registry)
     finally:
-        os.close(lock_fd)
         try:
-            LOCK.unlink()
-        except FileNotFoundError:
-            pass
+            os.close(lock_fd)
+        finally:
+            try:
+                LOCK.unlink()
+            except FileNotFoundError:
+                pass
 
     print(f"Registered generation-bound backup/restore evidence: {record['evidenceId']}")
     print(f"drill request bound: {record['drillRequestId']}")
