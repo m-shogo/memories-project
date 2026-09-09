@@ -136,6 +136,34 @@ def prove_atomic_write_failure(
     print("PASS boundary: failed atomic recovery objective write preserves canonical bytes/mode and cleans temporary files")
 
 
+def prove_rollback_attempts_all_restores(reconciler: object) -> None:
+    originals = {
+        CONTRACT: "contract\n",
+        STATUS: "status\n",
+    }
+    observed: list[Path] = []
+    original_write = reconciler.write_text
+
+    def reject_first_restore(path: Path, text: str) -> None:
+        observed.append(path)
+        if len(observed) == 1:
+            raise reconciler.Fail("synthetic first objective rollback restore rejection")
+
+    reconciler.write_text = reject_first_restore
+    try:
+        expect_domain_fail(
+            "first recovery objective rollback restore rejection",
+            lambda: reconciler.restore_original_text(originals),
+            reconciler.Fail,
+            "synthetic first objective rollback restore rejection",
+        )
+    finally:
+        reconciler.write_text = original_write
+
+    require(observed == [CONTRACT, STATUS], f"objective rollback restore failure skipped later authority: {observed}")
+    print("PASS rollback: recovery objective restore failure still attempts contract and status")
+
+
 def prove_second_replace_transaction_rollback(
     reconciler: object,
     canonical_contract: bytes,
@@ -279,6 +307,7 @@ def main() -> int:
         canonical_contract_mode,
         canonical_status_mode,
     )
+    prove_rollback_attempts_all_restores(reconciler)
     prove_second_replace_transaction_rollback(
         reconciler,
         canonical_contract,
