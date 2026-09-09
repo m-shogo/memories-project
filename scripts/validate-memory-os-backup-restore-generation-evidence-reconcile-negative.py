@@ -149,6 +149,41 @@ def prove_mode_preserving_write(reconciler: object) -> None:
     print("PASS boundary: atomic generation-evidence write preserves existing file mode")
 
 
+def prove_rollback_attempts_all_restores(reconciler: object) -> None:
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-rollback-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        originals = {
+            tmp / "registry.json": "registry\n",
+            tmp / "contract.json": "contract\n",
+            tmp / "binding.json": "binding\n",
+            tmp / "status.json": "status\n",
+        }
+        observed: list[Path] = []
+        original_write = reconciler.write_text
+
+        def fail_first_restore(path: Path, text: str) -> None:
+            observed.append(path)
+            if len(observed) == 1:
+                raise reconciler.Fail("synthetic first generation-evidence rollback restore rejection")
+
+        reconciler.write_text = fail_first_restore
+        try:
+            try:
+                reconciler.restore_original_text(originals)
+            except reconciler.Fail as exc:
+                require(
+                    "synthetic first generation-evidence rollback restore rejection" in str(exc),
+                    f"rollback restore failure reported at wrong boundary: {exc}",
+                )
+            else:
+                raise Fail("synthetic first generation-evidence rollback restore failure unexpectedly accepted")
+        finally:
+            reconciler.write_text = original_write
+
+        require(observed == list(originals), f"rollback restore failure skipped later authorities: {observed}")
+    print("PASS rollback: generation-evidence restore failure still attempts all four authorities")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
@@ -157,6 +192,7 @@ def main() -> int:
     prove_direct_authority_identity(reconciler)
     prove_atomic_write_failure(reconciler)
     prove_mode_preserving_write(reconciler)
+    prove_rollback_attempts_all_restores(reconciler)
 
     original_enforcer = reconciler.enforce_runtime_authorities
     original_post_validator = reconciler.run_post_validator
