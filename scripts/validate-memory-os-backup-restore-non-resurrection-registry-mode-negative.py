@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Verify typed non-resurrection registry publication preserves file mode and rollback state."""
+"""Verify typed non-resurrection registry publication preserves mode and lock cleanup."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import stat
+import sys
 import tempfile
 from pathlib import Path
 
@@ -32,6 +34,58 @@ def load_writer():
 
 def mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
+
+
+def prove_close_failure_releases_lock(writer) -> None:
+    original_lock = writer.LOCK
+    original_require_cli_authorities = writer.require_cli_authorities
+    original_load = writer.load
+    original_validate_record = writer.validate_record
+    original_write = writer.os.write
+    original_close = writer.os.close
+    original_argv = sys.argv[:]
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-lock-") as tmp:
+        lock = Path(tmp) / ".backup-restore-non-resurrection-admission.lock"
+        input_path = Path(tempfile.gettempdir()) / "memory-os-non-resurrection-lock-close-failure.json"
+        writer.LOCK = lock
+        writer.require_cli_authorities = lambda: None
+        writer.load = lambda _: {"recordId": "brnr_lock_cleanup_negative"}
+        writer.validate_record = lambda _: None
+
+        def reject_body_write(*_args) -> int:
+            raise RuntimeError("synthetic non-resurrection body failure")
+
+        def close_then_fail(fd: int) -> None:
+            original_close(fd)
+            raise OSError("synthetic non-resurrection lock close failure")
+
+        writer.os.write = reject_body_write
+        writer.os.close = close_then_fail
+        sys.argv = [str(WRITER), "--record", str(input_path)]
+        try:
+            try:
+                writer.main()
+            except OSError as exc:
+                require("synthetic non-resurrection lock close failure" in str(exc), f"unexpected close failure: {exc}")
+            else:
+                raise Fail("synthetic non-resurrection lock close failure unexpectedly accepted")
+            require(not lock.exists(), "typed non-resurrection lock stranded after close failure")
+
+            writer.os.close = original_close
+            retry_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(retry_fd)
+            lock.unlink()
+            require(not lock.exists(), "typed non-resurrection lock retry cleanup failed")
+            print("PASS cleanup: close failure still unlinks typed non-resurrection lock and permits immediate reacquisition")
+        finally:
+            writer.LOCK = original_lock
+            writer.require_cli_authorities = original_require_cli_authorities
+            writer.load = original_load
+            writer.validate_record = original_validate_record
+            writer.os.write = original_write
+            writer.os.close = original_close
+            sys.argv = original_argv
 
 
 def main() -> int:
@@ -89,6 +143,7 @@ def main() -> int:
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validate
 
+    prove_close_failure_releases_lock(writer)
     print("canonical registries mutated: false")
     print("production evidence generated: false")
     print("production decision changed: false")
