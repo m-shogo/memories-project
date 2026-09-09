@@ -416,11 +416,13 @@ def main() -> int:
         registry["productionReady"] = False
         write_registry_transactionally(registry)
     finally:
-        os.close(lock_fd)
         try:
-            LOCK.unlink()
-        except FileNotFoundError:
-            pass
+            os.close(lock_fd)
+        finally:
+            try:
+                LOCK.unlink()
+            except FileNotFoundError:
+                pass
     print(f"Registered backup/restore non-resurrection evidence: {record['recordId']}")
     print(f"pre-overlay candidate covered: {str(candidate_complete(record)).lower()}")
     print("production evidence: false")
