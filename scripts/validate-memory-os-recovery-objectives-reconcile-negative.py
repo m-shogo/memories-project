@@ -164,6 +164,54 @@ def prove_rollback_attempts_all_restores(reconciler: object) -> None:
     print("PASS rollback: recovery objective restore failure still attempts contract and status")
 
 
+def prove_primary_and_rollback_failures_are_preserved(
+    reconciler: object,
+    canonical_contract: bytes,
+    canonical_status: bytes,
+    canonical_contract_mode: int,
+    canonical_status_mode: int,
+) -> None:
+    original_run_validator = reconciler.run_validator
+    original_restore = reconciler.restore_original_text
+
+    def fail_primary(path: Path, label: str) -> None:
+        raise reconciler.Fail("synthetic recovery objective primary validator rejection")
+
+    def fail_rollback(original_text: dict[Path, str]) -> None:
+        raise reconciler.Fail("synthetic recovery objective rollback restore rejection")
+
+    reconciler.run_validator = fail_primary
+    reconciler.restore_original_text = fail_rollback
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            text = str(exc)
+            require(
+                "synthetic recovery objective primary validator rejection" in text,
+                f"primary recovery objective failure lost from rollback diagnostic: {exc}",
+            )
+            require(
+                "synthetic recovery objective rollback restore rejection" in text,
+                f"recovery objective rollback failure lost from combined diagnostic: {exc}",
+            )
+            require("rollback incomplete" in text, f"combined recovery objective rollback diagnostic missing marker: {exc}")
+        else:
+            raise Fail("synthetic recovery objective primary+rollback failure unexpectedly accepted")
+    finally:
+        reconciler.run_validator = original_run_validator
+        reconciler.restore_original_text = original_restore
+
+    assert_canonical_unchanged(
+        canonical_contract,
+        canonical_status,
+        "primary+rollback diagnostic negative",
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
+    print("PASS rollback: recovery objective reconcile preserves primary and rollback failure diagnostics")
+
+
 def prove_second_replace_transaction_rollback(
     reconciler: object,
     canonical_contract: bytes,
@@ -308,6 +356,13 @@ def main() -> int:
         canonical_status_mode,
     )
     prove_rollback_attempts_all_restores(reconciler)
+    prove_primary_and_rollback_failures_are_preserved(
+        reconciler,
+        canonical_contract,
+        canonical_status,
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
     prove_second_replace_transaction_rollback(
         reconciler,
         canonical_contract,
