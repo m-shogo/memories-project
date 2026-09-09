@@ -147,6 +147,17 @@ def write_text(path: Path, text: str) -> None:
                 pass
 
 
+def restore_original_text(original_text: dict[Path, str]) -> None:
+    failures: list[str] = []
+    for path, text in original_text.items():
+        try:
+            write_text(path, text)
+        except Exception as exc:
+            failures.append(f"{repo_relative(path)}: {type(exc).__name__}: {exc}")
+    if failures:
+        raise Fail("generation evidence rollback restore failures: " + "; ".join(failures))
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -366,9 +377,11 @@ def main() -> int:
         run_post_validator(BINDING_VALIDATOR, BINDING_VALIDATOR_REL, "generation binding validator")
         run_post_validator(VALIDATOR, VALIDATOR_REL, "generation evidence validator")
         run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception:
-        for path, text in original_text.items():
-            write_text(path, text)
+    except Exception as exc:
+        try:
+            restore_original_text(original_text)
+        except Fail as rollback_exc:
+            raise Fail(f"generation evidence reconcile failed: {exc}; rollback incomplete: {rollback_exc}") from exc
         raise
 
     print("Memory OS drill-bound generation recovery authority reconciliation PASS")
