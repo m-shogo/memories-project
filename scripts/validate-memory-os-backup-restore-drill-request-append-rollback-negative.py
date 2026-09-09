@@ -7,6 +7,7 @@ import importlib.util
 import json
 import shutil
 import stat
+import sys
 import tempfile
 from pathlib import Path
 
@@ -50,6 +51,99 @@ def file_mode(path: Path) -> int:
 def require_no_temp_residue(path: Path) -> None:
     residue = list(path.parent.glob(".backup-restore-drill-request*.tmp"))
     require(not residue, f"drill request registry temp residue remained: {[item.name for item in residue]}")
+
+
+def prove_close_failure_releases_lock(writer) -> None:
+    original_registry = writer.REGISTRY
+    original_lock = writer.LOCK
+    original_load = writer.load
+    original_validate_request = writer.validate_request
+    original_validate_registry = writer.validate_registry_for_append
+    original_write = writer.write_registry_transactionally
+    original_approval_sha256 = writer.approval_sha256
+    original_currently_executable = writer.request_currently_executable
+    original_require_cli = writer.require_cli_authorities
+    original_git = writer.git
+    original_close = writer.os.close
+    original_argv = sys.argv[:]
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-drill-request-lock-") as tmpdir:
+        tmp = Path(tmpdir)
+        registry = tmp / REGISTRY.name
+        lock = tmp / ".backup-restore-drill-request.lock"
+        record_path = tmp / "request.json"
+        record_path.write_text("{}\n", encoding="utf-8")
+        record = {
+            "requestId": "brrq_fixture_close01",
+            "sourceEnvironmentGenerationId": "peg_fixture_source",
+            "restoreTargetEnvironmentGenerationId": "peg_fixture_target",
+            "recoveryObjectivesId": "ro_fixture_current",
+            "approvalRefs": {
+                "recoveryOwner": "approval-owner",
+                "securityReview": "approval-security",
+                "operabilityReview": "approval-operability",
+            },
+        }
+        registry_state = {
+            "requests": [],
+            "approvalEvidenceDigestsByRequestId": {},
+        }
+
+        def fixture_load(path: Path):
+            if Path(path) == record_path:
+                return record
+            if Path(path) == registry:
+                return registry_state
+            return original_load(path)
+
+        try:
+            writer.REGISTRY = registry
+            writer.LOCK = lock
+            writer.load = fixture_load
+            writer.validate_request = lambda _record, require_current=True: None
+            writer.validate_registry_for_append = lambda value: value["requests"]
+            writer.write_registry_transactionally = lambda _value: None
+            writer.approval_sha256 = lambda _ref: "0" * 64
+            writer.request_currently_executable = lambda _record: False
+            writer.require_cli_authorities = lambda: None
+            writer.git = lambda *_args: ""
+            sys.argv = [str(WRITER), "--request", str(record_path)]
+
+            def close_then_fail(fd: int) -> None:
+                original_close(fd)
+                raise OSError("synthetic drill request lock close failure")
+
+            writer.os.close = close_then_fail
+            try:
+                writer.main()
+            except OSError as exc:
+                require(
+                    "synthetic drill request lock close failure" in str(exc),
+                    f"unexpected drill request close failure: {exc}",
+                )
+            else:
+                raise Fail("drill request lock close failure was accepted")
+            finally:
+                writer.os.close = original_close
+
+            require(not lock.exists(), "drill request close failure stranded its lock")
+            registry_state["requests"].clear()
+            registry_state["approvalEvidenceDigestsByRequestId"].clear()
+            require(writer.main() == 0, "drill request retry did not complete after close failure cleanup")
+            require(not lock.exists(), "drill request retry stranded its lock")
+        finally:
+            writer.REGISTRY = original_registry
+            writer.LOCK = original_lock
+            writer.load = original_load
+            writer.validate_request = original_validate_request
+            writer.validate_registry_for_append = original_validate_registry
+            writer.write_registry_transactionally = original_write
+            writer.approval_sha256 = original_approval_sha256
+            writer.request_currently_executable = original_currently_executable
+            writer.require_cli_authorities = original_require_cli
+            writer.git = original_git
+            writer.os.close = original_close
+            sys.argv = original_argv
 
 
 def prove_reconciler_transaction_rollback() -> None:
@@ -183,6 +277,7 @@ def main() -> int:
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validate
 
+    prove_close_failure_releases_lock(writer)
     prove_reconciler_transaction_rollback()
 
     print("Memory OS backup/restore drill request append/reconcile rollback negative PASS")
@@ -190,6 +285,8 @@ def main() -> int:
     print("replace rejection registry bytes/mode preservation: enforced")
     print("post-append canonical registry revalidation: enforced")
     print("failed append registry rollback: byte-for-byte and mode-preserving")
+    print("lock close failure stranded lock: false")
+    print("lock close failure retry reacquisition: enforced")
     print("reconcile second/third replace partial transaction accepted: false")
     print("reconcile transaction rollback: exact bytes+mode and no temp residue")
     print("temporary registry residue: none")
