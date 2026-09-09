@@ -219,8 +219,16 @@ def main() -> int:
     atomic_write_bytes(STATUS, candidate_bytes)
     try:
         validate_authority_chain(source_sha)
-    except Exception:
-        atomic_write_bytes(STATUS, original_status_bytes)
+    except Exception as reconcile_error:
+        try:
+            atomic_write_bytes(STATUS, original_status_bytes)
+        except Exception as rollback_error:
+            raise ReconcileFailure(
+                "mixed-version session reconcile failed; primary failure: "
+                + str(reconcile_error)
+                + "; rollback incomplete: "
+                + str(rollback_error)
+            ) from reconcile_error
         raise
 
     print("Mixed-version session evidence reconciled without readiness promotion")
