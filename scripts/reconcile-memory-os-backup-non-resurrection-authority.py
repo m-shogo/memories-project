@@ -127,6 +127,16 @@ def write_text(path: Path, text: str) -> None:
             except OSError:
                 pass
 
+def restore_original_text(original_text: dict[Path, str]) -> None:
+    failures: list[str] = []
+    for path, text in original_text.items():
+        try:
+            write_text(path, text)
+        except Exception as exc:
+            failures.append(f"{repo_relative(path)}: {type(exc).__name__}: {exc}")
+    if failures:
+        raise Fail("typed non-resurrection rollback restore failures: " + "; ".join(failures))
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -284,9 +294,11 @@ def main() -> int:
             write_text(path, text)
         run_post_validator(VALIDATOR, VALIDATOR_REL, "typed non-resurrection validator")
         run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception:
-        for path, text in original_text.items():
-            write_text(path, text)
+    except Exception as exc:
+        try:
+            restore_original_text(original_text)
+        except Fail as rollback_exc:
+            raise Fail(f"typed non-resurrection reconcile failed: {exc}; rollback incomplete: {rollback_exc}") from exc
         raise
 
     print("Memory OS backup/restore typed non-resurrection authority reconciliation PASS")
