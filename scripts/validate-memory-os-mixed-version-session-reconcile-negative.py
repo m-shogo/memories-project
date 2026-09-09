@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -35,6 +36,45 @@ def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
+def fixture_status() -> dict:
+    return {
+        "productionDecision": "NO_GO",
+        "areas": [
+            {
+                "id": "OPS-P0-008",
+                "status": "PARTIAL",
+                "existingEvidence": [],
+                "missingEvidence": [
+                    "old/current backend mixed-version executable tests against an expanded schema",
+                    "persisted-state compatibility evidence",
+                    "parser artifact compatibility evidence",
+                    "client/server compatibility evidence",
+                    "PostgreSQL compatibility evidence",
+                ],
+                "evidenceRefs": [],
+            }
+        ],
+    }
+
+
+def prepare_fixture(module, root: Path, source_sha: str) -> tuple[Path, bytes]:
+    result_path = root / "result.json"
+    contract_path = root / "contract.json"
+    status_path = root / "status.json"
+    result_path.write_text(json.dumps({"commitSha": source_sha}) + "\n", encoding="utf-8")
+    contract_path.write_text("{}\n", encoding="utf-8")
+    original_bytes = json.dumps(fixture_status(), indent=2).encode("utf-8") + b"\n"
+    status_path.write_bytes(original_bytes)
+    os.chmod(status_path, 0o640)
+
+    module.RESULT = result_path
+    module.CONTRACT = contract_path
+    module.STATUS = status_path
+    module.source_is_ancestor = lambda _sha: True
+    module.enforce_runtime_authorities = lambda: None
+    return status_path, original_bytes
+
+
 def main() -> int:
     module = load_module()
     original_status = module.STATUS.read_bytes()
@@ -50,37 +90,7 @@ def main() -> int:
     source_sha = "0" * 40
     with tempfile.TemporaryDirectory(prefix="memory-os-mixed-version-session-negative-") as tmp:
         root = Path(tmp)
-        result_path = root / "result.json"
-        contract_path = root / "contract.json"
-        status_path = root / "status.json"
-        result_path.write_text(json.dumps({"commitSha": source_sha}) + "\n", encoding="utf-8")
-        contract_path.write_text("{}\n", encoding="utf-8")
-        status = {
-            "productionDecision": "NO_GO",
-            "areas": [
-                {
-                    "id": "OPS-P0-008",
-                    "status": "PARTIAL",
-                    "existingEvidence": [],
-                    "missingEvidence": [
-                        "old/current backend mixed-version executable tests against an expanded schema",
-                        "persisted-state compatibility evidence",
-                        "parser artifact compatibility evidence",
-                        "client/server compatibility evidence",
-                        "PostgreSQL compatibility evidence",
-                    ],
-                    "evidenceRefs": [],
-                }
-            ],
-        }
-        original_bytes = json.dumps(status, indent=2).encode("utf-8") + b"\n"
-        status_path.write_bytes(original_bytes)
-
-        module.RESULT = result_path
-        module.CONTRACT = contract_path
-        module.STATUS = status_path
-        module.source_is_ancestor = lambda _sha: True
-        module.enforce_runtime_authorities = lambda: None
+        status_path, original_bytes = prepare_fixture(module, root, source_sha)
 
         calls: list[str] = []
 
@@ -102,8 +112,42 @@ def main() -> int:
             raise RuntimeError(f"mixed-version session validator order drift: {calls}")
         if status_path.read_bytes() != original_bytes:
             raise RuntimeError("mixed-version session reconcile did not roll back Production Status")
+        if status_path.stat().st_mode & 0o777 != 0o640:
+            raise RuntimeError("mixed-version session rollback changed Production Status mode")
+        if list(root.glob(f".{status_path.name}.*.tmp")):
+            raise RuntimeError("mixed-version session rollback leaked temporary status files")
 
-    print("PASS: mixed-version session exact authority and reconcile rollback are fail-closed")
+    with tempfile.TemporaryDirectory(prefix="memory-os-mixed-version-session-atomic-negative-") as tmp:
+        root = Path(tmp)
+        status_path, original_bytes = prepare_fixture(module, root, source_sha)
+        module.validate_authority_chain = lambda _sha: None
+        real_replace = module.os.replace
+
+        def reject_replace(src, dst) -> None:
+            if Path(dst) == status_path:
+                raise OSError("synthetic atomic replacement rejection")
+            real_replace(src, dst)
+
+        module.os.replace = reject_replace
+        try:
+            try:
+                module.main()
+            except module.ReconcileFailure as exc:
+                if "synthetic atomic replacement rejection" not in str(exc):
+                    raise RuntimeError(f"unexpected atomic replacement rejection: {exc}") from exc
+            else:
+                raise RuntimeError("mixed-version session reconcile accepted failed atomic replacement")
+        finally:
+            module.os.replace = real_replace
+
+        if status_path.read_bytes() != original_bytes:
+            raise RuntimeError("failed atomic replacement mutated Production Status")
+        if status_path.stat().st_mode & 0o777 != 0o640:
+            raise RuntimeError("failed atomic replacement changed Production Status mode")
+        if list(root.glob(f".{status_path.name}.*.tmp")):
+            raise RuntimeError("failed atomic replacement leaked temporary status files")
+
+    print("PASS: mixed-version session exact authority, atomic replacement, and reconcile rollback are fail-closed")
     return 0
 
 
