@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import stat
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,98 @@ def residue(directory: Path) -> list[Path]:
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def prove_close_failure_releases_lock(writer: Any) -> None:
+    original_registry = writer.REGISTRY
+    original_lock = writer.LOCK
+    original_load = writer.load
+    original_validate_record = writer.validate_record
+    original_validate_registry = writer.validate_registry_for_append
+    original_write = writer.write_registry_transactionally
+    original_require_cli = writer.require_cli_authorities
+    original_git = writer.git
+    original_drill_current = writer.drill_request_current
+    original_base_candidate = writer.base_candidate
+    original_typed_covered = writer.typed_non_resurrection_covered
+    original_candidate = writer.candidate
+    original_close = writer.os.close
+    original_argv = sys.argv[:]
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-evidence-lock-") as raw_tmp:
+        directory = Path(raw_tmp)
+        registry = directory / "generation-evidence-registry.json"
+        lock = directory / ".backup-restore-generation-evidence.lock"
+        record_path = directory / "generation-evidence.json"
+        record_path.write_text("{}\n", encoding="utf-8")
+        record = {
+            "evidenceId": "brge_fixture_close01",
+            "drillRequestId": "brrq_fixture_close01",
+            "evidenceComplete": False,
+            "isolatedRestoreVerified": False,
+            "restoredBackupArtifactSha256": "0" * 64,
+            "backupArtifactSha256": "0" * 64,
+        }
+        registry_state: dict[str, Any] = {"records": []}
+
+        def fixture_load(path: Path) -> dict[str, Any]:
+            if Path(path) == record_path:
+                return record
+            if Path(path) == registry:
+                return registry_state
+            return original_load(path)
+
+        try:
+            writer.REGISTRY = registry
+            writer.LOCK = lock
+            writer.load = fixture_load
+            writer.validate_record = lambda _record, require_current_drill_request=True: None
+            writer.validate_registry_for_append = lambda value: value["records"]
+            writer.write_registry_transactionally = lambda _value: None
+            writer.require_cli_authorities = lambda: None
+            writer.git = lambda *_args: ""
+            writer.drill_request_current = lambda _record: False
+            writer.base_candidate = lambda _record: False
+            writer.typed_non_resurrection_covered = lambda _evidence_id: False
+            writer.candidate = lambda _record: False
+            sys.argv = [str(WRITER), "--record", str(record_path)]
+
+            def close_then_fail(fd: int) -> None:
+                original_close(fd)
+                raise OSError("synthetic generation evidence lock close failure")
+
+            writer.os.close = close_then_fail
+            try:
+                writer.main()
+            except OSError as exc:
+                require(
+                    "synthetic generation evidence lock close failure" in str(exc),
+                    f"unexpected generation evidence close failure: {exc}",
+                )
+            else:
+                raise Fail("generation evidence lock close failure was accepted")
+            finally:
+                writer.os.close = original_close
+
+            require(not lock.exists(), "generation evidence close failure stranded its lock")
+            registry_state["records"].clear()
+            require(writer.main() == 0, "generation evidence retry did not complete after close failure cleanup")
+            require(not lock.exists(), "generation evidence retry stranded its lock")
+        finally:
+            writer.REGISTRY = original_registry
+            writer.LOCK = original_lock
+            writer.load = original_load
+            writer.validate_record = original_validate_record
+            writer.validate_registry_for_append = original_validate_registry
+            writer.write_registry_transactionally = original_write
+            writer.require_cli_authorities = original_require_cli
+            writer.git = original_git
+            writer.drill_request_current = original_drill_current
+            writer.base_candidate = original_base_candidate
+            writer.typed_non_resurrection_covered = original_typed_covered
+            writer.candidate = original_candidate
+            writer.os.close = original_close
+            sys.argv = original_argv
 
 
 def main() -> int:
@@ -114,7 +207,15 @@ def main() -> int:
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validator
 
+    prove_close_failure_releases_lock(writer)
+
     print("generation evidence registry transaction negative PASS")
+    print("successful append registry mode preservation: enforced")
+    print("post-append rollback: byte-for-byte and mode-preserving")
+    print("replace rejection registry bytes/mode preservation: enforced")
+    print("lock close failure stranded lock: false")
+    print("lock close failure retry reacquisition: enforced")
+    print("temporary registry residue: none")
     print("production evidence created: false")
     print("production readiness changed: false")
     print("production decision: NO_GO")
