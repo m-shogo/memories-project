@@ -154,6 +154,40 @@ def prove_atomic_write_failure() -> None:
     print("PASS boundary: failed atomic typed non-resurrection write preserves canonical bytes/modes and cleans temporary files")
 
 
+def prove_rollback_attempts_all_restores() -> None:
+    reconciler = load_reconciler("memory_os_typed_non_resurrection_rollback_restore_failure")
+    originals = {
+        CANONICAL_REGISTRY: "registry\n",
+        CANONICAL_GEN_REGISTRY: "generation\n",
+        CANONICAL_CONTRACT: "contract\n",
+        CANONICAL_STATUS: "status\n",
+    }
+    observed: list[Path] = []
+    original_write = reconciler.write_text
+
+    def reject_first_restore(path: Path, text: str) -> None:
+        observed.append(path)
+        if len(observed) == 1:
+            raise reconciler.Fail("synthetic first typed rollback restore rejection")
+
+    reconciler.write_text = reject_first_restore
+    try:
+        try:
+            reconciler.restore_original_text(originals)
+        except reconciler.Fail as exc:
+            require(
+                "synthetic first typed rollback restore rejection" in str(exc),
+                f"rollback restore failure reported at wrong boundary: {exc}",
+            )
+        else:
+            raise Fail("synthetic first typed rollback restore failure unexpectedly accepted")
+    finally:
+        reconciler.write_text = original_write
+
+    require(observed == list(originals), f"typed rollback restore failure skipped later authorities: {observed}")
+    print("PASS rollback: typed non-resurrection restore failure still attempts all four authorities")
+
+
 def prove_second_replace_rollback() -> None:
     reconciler = load_reconciler("memory_os_typed_non_resurrection_second_replace_rollback")
     before = canonical_bytes()
@@ -251,6 +285,7 @@ def main() -> int:
         prove_substitution_rejected(attribute)
     prove_corrupt_append_only_authority_rejected()
     prove_atomic_write_failure()
+    prove_rollback_attempts_all_restores()
     prove_second_replace_rollback()
     prove_post_write_aggregate_rollback()
     print("Memory OS typed non-resurrection reconcile negative suite PASS")
