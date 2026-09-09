@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Prove promotion-review reconcile pins canonical authorities and rolls back aggregate rejection."""
+"""Prove promotion-review reconcile pins authorities, rolls back rejection, and cleans writer locks."""
 
 from __future__ import annotations
 
 import importlib.util
+import os
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
+WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
 WORKFLOW = ROOT / ".github/workflows/backup-restore-promotion-review.yml"
 CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract.v1.json"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
@@ -198,6 +202,59 @@ def prove_second_replace_failure_rolls_back_transaction(
     print("PASS boundary: second promotion-review replace failure rolls back both authorities with exact bytes/modes")
 
 
+def prove_writer_close_failure_releases_lock() -> None:
+    writer = load_module(WRITER, "memory_os_promotion_review_writer_lock_negative")
+    original_lock = writer.LOCK
+    original_require_cli_authorities = writer.require_cli_authorities
+    original_load = writer.load
+    original_validate_record = writer.validate_record
+    original_write = writer.os.write
+    original_close = writer.os.close
+    original_argv = sys.argv[:]
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-promotion-review-lock-") as tmp:
+        lock = Path(tmp) / ".backup-restore-promotion-review.lock"
+        input_path = Path(tempfile.gettempdir()) / "memory-os-promotion-review-lock-close-failure.json"
+        writer.LOCK = lock
+        writer.require_cli_authorities = lambda: None
+        writer.load = lambda _: {"decisionId": "brpr_lock_cleanup_negative"}
+        writer.validate_record = lambda *_args, **_kwargs: None
+
+        def reject_body_write(*_args) -> int:
+            raise RuntimeError("synthetic promotion review body failure")
+
+        def close_then_fail(fd: int) -> None:
+            original_close(fd)
+            raise OSError("synthetic promotion review lock close failure")
+
+        writer.os.write = reject_body_write
+        writer.os.close = close_then_fail
+        sys.argv = [str(WRITER), "--record", str(input_path)]
+        try:
+            try:
+                writer.main()
+            except OSError as exc:
+                require("synthetic promotion review lock close failure" in str(exc), f"unexpected promotion close failure: {exc}")
+            else:
+                raise Fail("synthetic promotion review lock close failure unexpectedly accepted")
+            require(not lock.exists(), "promotion review lock stranded after close failure")
+
+            writer.os.close = original_close
+            retry_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(retry_fd)
+            lock.unlink()
+            require(not lock.exists(), "promotion review lock retry cleanup failed")
+            print("PASS cleanup: close failure still unlinks promotion review lock and permits immediate reacquisition")
+        finally:
+            writer.LOCK = original_lock
+            writer.require_cli_authorities = original_require_cli_authorities
+            writer.load = original_load
+            writer.validate_record = original_validate_record
+            writer.os.write = original_write
+            writer.os.close = original_close
+            sys.argv = original_argv
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
@@ -217,6 +274,7 @@ def main() -> int:
     prove_mode_preserving_atomic_write(reconciler, original_contract, original_registry)
     prove_atomic_write_failure(reconciler, original_contract, original_registry)
     prove_second_replace_failure_rolls_back_transaction(reconciler, original_contract, original_registry)
+    prove_writer_close_failure_releases_lock()
 
     original_run_validator = reconciler.run_validator
     original_write_text = reconciler.write_text
@@ -271,6 +329,7 @@ def main() -> int:
     print("successful atomic promotion-review authority mode drift accepted: false")
     print("failed atomic promotion-review authority mode drift accepted: false")
     print("second promotion-review replace transaction rollback verified: true")
+    print("promotion review lock close-failure cleanup verified: true")
     print("non-atomic promotion-review authority write accepted: false")
     print("non-atomic or mode-drifting promotion-review diagnostic write accepted: false")
     print("promotion validator ran before aggregate operability validator: true")
