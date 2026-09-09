@@ -141,6 +141,7 @@ def prove_failed_registration_releases_lock_for_retry(writer) -> None:
         original_validate_record = writer.validate_record
         original_validate_registry = writer.validate_registry_for_append
         original_write = writer.write_registry_transactionally
+        original_close = writer.os.close
         original_argv = sys.argv[:]
 
         def fixture_load(path: Path):
@@ -173,6 +174,24 @@ def prove_failed_registration_releases_lock_for_retry(writer) -> None:
             require(writer.main() == 0, "generation registration retry did not complete after lock release")
             require(not lock.exists(), "successful generation registration retry stranded its lock")
 
+            def close_then_fail(fd: int) -> None:
+                original_close(fd)
+                raise OSError("synthetic generation lock close failure")
+
+            writer.os.close = close_then_fail
+            try:
+                try:
+                    writer.main()
+                except OSError as exc:
+                    require("synthetic generation lock close failure" in str(exc), "unexpected generation lock close failure")
+                else:
+                    raise Fail("generation lock close failure was accepted")
+            finally:
+                writer.os.close = original_close
+            require(not lock.exists(), "generation lock close failure stranded its lock")
+            require(writer.main() == 0, "generation registration retry did not complete after close failure cleanup")
+            require(not lock.exists(), "generation registration retry after close failure stranded its lock")
+
             lock.write_bytes(b"existing-owner\n")
             lock.chmod(0o600)
             existing = lock.read_bytes()
@@ -186,6 +205,7 @@ def prove_failed_registration_releases_lock_for_retry(writer) -> None:
             require(lock.read_bytes() == existing, "existing generation registry lock bytes were changed")
             require(file_mode(lock) == existing_mode == 0o600, "existing generation registry lock mode was changed")
         finally:
+            writer.os.close = original_close
             writer.LOCK = original_lock
             writer.git = original_git
             writer.require_actual_cli_authorities = original_require_actual
@@ -195,7 +215,7 @@ def prove_failed_registration_releases_lock_for_retry(writer) -> None:
             writer.validate_registry_for_append = original_validate_registry
             writer.write_registry_transactionally = original_write
             sys.argv = original_argv
-    print("PASS lock: failed registration releases its lock, retry can reacquire it, and foreign locks remain untouched")
+    print("PASS lock: failed registration and close failures release the lock, retries can reacquire it, and foreign locks remain untouched")
 
 
 def main() -> int:
@@ -222,6 +242,7 @@ def main() -> int:
     print("failed append registry rollback: byte-for-byte and mode-for-mode")
     print("failed append temporary registry residue: false")
     print("failed registration lock stranded: false")
+    print("failed registration close-failure lock stranded: false")
     print("failed registration retry lock reacquisition: enforced")
     print("foreign generation registry lock preservation: enforced")
     print("generation created: false")
