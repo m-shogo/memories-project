@@ -145,6 +145,17 @@ def write_text(path: Path, text: str) -> None:
                 pass
 
 
+def restore_original_text(original_text: dict[Path, str]) -> None:
+    failures: list[str] = []
+    for path, text in original_text.items():
+        try:
+            write_text(path, text)
+        except Exception as exc:
+            failures.append(f"{repo_relative(path)}: {type(exc).__name__}: {exc}")
+    if failures:
+        raise Fail("drill request rollback restore failures: " + "; ".join(failures))
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -218,6 +229,11 @@ def main() -> int:
     original_contract_text = read_text(CONTRACT)
     original_registry_text = read_text(REGISTRY)
     original_status_text = read_text(STATUS)
+    original_text = {
+        REGISTRY: original_registry_text,
+        CONTRACT: original_contract_text,
+        STATUS: original_status_text,
+    }
 
     contract = load(CONTRACT)
     registry = load(REGISTRY)
@@ -371,10 +387,11 @@ def main() -> int:
         require(completed.returncode == 0, f"post-reconcile drill request validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
         operability = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         require(operability.returncode == 0, f"post-reconcile operability validator failed:\n{operability.stdout[-5000:]}{operability.stderr[-5000:]}")
-    except Exception:
-        write_text(REGISTRY, original_registry_text)
-        write_text(CONTRACT, original_contract_text)
-        write_text(STATUS, original_status_text)
+    except Exception as exc:
+        try:
+            restore_original_text(original_text)
+        except Fail as rollback_exc:
+            raise Fail(f"drill request reconcile failed: {exc}; rollback incomplete: {rollback_exc}") from exc
         raise
 
     print("Memory OS backup/restore drill request authority reconciliation PASS")
