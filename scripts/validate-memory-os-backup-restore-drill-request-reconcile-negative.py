@@ -149,6 +149,55 @@ def prove_rollback_attempts_all_restores(reconciler: Any) -> None:
     print("PASS rollback: drill-request restore failure still attempts all three authorities")
 
 
+def prove_primary_and_rollback_diagnostics(reconciler: Any) -> None:
+    original_write = reconciler.write_text
+    original_restore = reconciler.restore_original_text
+    original_run = reconciler.subprocess.run
+    observed_writes: list[Path] = []
+
+    def no_op_write(path: Path, text: str) -> None:
+        observed_writes.append(path)
+
+    def reject_post_validator(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        command = [str(item) for item in (args[0] if args else [])]
+        require(command and command[-1] == str(reconciler.VALIDATOR), "unexpected validator before synthetic primary failure")
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=29,
+            stdout="synthetic drill-request validator rejection\n",
+            stderr="",
+        )
+
+    def reject_rollback(originals: dict[Path, str]) -> None:
+        require(list(originals) == [reconciler.REGISTRY, reconciler.CONTRACT, reconciler.STATUS], "rollback authority order drift")
+        raise reconciler.Fail("synthetic drill-request rollback restore rejection")
+
+    reconciler.write_text = no_op_write
+    reconciler.restore_original_text = reject_rollback
+    reconciler.subprocess.run = reject_post_validator
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            message = str(exc)
+            require("post-reconcile drill request validator failed" in message, f"primary validator diagnostic lost: {exc}")
+            require("synthetic drill-request validator rejection" in message, f"primary validator detail lost: {exc}")
+            require("rollback incomplete" in message, f"rollback-incomplete marker lost: {exc}")
+            require("synthetic drill-request rollback restore rejection" in message, f"rollback diagnostic lost: {exc}")
+        else:
+            raise Fail("combined drill-request primary and rollback failure unexpectedly accepted")
+    finally:
+        reconciler.write_text = original_write
+        reconciler.restore_original_text = original_restore
+        reconciler.subprocess.run = original_run
+
+    require(
+        observed_writes == [reconciler.REGISTRY, reconciler.CONTRACT, reconciler.STATUS],
+        f"synthetic primary failure did not reach all planned authority writes: {observed_writes}",
+    )
+    print("PASS diagnostics: drill-request primary validator and rollback failures are both preserved")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "drill request reconciler missing")
     for path in (CONTRACT, REGISTRY, GEN_REGISTRY, OBJECTIVES, STATUS):
@@ -198,6 +247,7 @@ def main() -> int:
 
     prove_atomic_write_failure(reconciler, canonical_contract, canonical_registry, canonical_status)
     prove_rollback_attempts_all_restores(reconciler)
+    prove_primary_and_rollback_diagnostics(reconciler)
 
     original_enforcer = reconciler.enforce_runtime_authorities
     try:
@@ -333,6 +383,7 @@ def main() -> int:
     print("successful atomic drill-request authority write preserves existing mode: true")
     print("failed atomic drill-request replace preserves bytes and mode: true")
     print("rollback restore failure still attempts all three authorities: true")
+    print("primary validator and rollback failure diagnostics both preserved: true")
     print("drill request validator succeeds before aggregate failure: true")
     print("aggregate operability failure observed after all authority writes: true")
     print("contract byte-for-byte and mode rollback: true")
