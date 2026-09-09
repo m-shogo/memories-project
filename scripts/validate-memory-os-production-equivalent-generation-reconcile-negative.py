@@ -190,6 +190,49 @@ def prove_second_authority_replace_rollback(
     print("PASS rollback: second-authority replace failure restores both authorities byte-for-byte and mode-for-mode")
 
 
+def prove_rollback_restore_failure_attempts_all(reconciler: object) -> None:
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-rollback-all-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        first = tmp / "first.json"
+        second = tmp / "second.json"
+        first.write_text('{"mutated":1}\n', encoding="utf-8")
+        second.write_text('{"mutated":2}\n', encoding="utf-8")
+        os.chmod(first, 0o640)
+        os.chmod(second, 0o640)
+        original_write_text = reconciler.write_text
+        attempts: list[Path] = []
+
+        def fail_first_restore(path: Path, text: str) -> None:
+            attempts.append(path)
+            if path == first:
+                raise reconciler.Fail("synthetic first rollback restore failure")
+            original_write_text(path, text)
+
+        reconciler.write_text = fail_first_restore
+        try:
+            expect_domain_fail(
+                "environment generation first rollback restore failure",
+                lambda: reconciler.restore_authorities(
+                    (
+                        (first, '{"original":1}\n'),
+                        (second, '{"original":2}\n'),
+                    )
+                ),
+                reconciler.Fail,
+                "authority rollback failed after attempting all restores",
+            )
+        finally:
+            reconciler.write_text = original_write_text
+
+        require(attempts == [first, second], f"rollback restore failure skipped later authority: attempts={attempts}")
+        require(first.read_text(encoding="utf-8") == '{"mutated":1}\n', "failed first rollback unexpectedly rewrote fixture")
+        require(second.read_text(encoding="utf-8") == '{"original":2}\n', "later rollback authority was not restored")
+        require(file_mode(second) == 0o640, "later rollback authority mode drifted")
+        leftovers = list(tmp.glob(".*.tmp"))
+        require(not leftovers, "rollback-all fixture left temporary files")
+    print("PASS rollback: first restore failure does not skip later environment-generation authority restores")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(WORKFLOW.is_file(), "environment generation workflow missing")
@@ -311,6 +354,7 @@ def main() -> int:
         canonical_contract_mode,
         canonical_status_mode,
     )
+    prove_rollback_restore_failure_attempts_all(reconciler)
 
     observed: list[str] = []
     original_run_validator = reconciler.run_validator
@@ -349,6 +393,7 @@ def main() -> int:
     print("environment generation authority mode drift accepted: false")
     print("non-atomic environment generation diagnostic write accepted: false")
     print("second-authority replace failure triggers full rollback: true")
+    print("rollback restore failure skips later authority restores: false")
     print("aggregate operability failure triggers rollback: true")
     print("Environment generation reconcile negative suite PASS")
     print("production generation created: false")
