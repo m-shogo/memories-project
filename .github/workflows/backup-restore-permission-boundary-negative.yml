@@ -7,11 +7,14 @@ on:
       - ".github/workflows/backup-restore-drill-request.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
       - ".github/workflows/backup-restore-permission-boundary-negative.yml"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py"
+      - "scripts/validate-memory-os-recovery-objectives-registry-mode-negative.py"
   push:
     branches:
       - so
@@ -20,11 +23,14 @@ on:
       - ".github/workflows/backup-restore-drill-request.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
       - ".github/workflows/backup-restore-permission-boundary-negative.yml"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py"
+      - "scripts/validate-memory-os-recovery-objectives-registry-mode-negative.py"
 
 permissions:
   contents: read
@@ -64,7 +70,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py \
             scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py \
-            scripts/validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py \
+            scripts/validate-memory-os-recovery-objectives-registry-mode-negative.py
 
       - name: Enforce end-to-end admission permission boundary
         run: python scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py
@@ -77,6 +84,9 @@ jobs:
 
       - name: Enforce typed non-resurrection registry mode rollback
         run: python scripts/validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py
+
+      - name: Enforce human-approved recovery-objective registry mode rollback
+        run: python scripts/validate-memory-os-recovery-objectives-registry-mode-negative.py
 
       - name: Prove read-only permission gate
         run: test -z "$(git status --porcelain)"
