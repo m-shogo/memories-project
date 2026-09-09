@@ -145,6 +145,17 @@ def write_text(path: Path, text: str) -> None:
                 pass
 
 
+def restore_authorities(authorities: tuple[tuple[Path, str], ...]) -> None:
+    failures: list[str] = []
+    for path, text in authorities:
+        try:
+            write_text(path, text)
+        except Exception as exc:
+            failures.append(f"{repo_relative(path)}: {exc}")
+    if failures:
+        raise Fail("authority rollback failed after attempting all restores: " + "; ".join(failures))
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -301,9 +312,16 @@ def main() -> int:
         write_text(STATUS, status_text)
         run_validator(VALIDATOR, VALIDATOR_REL, "generation validator")
         run_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception:
-        write_text(CONTRACT, original_contract_text)
-        write_text(STATUS, original_status_text)
+    except Exception as exc:
+        try:
+            restore_authorities(
+                (
+                    (CONTRACT, original_contract_text),
+                    (STATUS, original_status_text),
+                )
+            )
+        except Exception as rollback_exc:
+            raise rollback_exc from exc
         raise
 
     print("Memory OS production-equivalent generation status reconciliation PASS")
