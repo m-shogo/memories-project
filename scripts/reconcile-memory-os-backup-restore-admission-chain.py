@@ -350,8 +350,11 @@ def main() -> int:
         write_text(CONTRACT, contract_text)
         run_validator(VALIDATOR, "admission-chain validator")
         run_validator(OPERABILITY_VALIDATOR, "operability validator")
-    except Exception:
-        write_text(CONTRACT, original_contract_text)
+    except Exception as exc:
+        try:
+            write_text(CONTRACT, original_contract_text)
+        except Exception as rollback_exc:
+            raise Fail(f"admission chain reconcile failed: {exc}; rollback incomplete: {rollback_exc}") from exc
         raise
 
     print("Memory OS backup/restore admission chain reconciliation PASS")
