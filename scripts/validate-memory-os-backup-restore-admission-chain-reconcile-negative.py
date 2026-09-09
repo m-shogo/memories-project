@@ -235,6 +235,50 @@ def prove_post_validation_rollback(reconciler: object) -> None:
     print("PASS boundary: post-write validator order is admission-chain then aggregate Operability")
 
 
+def prove_rollback_failure_preserves_primary_diagnostic(reconciler: object) -> None:
+    contract_before = CONTRACT.read_bytes()
+    contract_mode_before = mode(CONTRACT)
+    status_before = STATUS.read_bytes()
+    original_write_text = reconciler.write_text
+    original_run_validator = reconciler.run_validator
+    writes = 0
+
+    def fail_rollback(path: Path, text: str) -> None:
+        nonlocal writes
+        require(path == reconciler.CONTRACT, f"unexpected admission-chain rollback diagnostic write target: {path}")
+        writes += 1
+        if writes == 1:
+            return
+        raise reconciler.Fail("synthetic admission chain rollback rejection")
+
+    def fail_chain_validator(path: Path, label: str) -> None:
+        require(path == reconciler.VALIDATOR and label == "admission-chain validator", f"unexpected admission-chain rollback diagnostic validator invocation: {(path, label)}")
+        raise reconciler.Fail("synthetic admission chain post-validator rejection")
+
+    reconciler.write_text = fail_rollback
+    reconciler.run_validator = fail_chain_validator
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            message = str(exc)
+            require("admission chain reconcile failed" in message, f"rollback failure missing reconcile context: {message}")
+            require("synthetic admission chain post-validator rejection" in message, f"rollback failure lost primary error: {message}")
+            require("rollback incomplete" in message, f"rollback failure missing incomplete marker: {message}")
+            require("synthetic admission chain rollback rejection" in message, f"rollback failure lost rollback error: {message}")
+        else:
+            raise Fail("synthetic admission-chain rollback failure unexpectedly accepted")
+    finally:
+        reconciler.write_text = original_write_text
+        reconciler.run_validator = original_run_validator
+
+    require(writes == 2, f"admission-chain rollback diagnostic did not attempt publication and rollback exactly once: {writes}")
+    require(CONTRACT.read_bytes() == contract_before, "rollback diagnostic fixture mutated canonical admission-chain contract")
+    require(mode(CONTRACT) == contract_mode_before, "rollback diagnostic fixture changed canonical admission-chain contract mode")
+    require(STATUS.read_bytes() == status_before, "rollback diagnostic fixture mutated canonical production status")
+    print("PASS rollback: admission-chain rollback failure reports both primary rejection and incomplete rollback without canonical mutation")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "admission-chain validator missing")
     require(RECONCILER.is_file(), "admission-chain reconciler missing")
@@ -270,6 +314,7 @@ def main() -> int:
     prove_atomic_write_failure(reconciler)
     prove_mode_preserving_write(reconciler)
     prove_post_validation_rollback(reconciler)
+    prove_rollback_failure_preserves_primary_diagnostic(reconciler)
 
     print("direct admission-chain data/executable substitutions accepted: false")
     print("shared append-only registry corruption auto-healed by reconciler: false")
