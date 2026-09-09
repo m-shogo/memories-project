@@ -175,7 +175,7 @@ def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_err
         raise Fail(
             "promotion review reconcile failed; primary failure: "
             + str(reconcile_error)
-            + "; rollback incomplete: "
+            + "; rollback could not restore all canonical authorities; rollback incomplete: "
             + "; ".join(rollback_failures)
         ) from reconcile_error
 
