@@ -164,6 +164,20 @@ def run_validator(path: Path, label: str) -> None:
     )
 
 
+def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_error: Exception) -> None:
+    rollback_failures: list[str] = []
+    for path, original_text in authorities:
+        try:
+            write_text(path, original_text)
+        except Exception as rollback_exc:
+            rollback_failures.append(f"{repo_relative(path)}: {rollback_exc}")
+    if rollback_failures:
+        raise Fail(
+            "promotion review reconcile failed and rollback could not restore all canonical authorities: "
+            + "; ".join(rollback_failures)
+        ) from reconcile_error
+
+
 def main() -> int:
     enforce_runtime_authorities()
     original_contract_text = read_text(CONTRACT)
@@ -217,9 +231,14 @@ def main() -> int:
         write_text(CONTRACT, contract_text)
         run_validator(VALIDATOR, "promotion review validator")
         run_validator(OPERABILITY_VALIDATOR, "aggregate operability validator")
-    except Exception:
-        write_text(REGISTRY, original_registry_text)
-        write_text(CONTRACT, original_contract_text)
+    except Exception as reconcile_error:
+        restore_authorities(
+            (
+                (REGISTRY, original_registry_text),
+                (CONTRACT, original_contract_text),
+            ),
+            reconcile_error,
+        )
         raise
 
     print("Memory OS backup/restore promotion review reconciliation PASS")
@@ -233,6 +252,7 @@ def main() -> int:
     print("current authority may only be revoked automatically: true")
     print("promotion registry/contract writes use atomic same-directory replace: true")
     print("failed post-validation leaves promotion registry/contract mutation behind: false")
+    print("rollback attempts every promotion authority even after an earlier restore failure: true")
     print("aggregate operability validated inside transaction: true")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("automatic human promotion authorization created: false")
