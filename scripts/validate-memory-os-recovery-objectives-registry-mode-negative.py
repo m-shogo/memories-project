@@ -8,6 +8,7 @@ import importlib.util
 import os
 import shutil
 import stat
+import sys
 import tempfile
 from pathlib import Path
 
@@ -39,6 +40,86 @@ def temp_residue(directory: Path) -> list[Path]:
         *directory.glob(".recovery-objectives.*.tmp"),
         *directory.glob(".recovery-objectives-rollback.*.tmp"),
     ]
+
+
+def prove_close_failure_releases_lock(writer) -> None:
+    original_registry = writer.REGISTRY
+    original_lock = writer.LOCK
+    original_load = writer.load
+    original_validate_record = writer.validate_record
+    original_validate_registry = writer.validate_registry_for_append
+    original_write = writer.write_registry_transactionally
+    original_approval_sha256 = writer.approval_sha256
+    original_require_actual = writer.require_actual_cli_authorities
+    original_require_canonical = writer.require_canonical_runtime_authorities
+    original_close = writer.os.close
+    original_argv = sys.argv[:]
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-objective-lock-") as tmpdir:
+        tmp = Path(tmpdir)
+        registry_copy = tmp / REGISTRY.name
+        shutil.copyfile(REGISTRY, registry_copy)
+        lock = tmp / ".recovery-objectives.lock"
+        record_path = tmp / "objective.json"
+        record = {
+            "objectiveId": "ro_fixture_close01",
+            "approvalEvidenceRefs": ["approval-owner", "approval-operability"],
+            "supersedesObjectiveId": None,
+        }
+        record_path.write_text("{}\n", encoding="utf-8")
+        baseline = original_load(registry_copy)
+
+        def fixture_load(path: Path):
+            if Path(path) == record_path:
+                return copy.deepcopy(record)
+            if Path(path) == registry_copy:
+                return copy.deepcopy(baseline)
+            return original_load(path)
+
+        try:
+            writer.REGISTRY = registry_copy
+            writer.LOCK = lock
+            writer.load = fixture_load
+            writer.validate_record = lambda _record: None
+            writer.validate_registry_for_append = lambda registry: registry["records"]
+            writer.write_registry_transactionally = lambda _registry: None
+            writer.approval_sha256 = lambda _ref: "0" * 64
+            writer.require_actual_cli_authorities = lambda: None
+            writer.require_canonical_runtime_authorities = lambda: None
+            sys.argv = [str(WRITER), "--record", str(record_path)]
+
+            def close_then_fail(fd: int) -> None:
+                original_close(fd)
+                raise OSError("synthetic recovery objective lock close failure")
+
+            writer.os.close = close_then_fail
+            try:
+                writer.main()
+            except OSError as exc:
+                require(
+                    "synthetic recovery objective lock close failure" in str(exc),
+                    f"unexpected recovery objective close failure: {exc}",
+                )
+            else:
+                raise Fail("recovery objective close failure was accepted")
+            finally:
+                writer.os.close = original_close
+
+            require(not lock.exists(), "recovery objective close failure stranded its lock")
+            require(writer.main() == 0, "recovery objective retry did not complete after close failure cleanup")
+            require(not lock.exists(), "recovery objective retry stranded its lock")
+        finally:
+            writer.REGISTRY = original_registry
+            writer.LOCK = original_lock
+            writer.load = original_load
+            writer.validate_record = original_validate_record
+            writer.validate_registry_for_append = original_validate_registry
+            writer.write_registry_transactionally = original_write
+            writer.approval_sha256 = original_approval_sha256
+            writer.require_actual_cli_authorities = original_require_actual
+            writer.require_canonical_runtime_authorities = original_require_canonical
+            writer.os.close = original_close
+            sys.argv = original_argv
 
 
 def main() -> int:
@@ -117,10 +198,14 @@ def main() -> int:
         writer.validate_registry_for_append = original_validator
         writer.os.replace = original_replace
 
+    prove_close_failure_releases_lock(writer)
+
     print("Recovery objective registry mode negative PASS")
     print("successful publication mode preserved: true")
     print("post-publication validator rollback exact bytes/mode: true")
     print("atomic replace rejection preserves bytes/mode: true")
+    print("lock close failure stranded lock: false")
+    print("lock close failure retry reacquisition: enforced")
     print("temporary residue: false")
     print("production recovery objective created: false")
     print("production decision changed: false")
