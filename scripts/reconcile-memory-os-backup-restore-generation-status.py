@@ -221,8 +221,11 @@ def main() -> int:
         write_text(STATUS, json.dumps(status, indent=2, ensure_ascii=False) + "\n")
         run_validator(BACKUP_VALIDATOR, BACKUP_VALIDATOR_REL, "backup validator")
         run_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception:
-        write_text(STATUS, original_status.decode("utf-8"))
+    except Exception as exc:
+        try:
+            write_text(STATUS, original_status.decode("utf-8"))
+        except Exception as rollback_exc:
+            raise Fail(f"generation status reconcile failed: {exc}; rollback incomplete: {rollback_exc}") from exc
         raise
 
     print("Memory OS backup/restore generation status reconciliation PASS")
