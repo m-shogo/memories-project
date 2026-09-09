@@ -147,7 +147,56 @@ def main() -> int:
         if list(root.glob(f".{status_path.name}.*.tmp")):
             raise RuntimeError("failed atomic replacement leaked temporary status files")
 
-    print("PASS: mixed-version session exact authority, atomic replacement, and reconcile rollback are fail-closed")
+    with tempfile.TemporaryDirectory(prefix="memory-os-mixed-version-session-rollback-diagnostic-") as tmp:
+        root = Path(tmp)
+        status_path, original_bytes = prepare_fixture(module, root, source_sha)
+        calls: list[str] = []
+
+        def reject_post_write(validated_sha: str) -> None:
+            calls.append(validated_sha)
+            if len(calls) == 2:
+                raise module.ReconcileFailure("synthetic post-write primary rejection")
+
+        module.validate_authority_chain = reject_post_write
+        real_replace = module.os.replace
+        replacements = 0
+
+        def reject_rollback_replace(src, dst) -> None:
+            nonlocal replacements
+            if Path(dst) == status_path:
+                replacements += 1
+                if replacements == 2:
+                    raise OSError("synthetic rollback replacement rejection")
+            real_replace(src, dst)
+
+        module.os.replace = reject_rollback_replace
+        try:
+            try:
+                module.main()
+            except module.ReconcileFailure as exc:
+                message = str(exc)
+                for expected in (
+                    "synthetic post-write primary rejection",
+                    "rollback incomplete",
+                    "synthetic rollback replacement rejection",
+                ):
+                    if expected not in message:
+                        raise RuntimeError(f"rollback diagnostic lost {expected!r}: {message}") from exc
+            else:
+                raise RuntimeError("mixed-version session reconcile accepted failed rollback")
+        finally:
+            module.os.replace = real_replace
+
+        if replacements != 2:
+            raise RuntimeError(f"mixed-version session rollback replacement count drift: {replacements}")
+        if status_path.read_bytes() == original_bytes:
+            raise RuntimeError("rollback failure fixture did not preserve the published candidate state")
+        if status_path.stat().st_mode & 0o777 != 0o640:
+            raise RuntimeError("rollback failure changed Production Status mode")
+        if list(root.glob(f".{status_path.name}.*.tmp")):
+            raise RuntimeError("failed rollback leaked temporary status files")
+
+    print("PASS: mixed-version session exact authority, atomic replacement, rollback, and rollback diagnostics are fail-closed")
     return 0
 
 
