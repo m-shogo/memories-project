@@ -202,6 +202,41 @@ def prove_second_replace_failure_rolls_back_transaction(
     print("PASS boundary: second promotion-review replace failure rolls back both authorities with exact bytes/modes")
 
 
+def prove_rollback_attempts_all_authorities(reconciler: Any) -> None:
+    original_write_text = reconciler.write_text
+    original_repo_relative = reconciler.repo_relative
+    first = Path("/synthetic/promotion-registry.json")
+    second = Path("/synthetic/promotion-contract.json")
+    attempts: list[Path] = []
+
+    def fail_first_restore(path: Path, _text: str) -> None:
+        attempts.append(path)
+        if path == first:
+            raise reconciler.Fail("synthetic first rollback restore rejection")
+
+    reconciler.write_text = fail_first_restore
+    reconciler.repo_relative = lambda path: Path(path.name)
+    try:
+        try:
+            reconciler.restore_authorities(
+                ((first, "registry-original"), (second, "contract-original")),
+                reconciler.Fail("synthetic forward reconcile rejection"),
+            )
+        except reconciler.Fail as exc:
+            require(
+                "rollback could not restore all canonical authorities" in str(exc)
+                and "promotion-registry.json" in str(exc),
+                f"rollback aggregation rejected at wrong boundary: {exc}",
+            )
+        else:
+            raise Fail("synthetic first rollback restore failure unexpectedly accepted")
+        require(attempts == [first, second], f"rollback did not attempt every promotion authority: {attempts}")
+    finally:
+        reconciler.write_text = original_write_text
+        reconciler.repo_relative = original_repo_relative
+    print("PASS rollback: failure restoring first promotion authority does not skip later authority restore attempts")
+
+
 def prove_writer_close_failure_releases_lock() -> None:
     writer = load_module(WRITER, "memory_os_promotion_review_writer_lock_negative")
     original_lock = writer.LOCK
@@ -274,6 +309,7 @@ def main() -> int:
     prove_mode_preserving_atomic_write(reconciler, original_contract, original_registry)
     prove_atomic_write_failure(reconciler, original_contract, original_registry)
     prove_second_replace_failure_rolls_back_transaction(reconciler, original_contract, original_registry)
+    prove_rollback_attempts_all_authorities(reconciler)
     prove_writer_close_failure_releases_lock()
 
     original_run_validator = reconciler.run_validator
@@ -329,6 +365,7 @@ def main() -> int:
     print("successful atomic promotion-review authority mode drift accepted: false")
     print("failed atomic promotion-review authority mode drift accepted: false")
     print("second promotion-review replace transaction rollback verified: true")
+    print("rollback attempts every promotion authority after an earlier restore failure: true")
     print("promotion review lock close-failure cleanup verified: true")
     print("non-atomic promotion-review authority write accepted: false")
     print("non-atomic or mode-drifting promotion-review diagnostic write accepted: false")
