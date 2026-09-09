@@ -116,12 +116,59 @@ def prove_post_write_aggregate_rollback() -> None:
     print("PASS rollback: post-write aggregate rejection restores canonical status byte-for-byte")
 
 
+def prove_rollback_failure_preserves_primary_diagnostic() -> None:
+    reconciler = load_reconciler("memory_os_generation_status_rollback_failure")
+    original_status = CANONICAL_STATUS.read_bytes()
+    original_contract = CANONICAL_CONTRACT.read_bytes()
+    original_write_text = reconciler.write_text
+    original_run_validator = reconciler.run_validator
+    writes = 0
+
+    def fail_rollback(path: Path, text: str) -> None:
+        nonlocal writes
+        require(path == reconciler.STATUS, f"unexpected rollback diagnostic write target: {path}")
+        writes += 1
+        if writes == 1:
+            return
+        raise reconciler.Fail("synthetic generation status rollback rejection")
+
+    def fail_backup_validator(path: Path, expected_relative: Path, label: str) -> None:
+        if path == reconciler.VALIDATOR:
+            require(expected_relative == reconciler.VALIDATOR_REL and label == "generation binding validator", "generation binding pre-write validator identity drift")
+            return
+        if path == reconciler.BACKUP_VALIDATOR:
+            raise reconciler.Fail("synthetic generation status post-validator rejection")
+        raise Fail(f"unexpected rollback diagnostic validator invocation: {(path, expected_relative, label)}")
+
+    reconciler.write_text = fail_rollback
+    reconciler.run_validator = fail_backup_validator
+    try:
+        reconciler.main()
+    except reconciler.Fail as exc:
+        message = str(exc)
+        require("generation status reconcile failed" in message, f"rollback failure missing reconcile context: {message}")
+        require("synthetic generation status post-validator rejection" in message, f"rollback failure lost primary error: {message}")
+        require("rollback incomplete" in message, f"rollback failure missing incomplete marker: {message}")
+        require("synthetic generation status rollback rejection" in message, f"rollback failure lost rollback error: {message}")
+    else:
+        raise Fail("synthetic generation status rollback failure unexpectedly accepted")
+    finally:
+        reconciler.write_text = original_write_text
+        reconciler.run_validator = original_run_validator
+
+    require(writes == 2, f"generation status rollback diagnostic did not attempt publication and rollback exactly once: {writes}")
+    require(CANONICAL_STATUS.read_bytes() == original_status, "rollback diagnostic fixture mutated canonical status")
+    require(CANONICAL_CONTRACT.read_bytes() == original_contract, "rollback diagnostic fixture mutated generation binding contract")
+    print("PASS rollback: rollback failure reports both primary rejection and incomplete rollback without canonical mutation")
+
+
 def main() -> int:
     require(ALTERNATE_FILE.is_file(), "alternate repository fixture missing")
     for attribute in ("CONTRACT", "VALIDATOR", "BACKUP_VALIDATOR", "OPERABILITY_VALIDATOR", "STATUS"):
         prove_substitution_rejected(attribute)
     prove_atomic_write_failure()
     prove_post_write_aggregate_rollback()
+    prove_rollback_failure_preserves_primary_diagnostic()
     print("Memory OS backup/restore generation status reconcile negative suite PASS")
     print("non-atomic generation-status authority write accepted: false")
     print("generation created: false")
