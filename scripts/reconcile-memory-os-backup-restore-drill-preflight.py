@@ -187,6 +187,20 @@ def run_post_reconcile_validator(path: Path, label: str) -> None:
     )
 
 
+def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_error: Exception) -> None:
+    rollback_failures: list[str] = []
+    for path, original_text in authorities:
+        try:
+            write_text(path, original_text)
+        except Exception as rollback_exc:
+            rollback_failures.append(f"{repo_relative(path)}: {rollback_exc}")
+    if rollback_failures:
+        raise Fail(
+            "restore drill preflight reconcile failed and rollback could not restore all canonical authorities: "
+            + "; ".join(rollback_failures)
+        ) from reconcile_error
+
+
 CANONICAL_REQUIRE = require
 CANONICAL_RUNTIME_ENFORCER = enforce_runtime_authorities
 CANONICAL_EXECUTION_HELPERS = (
@@ -200,6 +214,7 @@ CANONICAL_EXECUTION_HELPERS = (
     append_once,
     replace_single_prefixed,
     run_post_reconcile_validator,
+    restore_authorities,
 )
 
 
@@ -223,6 +238,7 @@ def enforce_execution_identity(
         append_once,
         replace_single_prefixed,
         run_post_reconcile_validator,
+        restore_authorities,
     )
     if current_helpers != canonical_helpers:
         raise Fail("restore drill preflight reconcile execution helper drift")
@@ -297,9 +313,14 @@ def _reconcile() -> int:
         write_text(STATUS, status_text)
         run_post_reconcile_validator(VALIDATOR_MODULE, "preflight")
         run_post_reconcile_validator(OPERABILITY_VALIDATOR, "operability")
-    except Exception:
-        write_text(CONTRACT, original_contract_text)
-        write_text(STATUS, original_status_text)
+    except Exception as reconcile_error:
+        restore_authorities(
+            (
+                (CONTRACT, original_contract_text),
+                (STATUS, original_status_text),
+            ),
+            reconcile_error,
+        )
         raise
 
     print("Memory OS production-equivalent restore drill preflight reconciliation PASS")
@@ -317,6 +338,7 @@ def _reconcile() -> int:
     print("preflight/status writes use mode-preserving atomic same-directory replace: true")
     print("preflight and aggregate operability validated inside transaction: true")
     print("failed post-validation leaves derived preflight/status mutation behind: false")
+    print("rollback attempts every preflight authority even after an earlier restore failure: true")
     print("registered generation inventory alone creates restore-planning authority: false")
     print("automatic prerequisite/request creation: false")
     print("restore executed: false")
