@@ -321,7 +321,9 @@ def main() -> int:
                 )
             )
         except Exception as rollback_exc:
-            raise rollback_exc from exc
+            raise Fail(
+                f"environment generation status reconcile failed: {exc}; rollback incomplete: {rollback_exc}"
+            ) from exc
         raise
 
     print("Memory OS production-equivalent generation status reconciliation PASS")
