@@ -144,11 +144,13 @@ def main() -> int:
         atomic_write_text(CONTRACT, updated_contract_text)
         run_post_validator(VALIDATOR, VALIDATOR_REL, "review independence validator")
         run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception:
+    except Exception as exc:
         try:
             atomic_write_text(CONTRACT, original_contract_text)
-        except OSError as restore_exc:
-            raise Fail(f"review independence contract rollback failed: {restore_exc}") from restore_exc
+        except Exception as rollback_exc:
+            raise Fail(
+                f"review independence reconcile failed: {exc}; rollback incomplete: {rollback_exc}"
+            ) from exc
         raise
     print("Memory OS production-equivalent environment review independence reconciliation PASS")
     print(f"eligible/reviewed generations: {eligible_count}/{eligible_count}")
