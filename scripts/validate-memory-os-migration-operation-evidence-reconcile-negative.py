@@ -115,6 +115,54 @@ def prove_postappend_failure_removes_new_record(tmp_path: Path) -> None:
             "new migration operation evidence remained after post-append validation failure")
 
 
+def prove_postappend_rollback_failure_preserves_diagnostics(tmp_path: Path) -> None:
+    creator = load_module(CREATOR, "migration_operation_creator_rollback_diagnostic_negative")
+    ledger = tmp_path / "rollback-failure-ledger"
+    record_path = tmp_path / "rollback-failure-record.json"
+    record = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    record["migrationRunId"] = "mgr_postappend_rollback_failure_negative"
+    record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    target = ledger / creator.expected_filename(record)
+
+    def accept_before(_: Path) -> None:
+        return None
+
+    def fail_after_append(_: Path) -> None:
+        raise creator.EvidenceValidationError("synthetic migration operation post-append rejection")
+
+    original_unlink = creator.Path.unlink
+
+    def fail_target_unlink(self: Path, *args, **kwargs):
+        if self == target:
+            raise OSError("synthetic migration operation append rollback rejection")
+        return original_unlink(self, *args, **kwargs)
+
+    creator.Path.unlink = fail_target_unlink
+    try:
+        rejected = False
+        try:
+            creator.append_record(
+                record_path,
+                ledger,
+                before_validator=accept_before,
+                after_validator=fail_after_append,
+            )
+        except creator.EvidenceValidationError as exc:
+            text = str(exc)
+            require("synthetic migration operation post-append rejection" in text,
+                    f"primary post-append rejection was lost: {exc}")
+            require("rollback incomplete" in text,
+                    f"append rollback incompleteness was not reported: {exc}")
+            require("synthetic migration operation append rollback rejection" in text,
+                    f"append rollback failure was lost: {exc}")
+            rejected = True
+        require(rejected, "migration operation append accepted validator plus rollback failure")
+        require(target.exists(), "append rollback failure fixture did not preserve failed target")
+    finally:
+        creator.Path.unlink = original_unlink
+        target.unlink(missing_ok=True)
+
+
 def prove_actual_cli_authority_substitution_rejected() -> None:
     creator = load_module(CREATOR, "migration_operation_creator_cli_authority_negative")
     canonical_root = creator.ROOT
@@ -395,12 +443,14 @@ def main() -> int:
         tmp_path = Path(tmp)
         prove_canonical_ledger_preappend_guard(tmp_path)
         prove_postappend_failure_removes_new_record(tmp_path)
+        prove_postappend_rollback_failure_preserves_diagnostics(tmp_path)
 
     prove_atomic_replace_preserves_mode(module)
     prove_atomic_replace_failure_rolls_back(module, originals, original_modes)
     prove_post_write_failure_rolls_back(module, originals, original_modes)
     prove_rollback_failure_is_exhaustive_and_preserves_diagnostics(module, originals, original_modes)
     print("PASS: migration operation append and reconcile are fail-closed, atomic, mode-preserving, and rollback-safe")
+    print("migration operation append rollback diagnostics: enforced")
     print("migration operation rollback exhaustiveness: enforced")
     print("migration operation primary plus rollback diagnostics: enforced")
     print("migration operation validator-chain substitution accepted: false")
