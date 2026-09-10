@@ -233,6 +233,55 @@ def prove_rollback_restore_failure_attempts_all(reconciler: object) -> None:
     print("PASS rollback: first restore failure does not skip later environment-generation authority restores")
 
 
+def prove_primary_and_rollback_diagnostics_preserved(
+    reconciler: object,
+    canonical_contract: bytes,
+    canonical_registry: bytes,
+    canonical_status: bytes,
+    canonical_contract_mode: int,
+    canonical_status_mode: int,
+) -> None:
+    original_write_text = reconciler.write_text
+    original_run_validator = reconciler.run_validator
+    original_restore_authorities = reconciler.restore_authorities
+
+    reconciler.write_text = lambda path, text: None
+
+    def fail_primary_validator(path: Path, expected_relative: Path, label: str) -> None:
+        if path == reconciler.OPERABILITY_VALIDATOR:
+            raise reconciler.Fail("synthetic primary post-validator failure")
+
+    def fail_rollback(authorities: tuple[tuple[Path, str], ...]) -> None:
+        raise reconciler.Fail("synthetic rollback restore failure")
+
+    reconciler.run_validator = fail_primary_validator
+    reconciler.restore_authorities = fail_rollback
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            text = str(exc)
+            require("synthetic primary post-validator failure" in text, f"primary failure diagnostic lost: {exc}")
+            require("rollback incomplete" in text, f"rollback-incomplete marker missing: {exc}")
+            require("synthetic rollback restore failure" in text, f"rollback failure diagnostic lost: {exc}")
+        else:
+            raise Fail("combined primary/rollback failure unexpectedly succeeded")
+    finally:
+        reconciler.write_text = original_write_text
+        reconciler.run_validator = original_run_validator
+        reconciler.restore_authorities = original_restore_authorities
+
+    assert_canonical_unchanged(
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+        "combined primary/rollback diagnostic failure",
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
+    print("PASS diagnostics: primary generation-status failure preserved alongside rollback failure")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(WORKFLOW.is_file(), "environment generation workflow missing")
@@ -355,6 +404,14 @@ def main() -> int:
         canonical_status_mode,
     )
     prove_rollback_restore_failure_attempts_all(reconciler)
+    prove_primary_and_rollback_diagnostics_preserved(
+        reconciler,
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+        canonical_contract_mode,
+        canonical_status_mode,
+    )
 
     observed: list[str] = []
     original_run_validator = reconciler.run_validator
@@ -394,6 +451,7 @@ def main() -> int:
     print("non-atomic environment generation diagnostic write accepted: false")
     print("second-authority replace failure triggers full rollback: true")
     print("rollback restore failure skips later authority restores: false")
+    print("primary reconcile diagnostic lost on rollback failure: false")
     print("aggregate operability failure triggers rollback: true")
     print("Environment generation reconcile negative suite PASS")
     print("production generation created: false")
