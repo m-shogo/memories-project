@@ -127,15 +127,64 @@ def prove_transaction_rollback(module) -> None:
                 path.write_bytes(original)
 
 
+def prove_exhaustive_rollback_diagnostics(module) -> None:
+    canonical_load = module.CANONICAL_LOAD_PATH.read_bytes()
+    canonical_status = module.CANONICAL_STATUS_PATH.read_bytes()
+    load_contract = copy.deepcopy(load_json(module.CANONICAL_LOAD_PATH))
+    status = copy.deepcopy(load_json(module.CANONICAL_STATUS_PATH))
+    original_validator = module.validate_current_authority
+    original_atomic_write = module.atomic_write
+    writes: list[Path] = []
+
+    def controlled_validator() -> None:
+        raise module.Fail("synthetic foundation post-validator rejection")
+
+    def controlled_atomic_write(path: Path, value) -> None:
+        writes.append(path)
+        if len(writes) == 3:
+            raise module.Fail("synthetic load rollback rejection")
+
+    module.validate_current_authority = controlled_validator
+    module.atomic_write = controlled_atomic_write
+    try:
+        try:
+            module.write_and_validate_transactionally(load_contract, status)
+        except module.Fail as exc:
+            message = str(exc)
+            require("production-equivalent foundation transaction failed" in message, f"missing transaction context: {message}")
+            require("synthetic foundation post-validator rejection" in message, f"primary failure was lost: {message}")
+            require("rollback incomplete" in message, f"rollback incomplete marker missing: {message}")
+            require("synthetic load rollback rejection" in message, f"rollback failure was lost: {message}")
+        else:
+            raise Fail("synthetic foundation rollback failure unexpectedly accepted")
+    finally:
+        module.validate_current_authority = original_validator
+        module.atomic_write = original_atomic_write
+
+    require(
+        writes == [
+            module.CANONICAL_LOAD_PATH,
+            module.CANONICAL_STATUS_PATH,
+            module.CANONICAL_LOAD_PATH,
+            module.CANONICAL_STATUS_PATH,
+        ],
+        f"foundation rollback did not attempt every authority after first restore failure: {writes!r}",
+    )
+    require(module.CANONICAL_LOAD_PATH.read_bytes() == canonical_load, "diagnostic negative mutated canonical load authority")
+    require(module.CANONICAL_STATUS_PATH.read_bytes() == canonical_status, "diagnostic negative mutated canonical production status")
+
+
 def main() -> int:
     module = load_module()
     prove_authority_identity(module)
     prove_validator_chain(module)
     prove_transaction_rollback(module)
+    prove_exhaustive_rollback_diagnostics(module)
 
     print("PASS: production-equivalent foundation exact data/executable authorities reject substitution")
     print("PASS: foundation validation includes dependency, load index, load and aggregate operability")
     print("PASS: post-write failure restores load authority and production status byte-for-byte")
+    print("PASS: rollback continues after restore failure and preserves primary plus rollback diagnostics")
     print("environment provisioned: false")
     print("production-equivalent dependencies: false")
     print("production evidence generated: false")
