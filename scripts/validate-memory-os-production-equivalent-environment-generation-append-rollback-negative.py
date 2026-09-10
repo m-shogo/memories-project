@@ -122,6 +122,49 @@ def prove_post_append_validation_rollback(writer) -> None:
     print("PASS rollback: post-append validation failure restores registry byte-for-byte and mode-for-mode")
 
 
+def prove_post_append_rollback_failure_preserves_diagnostics(writer) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-append-rollback-diagnostics-") as tmp:
+        registry = Path(tmp) / "generation-registry.v1.json"
+        registry.write_bytes(b'{"sentinel":"before"}\n')
+        registry.chmod(0o640)
+
+        original_registry = writer.REGISTRY
+        original_validate = writer.validate_registry_for_append
+        original_restore = writer.atomic_restore
+        writer.REGISTRY = registry
+
+        def reject_after_write(_value):
+            raise writer.Fail("synthetic post-append generation registry validation failure")
+
+        def reject_restore(_payload: bytes, _mode: int) -> None:
+            raise OSError("synthetic environment generation rollback restore rejection")
+
+        writer.validate_registry_for_append = reject_after_write
+        writer.atomic_restore = reject_restore
+        try:
+            try:
+                writer.write_registry_transactionally({"sentinel": "after"})
+            except writer.Fail as exc:
+                message = str(exc)
+                require(
+                    "synthetic post-append generation registry validation failure" in message,
+                    "rollback failure erased primary generation append validation diagnostic",
+                )
+                require("rollback incomplete" in message, "generation append rollback failure marker missing")
+                require(
+                    "synthetic environment generation rollback restore rejection" in message,
+                    "generation append rollback failure diagnostic missing",
+                )
+            else:
+                raise Fail("generation append validation plus rollback failure was accepted")
+            require(not generation_temp_files(registry), "rollback diagnostic negative left temporary registry files")
+        finally:
+            writer.atomic_restore = original_restore
+            writer.validate_registry_for_append = original_validate
+            writer.REGISTRY = original_registry
+    print("PASS diagnostics: generation append preserves primary validation and rollback failure diagnostics")
+
+
 def prove_failed_registration_releases_lock_for_retry(writer) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-lock-retry-") as tmp:
         temp_root = Path(tmp)
@@ -233,6 +276,7 @@ def main() -> int:
     prove_successful_atomic_write_preserves_mode(writer)
     prove_atomic_replace_rejection_preserves_registry(writer)
     prove_post_append_validation_rollback(writer)
+    prove_post_append_rollback_failure_preserves_diagnostics(writer)
     prove_failed_registration_releases_lock_for_retry(writer)
 
     print("Memory OS environment generation append rollback negative PASS")
@@ -240,6 +284,8 @@ def main() -> int:
     print("atomic append replace rejection preserves registry: byte-for-byte and mode-for-mode")
     print("post-append canonical registry revalidation: enforced")
     print("failed append registry rollback: byte-for-byte and mode-for-mode")
+    print("failed append primary validation diagnostic preservation: enforced")
+    print("failed append rollback diagnostic preservation: enforced")
     print("failed append temporary registry residue: false")
     print("failed registration lock stranded: false")
     print("failed registration close-failure lock stranded: false")
