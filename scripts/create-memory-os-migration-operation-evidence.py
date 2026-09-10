@@ -156,8 +156,14 @@ def append_record(
 
     try:
         after_validator(ledger)
-    except Exception:
-        target.unlink(missing_ok=True)
+    except Exception as exc:
+        try:
+            target.unlink(missing_ok=True)
+        except Exception as rollback_exc:
+            raise EvidenceValidationError(
+                f"migration operation evidence append failed: {exc}; "
+                f"rollback incomplete: {target}: {rollback_exc}"
+            ) from exc
         raise
     return target
 
