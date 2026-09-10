@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -114,6 +115,65 @@ def expect_atomic_replace_failure_rolls_back(module: Any, before: dict[Path, byt
         require(not leftovers, f"temporary migration evidence authority remained after replace failure: {leftovers}")
 
 
+def expect_rollback_failure_preserves_primary_and_continues(module: Any, before: dict[Path, bytes]) -> None:
+    paths = (CANONICAL_CONTRACT, CANONICAL_LIFECYCLE, CANONICAL_STATUS)
+    outputs = {path: module.load(path) for path in paths}
+    for value in outputs.values():
+        value["rollbackDiagnosticProbe"] = "must-not-persist"
+
+    original_validators = module.POST_WRITE_VALIDATORS
+    original_run = module.subprocess.run
+    original_atomic_replace = module.atomic_replace_bytes
+    validator_failed = False
+    first_restore_failure_injected = False
+    rollback_attempts: list[Path] = []
+
+    def fail_validator(args, *pargs, **kwargs):
+        nonlocal validator_failed
+        if isinstance(args, list) and len(args) >= 2 and args[0] == "python" and args[1] == str(module.REGISTRY_VALIDATOR):
+            validator_failed = True
+            raise subprocess.CalledProcessError(73, args)
+        return original_run(args, *pargs, **kwargs)
+
+    def fail_first_restore_after_restoring(path: Path, payload: bytes) -> None:
+        nonlocal first_restore_failure_injected
+        if validator_failed and path in paths and payload == before[path]:
+            rollback_attempts.append(path)
+            original_atomic_replace(path, payload)
+            if path == CANONICAL_CONTRACT and not first_restore_failure_injected:
+                first_restore_failure_injected = True
+                raise OSError("synthetic migration evidence rollback restore rejection")
+            return
+        original_atomic_replace(path, payload)
+
+    module.POST_WRITE_VALIDATORS = (module.REGISTRY_VALIDATOR,)
+    module.subprocess.run = fail_validator
+    module.atomic_replace_bytes = fail_first_restore_after_restoring
+    try:
+        rejected = False
+        try:
+            module.commit_outputs_transactionally(outputs)
+        except module.Fail as exc:
+            text = str(exc)
+            require("returned non-zero exit status 73" in text, f"primary validator failure was lost: {exc}")
+            require("rollback incomplete" in text, f"rollback incompleteness was not reported: {exc}")
+            require("synthetic migration evidence rollback restore rejection" in text,
+                    f"rollback restore failure was lost: {exc}")
+            rejected = True
+        require(rejected, "migration evidence reconciler accepted validator plus rollback restore failure")
+    finally:
+        module.POST_WRITE_VALIDATORS = original_validators
+        module.subprocess.run = original_run
+        module.atomic_replace_bytes = original_atomic_replace
+
+    require(rollback_attempts == list(paths),
+            f"migration evidence rollback did not continue after first restore failure: {rollback_attempts}")
+    for path in paths:
+        require(path.read_bytes() == before[path], f"rollback diagnostic failure mutated {path.relative_to(ROOT)}")
+        leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(not leftovers, f"temporary migration evidence authority remained after rollback diagnostic failure: {leftovers}")
+
+
 def expect_orphan_atomic_replace_failure_preserves_authority(module: Any, before: dict[Path, bytes]) -> None:
     original_replace = module.os.replace
     calls = 0
@@ -204,6 +264,8 @@ def prove_registry_reconcile_authorities(before: dict[Path, bytes]) -> None:
     print("PASS authority reject: registry post-write validator chain")
     expect_atomic_replace_failure_rolls_back(module, before)
     print("PASS atomic rollback: registry derived authority")
+    expect_rollback_failure_preserves_primary_and_continues(module, before)
+    print("PASS rollback diagnostics: registry primary failure preserved and all authorities attempted")
 
 
 def prove_orphan_rescue_authorities(before: dict[Path, bytes]) -> None:
