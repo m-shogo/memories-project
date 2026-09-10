@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import copy
 import importlib.util
+import stat
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,8 +72,21 @@ def authority_identity_negative(module) -> None:
         module.OPERABILITY_VALIDATOR_PATH = real_operability
 
 
+def atomic_replace_mode_preservation(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-local-migration-recovery-mode-") as temp_dir:
+        fixture = Path(temp_dir) / "authority.json"
+        fixture.write_bytes(b"before\n")
+        fixture.chmod(0o640)
+        module.atomic_replace_bytes(fixture, b"after\n")
+        require(fixture.read_bytes() == b"after\n",
+                "local recovery atomic replacement did not publish fixture payload")
+        require(stat.S_IMODE(fixture.stat().st_mode) == 0o640,
+                "local recovery atomic replacement did not preserve existing authority mode")
+
+
 def atomic_replace_negative(module) -> None:
     original_contract = module.CONTRACT_PATH.read_bytes()
+    original_mode = stat.S_IMODE(module.CONTRACT_PATH.stat().st_mode)
     original_replace = module.os.replace
 
     def fail_replace(source, destination) -> None:
@@ -91,6 +106,8 @@ def atomic_replace_negative(module) -> None:
 
     require(module.CONTRACT_PATH.read_bytes() == original_contract,
             "local recovery-artifact contract changed after atomic replace failure")
+    require(stat.S_IMODE(module.CONTRACT_PATH.stat().st_mode) == original_mode,
+            "local recovery-artifact contract mode changed after atomic replace failure")
     leftovers = list(module.CONTRACT_PATH.parent.glob(f".{module.CONTRACT_PATH.name}.*.tmp"))
     require(not leftovers, f"local recovery atomic replace left temporary authority files: {leftovers}")
 
@@ -98,6 +115,7 @@ def atomic_replace_negative(module) -> None:
 def rollback_negative(module) -> None:
     run_id = select_local_run(module)
     original_contract = module.CONTRACT_PATH.read_bytes()
+    original_mode = stat.S_IMODE(module.CONTRACT_PATH.stat().st_mode)
     real_load = module.load
     real_parse_args = module.parse_args
     real_run_validator = module.run_validator
@@ -139,17 +157,21 @@ def rollback_negative(module) -> None:
         require(calls == expected, "local recovery validator transaction order drift")
         require(module.CONTRACT_PATH.read_bytes() == original_contract,
                 "local recovery-artifact contract was not rolled back byte-for-byte")
+        require(stat.S_IMODE(module.CONTRACT_PATH.stat().st_mode) == original_mode,
+                "local recovery-artifact contract mode changed after rollback")
     finally:
         module.load = real_load
         module.parse_args = real_parse_args
         module.run_validator = real_run_validator
         if module.CONTRACT_PATH.read_bytes() != original_contract:
             module.CONTRACT_PATH.write_bytes(original_contract)
+        module.CONTRACT_PATH.chmod(original_mode)
 
 
 def rollback_failure_diagnostic_negative(module) -> None:
     run_id = select_local_run(module)
     original_contract = module.CONTRACT_PATH.read_bytes()
+    original_mode = stat.S_IMODE(module.CONTRACT_PATH.stat().st_mode)
     real_load = module.load
     real_parse_args = module.parse_args
     real_run_validator = module.run_validator
@@ -205,6 +227,8 @@ def rollback_failure_diagnostic_negative(module) -> None:
         require(rollback_injected, "local recovery rollback restore failure injection did not execute")
         require(module.CONTRACT_PATH.read_bytes() == original_contract,
                 "local recovery contract changed after rollback diagnostic failure")
+        require(stat.S_IMODE(module.CONTRACT_PATH.stat().st_mode) == original_mode,
+                "local recovery contract mode changed after rollback diagnostic failure")
     finally:
         module.load = real_load
         module.parse_args = real_parse_args
@@ -212,6 +236,7 @@ def rollback_failure_diagnostic_negative(module) -> None:
         module.atomic_replace_bytes = real_atomic_replace
         if module.CONTRACT_PATH.read_bytes() != original_contract:
             module.CONTRACT_PATH.write_bytes(original_contract)
+        module.CONTRACT_PATH.chmod(original_mode)
 
 
 def main() -> int:
@@ -221,11 +246,13 @@ def main() -> int:
     )
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
+    atomic_replace_mode_preservation(reconciler)
     atomic_replace_negative(reconciler)
     rollback_negative(reconciler)
     rollback_failure_diagnostic_negative(reconciler)
     print("Memory OS local migration recovery-artifact reconcile negative suite PASS")
     print("canonical validator identity: enforced")
+    print("atomic publication preserves existing authority mode: enforced")
     print("atomic publication failure preserves canonical authority: enforced")
     print("post-write aggregate rollback: enforced")
     print("primary plus rollback failure diagnostics: enforced")
