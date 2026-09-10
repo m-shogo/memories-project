@@ -8,6 +8,7 @@ import copy
 import datetime as dt
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -125,10 +126,13 @@ def render(value: dict[str, Any]) -> bytes:
 
 
 def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
+            if existing_mode is not None:
+                os.fchmod(handle.fileno(), existing_mode)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, path)
@@ -270,9 +274,18 @@ def commit_validated_triple(
         atomic_replace_bytes(STATUS_PATH, render(status))
         for validator in POST_WRITE_VALIDATORS:
             run_validator(validator, phase="reconciled")
-    except BaseException:
+    except BaseException as exc:
+        rollback_errors: list[str] = []
         for path, payload in originals.items():
-            atomic_replace_bytes(path, payload)
+            try:
+                atomic_replace_bytes(path, payload)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise ReconcileFailure(
+                f"migration operation authority reconcile failed: {exc}; "
+                f"rollback incomplete: {'; '.join(rollback_errors)}"
+            ) from exc
         raise
 
 
