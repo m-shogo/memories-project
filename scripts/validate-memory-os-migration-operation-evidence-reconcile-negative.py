@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 import subprocess
 import sys
 import tempfile
@@ -223,7 +224,23 @@ def prove_validator_chain_substitution_rejected(module, originals: dict[Path, by
                 f"{path.name} changed after rejected validator-chain substitution")
 
 
-def prove_atomic_replace_failure_rolls_back(module, originals: dict[Path, bytes]) -> None:
+def prove_atomic_replace_preserves_mode(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="migration-operation-mode-negative-") as temp_dir:
+        fixture = Path(temp_dir) / "authority.json"
+        fixture.write_bytes(b"before\n")
+        fixture.chmod(0o640)
+        module.atomic_replace_bytes(fixture, b"after\n")
+        require(fixture.read_bytes() == b"after\n",
+                "migration operation atomic replacement did not publish fixture payload")
+        require(stat.S_IMODE(fixture.stat().st_mode) == 0o640,
+                "migration operation atomic replacement changed existing authority mode")
+
+
+def prove_atomic_replace_failure_rolls_back(
+    module,
+    originals: dict[Path, bytes],
+    original_modes: dict[Path, int],
+) -> None:
     candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
     for candidate in candidates:
         candidate["atomicRollbackProbe"] = "must-not-persist"
@@ -254,11 +271,17 @@ def prove_atomic_replace_failure_rolls_back(module, originals: dict[Path, bytes]
     for path, payload in originals.items():
         require(path.read_bytes() == payload,
                 f"{path.name} changed after synthetic atomic replace failure")
+        require(stat.S_IMODE(path.stat().st_mode) == original_modes[path],
+                f"{path.name} mode changed after synthetic atomic replace failure")
         leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
         require(not leftovers, f"temporary migration operation authority remained after replace failure: {leftovers}")
 
 
-def prove_post_write_failure_rolls_back(module, originals: dict[Path, bytes]) -> None:
+def prove_post_write_failure_rolls_back(
+    module,
+    originals: dict[Path, bytes],
+    original_modes: dict[Path, int],
+) -> None:
     candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
     for candidate in candidates:
         candidate["rollbackProbe"] = "must-not-persist"
@@ -290,6 +313,69 @@ def prove_post_write_failure_rolls_back(module, originals: dict[Path, bytes]) ->
     for path, payload in originals.items():
         require(path.read_bytes() == payload,
                 f"{path.name} changed after rejected migration operation reconcile")
+        require(stat.S_IMODE(path.stat().st_mode) == original_modes[path],
+                f"{path.name} mode changed after rejected migration operation reconcile")
+
+
+def prove_rollback_failure_is_exhaustive_and_preserves_diagnostics(
+    module,
+    originals: dict[Path, bytes],
+    original_modes: dict[Path, int],
+) -> None:
+    candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
+    for candidate in candidates:
+        candidate["rollbackDiagnosticProbe"] = "must-not-persist"
+
+    original_run_validator = module.run_validator
+    real_atomic_replace = module.atomic_replace_bytes
+    post_write_failure_seen = False
+    rollback_attempts: list[Path] = []
+    rollback_failure_injected = False
+
+    def fail_post_write_validator(path: Path, *, phase: str) -> None:
+        nonlocal post_write_failure_seen
+        post_write_failure_seen = True
+        raise module.ReconcileFailure("synthetic migration operation post-write validator rejection")
+
+    def fail_first_restore_after_restoring(path: Path, payload: bytes) -> None:
+        nonlocal rollback_failure_injected
+        if post_write_failure_seen and path in originals and payload == originals[path]:
+            rollback_attempts.append(path)
+            real_atomic_replace(path, payload)
+            if not rollback_failure_injected:
+                rollback_failure_injected = True
+                raise OSError("synthetic migration operation rollback restore rejection")
+            return
+        real_atomic_replace(path, payload)
+
+    module.run_validator = fail_post_write_validator
+    module.atomic_replace_bytes = fail_first_restore_after_restoring
+    try:
+        rejected = False
+        try:
+            module.commit_validated_triple(*candidates)
+        except module.ReconcileFailure as exc:
+            text = str(exc)
+            require("synthetic migration operation post-write validator rejection" in text,
+                    f"primary migration operation failure was lost: {exc}")
+            require("rollback incomplete" in text,
+                    f"migration operation rollback incompleteness was not reported: {exc}")
+            require("synthetic migration operation rollback restore rejection" in text,
+                    f"migration operation rollback failure was lost: {exc}")
+            rejected = True
+        require(rejected, "migration operation reconciler accepted validator plus rollback failure")
+    finally:
+        module.run_validator = original_run_validator
+        module.atomic_replace_bytes = real_atomic_replace
+
+    require(rollback_failure_injected, "migration operation rollback failure injection did not execute")
+    require(rollback_attempts == list(originals),
+            "migration operation rollback stopped before attempting every canonical authority")
+    for path, payload in originals.items():
+        require(path.read_bytes() == payload,
+                f"{path.name} changed after rollback failure diagnostic case")
+        require(stat.S_IMODE(path.stat().st_mode) == original_modes[path],
+                f"{path.name} mode changed after rollback failure diagnostic case")
 
 
 def main() -> int:
@@ -298,6 +384,7 @@ def main() -> int:
         LIFECYCLE: LIFECYCLE.read_bytes(),
         STATUS: STATUS.read_bytes(),
     }
+    original_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in originals}
     module = load_module(RECONCILER, "migration_operation_reconciler")
     prove_stronger_authority_is_preserved(module, originals[LIFECYCLE])
     prove_contract_guards_are_required(originals[CONTRACT])
@@ -309,9 +396,13 @@ def main() -> int:
         prove_canonical_ledger_preappend_guard(tmp_path)
         prove_postappend_failure_removes_new_record(tmp_path)
 
-    prove_atomic_replace_failure_rolls_back(module, originals)
-    prove_post_write_failure_rolls_back(module, originals)
-    print("PASS: migration operation append and reconcile are fail-closed, atomic, and rollback-safe")
+    prove_atomic_replace_preserves_mode(module)
+    prove_atomic_replace_failure_rolls_back(module, originals, original_modes)
+    prove_post_write_failure_rolls_back(module, originals, original_modes)
+    prove_rollback_failure_is_exhaustive_and_preserves_diagnostics(module, originals, original_modes)
+    print("PASS: migration operation append and reconcile are fail-closed, atomic, mode-preserving, and rollback-safe")
+    print("migration operation rollback exhaustiveness: enforced")
+    print("migration operation primary plus rollback diagnostics: enforced")
     print("migration operation validator-chain substitution accepted: false")
     print("migration operation actual CLI authority substitution accepted: false")
     return 0
