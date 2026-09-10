@@ -180,6 +180,7 @@ def main() -> int:
     original_registry_path = writer.REGISTRY
     original_validate_registry = writer.validate_registry_for_append
     original_replace = writer.os.replace
+    original_atomic_restore = writer.atomic_restore
     with tempfile.TemporaryDirectory(prefix="memory-os-promotion-review-append-rollback-") as registry_tmp:
         temp_registry = Path(registry_tmp) / "promotion-registry.json"
         write_json(temp_registry, registry)
@@ -209,6 +210,24 @@ def main() -> int:
 
             temp_registry.write_bytes(before)
             temp_registry.chmod(before_mode)
+            writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic post-append promotion validation failure"))
+            writer.atomic_restore = lambda _payload, _mode: (_ for _ in ()).throw(OSError("synthetic promotion rollback restore rejection"))
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                message = str(exc)
+                require("synthetic post-append promotion validation failure" in message, "promotion append rollback failure erased primary validation diagnostic")
+                require("rollback incomplete" in message, "promotion append rollback failure marker missing")
+                require("synthetic promotion rollback restore rejection" in message, "promotion append rollback failure diagnostic missing")
+                print("PASS diagnostics: promotion append preserves primary validation and rollback failure diagnostics")
+            else:
+                raise Fail("promotion append validation plus rollback failure unexpectedly succeeded")
+            finally:
+                writer.atomic_restore = original_atomic_restore
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")), "promotion registry rollback diagnostic negative left temporary residue")
+
+            temp_registry.write_bytes(before)
+            temp_registry.chmod(before_mode)
             writer.validate_registry_for_append = original_validate_registry
 
             def reject_replace(source: str | Path, destination: str | Path) -> None:
@@ -234,6 +253,7 @@ def main() -> int:
             writer.REGISTRY = original_registry_path
             writer.validate_registry_for_append = original_validate_registry
             writer.os.replace = original_replace
+            writer.atomic_restore = original_atomic_restore
 
     require(writer.EVIDENCE_ROOT.is_dir(), "monitored backup/restore evidence namespace missing")
     with tempfile.TemporaryDirectory(prefix=".promotion-review-negative-", dir=writer.EVIDENCE_ROOT) as tmp:
@@ -401,6 +421,8 @@ def main() -> int:
     print("promotion review lock substitution accepted: false")
     print("corrupt promotion registry accepted on append: false")
     print("post-append promotion registry validation failure persisted: false")
+    print("promotion append primary validation diagnostic preservation: enforced")
+    print("promotion append rollback diagnostic preservation: enforced")
     print("promotion registry mode drift accepted: false")
     print("promotion registry replace rejection mutated canonical state: false")
     print("promotion registry temporary residue retained: false")
