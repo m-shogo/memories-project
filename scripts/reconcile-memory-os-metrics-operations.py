@@ -174,17 +174,28 @@ def validate_written_authority() -> None:
 
 def write_transactionally(metrics: dict[str, Any], status: dict[str, Any]) -> None:
     enforce_runtime_authorities()
-    original_metrics = METRICS_PATH.read_bytes()
-    original_status = STATUS_PATH.read_bytes()
+    originals = {
+        METRICS_PATH: METRICS_PATH.read_bytes(),
+        STATUS_PATH: STATUS_PATH.read_bytes(),
+    }
     metrics_payload = (json.dumps(metrics, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     status_payload = (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     try:
         CANONICAL_ATOMIC_WRITE_BYTES(METRICS_PATH, metrics_payload)
         CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, status_payload)
         validate_written_authority()
-    except BaseException:
-        CANONICAL_ATOMIC_WRITE_BYTES(METRICS_PATH, original_metrics)
-        CANONICAL_ATOMIC_WRITE_BYTES(STATUS_PATH, original_status)
+    except BaseException as exc:
+        rollback_errors: list[str] = []
+        for path, payload in originals.items():
+            try:
+                CANONICAL_ATOMIC_WRITE_BYTES(path, payload)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise ReconcileFailure(
+                f"metrics operations reconcile failed: {exc}; "
+                f"rollback incomplete: {'; '.join(rollback_errors)}"
+            ) from exc
         raise
 
 
