@@ -186,8 +186,14 @@ def main() -> int:
         run_validator(REGISTRY_VALIDATOR_PATH)
         run_validator(LIFECYCLE_VALIDATOR_PATH)
         run_validator(OPERABILITY_VALIDATOR_PATH)
-    except Exception:
-        atomic_replace_bytes(CONTRACT_PATH, original_contract)
+    except Exception as exc:
+        try:
+            atomic_replace_bytes(CONTRACT_PATH, original_contract)
+        except Exception as rollback_exc:
+            raise Fail(
+                f"local migration recovery-artifact reconcile failed: {exc}; "
+                f"rollback incomplete: {CONTRACT_PATH.relative_to(ROOT)}: {rollback_exc}"
+            ) from exc
         raise
 
     print("Memory OS local migration recovery-artifact reconciliation PASS")
