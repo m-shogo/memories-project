@@ -231,6 +231,7 @@ def main() -> int:
         original_registry = writer.REGISTRY
         original_validate = writer.validate_registry_for_append
         original_replace = writer.os.replace
+        original_atomic_restore = writer.atomic_restore
         writer.REGISTRY = registry
 
         def accept_after_write(_value):
@@ -272,8 +273,35 @@ def main() -> int:
             require(registry.read_bytes() == original, "failed drill request append did not restore original registry bytes")
             require(file_mode(registry) == expected_mode, "failed drill request append did not restore original registry mode")
             require_no_temp_residue(registry)
+
+            def reject_rollback_restore(_payload, _mode=None):
+                raise writer.Fail("synthetic drill request rollback restore failure")
+
+            writer.atomic_restore = reject_rollback_restore
+            try:
+                writer.write_registry_transactionally({"sentinel": "rollback-failure"})
+            except writer.Fail as exc:
+                text = str(exc)
+                require("primary failure" in text, "drill request rollback failure lost primary failure marker")
+                require(
+                    "synthetic post-append drill request registry validation failure" in text,
+                    "drill request rollback failure lost primary validator diagnostic",
+                )
+                require("rollback incomplete" in text, "drill request rollback failure missing incomplete rollback marker")
+                require(
+                    "synthetic drill request rollback restore failure" in text,
+                    "drill request rollback failure diagnostic missing restore cause",
+                )
+            else:
+                raise Fail("drill request rollback restore failure was accepted")
+            finally:
+                writer.atomic_restore = original_atomic_restore
+                registry.write_bytes(original)
+                registry.chmod(expected_mode)
+            require_no_temp_residue(registry)
         finally:
             writer.os.replace = original_replace
+            writer.atomic_restore = original_atomic_restore
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validate
 
@@ -285,6 +313,7 @@ def main() -> int:
     print("replace rejection registry bytes/mode preservation: enforced")
     print("post-append canonical registry revalidation: enforced")
     print("failed append registry rollback: byte-for-byte and mode-preserving")
+    print("append rollback failure preserves primary and rollback diagnostics: enforced")
     print("lock close failure stranded lock: false")
     print("lock close failure retry reacquisition: enforced")
     print("reconcile second/third replace partial transaction accepted: false")
