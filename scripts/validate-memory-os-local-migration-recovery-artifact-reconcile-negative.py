@@ -147,6 +147,73 @@ def rollback_negative(module) -> None:
             module.CONTRACT_PATH.write_bytes(original_contract)
 
 
+def rollback_failure_diagnostic_negative(module) -> None:
+    run_id = select_local_run(module)
+    original_contract = module.CONTRACT_PATH.read_bytes()
+    real_load = module.load
+    real_parse_args = module.parse_args
+    real_run_validator = module.run_validator
+    real_atomic_replace = module.atomic_replace_bytes
+    calls: list[Path] = []
+    post_write_failure_seen = False
+    rollback_injected = False
+
+    def stale_contract_load(path: Path):
+        value = real_load(path)
+        if path != module.CONTRACT_PATH:
+            return value
+        candidate = copy.deepcopy(value)
+        readiness = candidate.get("readiness")
+        require(isinstance(readiness, dict), "local recovery readiness missing in rollback diagnostic fixture")
+        readiness["localActualRecoveryArtifactRestoreProven"] = False
+        return candidate
+
+    def fake_run_validator(path: Path, *args: str) -> None:
+        nonlocal post_write_failure_seen
+        calls.append(path)
+        if len(calls) == 8 and path == module.OPERABILITY_VALIDATOR_PATH:
+            post_write_failure_seen = True
+            raise module.Fail("synthetic aggregate operability rejection")
+
+    def fail_restore_after_restoring(path: Path, payload: bytes) -> None:
+        nonlocal rollback_injected
+        if post_write_failure_seen and path == module.CONTRACT_PATH and payload == original_contract:
+            real_atomic_replace(path, payload)
+            if not rollback_injected:
+                rollback_injected = True
+                raise OSError("synthetic local recovery rollback restore rejection")
+            return
+        real_atomic_replace(path, payload)
+
+    module.load = stale_contract_load
+    module.parse_args = lambda: argparse.Namespace(run_id=run_id)
+    module.run_validator = fake_run_validator
+    module.atomic_replace_bytes = fail_restore_after_restoring
+    try:
+        try:
+            module.main()
+        except module.Fail as exc:
+            text = str(exc)
+            require("synthetic aggregate operability rejection" in text,
+                    f"primary local recovery validator failure was lost: {exc}")
+            require("rollback incomplete" in text,
+                    f"local recovery rollback incompleteness was not reported: {exc}")
+            require("synthetic local recovery rollback restore rejection" in text,
+                    f"local recovery rollback restore failure was lost: {exc}")
+        else:
+            raise Fail("local recovery reconciler accepted validator plus rollback restore failure")
+        require(rollback_injected, "local recovery rollback restore failure injection did not execute")
+        require(module.CONTRACT_PATH.read_bytes() == original_contract,
+                "local recovery contract changed after rollback diagnostic failure")
+    finally:
+        module.load = real_load
+        module.parse_args = real_parse_args
+        module.run_validator = real_run_validator
+        module.atomic_replace_bytes = real_atomic_replace
+        if module.CONTRACT_PATH.read_bytes() != original_contract:
+            module.CONTRACT_PATH.write_bytes(original_contract)
+
+
 def main() -> int:
     reconciler = load_module(
         RECONCILER,
@@ -156,10 +223,12 @@ def main() -> int:
     authority_identity_negative(reconciler)
     atomic_replace_negative(reconciler)
     rollback_negative(reconciler)
+    rollback_failure_diagnostic_negative(reconciler)
     print("Memory OS local migration recovery-artifact reconcile negative suite PASS")
     print("canonical validator identity: enforced")
     print("atomic publication failure preserves canonical authority: enforced")
     print("post-write aggregate rollback: enforced")
+    print("primary plus rollback failure diagnostics: enforced")
     print("production-equivalent recovery artifact restore: false")
     print("production ready: false")
     return 0
