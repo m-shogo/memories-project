@@ -367,8 +367,14 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
     atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
-    except Exception:
-        atomic_restore(original, original_mode)
+    except Exception as primary_exc:
+        try:
+            atomic_restore(original, original_mode)
+        except Exception as rollback_exc:
+            raise Fail(
+                "environment generation registry append validation failed: "
+                f"{primary_exc}; rollback incomplete: {rollback_exc}"
+            ) from primary_exc
         raise
 
 
