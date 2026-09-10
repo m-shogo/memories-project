@@ -98,6 +98,7 @@ def enforce_runtime_authorities() -> None:
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    original_mode = path.stat().st_mode & 0o7777
     fd, tmp_name = tempfile.mkstemp(
         prefix=f".{path.name}.",
         suffix=".tmp",
@@ -106,6 +107,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     tmp_path = Path(tmp_name)
     try:
         with os.fdopen(fd, "wb") as handle:
+            os.fchmod(handle.fileno(), original_mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -118,8 +120,14 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
 
 
 def restore_originals_atomically(originals: dict[Path, bytes]) -> None:
+    rollback_errors: list[str] = []
     for path, payload in originals.items():
-        atomic_write_bytes(path, payload)
+        try:
+            atomic_write_bytes(path, payload)
+        except Exception as exc:
+            rollback_errors.append(f"{path.relative_to(ROOT)}: {exc}")
+    if rollback_errors:
+        raise Fail(f"rollback incomplete: {'; '.join(rollback_errors)}")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -351,8 +359,11 @@ def reconcile(orphans: list[tuple[int, Path, dict[str, Any]]], writer: ModuleTyp
                 check=False,
             )
             require(completed.returncode == 0, f"local recovery authority reconcile failed for {run_id}: {completed.stdout.strip()}")
-    except BaseException:
-        restore_originals_atomically(originals)
+    except BaseException as exc:
+        try:
+            restore_originals_atomically(originals)
+        except Exception as rollback_exc:
+            raise Fail(f"migration recovery orphan reconcile failed: {exc}; {rollback_exc}") from exc
         raise
     finally:
         os.close(lock_fd)
