@@ -74,7 +74,7 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
-    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to the canonical repository file")
     return path
 
 def require_canonical_runtime_authority(path: Path, canonical: Path, field: str) -> None:
@@ -379,8 +379,16 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
     atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
-    except Exception:
-        atomic_restore(original, original_mode)
+    except Exception as primary_exc:
+        try:
+            atomic_restore(original, original_mode)
+        except Exception as rollback_exc:
+            raise Fail(
+                "typed non-resurrection append failed; primary failure: "
+                + str(primary_exc)
+                + "; rollback incomplete: "
+                + str(rollback_exc)
+            ) from primary_exc
         raise
 
 def main() -> int:
