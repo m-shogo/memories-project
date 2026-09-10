@@ -91,7 +91,10 @@ def main() -> int:
     original_contract_path = reconciler.CONTRACT
     original_generation_registry_path = reconciler.GEN_REGISTRY
     original_post_validator = reconciler.run_post_validator
+    original_atomic_write = reconciler.atomic_write_text
     original_os_replace = reconciler.os.replace
+    canonical_contract = CONTRACT.read_bytes()
+    canonical_generation_registry = GEN_REGISTRY.read_bytes()
 
     # Fixture mutation is below the production authority boundary. Direct runtime
     # invocation remains canonical-only; this block exercises transaction failure paths.
@@ -168,18 +171,60 @@ def main() -> int:
             require(observed == ["review independence validator", "operability validator"], "canonical post-write validator order drift")
             require(contract_copy.read_bytes() == rollback_original, "aggregate rejection left review-independence contract mutation")
             print("PASS rollback: aggregate rejection restored review-independence contract byte-for-byte")
+
+            reconciler.run_post_validator = original_post_validator
+            diagnostic_original = contract_copy.read_bytes()
+            write_calls = 0
+
+            def fail_rollback_write(path: Path, text: str) -> None:
+                nonlocal write_calls
+                require(path == contract_copy, f"unexpected review-independence diagnostic write target: {path}")
+                write_calls += 1
+                if write_calls == 1:
+                    return
+                raise reconciler.Fail("synthetic review-independence rollback rejection")
+
+            def fail_post_validator(path: Path, expected_relative: Path, field: str) -> None:
+                raise reconciler.Fail("synthetic review-independence post-validator rejection")
+
+            reconciler.atomic_write_text = fail_rollback_write
+            reconciler.run_post_validator = fail_post_validator
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                message = str(exc)
+                require("review independence reconcile failed" in message, f"rollback failure missing reconcile context: {message}")
+                require("synthetic review-independence post-validator rejection" in message, f"rollback failure lost primary error: {message}")
+                require("rollback incomplete" in message, f"rollback failure missing incomplete marker: {message}")
+                require("synthetic review-independence rollback rejection" in message, f"rollback failure lost rollback error: {message}")
+            except Exception as exc:
+                raise Fail(f"review-independence rollback diagnostic leaked unexpected exception: {type(exc).__name__}: {exc}") from exc
+            else:
+                raise Fail("synthetic review-independence rollback failure unexpectedly accepted")
+            finally:
+                reconciler.atomic_write_text = original_atomic_write
+                reconciler.run_post_validator = original_post_validator
+            require(write_calls == 2, f"review-independence diagnostic did not attempt publication and rollback exactly once: {write_calls}")
+            require(contract_copy.read_bytes() == diagnostic_original, "review-independence rollback diagnostic mutated fixture contract")
+            require(CONTRACT.read_bytes() == canonical_contract, "canonical review-independence contract mutated by diagnostic fixture")
+            require(GEN_REGISTRY.read_bytes() == canonical_generation_registry, "canonical generation registry mutated by diagnostic fixture")
+            print("PASS rollback diagnostics: primary rejection and rollback failure are both preserved")
     finally:
         reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.CONTRACT = original_contract_path
         reconciler.GEN_REGISTRY = original_generation_registry_path
         reconciler.run_post_validator = original_post_validator
+        reconciler.atomic_write_text = original_atomic_write
         reconciler.os.replace = original_os_replace
 
+    require(CONTRACT.read_bytes() == canonical_contract, "canonical review-independence contract changed during negative suite")
+    require(GEN_REGISTRY.read_bytes() == canonical_generation_registry, "canonical generation registry changed during negative suite")
     print("Environment review-independence reconcile negative suite PASS")
     print("direct data/executable authority substitutions accepted: false")
     print("atomic replacement failure preserves canonical authority: true")
     print("atomic replacement temp cleanup: true")
     print("aggregate operability failure rolls back review-independence authority: true")
+    print("rollback failure preserves primary diagnostic: true")
     print("review evidence created: false")
     print("production evidence: false")
     print("production ready: false")
