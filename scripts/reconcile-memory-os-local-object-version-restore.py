@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,24 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
+
+
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        if existing_mode is not None:
+            os.fchmod(descriptor, existing_mode)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
 
 
 def validate_runtime_authority() -> None:
@@ -191,10 +210,8 @@ def main() -> int:
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
     original_status = STATUS_PATH.read_bytes()
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    payload = (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    atomic_replace_bytes(STATUS_PATH, payload)
     try:
         for validator in (
             VALIDATOR_PATH,
@@ -202,8 +219,14 @@ def main() -> int:
             OPERABILITY_VALIDATOR_PATH,
         ):
             run_validator(validator)
-    except Exception:
-        STATUS_PATH.write_bytes(original_status)
+    except Exception as exc:
+        try:
+            atomic_replace_bytes(STATUS_PATH, original_status)
+        except Exception as rollback_exc:
+            raise ReconcileFailure(
+                f"local object-version restore reconcile failed: {exc}; "
+                f"rollback incomplete: {STATUS_PATH.relative_to(ROOT)}: {rollback_exc}"
+            ) from exc
         raise
 
     print("Registered exact-source local object-version restore PASS; canonical production blockers unchanged")
