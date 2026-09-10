@@ -120,20 +120,29 @@ def atomic_write(path: Path, payload: bytes, mode: int) -> None:
 
 
 def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
-    original_contract = CONTRACT.read_bytes()
-    original_status = STATUS.read_bytes()
-    contract_mode = CONTRACT.stat().st_mode & 0o7777
-    status_mode = STATUS.stat().st_mode & 0o7777
+    originals = {
+        CONTRACT: (CONTRACT.read_bytes(), CONTRACT.stat().st_mode & 0o7777),
+        STATUS: (STATUS.read_bytes(), STATUS.stat().st_mode & 0o7777),
+    }
     try:
-        atomic_write(CONTRACT, render(contract), contract_mode)
-        atomic_write(STATUS, render(status), status_mode)
+        atomic_write(CONTRACT, render(contract), originals[CONTRACT][1])
+        atomic_write(STATUS, render(status), originals[STATUS][1])
         for validator in POST_WRITE_VALIDATORS:
             completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
             require(completed.returncode == 0,
                     f"reconciled contact routing authority failed validation: {validator.name}")
-    except BaseException:
-        atomic_write(CONTRACT, original_contract, contract_mode)
-        atomic_write(STATUS, original_status, status_mode)
+    except BaseException as exc:
+        rollback_errors: list[str] = []
+        for path, (payload, mode) in originals.items():
+            try:
+                atomic_write(path, payload, mode)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise Fail(
+                f"incident contact routing reconcile failed: {exc}; "
+                f"rollback incomplete: {'; '.join(rollback_errors)}"
+            ) from exc
         raise
 
 
