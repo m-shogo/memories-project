@@ -121,7 +121,6 @@ def expect_rollback_failure_preserves_primary_and_continues(module: Any, before:
     for value in outputs.values():
         value["rollbackDiagnosticProbe"] = "must-not-persist"
 
-    original_validators = module.POST_WRITE_VALIDATORS
     original_run = module.subprocess.run
     original_atomic_replace = module.atomic_replace_bytes
     validator_failed = False
@@ -146,7 +145,6 @@ def expect_rollback_failure_preserves_primary_and_continues(module: Any, before:
             return
         original_atomic_replace(path, payload)
 
-    module.POST_WRITE_VALIDATORS = (module.REGISTRY_VALIDATOR,)
     module.subprocess.run = fail_validator
     module.atomic_replace_bytes = fail_first_restore_after_restoring
     try:
@@ -162,7 +160,6 @@ def expect_rollback_failure_preserves_primary_and_continues(module: Any, before:
             rejected = True
         require(rejected, "migration evidence reconciler accepted validator plus rollback restore failure")
     finally:
-        module.POST_WRITE_VALIDATORS = original_validators
         module.subprocess.run = original_run
         module.atomic_replace_bytes = original_atomic_replace
 
