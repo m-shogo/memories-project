@@ -199,11 +199,13 @@ def main() -> int:
     original_generation_registry_path = reconciler.GEN_REGISTRY
     original_load_helper = reconciler.load_helper
     original_post_validator = reconciler.run_post_validator
+    original_atomic_write = reconciler.atomic_write_text
     original_os_replace = reconciler.os.replace
+    canonical_before = canonical_bytes()
 
     # Fixture mutation is deliberately below the production CLI authority boundary:
     # direct main() remains canonical-only, while the internal reconcile core proves
-    # semantic drift rejection, atomic replacement, and aggregate rollback.
+    # semantic drift rejection, atomic replacement, aggregate rollback, and diagnostic preservation.
     try:
         with tempfile.TemporaryDirectory(prefix=".tmp-environment-eligibility-reconcile-", dir=TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
@@ -305,14 +307,53 @@ def main() -> int:
             require(observed == ["environment eligibility validator", "operability validator"], "canonical post-write validator order drift")
             require(contract_copy.read_bytes() == rollback_original, "failed aggregate validation left eligibility contract mutation")
             print("PASS rollback: aggregate rejection restored eligibility contract byte-for-byte")
+
+            reconciler.run_post_validator = original_post_validator
+            diagnostic_original = contract_copy.read_bytes()
+            write_calls = 0
+
+            def fail_rollback_write(path: Path, text: str) -> None:
+                nonlocal write_calls
+                require(path == contract_copy, f"unexpected eligibility diagnostic write target: {path}")
+                write_calls += 1
+                if write_calls == 1:
+                    return
+                raise reconciler.Fail("synthetic eligibility rollback rejection")
+
+            def fail_post_validator(path: Path, expected_relative: Path, field: str) -> None:
+                raise reconciler.Fail("synthetic eligibility post-validator rejection")
+
+            reconciler.atomic_write_text = fail_rollback_write
+            reconciler.run_post_validator = fail_post_validator
+            try:
+                reconciler._reconcile()
+            except reconciler.Fail as exc:
+                message = str(exc)
+                require("environment eligibility reconcile failed" in message, f"rollback failure missing reconcile context: {message}")
+                require("synthetic eligibility post-validator rejection" in message, f"rollback failure lost primary error: {message}")
+                require("rollback incomplete" in message, f"rollback failure missing incomplete marker: {message}")
+                require("synthetic eligibility rollback rejection" in message, f"rollback failure lost rollback error: {message}")
+            except Exception as exc:
+                raise Fail(f"eligibility rollback diagnostic leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+            else:
+                raise Fail("synthetic eligibility rollback failure unexpectedly accepted")
+            finally:
+                reconciler.atomic_write_text = original_atomic_write
+                reconciler.run_post_validator = original_post_validator
+            require(write_calls == 2, f"eligibility diagnostic did not attempt publication and rollback exactly once: {write_calls}")
+            require(contract_copy.read_bytes() == diagnostic_original, "eligibility rollback diagnostic fixture mutated fixture contract")
+            assert_canonical_unchanged(canonical_before, "eligibility rollback diagnostic")
+            print("PASS rollback diagnostics: primary rejection and rollback failure are both preserved")
     finally:
         reconciler.CONTRACT = original_contract_path
         reconciler.GEN_CONTRACT = original_generation_contract_path
         reconciler.GEN_REGISTRY = original_generation_registry_path
         reconciler.load_helper = original_load_helper
         reconciler.run_post_validator = original_post_validator
+        reconciler.atomic_write_text = original_atomic_write
         reconciler.os.replace = original_os_replace
 
+    assert_canonical_unchanged(canonical_before, "eligibility reconcile negative suite")
     print("Environment generation eligibility reconcile negative suite PASS")
     print("validator data/executable authority substitutions accepted: false")
     print("validator execution helper substitutions accepted: false")
@@ -324,6 +365,7 @@ def main() -> int:
     print("atomic replacement failure preserves canonical authority: true")
     print("atomic replacement temp cleanup: true")
     print("aggregate operability failure rolls back eligibility authority: true")
+    print("rollback failure preserves primary diagnostic: true")
     print("failed post-validation leaves eligibility authority mutation behind: false")
     print("production evidence: false")
     print("production ready: false")
