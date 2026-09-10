@@ -79,6 +79,7 @@ def main() -> int:
         original_registry = writer.REGISTRY
         original_validate = writer.validate_registry_for_append
         original_replace = writer.os.replace
+        original_atomic_restore = writer.atomic_restore
         writer.REGISTRY = registry
 
         try:
@@ -126,10 +127,31 @@ def main() -> int:
             require(registry.read_bytes() == original, "failed objective append did not restore original registry bytes")
             require(mode(registry) == 0o640, "failed objective append did not restore original registry mode")
             require(not residue(root), "objective append rollback left temporary residue")
+
+            def reject_rollback_restore(_payload, _mode):
+                raise writer.Fail("synthetic objective rollback restore failure")
+
+            writer.atomic_restore = reject_rollback_restore
+            try:
+                writer.write_registry_transactionally({"sentinel": "rollback-failure"})
+            except writer.Fail as exc:
+                text = str(exc)
+                require("primary failure" in text, "rollback failure lost primary failure marker")
+                require("synthetic post-append registry validation failure" in text, "rollback failure lost primary validator diagnostic")
+                require("rollback incomplete" in text, "rollback failure missing incomplete rollback marker")
+                require("synthetic objective rollback restore failure" in text, "rollback failure diagnostic missing restore cause")
+            else:
+                raise Fail("objective append rollback restore failure was accepted")
+            finally:
+                writer.atomic_restore = original_atomic_restore
+                registry.write_bytes(original)
+                registry.chmod(0o640)
+            require(not residue(root), "rollback diagnostic negative left temporary residue")
         finally:
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validate
             writer.os.replace = original_replace
+            writer.atomic_restore = original_atomic_restore
 
         outside_file = root / "outside-authority.json"
         outside_file.write_text("{}\n", encoding="utf-8")
@@ -163,6 +185,7 @@ def main() -> int:
     print("successful append registry mode preservation: enforced")
     print("candidate replace rejection preserves canonical bytes/mode: enforced")
     print("failed append registry rollback: exact bytes and mode")
+    print("rollback failure preserves primary and rollback diagnostics: enforced")
     print("candidate/rollback temporary residue: none")
     print("CLI contract/registry/approval-directory/lock substitution accepted: false")
     print("objective created: false")
