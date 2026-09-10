@@ -140,8 +140,10 @@ def validate_current_authority() -> None:
 
 
 def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
-    original_contract = CONTRACT.read_bytes()
-    original_status = STATUS.read_bytes()
+    originals = {
+        CONTRACT: CONTRACT.read_bytes(),
+        STATUS: STATUS.read_bytes(),
+    }
     try:
         atomic_replace_bytes(CONTRACT, render(contract))
         atomic_replace_bytes(STATUS, render(status))
@@ -149,9 +151,18 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
             completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
             require(completed.returncode == 0,
                     f"reconciled observability stack authority failed validation: {validator.name}")
-    except BaseException:
-        atomic_replace_bytes(CONTRACT, original_contract)
-        atomic_replace_bytes(STATUS, original_status)
+    except BaseException as exc:
+        rollback_errors: list[str] = []
+        for path, payload in originals.items():
+            try:
+                atomic_replace_bytes(path, payload)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise Fail(
+                f"observability stack reconcile failed: {exc}; "
+                f"rollback incomplete: {'; '.join(rollback_errors)}"
+            ) from exc
         raise
 
 
