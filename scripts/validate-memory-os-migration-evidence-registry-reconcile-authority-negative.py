@@ -176,6 +176,7 @@ def expect_rollback_failure_preserves_primary_and_continues(module: Any, before:
 
 def expect_orphan_atomic_replace_failure_preserves_authority(module: Any, before: dict[Path, bytes]) -> None:
     original_replace = module.os.replace
+    before_mode = CANONICAL_STATUS.stat().st_mode & 0o7777
     calls = 0
 
     def fail_replace(source, destination) -> None:
@@ -199,6 +200,8 @@ def expect_orphan_atomic_replace_failure_preserves_authority(module: Any, before
     require(calls == 1, "orphan rescue atomic writer did not reach os.replace exactly once")
     require(CANONICAL_STATUS.read_bytes() == before[CANONICAL_STATUS],
             "orphan rescue replace failure mutated production operability status")
+    require((CANONICAL_STATUS.stat().st_mode & 0o7777) == before_mode,
+            "orphan rescue replace failure changed production operability status mode")
     leftovers = list(CANONICAL_STATUS.parent.glob(f".{CANONICAL_STATUS.name}.*.tmp"))
     require(not leftovers, f"temporary orphan rescue authority remained after replace failure: {leftovers}")
 
@@ -234,6 +237,53 @@ def expect_orphan_restore_routes_through_atomic_writer(module: Any, before: dict
     require("path.write_bytes(payload)" not in source,
             "orphan rescue failure path regressed to direct rollback write_bytes")
     require_canonical_bytes_unchanged(before, "orphan atomic rollback routing")
+
+
+def expect_orphan_restore_failure_continues(module: Any, before: dict[Path, bytes]) -> None:
+    paths = (
+        CANONICAL_REGISTRY,
+        CANONICAL_CONTRACT,
+        CANONICAL_LIFECYCLE,
+        CANONICAL_LOCAL_CONTRACT,
+        CANONICAL_STATUS,
+    )
+    originals = {path: before[path] for path in paths}
+    before_modes = {path: path.stat().st_mode & 0o7777 for path in paths}
+    original_writer = module.atomic_write_bytes
+    attempts: list[Path] = []
+    first_failure_injected = False
+
+    def fail_first_after_restore(path: Path, payload: bytes) -> None:
+        nonlocal first_failure_injected
+        attempts.append(path)
+        original_writer(path, payload)
+        if not first_failure_injected:
+            first_failure_injected = True
+            raise OSError("synthetic orphan rollback restore rejection")
+
+    module.atomic_write_bytes = fail_first_after_restore
+    try:
+        rejected = False
+        try:
+            module.restore_originals_atomically(originals)
+        except module.Fail as exc:
+            text = str(exc)
+            require("rollback incomplete" in text, f"orphan rollback incompleteness was not reported: {exc}")
+            require("synthetic orphan rollback restore rejection" in text,
+                    f"orphan rollback restore failure was lost: {exc}")
+            rejected = True
+        require(rejected, "orphan rescue rollback accepted a restore failure")
+    finally:
+        module.atomic_write_bytes = original_writer
+
+    require(attempts == list(paths),
+            f"orphan rollback did not continue after first restore failure: {attempts}")
+    for path in paths:
+        require(path.read_bytes() == before[path], f"orphan rollback failure mutated {path.relative_to(ROOT)}")
+        require((path.stat().st_mode & 0o7777) == before_modes[path],
+                f"orphan rollback failure changed mode for {path.relative_to(ROOT)}")
+        leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(not leftovers, f"temporary orphan rollback authority remained: {leftovers}")
 
 
 def prove_registry_reconcile_authorities(before: dict[Path, bytes]) -> None:
@@ -288,9 +338,11 @@ def prove_orphan_rescue_authorities(before: dict[Path, bytes]) -> None:
         expect_path_substitution_rejected(module, attribute, replacement, label, before)
         print(f"PASS authority reject: {label}")
     expect_orphan_atomic_replace_failure_preserves_authority(module, before)
-    print("PASS atomic replace failure: orphan rescue authority preserved")
+    print("PASS atomic replace failure and mode preservation: orphan rescue authority")
     expect_orphan_restore_routes_through_atomic_writer(module, before)
     print("PASS atomic rollback routing: orphan rescue authorities")
+    expect_orphan_restore_failure_continues(module, before)
+    print("PASS exhaustive rollback: orphan rescue attempts all authorities after restore failure")
 
 
 def main() -> int:
