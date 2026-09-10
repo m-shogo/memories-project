@@ -82,6 +82,7 @@ def expect_validator_chain_substitution_rejected(module: Any, before: dict[Path,
 
 def expect_atomic_replace_failure_rolls_back(module: Any, before: dict[Path, bytes]) -> None:
     paths = (CANONICAL_CONTRACT, CANONICAL_LIFECYCLE, CANONICAL_STATUS)
+    before_modes = {path: path.stat().st_mode & 0o7777 for path in paths}
     outputs = {path: module.load(path) for path in paths}
     for value in outputs.values():
         value["atomicRollbackProbe"] = "must-not-persist"
@@ -111,6 +112,8 @@ def expect_atomic_replace_failure_rolls_back(module: Any, before: dict[Path, byt
     require(calls >= 5, "migration evidence rollback did not atomically restore all canonical authorities")
     for path in paths:
         require(path.read_bytes() == before[path], f"atomic replace failure mutated {path.relative_to(ROOT)}")
+        require((path.stat().st_mode & 0o7777) == before_modes[path],
+                f"atomic replace failure changed mode for {path.relative_to(ROOT)}")
         leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
         require(not leftovers, f"temporary migration evidence authority remained after replace failure: {leftovers}")
 
@@ -260,7 +263,7 @@ def prove_registry_reconcile_authorities(before: dict[Path, bytes]) -> None:
     expect_validator_chain_substitution_rejected(module, before)
     print("PASS authority reject: registry post-write validator chain")
     expect_atomic_replace_failure_rolls_back(module, before)
-    print("PASS atomic rollback: registry derived authority")
+    print("PASS atomic rollback and mode preservation: registry derived authority")
     expect_rollback_failure_preserves_primary_and_continues(module, before)
     print("PASS rollback diagnostics: registry primary failure preserved and all authorities attempted")
 
