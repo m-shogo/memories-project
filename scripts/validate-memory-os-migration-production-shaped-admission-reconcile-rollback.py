@@ -148,6 +148,66 @@ def aggregate_rollback_rejected(
     require_authorities_unchanged(originals, modes, "aggregate rollback")
 
 
+def rollback_failure_preserves_primary_and_continues(
+    module: ModuleType,
+    originals: dict[Path, bytes],
+    modes: dict[Path, int],
+) -> None:
+    original_run = module.subprocess.run
+    original_atomic_replace = module.atomic_replace_bytes
+    rollback_attempts: list[Path] = []
+    post_write_failure_seen = False
+    first_restore_failure_injected = False
+
+    def injected_run(args, *pargs, **kwargs):
+        nonlocal post_write_failure_seen
+        if (
+            isinstance(args, list)
+            and len(args) >= 2
+            and args[0] == "python"
+            and args[1] == str(module.OPERABILITY_VALIDATOR)
+        ):
+            post_write_failure_seen = True
+            raise subprocess.CalledProcessError(73, args)
+        return original_run(args, *pargs, **kwargs)
+
+    def injected_atomic_replace(path: Path, payload: bytes) -> None:
+        nonlocal first_restore_failure_injected
+        if post_write_failure_seen and path in originals and payload == originals[path]:
+            rollback_attempts.append(path)
+            original_atomic_replace(path, payload)
+            if path == CONTRACT and not first_restore_failure_injected:
+                first_restore_failure_injected = True
+                raise OSError("injected migration rollback restore rejection")
+            return
+        original_atomic_replace(path, payload)
+
+    module.subprocess.run = injected_run
+    module.atomic_replace_bytes = injected_atomic_replace
+    try:
+        try:
+            module.main()
+        except module.Fail as exc:
+            text = str(exc)
+            require("returned non-zero exit status 73" in text, f"primary validator failure was lost: {exc}")
+            require("rollback incomplete" in text, f"rollback incompleteness was not reported: {exc}")
+            require(
+                "injected migration rollback restore rejection" in text,
+                f"rollback restore failure was lost: {exc}",
+            )
+        else:
+            raise Fail("reconciler accepted aggregate validator plus rollback restore failure")
+    finally:
+        module.subprocess.run = original_run
+        module.atomic_replace_bytes = original_atomic_replace
+
+    require(
+        rollback_attempts == list(originals),
+        f"rollback did not attempt every authority after the first restore failure: {rollback_attempts}",
+    )
+    require_authorities_unchanged(originals, modes, "rollback failure diagnostics")
+
+
 def main() -> int:
     module = load_reconciler()
     authorities = (CONTRACT, LIFECYCLE, STATUS)
@@ -157,7 +217,8 @@ def main() -> int:
     executable_substitution_rejected(module, originals, modes)
     data_authority_substitution_rejected(module, originals, modes)
     aggregate_rollback_rejected(module, originals, modes)
-    print("PASS: migration production-shaped reconciler preserves authority modes, rejects executable/data authority substitution, and rolls back contract, lifecycle, and status bytes/modes after aggregate validation failure")
+    rollback_failure_preserves_primary_and_continues(module, originals, modes)
+    print("PASS: migration production-shaped reconciler preserves authority modes, rejects executable/data authority substitution, rolls back contract/lifecycle/status after aggregate failure, and preserves primary plus exhaustive rollback diagnostics when restore fails")
     return 0
 
 
