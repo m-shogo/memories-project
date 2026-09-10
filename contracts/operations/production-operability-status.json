@@ -101,7 +101,9 @@
         "docs/evidence/migrations/recovery/mig_20260821_fbc4dd4c973e.json",
         "docs/evidence/migrations/recovery/mig_20260824_f3582ffaefde.json",
         "docs/evidence/migrations/recovery/mig_20260824_5793b8e5b560.json",
-        "docs/evidence/migrations/recovery/mig_20260824_eb8b278ba7af.json"
+        "docs/evidence/migrations/recovery/mig_20260824_eb8b278ba7af.json",
+        "docs/evidence/migrations/recovery/mig_20260910_dca31cad0398.json",
+        "docs/evidence/migrations/recovery/mig_20260910_9c8069735ab1.json"
       ]
     },
     {
