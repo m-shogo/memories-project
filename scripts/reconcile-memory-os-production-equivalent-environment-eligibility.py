@@ -191,11 +191,13 @@ def _reconcile() -> int:
         atomic_write_text(CONTRACT, updated_contract_text)
         run_post_validator(VALIDATOR, VALIDATOR_REL, "environment eligibility validator")
         run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception:
+    except Exception as exc:
         try:
             atomic_write_text(CONTRACT, original_contract_text)
-        except OSError as restore_exc:
-            raise Fail(f"eligibility contract rollback failed: {restore_exc}") from restore_exc
+        except Exception as rollback_exc:
+            raise Fail(
+                f"environment eligibility reconcile failed: {exc}; rollback incomplete: {rollback_exc}"
+            ) from exc
         raise
 
     print("Memory OS production-equivalent environment eligibility reconciliation PASS")
