@@ -141,6 +141,50 @@ def exercise_writer_registry_append_guard(writer) -> None:
     reject("generation writer production ready boundary drift before append", lambda value: value.update(productionReady=True))
 
 
+def exercise_writer_rollback_diagnostics(writer) -> None:
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-writer-rollback-diagnostics-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        registry = tmp / writer.CANONICAL_REGISTRY.name
+        registry.write_bytes(writer.CANONICAL_REGISTRY.read_bytes())
+        registry.chmod(0o640)
+        value = writer.load(registry)
+
+        original_registry = writer.REGISTRY
+        original_validate = writer.validate_registry_for_append
+        original_restore = writer.atomic_restore
+        rollback_attempted = False
+
+        def reject_post_append(_registry: dict) -> list[dict]:
+            raise writer.Fail("synthetic generation evidence append post-validator rejection")
+
+        def reject_rollback(_payload: bytes, _mode: int) -> None:
+            nonlocal rollback_attempted
+            rollback_attempted = True
+            raise writer.Fail("synthetic generation evidence append rollback restore rejection")
+
+        writer.REGISTRY = registry
+        writer.validate_registry_for_append = reject_post_append
+        writer.atomic_restore = reject_rollback
+        try:
+            try:
+                writer.write_registry_transactionally(value)
+            except writer.Fail as exc:
+                message = str(exc)
+                require("synthetic generation evidence append post-validator rejection" in message, "generation evidence writer rollback diagnostics lost primary validator rejection")
+                require("rollback incomplete" in message, "generation evidence writer rollback diagnostics missing incomplete marker")
+                require("synthetic generation evidence append rollback restore rejection" in message, "generation evidence writer rollback diagnostics lost rollback rejection")
+            else:
+                raise Fail("generation evidence writer rollback diagnostic failure unexpectedly accepted")
+        finally:
+            writer.atomic_restore = original_restore
+            writer.validate_registry_for_append = original_validate
+            writer.REGISTRY = original_registry
+
+        require(rollback_attempted, "generation evidence writer rollback diagnostics did not attempt rollback")
+
+    print("PASS diagnostics: generation evidence writer preserves primary validator + rollback failure")
+
+
 def exercise_reconciler_transaction_rollback(reconciler) -> None:
     output_names = ("REGISTRY", "CONTRACT", "BINDING", "STATUS")
     for fail_index in (2, 3, 4):
@@ -258,6 +302,7 @@ def main() -> int:
     require(writer.canonical_repo_file(WRITER, "generation evidence writer") == WRITER, "canonical writer path rejected")
     require(callable(getattr(writer, "validate_registry_for_append", None)), "generation writer append authority guard missing")
     exercise_writer_registry_append_guard(writer)
+    exercise_writer_rollback_diagnostics(writer)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -275,6 +320,7 @@ def main() -> int:
 
     print("Generation evidence unreadable/escaped-authority negative suite PASS")
     print("generation writer append authority drift accepted: false")
+    print("generation evidence writer rollback diagnostics preserve primary + rollback failures: true")
     print("generation evidence partial multi-authority transaction accepted: false")
     print("generation evidence transaction rollback preserves exact bytes+mode: true")
     print("generation evidence rollback diagnostics preserve primary + rollback failures: true")
