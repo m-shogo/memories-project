@@ -146,9 +146,18 @@ def write_and_validate_transactionally(
         atomic_write(LOAD_PATH, load_contract)
         atomic_write(STATUS_PATH, status)
         validate_current_authority()
-    except Exception:
+    except Exception as exc:
+        rollback_errors: list[str] = []
         for path, data in originals.items():
-            atomic_write(path, data)
+            try:
+                atomic_write(path, data)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise Fail(
+                "production-equivalent foundation transaction failed: "
+                f"{exc}; rollback incomplete: {'; '.join(rollback_errors)}"
+            ) from exc
         raise
 
 
