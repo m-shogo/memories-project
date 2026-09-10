@@ -195,8 +195,17 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
             enforce_runtime_authorities()
             subprocess.run(["python", str(validator)], cwd=ROOT, check=True)
     except Exception as exc:
+        rollback_errors: list[str] = []
         for path, data in originals.items():
-            atomic_replace_bytes(path, data)
+            try:
+                atomic_replace_bytes(path, data)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise Fail(
+                f"migration evidence reconcile validation failed: {exc}; "
+                f"rollback incomplete: {'; '.join(rollback_errors)}"
+            ) from exc
         raise Fail(f"migration evidence reconcile validation failed; restored prior authority: {exc}") from exc
 
 
