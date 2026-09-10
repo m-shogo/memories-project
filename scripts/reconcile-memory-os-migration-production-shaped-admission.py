@@ -265,9 +265,18 @@ def main() -> int:
         subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
         subprocess.run(["python", str(LIFECYCLE_VALIDATOR)], cwd=ROOT, check=True)
         subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
-    except Exception:
+    except Exception as exc:
+        rollback_errors: list[str] = []
         for path, content in originals.items():
-            atomic_replace_bytes(path, content)
+            try:
+                atomic_replace_bytes(path, content)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise Fail(
+                f"migration production-shaped admission reconcile failed: {exc}; "
+                f"rollback incomplete: {'; '.join(rollback_errors)}"
+            ) from exc
         raise
 
     print("Memory OS migration production-shaped admission reconciliation PASS")
