@@ -187,19 +187,18 @@ def prove_atomic_replace_failure(reconciler) -> None:
     path = reconciler.OPERATIONS_PATH
     original = path.read_bytes()
     original_mode = path.stat().st_mode & 0o777
-    original_replace = reconciler.os.replace
     pattern = f".{path.name}.*.tmp"
     before = {item.name for item in path.parent.glob(pattern)}
+    original_replace = reconciler.os.replace
 
-    def reject_replace(source, destination) -> None:
-        if Path(destination) == path:
-            raise OSError("synthetic atomic replace rejection")
-        original_replace(source, destination)
+    def reject_replace(_source, _destination) -> None:
+        raise OSError("synthetic atomic replace rejection")
 
+    test_writer = reconciler._build_atomic_write_bytes(reject_replace)
     reconciler.os.replace = reject_replace
     try:
         try:
-            reconciler.atomic_write_bytes(path, b"synthetic operation authority\n")
+            test_writer(path, b"synthetic operation authority\n")
         except OSError as exc:
             if "synthetic atomic replace rejection" not in str(exc):
                 raise RuntimeError(f"atomic replacement failed for unrelated reason: {exc}") from exc
@@ -214,7 +213,8 @@ def prove_atomic_replace_failure(reconciler) -> None:
             raise RuntimeError(f"atomic replacement left temporary residue: {sorted(after - before)}")
     finally:
         reconciler.os.replace = original_replace
-        path.write_bytes(original)
+        if path.read_bytes() != original:
+            path.write_bytes(original)
         path.chmod(original_mode)
 
 
