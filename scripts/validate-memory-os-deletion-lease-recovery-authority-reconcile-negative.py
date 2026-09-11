@@ -113,6 +113,66 @@ def expect_post_write_rollback(module) -> None:
         raise AssertionError(f"lease authority rollback left temp residue: {residue!r}")
 
 
+def expect_rollback_failure_is_exhaustive(module) -> None:
+    original_load = LOAD_CONTRACT.read_bytes()
+    original_status = STATUS.read_bytes()
+    original_load_mode = stat.S_IMODE(LOAD_CONTRACT.stat().st_mode)
+    original_status_mode = stat.S_IMODE(STATUS.stat().st_mode)
+    original_validate = module.normalize_and_validate_authority
+    original_replace = module.os.replace
+    rollback_replace_calls = 0
+
+    def fail_validation_and_arm_rollback() -> None:
+        nonlocal rollback_replace_calls
+
+        def fail_first_rollback_replace(source, target):
+            nonlocal rollback_replace_calls
+            rollback_replace_calls += 1
+            if rollback_replace_calls == 1:
+                raise OSError("synthetic lease rollback replacement failure")
+            return original_replace(source, target)
+
+        module.os.replace = fail_first_rollback_replace
+        raise SystemExit("synthetic lease primary post-write validation failure")
+
+    module.normalize_and_validate_authority = fail_validation_and_arm_rollback
+    caught: BaseException | None = None
+    try:
+        try:
+            module.main()
+        except BaseException as exc:
+            caught = exc
+        if caught is None:
+            raise AssertionError("lease-recovery reconcile accepted synthetic rollback failure")
+        text = str(caught)
+        if "synthetic lease primary post-write validation failure" not in text:
+            raise AssertionError(f"lease rollback failure masked primary diagnostic: {text}")
+        if "rollback incomplete" not in text:
+            raise AssertionError(f"lease rollback failure omitted incomplete diagnostic: {text}")
+        if "synthetic lease rollback replacement failure" not in text:
+            raise AssertionError(f"lease rollback failure omitted rollback diagnostic: {text}")
+        if rollback_replace_calls != 2:
+            raise AssertionError(
+                f"lease rollback stopped before restoring every authority: replace calls={rollback_replace_calls}"
+            )
+        if STATUS.read_bytes() != original_status:
+            raise AssertionError("lease rollback failure prevented later production-status restore")
+        if stat.S_IMODE(STATUS.stat().st_mode) != original_status_mode:
+            raise AssertionError("lease rollback failure changed later production-status mode")
+    finally:
+        module.normalize_and_validate_authority = original_validate
+        module.os.replace = original_replace
+        module.CANONICAL_ATOMIC_WRITE_BYTES(LOAD_CONTRACT, original_load)
+        module.CANONICAL_ATOMIC_WRITE_BYTES(STATUS, original_status)
+        LOAD_CONTRACT.chmod(original_load_mode)
+        STATUS.chmod(original_status_mode)
+
+    residue = list(LOAD_CONTRACT.parent.glob(f".{LOAD_CONTRACT.name}.*.tmp"))
+    residue += list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    if residue:
+        raise AssertionError(f"lease rollback failure left temp residue: {residue!r}")
+
+
 def main() -> int:
     module = load_module()
     substitutions = {
@@ -158,8 +218,10 @@ def main() -> int:
     module.require_canonical_authorities()
     expect_post_write_rollback(module)
     module.require_canonical_authorities()
+    expect_rollback_failure_is_exhaustive(module)
+    module.require_canonical_authorities()
 
-    print("PASS: lease-recovery authority pins canonical data/execution paths, atomic publication, mode and rollback")
+    print("PASS: lease-recovery authority pins canonical data/execution paths, atomic publication, mode and exhaustive rollback")
     return 0
 
 
