@@ -80,6 +80,48 @@ def expect_atomic_replace_failure(module) -> None:
             raise SystemExit("successful atomic replacement changed target mode")
 
 
+def expect_exhaustive_rollback_failure(module, original_load: bytes, original_status: bytes) -> None:
+    original_normalize = module.normalize_and_validate_authority
+    original_writer = module.CANONICAL_ATOMIC_WRITE_BYTES
+    rollback_calls: list[Path] = []
+
+    def reject_post_write() -> None:
+        def selective_restore(path: Path, payload: bytes) -> None:
+            rollback_calls.append(path)
+            if path == module.LOAD_CONTRACT:
+                raise OSError("synthetic container-kill load rollback failure")
+            original_writer(path, payload)
+
+        module.CANONICAL_ATOMIC_WRITE_BYTES = selective_restore
+        raise RuntimeError("synthetic container-kill post-write validation failure")
+
+    module.normalize_and_validate_authority = reject_post_write
+    try:
+        try:
+            module.main()
+        except module.ReconcileFailure as exc:
+            diagnostic = str(exc)
+            for needle in (
+                "synthetic container-kill post-write validation failure",
+                "rollback incomplete",
+                "synthetic container-kill load rollback failure",
+            ):
+                if needle not in diagnostic:
+                    raise SystemExit(f"container-kill rollback diagnostic lost {needle!r}: {diagnostic}") from exc
+        else:
+            raise SystemExit("container-kill rollback failure was accepted")
+
+        if rollback_calls[:2] != [module.LOAD_CONTRACT, module.STATUS]:
+            raise SystemExit(f"container-kill rollback stopped before all authorities: {rollback_calls!r}")
+        if STATUS.read_bytes() != original_status:
+            raise SystemExit("container-kill rollback did not restore status after load restore failure")
+    finally:
+        module.normalize_and_validate_authority = original_normalize
+        module.CANONICAL_ATOMIC_WRITE_BYTES = original_writer
+        original_writer(LOAD_CONTRACT, original_load)
+        original_writer(STATUS, original_status)
+
+
 def main() -> int:
     original_load = LOAD_CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
@@ -146,12 +188,18 @@ def main() -> int:
         module.CANONICAL_ATOMIC_WRITE_BYTES(LOAD_CONTRACT, original_load)
         module.CANONICAL_ATOMIC_WRITE_BYTES(STATUS, original_status)
 
+    expect_exhaustive_rollback_failure(module, original_load, original_status)
+    if stat.S_IMODE(LOAD_CONTRACT.stat().st_mode) != original_load_mode:
+        raise SystemExit("container-kill exhaustive rollback changed load authority mode")
+    if stat.S_IMODE(STATUS.stat().st_mode) != original_status_mode:
+        raise SystemExit("container-kill exhaustive rollback changed production status mode")
+
     residue = list(LOAD_CONTRACT.parent.glob(f".{LOAD_CONTRACT.name}.*.tmp"))
     residue += list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
     if residue:
         raise SystemExit(f"container-kill rollback left temp residue: {residue!r}")
 
-    print("PASS: container-kill authority identity, execution transport, atomic mode and post-write rollback are fail-closed")
+    print("PASS: container-kill authority identity, atomic mode, primary diagnostics, and exhaustive rollback are fail-closed")
     return 0
 
 
