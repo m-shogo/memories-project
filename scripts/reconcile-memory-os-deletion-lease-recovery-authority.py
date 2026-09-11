@@ -224,9 +224,21 @@ def main() -> int:
         write(LOAD_CONTRACT, load_contract)
         write(STATUS, status)
         normalize_and_validate_authority()
-    except BaseException:
-        atomic_write_bytes(LOAD_CONTRACT, original_load)
-        atomic_write_bytes(STATUS, original_status)
+    except BaseException as exc:
+        rollback_errors: list[str] = []
+        for label, path, payload in (
+            ("load authority", LOAD_CONTRACT, original_load),
+            ("production status", STATUS, original_status),
+        ):
+            try:
+                atomic_write_bytes(path, payload)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{label}: {rollback_exc}")
+        if rollback_errors:
+            raise RuntimeError(
+                f"lease-recovery post-write authority validation failed: {exc}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
         raise
 
     print("Memory OS deletion lease recovery canonical reconciliation PASS")
