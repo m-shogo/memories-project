@@ -170,8 +170,17 @@ def commit_outputs_transactionally(
                 + completed.stderr[-4000:],
             )
     except Exception as exc:
+        rollback_errors: list[str] = []
         for path, data in originals.items():
-            _atomic_write(path, data)
+            try:
+                _atomic_write(path, data)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path}: {rollback_exc}")
+        if rollback_errors:
+            raise Fail(
+                f"distributed runtime reconcile validation failed: {exc}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
         raise Fail(f"distributed runtime reconcile validation failed; restored prior authority: {exc}") from exc
 
 
