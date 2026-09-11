@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import stat
 import tempfile
@@ -76,6 +77,77 @@ def expect_rejection(
     finally:
         restore()
     assert_unchanged(before)
+
+
+def expect_rollback_failure_exhaustive(module: ModuleType) -> None:
+    original_contract = module.CANONICAL_CONTRACT.read_bytes()
+    original_status = module.CANONICAL_STATUS.read_bytes()
+    original_contract_mode = stat.S_IMODE(module.CANONICAL_CONTRACT.stat().st_mode)
+    original_status_mode = stat.S_IMODE(module.CANONICAL_STATUS.stat().st_mode)
+    original_validate_writer = module.validate_atomic_writer_authority
+    original_writer = module.CANONICAL_ATOMIC_WRITE_BYTES
+    rollback_calls: list[Path] = []
+    validation_calls = 0
+
+    contract = json.loads(original_contract.decode("utf-8"))
+    status = json.loads(original_status.decode("utf-8"))
+    readiness = contract.setdefault("readiness", {})
+    readiness["contractDefined"] = False
+
+    def stateful_validate_writer() -> None:
+        nonlocal validation_calls
+        validation_calls += 1
+        if validation_calls == 1:
+            original_validate_writer()
+            return
+        if validation_calls == 2:
+            def selective_restore(path: Path, payload: bytes) -> None:
+                rollback_calls.append(path)
+                if path == module.CANONICAL_CONTRACT:
+                    raise OSError("synthetic host-failure contract rollback failure")
+                original_writer(path, payload)
+
+            module.CANONICAL_ATOMIC_WRITE_BYTES = selective_restore
+            return
+        raise AssertionError(f"unexpected atomic-writer validation call: {validation_calls}")
+
+    module.validate_atomic_writer_authority = stateful_validate_writer
+    try:
+        try:
+            module.write_transactionally(contract, status)
+        except module.Fail as exc:
+            diagnostic = str(exc)
+            require("host-failure post-write authority validation failed" in diagnostic,
+                    f"primary host-failure validation diagnostic was lost: {diagnostic}")
+            require("rollback incomplete" in diagnostic,
+                    f"host-failure rollback incompleteness was not diagnosed: {diagnostic}")
+            require("synthetic host-failure contract rollback failure" in diagnostic,
+                    f"host-failure rollback diagnostic was lost: {diagnostic}")
+        else:
+            raise RuntimeError("host-failure rollback failure was accepted")
+
+        require(rollback_calls[:2] == [module.CANONICAL_CONTRACT, module.CANONICAL_STATUS],
+                f"host-failure rollback did not continue after first restore failure: {rollback_calls!r}")
+        require(module.CANONICAL_STATUS.read_bytes() == original_status,
+                "host-failure rollback did not restore production status after first restore failure")
+        require(stat.S_IMODE(module.CANONICAL_STATUS.stat().st_mode) == original_status_mode,
+                "host-failure rollback changed production status mode")
+    finally:
+        module.validate_atomic_writer_authority = original_validate_writer
+        module.CANONICAL_ATOMIC_WRITE_BYTES = original_writer
+        original_writer(module.CANONICAL_CONTRACT, original_contract)
+        original_writer(module.CANONICAL_STATUS, original_status)
+        module.CANONICAL_CONTRACT.chmod(original_contract_mode)
+        module.CANONICAL_STATUS.chmod(original_status_mode)
+
+    require(module.CANONICAL_CONTRACT.read_bytes() == original_contract,
+            "host-failure rollback negative cleanup changed contract bytes")
+    require(module.CANONICAL_STATUS.read_bytes() == original_status,
+            "host-failure rollback negative cleanup changed status bytes")
+    require(stat.S_IMODE(module.CANONICAL_CONTRACT.stat().st_mode) == original_contract_mode,
+            "host-failure rollback negative cleanup changed contract mode")
+    require(stat.S_IMODE(module.CANONICAL_STATUS.stat().st_mode) == original_status_mode,
+            "host-failure rollback negative cleanup changed status mode")
 
 
 def main() -> int:
@@ -155,8 +227,9 @@ def main() -> int:
         require(stat.S_IMODE(target.stat().st_mode) == 0o640, "atomic host-failure writer changed file mode")
         require(not list(target.parent.glob(f".{target.name}.*.tmp")), "atomic host-failure writer left temp residue")
 
+    expect_rollback_failure_exhaustive(module)
     assert_unchanged(snapshots(module))
-    print("PASS: host-failure reconcile authority transaction is fail-closed")
+    print("PASS: host-failure reconcile authority transaction, mode preservation, and exhaustive rollback diagnostics are fail-closed")
     return 0
 
 
