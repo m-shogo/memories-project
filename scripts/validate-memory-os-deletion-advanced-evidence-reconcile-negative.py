@@ -197,7 +197,51 @@ def main() -> int:
         if calls != expected:
             raise AssertionError(f"validator order drift: {calls!r} != {expected!r}")
 
-    print("PASS: advanced deletion evidence reconcile uses atomic mode-preserving publication and rolls back after aggregate rejection")
+        # A rollback failure on the first authority must not prevent restoring the
+        # remaining authority, and the primary validator diagnostic must survive.
+        load_contract.write_bytes(before_load)
+        status.write_bytes(before_status)
+        calls.clear()
+        original_atomic_write = module.atomic_write_bytes
+        write_counts = {load_contract: 0, status: 0}
+        rollback_attempts: list[Path] = []
+
+        def fail_first_rollback(path: Path, payload: bytes) -> None:
+            if path in write_counts:
+                write_counts[path] += 1
+                if write_counts[path] == 2:
+                    rollback_attempts.append(path)
+                    if path == load_contract:
+                        raise OSError("synthetic advanced deletion rollback failure")
+            original_atomic_write(path, payload)
+
+        module.atomic_write_bytes = fail_first_rollback
+        try:
+            try:
+                module.main()
+            except RuntimeError as exc:
+                diagnostic = str(exc)
+                if "returned non-zero exit status 1" not in diagnostic:
+                    raise AssertionError(f"primary validator diagnostic was lost: {diagnostic}") from exc
+                if "rollback incomplete" not in diagnostic:
+                    raise AssertionError(f"rollback incompleteness was not diagnosed: {diagnostic}") from exc
+                if "synthetic advanced deletion rollback failure" not in diagnostic:
+                    raise AssertionError(f"rollback failure diagnostic was lost: {diagnostic}") from exc
+            else:
+                raise AssertionError("rollback failure must fail advanced deletion reconcile")
+        finally:
+            module.atomic_write_bytes = original_atomic_write
+
+        if rollback_attempts != [load_contract, status]:
+            raise AssertionError(f"rollback did not continue across authorities: {rollback_attempts!r}")
+        if status.read_bytes() != before_status:
+            raise AssertionError("status authority was not restored after earlier rollback failure")
+        if stat.S_IMODE(status.stat().st_mode) != status_mode:
+            raise AssertionError("status authority mode changed after earlier rollback failure")
+        if list(root.glob(".*.tmp")):
+            raise AssertionError("rollback failure path left temporary residue")
+
+    print("PASS: advanced deletion evidence reconcile is atomic, mode-preserving, rollback-all, and diagnostic-preserving")
     return 0
 
 
