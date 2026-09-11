@@ -107,7 +107,7 @@ def expect_mode_preservation(module: ModuleType, original_contract: bytes) -> No
         path.chmod(original_mode)
 
 
-def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> None:
+def candidate_contract(original_contract: bytes) -> dict[str, object]:
     candidate = json.loads(original_contract.decode("utf-8"))
     readiness = candidate.setdefault("readiness", {})
     readiness["preFenceMutationLinearizationProven"] = not bool(
@@ -116,7 +116,11 @@ def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> 
     candidate_bytes = (json.dumps(candidate, indent=2) + "\n").encode("utf-8")
     if candidate_bytes == original_contract:
         raise AssertionError("rollback fixture did not change candidate contract")
+    return candidate
 
+
+def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> None:
+    candidate = candidate_contract(original_contract)
     original_run_validator = module.run_validator
 
     def reject_post_write(_expected: str) -> None:
@@ -139,6 +143,57 @@ def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> 
             module.CANONICAL_ATOMIC_WRITE_BYTES(module.CANONICAL_CONTRACT_PATH, original_contract)
 
 
+def expect_post_write_rollback_failure_diagnostic(module: ModuleType, original_contract: bytes) -> None:
+    candidate = candidate_contract(original_contract)
+    path = module.CANONICAL_CONTRACT_PATH
+    original_mode = stat.S_IMODE(path.stat().st_mode)
+    original_run_validator = module.run_validator
+    original_atomic_writer = module.atomic_write_bytes
+    original_canonical_atomic_writer = module.CANONICAL_ATOMIC_WRITE_BYTES
+    write_count = 0
+
+    def reject_post_write(_expected: str) -> None:
+        raise RuntimeError("synthetic primary pre-fence mutation validation failure")
+
+    def fail_after_rollback(target: Path, data: bytes) -> None:
+        nonlocal write_count
+        write_count += 1
+        original_canonical_atomic_writer(target, data)
+        if write_count == 2:
+            raise RuntimeError("synthetic pre-fence mutation rollback failure")
+
+    module.run_validator = reject_post_write
+    module.atomic_write_bytes = fail_after_rollback
+    module.CANONICAL_ATOMIC_WRITE_BYTES = fail_after_rollback
+    try:
+        try:
+            module.write_contract_transactionally(candidate, SOURCE_SHA)
+        except RuntimeError as exc:
+            diagnostic = str(exc)
+            for expected in (
+                "synthetic primary pre-fence mutation validation failure",
+                "rollback incomplete",
+                "synthetic pre-fence mutation rollback failure",
+            ):
+                if expected not in diagnostic:
+                    raise AssertionError(f"rollback failure diagnostic lost: {expected}") from exc
+        else:
+            raise AssertionError("rollback failure was accepted")
+        if write_count != 2:
+            raise AssertionError(f"unexpected transactional write count: {write_count}")
+        if path.read_bytes() != original_contract:
+            raise AssertionError("rollback failure diagnostic path changed canonical contract bytes")
+        if stat.S_IMODE(path.stat().st_mode) != original_mode:
+            raise AssertionError("rollback failure diagnostic path changed canonical contract mode")
+    finally:
+        module.run_validator = original_run_validator
+        module.atomic_write_bytes = original_atomic_writer
+        module.CANONICAL_ATOMIC_WRITE_BYTES = original_canonical_atomic_writer
+        if path.read_bytes() != original_contract:
+            original_canonical_atomic_writer(path, original_contract)
+        path.chmod(original_mode)
+
+
 def main() -> int:
     module = load_module()
     original_contract = module.CANONICAL_CONTRACT_PATH.read_bytes()
@@ -151,8 +206,9 @@ def main() -> int:
     expect_atomic_replace_rejection(module, original_contract)
     expect_mode_preservation(module, original_contract)
     expect_post_write_rollback(module, original_contract)
+    expect_post_write_rollback_failure_diagnostic(module, original_contract)
 
-    print("PASS: pre-fence mutation reconcile authority identity, execution transport, mode-preserving atomic writer, and rollback are fail-closed")
+    print("PASS: pre-fence mutation reconcile authority identity, execution transport, mode-preserving atomic writer, rollback, and rollback-failure diagnostics are fail-closed")
     return 0
 
 
