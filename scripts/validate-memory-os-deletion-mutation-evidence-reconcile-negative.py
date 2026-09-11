@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -45,6 +46,8 @@ def expect_atomic_replace_failure(module) -> None:
         root = Path(tmp)
         authority = root / "authority.json"
         authority.write_bytes(b"before\n")
+        authority.chmod(0o640)
+        original_mode = stat.S_IMODE(authority.stat().st_mode)
         original_replace = module.os.replace
 
         def reject_replace(_source, _target):
@@ -64,9 +67,17 @@ def expect_atomic_replace_failure(module) -> None:
 
         if authority.read_bytes() != b"before\n":
             raise AssertionError("failed atomic replacement changed authority bytes")
+        if stat.S_IMODE(authority.stat().st_mode) != original_mode:
+            raise AssertionError("failed atomic replacement changed authority mode")
         residue = list(root.glob(f".{authority.name}.*.tmp"))
         if residue:
             raise AssertionError(f"failed atomic replacement left temp residue: {residue!r}")
+
+        module.atomic_write_bytes(authority, b"after\n")
+        if authority.read_bytes() != b"after\n":
+            raise AssertionError("successful atomic replacement did not update authority")
+        if stat.S_IMODE(authority.stat().st_mode) != original_mode:
+            raise AssertionError("successful atomic replacement changed authority mode")
 
 
 def main() -> int:
@@ -150,6 +161,10 @@ def main() -> int:
                 ],
             },
         )
+        load_contract.chmod(0o640)
+        status.chmod(0o600)
+        load_mode = stat.S_IMODE(load_contract.stat().st_mode)
+        status_mode = stat.S_IMODE(status.stat().st_mode)
 
         module.ROOT = root
         module.MUTATION_CONTRACT = proof_contract
@@ -183,6 +198,10 @@ def main() -> int:
             for item in after_status["areas"][0]["missingEvidence"]
         ):
             raise AssertionError("mutation reconcile reintroduced an independently satisfied upload-completion blocker")
+        if stat.S_IMODE(load_contract.stat().st_mode) != load_mode:
+            raise AssertionError("successful mutation reconcile changed load authority mode")
+        if stat.S_IMODE(status.stat().st_mode) != status_mode:
+            raise AssertionError("successful mutation reconcile changed production status mode")
         expected_success = [
             str(proof_validator),
             str(load_index_validator),
@@ -217,6 +236,10 @@ def main() -> int:
             raise AssertionError("load authority changed after rejected mutation reconcile")
         if status.read_bytes() != before_status:
             raise AssertionError("production status changed after rejected mutation reconcile")
+        if stat.S_IMODE(load_contract.stat().st_mode) != load_mode:
+            raise AssertionError("rejected mutation reconcile changed load authority mode")
+        if stat.S_IMODE(status.stat().st_mode) != status_mode:
+            raise AssertionError("rejected mutation reconcile changed production status mode")
         residue = list(root.glob(".*.tmp"))
         if residue:
             raise AssertionError(f"aggregate rollback left atomic temp residue: {residue!r}")
@@ -229,7 +252,62 @@ def main() -> int:
         if calls != expected_failure:
             raise AssertionError(f"failure validator order drift: {calls!r} != {expected_failure!r}")
 
-    print("PASS: deletion mutation authority preserves independent upload completion, atomic replacement, and rollback")
+        load_contract.write_bytes(before_load)
+        status.write_bytes(before_status)
+        calls.clear()
+        original_replace = module.os.replace
+        rollback_replace_calls = 0
+
+        def rollback_failure_run(command, *, cwd, check):
+            nonlocal rollback_replace_calls
+            if cwd != root or check is not True:
+                raise AssertionError("validator invocation lost fail-closed execution options")
+            validator = str(command[1])
+            calls.append(validator)
+            if validator == str(operability_validator):
+                def fail_first_rollback_replace(source, target):
+                    nonlocal rollback_replace_calls
+                    rollback_replace_calls += 1
+                    if rollback_replace_calls == 1:
+                        raise OSError("synthetic mutation rollback replacement failure")
+                    return original_replace(source, target)
+
+                module.os.replace = fail_first_rollback_replace
+                raise subprocess.CalledProcessError(17, command)
+            return subprocess.CompletedProcess(command, 0)
+
+        module.subprocess.run = rollback_failure_run
+        caught: BaseException | None = None
+        try:
+            try:
+                module.main()
+            except BaseException as exc:
+                caught = exc
+        finally:
+            module.os.replace = original_replace
+        if caught is None:
+            raise AssertionError("mutation reconcile accepted rollback writer failure")
+        text = str(caught)
+        if "returned non-zero exit status 17" not in text:
+            raise AssertionError(f"mutation rollback failure masked primary diagnostic: {text}")
+        if "rollback incomplete" not in text:
+            raise AssertionError(f"mutation rollback failure omitted incomplete diagnostic: {text}")
+        if "synthetic mutation rollback replacement failure" not in text:
+            raise AssertionError(f"mutation rollback failure omitted rollback diagnostic: {text}")
+        if rollback_replace_calls != 2:
+            raise AssertionError(
+                f"mutation rollback stopped before restoring every authority: replace calls={rollback_replace_calls}"
+            )
+        if status.read_bytes() != before_status:
+            raise AssertionError("mutation rollback failure prevented later production-status restore")
+        if stat.S_IMODE(status.stat().st_mode) != status_mode:
+            raise AssertionError("mutation rollback failure changed later production-status mode")
+        module.atomic_write_bytes(load_contract, before_load)
+        module.atomic_write_bytes(status, before_status)
+        if list(root.glob(".*.tmp")):
+            raise AssertionError("mutation rollback failure left atomic temp residue")
+
+    print("PASS: deletion mutation authority preserves independent upload completion, atomic mode, and exhaustive rollback")
     return 0
 
 
