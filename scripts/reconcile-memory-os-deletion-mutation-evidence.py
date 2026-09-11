@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -95,9 +96,11 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
+        os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
             handle.flush()
@@ -249,9 +252,21 @@ def main() -> int:
         run_validator(LOAD_INDEX_VALIDATOR)
         run_validator(LOAD_VALIDATOR)
         run_validator(OPERABILITY_VALIDATOR)
-    except BaseException:
-        atomic_write_bytes(LOAD_PATH, original_load)
-        atomic_write_bytes(STATUS_PATH, original_status)
+    except BaseException as exc:
+        rollback_errors: list[str] = []
+        for label, path, payload in (
+            ("load authority", LOAD_PATH, original_load),
+            ("production status", STATUS_PATH, original_status),
+        ):
+            try:
+                atomic_write_bytes(path, payload)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{label}: {rollback_exc}")
+        if rollback_errors:
+            raise Fail(
+                f"mutation evidence post-write validation failed: {exc}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
         raise
 
     print("Memory OS deletion mutation evidence reconciled")
