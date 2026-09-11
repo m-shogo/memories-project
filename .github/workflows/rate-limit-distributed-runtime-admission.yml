@@ -21,6 +21,7 @@ on:
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime-reconcile-negative.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-operability.py"
@@ -47,6 +48,7 @@ on:
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime-reconcile-negative.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-operability.py"
@@ -94,6 +96,7 @@ jobs:
             scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-reconcile-negative.py \
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit.py \
             scripts/validate-memory-os-operability.py \
@@ -102,6 +105,7 @@ jobs:
           python scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py
           python scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py
           python scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py
+          python scripts/validate-memory-os-rate-limit-distributed-runtime-reconcile-negative.py
           python scripts/reconcile-memory-os-rate-limit-distributed-runtime.py
           python scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit.py
@@ -147,6 +151,7 @@ jobs:
             scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-reconcile-negative.py \
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit.py \
             scripts/validate-memory-os-operability.py \
@@ -156,6 +161,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-distributed-runtime-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-rate-limit-distributed-runtime.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit-operations.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit.py >> "$log" 2>&1 || code=$?; fi
