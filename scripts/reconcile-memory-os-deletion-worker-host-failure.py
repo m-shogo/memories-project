@@ -225,8 +225,20 @@ def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> N
         CANONICAL_SUBPROCESS_RUN([sys.executable, str(LOAD_VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
         CANONICAL_SUBPROCESS_RUN([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
     except Exception as exc:
-        CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT, contract_bytes)
-        CANONICAL_ATOMIC_WRITE_BYTES(STATUS, status_bytes)
+        rollback_errors: list[str] = []
+        for label, path, payload in (
+            ("host-failure contract", CONTRACT, contract_bytes),
+            ("production status", STATUS, status_bytes),
+        ):
+            try:
+                CANONICAL_ATOMIC_WRITE_BYTES(path, payload)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{label}: {rollback_exc}")
+        if rollback_errors:
+            raise Fail(
+                f"host-failure post-write authority validation failed: {exc}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
         if isinstance(exc, Fail):
             raise
         raise Fail(f"host-failure post-write authority validation failed: {exc}") from exc
