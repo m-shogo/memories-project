@@ -138,6 +138,70 @@ def prove_transaction_rollback(reconciler: Any) -> None:
                 reconciler.atomic_write_bytes(path, original)
 
 
+def prove_transaction_rollback_failure_is_exhaustive(reconciler: Any) -> None:
+    originals = {
+        CANONICAL_POLICY_PATH: CANONICAL_POLICY_PATH.read_bytes(),
+        CANONICAL_STATUS_PATH: CANONICAL_STATUS_PATH.read_bytes(),
+    }
+    modes = {
+        CANONICAL_POLICY_PATH: CANONICAL_POLICY_PATH.stat().st_mode & 0o7777,
+        CANONICAL_STATUS_PATH: CANONICAL_STATUS_PATH.stat().st_mode & 0o7777,
+    }
+    policy = copy.deepcopy(load_json(CANONICAL_POLICY_PATH))
+    status = copy.deepcopy(load_json(CANONICAL_STATUS_PATH))
+    policy["operations"]["drillCompleted"] = False
+    status["asOf"] = "2099-01-01"
+
+    original_validator = reconciler.validate_written_authority
+    original_atomic_write_bytes = reconciler.atomic_write_bytes
+    rollback_calls: list[Path] = []
+
+    def fail_validation() -> None:
+        raise reconciler.ReconcileFailure("synthetic operations primary post-write validation failure")
+
+    def fail_first_rollback(path: Path, payload: bytes, *args: Any, **kwargs: Any) -> None:
+        rollback_calls.append(path)
+        if len(rollback_calls) == 1:
+            raise OSError("synthetic operations rollback failure")
+        original_atomic_write_bytes(path, payload, *args, **kwargs)
+
+    reconciler.validate_written_authority = fail_validation
+    reconciler.atomic_write_bytes = fail_first_rollback
+    caught: BaseException | None = None
+    try:
+        try:
+            reconciler.transactional_write(policy, status)
+        except BaseException as exc:
+            caught = exc
+        require(caught is not None,
+                "transactional write accepted synthetic rollback failure")
+        text = str(caught)
+        require("synthetic operations primary post-write validation failure" in text,
+                f"rollback failure masked primary diagnostic: {text}")
+        require("rollback incomplete" in text,
+                f"rollback failure omitted incomplete diagnostic: {text}")
+        require("synthetic operations rollback failure" in text,
+                f"rollback failure omitted rollback diagnostic: {text}")
+        require(rollback_calls == [CANONICAL_POLICY_PATH, CANONICAL_STATUS_PATH],
+                f"rollback stopped before restoring every authority: {rollback_calls!r}")
+        require(CANONICAL_STATUS_PATH.read_bytes() == originals[CANONICAL_STATUS_PATH],
+                "first rollback failure prevented later production-status restore")
+        require((CANONICAL_STATUS_PATH.stat().st_mode & 0o7777) == modes[CANONICAL_STATUS_PATH],
+                "later production-status restore changed mode")
+    finally:
+        reconciler.validate_written_authority = original_validator
+        reconciler.atomic_write_bytes = original_atomic_write_bytes
+        for path, original in originals.items():
+            if path.read_bytes() != original:
+                original_atomic_write_bytes(path, original)
+        for path, mode in modes.items():
+            path.chmod(mode)
+
+    for path in originals:
+        require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                f"rollback failure left temp residue for {path.relative_to(ROOT)}")
+
+
 def prove_validator_chain(reconciler: Any) -> None:
     expected = [
         reconciler.OPERATIONS_VALIDATOR_PATH.resolve(),
@@ -354,6 +418,7 @@ def main() -> int:
     reconciler.enforce_execution_authorities()
     prove_atomic_transport_and_mode(reconciler)
     prove_transaction_rollback(reconciler)
+    prove_transaction_rollback_failure_is_exhaustive(reconciler)
     prove_validator_chain(reconciler)
     cases = (
         ("OPERATIONS_VALIDATOR_PATH", reconciler.RATE_LIMIT_VALIDATOR_PATH, "operations validator"),
@@ -368,7 +433,7 @@ def main() -> int:
     prove_execution_authority_identity(reconciler)
     prove_operations_validator_runtime_authority()
 
-    print("PASS: rate-limit operations reconciler and standalone validator exact authorities, immutable transport, semantics, atomic publication and rollback are fail-closed")
+    print("PASS: rate-limit operations reconciler and standalone validator exact authorities, immutable transport, semantics, atomic publication and exhaustive rollback are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
