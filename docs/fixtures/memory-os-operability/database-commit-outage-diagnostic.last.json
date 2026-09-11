@@ -1,11 +1,11 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "database-commit-outage-recovery",
-  "sourceCommitSha": "f5c181b13af7e94781d2940cc20364b825103712",
+  "sourceCommitSha": "d306a51aaea3056ca36524cd4b9378bcfa9f493e",
   "result": "PASS",
   "exitCode": 0,
-  "durationSeconds": 1.07721,
-  "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/importflow\t0.325s\n",
+  "durationSeconds": 1.328426,
+  "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/importflow\t0.377s\n",
   "containsSecrets": false,
   "productionEvidence": false
 }
