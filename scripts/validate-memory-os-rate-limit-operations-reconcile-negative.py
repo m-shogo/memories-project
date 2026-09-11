@@ -155,11 +155,17 @@ def prove_transaction_rollback_failure_is_exhaustive(reconciler: Any) -> None:
     original_validator = reconciler.validate_written_authority
     original_atomic_write_bytes = reconciler.atomic_write_bytes
     rollback_calls: list[Path] = []
+    rollback_armed = False
 
     def fail_validation() -> None:
+        nonlocal rollback_armed
+        rollback_armed = True
         raise reconciler.ReconcileFailure("synthetic operations primary post-write validation failure")
 
     def fail_first_rollback(path: Path, payload: bytes, *args: Any, **kwargs: Any) -> None:
+        if not rollback_armed:
+            original_atomic_write_bytes(path, payload, *args, **kwargs)
+            return
         rollback_calls.append(path)
         if len(rollback_calls) == 1:
             raise OSError("synthetic operations rollback failure")
