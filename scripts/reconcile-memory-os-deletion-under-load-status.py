@@ -210,16 +210,18 @@ def write_and_validate_transactionally(
         run_validator(DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
         run_validator(LOAD_VALIDATOR, "load")
         run_validator(OPERABILITY_VALIDATOR, "operability")
-    except BaseException:
-        rollback_error: BaseException | None = None
+    except BaseException as primary_exc:
+        rollback_errors: list[str] = []
         for path, data in originals.items():
             try:
                 CANONICAL_ATOMIC_WRITE_BYTES(path, data)
-            except BaseException as exc:
-                if rollback_error is None:
-                    rollback_error = exc
-        if rollback_error is not None:
-            raise ReconcileFailure(f"deletion-under-load authority rollback failed: {rollback_error}") from rollback_error
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(CANONICAL_ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise ReconcileFailure(
+                f"{primary_exc}; deletion-under-load authority rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from primary_exc
         raise
 
 
