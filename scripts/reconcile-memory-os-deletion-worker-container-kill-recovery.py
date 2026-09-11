@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -70,9 +71,11 @@ def run_validator(expected_sha: str) -> None:
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
+        os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
             handle.flush()
@@ -93,8 +96,11 @@ def write_contract_transactionally(contract: dict[str, Any], expected_sha: str) 
     atomic_write_bytes(CONTRACT_PATH, candidate)
     try:
         run_validator(expected_sha)
-    except BaseException:
-        atomic_write_bytes(CONTRACT_PATH, original)
+    except BaseException as exc:
+        try:
+            CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, original)
+        except BaseException as rollback_exc:
+            raise RuntimeError(f"{exc}; rollback incomplete: {rollback_exc}") from exc
         raise
 
 
