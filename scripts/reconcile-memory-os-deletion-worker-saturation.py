@@ -55,6 +55,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     temp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -66,6 +67,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         ) as handle:
             temp_path = Path(handle.name)
             handle.write(payload)
+            if existing_mode is not None:
+                os.fchmod(handle.fileno(), existing_mode)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_path, path)
