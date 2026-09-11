@@ -206,9 +206,18 @@ def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> N
         atomic_write_json(OPERATIONS_PATH, operations)
         atomic_write_json(STATUS_PATH, status)
         validate_written_authority()
-    except Exception:
+    except Exception as exc:
+        rollback_errors: list[str] = []
         for path, original in originals.items():
-            atomic_write_bytes(path, original)
+            try:
+                atomic_write_bytes(path, original)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path.relative_to(ROOT)}: {rollback_exc}")
+        if rollback_errors:
+            raise ReconcileFailure(
+                f"rate-limit operation evidence post-write validation failed: {exc}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
         raise
 
 
