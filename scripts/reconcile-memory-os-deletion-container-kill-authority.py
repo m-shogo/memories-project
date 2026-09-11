@@ -137,6 +137,19 @@ def normalize_and_validate_authority() -> None:
     subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
 
 
+def restore_authorities(original_load: bytes, original_status: bytes) -> list[str]:
+    rollback_errors: list[str] = []
+    for label, path, payload in (
+        ("load contract", LOAD_CONTRACT, original_load),
+        ("production status", STATUS, original_status),
+    ):
+        try:
+            CANONICAL_ATOMIC_WRITE_BYTES(path, payload)
+        except BaseException as rollback_exc:
+            rollback_errors.append(f"{label}: {rollback_exc}")
+    return rollback_errors
+
+
 def main() -> int:
     require_canonical_authorities()
     subprocess.run([sys.executable, str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
@@ -221,9 +234,13 @@ def main() -> int:
         write(LOAD_CONTRACT, load_contract)
         write(STATUS, status)
         normalize_and_validate_authority()
-    except BaseException:
-        atomic_write_bytes(LOAD_CONTRACT, original_load)
-        atomic_write_bytes(STATUS, original_status)
+    except BaseException as exc:
+        rollback_errors = restore_authorities(original_load, original_status)
+        if rollback_errors:
+            raise ReconcileFailure(
+                f"container-kill post-write authority validation failed: {exc}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
         raise
 
     print("Memory OS deletion container-kill canonical reconciliation PASS")
