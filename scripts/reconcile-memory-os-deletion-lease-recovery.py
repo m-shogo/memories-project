@@ -111,8 +111,11 @@ def write_contract_transactionally(contract: dict[str, Any], expected_sha: str) 
     atomic_write_bytes(CONTRACT_PATH, candidate)
     try:
         run_validator(expected_sha)
-    except BaseException:
-        CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, original)
+    except BaseException as exc:
+        try:
+            CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, original)
+        except BaseException as rollback_exc:
+            raise RuntimeError(f"{exc}; rollback incomplete: {rollback_exc}") from exc
         raise
 
 
