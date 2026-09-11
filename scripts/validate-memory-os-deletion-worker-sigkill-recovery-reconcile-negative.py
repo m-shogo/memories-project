@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 from pathlib import Path
 from types import ModuleType
 
@@ -90,14 +91,33 @@ def expect_atomic_replace_rejection(module: ModuleType, original_contract: bytes
         module.os.replace = original
 
 
-def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> None:
+def expect_mode_preservation(module: ModuleType, original_contract: bytes) -> None:
+    path = module.CANONICAL_CONTRACT_PATH
+    original_mode = stat.S_IMODE(path.stat().st_mode)
+    probe_mode = 0o640 if original_mode != 0o640 else 0o644
+    path.chmod(probe_mode)
+    try:
+        module.CANONICAL_ATOMIC_WRITE_BYTES(path, original_contract)
+        if stat.S_IMODE(path.stat().st_mode) != probe_mode:
+            raise AssertionError("atomic replacement changed canonical SIGKILL contract mode")
+        if path.read_bytes() != original_contract:
+            raise AssertionError("mode-preservation probe changed canonical SIGKILL contract bytes")
+    finally:
+        path.chmod(original_mode)
+
+
+def changed_candidate(original_contract: bytes) -> dict:
     candidate = json.loads(original_contract.decode("utf-8"))
     readiness = candidate.setdefault("readiness", {})
     readiness["actualSIGKILLRecoveryProven"] = not bool(readiness.get("actualSIGKILLRecoveryProven", False))
     candidate_bytes = (json.dumps(candidate, indent=2) + "\n").encode("utf-8")
     if candidate_bytes == original_contract:
         raise AssertionError("rollback fixture did not change the candidate contract")
+    return candidate
 
+
+def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> None:
+    candidate = changed_candidate(original_contract)
     original_run_validator = module.run_validator
 
     def reject_post_write(_expected_sha: str) -> None:
@@ -121,6 +141,39 @@ def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> 
             module.CANONICAL_ATOMIC_WRITE_BYTES(module.CANONICAL_CONTRACT_PATH, original_contract)
 
 
+def expect_rollback_failure_diagnostic(module: ModuleType, original_contract: bytes) -> None:
+    candidate = changed_candidate(original_contract)
+    original_run_validator = module.run_validator
+    original_restore = module.CANONICAL_ATOMIC_WRITE_BYTES
+
+    def reject_post_write(_expected_sha: str) -> None:
+        def fail_restore(_path: Path, _data: bytes) -> None:
+            raise OSError("synthetic SIGKILL rollback failure")
+
+        module.CANONICAL_ATOMIC_WRITE_BYTES = fail_restore
+        raise RuntimeError("synthetic post-write SIGKILL validation failure")
+
+    module.run_validator = reject_post_write
+    try:
+        try:
+            module.write_contract_transactionally(candidate, "0" * 40)
+        except RuntimeError as exc:
+            diagnostic = str(exc)
+            if "synthetic post-write SIGKILL validation failure" not in diagnostic:
+                raise AssertionError(f"primary validation diagnostic was lost: {diagnostic}") from exc
+            if "rollback incomplete" not in diagnostic:
+                raise AssertionError(f"rollback incompleteness was not diagnosed: {diagnostic}") from exc
+            if "synthetic SIGKILL rollback failure" not in diagnostic:
+                raise AssertionError(f"rollback failure diagnostic was lost: {diagnostic}") from exc
+        else:
+            raise AssertionError("rollback failure was accepted")
+    finally:
+        module.run_validator = original_run_validator
+        module.CANONICAL_ATOMIC_WRITE_BYTES = original_restore
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            original_restore(module.CANONICAL_CONTRACT_PATH, original_contract)
+
+
 def main() -> int:
     module = load_module()
     original_contract = module.CANONICAL_CONTRACT_PATH.read_bytes()
@@ -131,9 +184,11 @@ def main() -> int:
     expect_transport_rejection(module, original_contract)
     expect_atomic_writer_rejection(module, original_contract)
     expect_atomic_replace_rejection(module, original_contract)
+    expect_mode_preservation(module, original_contract)
     expect_post_write_rollback(module, original_contract)
+    expect_rollback_failure_diagnostic(module, original_contract)
 
-    print("PASS: deletion worker SIGKILL reconcile authority, execution transport, atomic writer, and rollback are fail-closed")
+    print("PASS: deletion worker SIGKILL reconcile authority, execution transport, mode-preserving atomic writer, rollback, and primary diagnostics are fail-closed")
     return 0
 
 
