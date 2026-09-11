@@ -37,9 +37,28 @@ def canonical_snapshots(module: ModuleType) -> dict[Path, bytes]:
     }
 
 
+def canonical_modes(module: ModuleType) -> dict[Path, int]:
+    return {
+        path: stat.S_IMODE(path.stat().st_mode)
+        for path in (
+            module.CANONICAL_CONTRACT_PATH,
+            module.CANONICAL_LOAD_PATH,
+            module.CANONICAL_STATUS_PATH,
+        )
+    }
+
+
 def require_snapshots_unchanged(snapshots: dict[Path, bytes]) -> None:
     for path, payload in snapshots.items():
         require(path.read_bytes() == payload, f"canonical authority mutated after rejection: {path.relative_to(ROOT)}")
+
+
+def require_modes_unchanged(modes: dict[Path, int]) -> None:
+    for path, mode in modes.items():
+        require(
+            stat.S_IMODE(path.stat().st_mode) == mode,
+            f"canonical authority mode changed after rejection: {path.relative_to(ROOT)}",
+        )
 
 
 def expect_rejection(
@@ -49,6 +68,7 @@ def expect_rejection(
     check: Callable[[], None] | None = None,
 ) -> None:
     snapshots = canonical_snapshots(module)
+    modes = canonical_modes(module)
     restore = mutate()
     try:
         try:
@@ -60,6 +80,7 @@ def expect_rejection(
     finally:
         restore()
     require_snapshots_unchanged(snapshots)
+    require_modes_unchanged(modes)
 
 
 def swap_attr(target: object, name: str, value: object) -> Callable[[], None]:
@@ -78,6 +99,66 @@ def swap_many(*changes: tuple[object, str, object]) -> Callable[[], None]:
             setattr(target, name, value)
 
     return restore
+
+
+def exercise_rollback_failure(module: ModuleType) -> None:
+    snapshots = canonical_snapshots(module)
+    modes = canonical_modes(module)
+    real_writer = module.CANONICAL_ATOMIC_WRITE_BYTES
+    real_run_validator = module.run_validator
+    real_enforce_writer = module.enforce_atomic_writer_authority
+    writer_calls: list[Path] = []
+
+    def synthetic_primary_failure(*args: object, **kwargs: object) -> None:
+        raise module.ReconcileFailure("synthetic primary validator failure")
+
+    def writer_with_first_rollback_failure(path: Path, payload: bytes) -> None:
+        writer_calls.append(path)
+        real_writer(path, payload)
+        if len(writer_calls) == 4:
+            raise RuntimeError("synthetic rollback writer failure")
+
+    contract = module.load(module.CANONICAL_CONTRACT_PATH)
+    load_contract = module.load(module.CANONICAL_LOAD_PATH)
+    status = module.load(module.CANONICAL_STATUS_PATH)
+    contract["__negativeRollbackTest"] = True
+    load_contract["__negativeRollbackTest"] = True
+    status["__negativeRollbackTest"] = True
+
+    module.CANONICAL_ATOMIC_WRITE_BYTES = writer_with_first_rollback_failure
+    module.atomic_write_bytes = writer_with_first_rollback_failure
+    module.enforce_atomic_writer_authority = lambda: None
+    module.run_validator = synthetic_primary_failure
+    try:
+        try:
+            module.write_and_validate_transactionally(contract, load_contract, status)
+        except module.ReconcileFailure as exc:
+            diagnostic = str(exc)
+            require("synthetic primary validator failure" in diagnostic,
+                    "rollback failure masked primary validator diagnostic")
+            require("rollback incomplete" in diagnostic,
+                    "rollback failure did not report incomplete rollback")
+            require("synthetic rollback writer failure" in diagnostic,
+                    "rollback failure diagnostic missing")
+        else:
+            raise RuntimeError("synthetic rollback failure was accepted")
+    finally:
+        module.run_validator = real_run_validator
+        module.enforce_atomic_writer_authority = real_enforce_writer
+        module.atomic_write_bytes = real_writer
+        module.CANONICAL_ATOMIC_WRITE_BYTES = real_writer
+
+    require(len(writer_calls) == 6, "rollback did not continue across all three canonical authorities")
+    require(
+        writer_calls[3:] == [
+            module.CANONICAL_CONTRACT_PATH,
+            module.CANONICAL_LOAD_PATH,
+            module.CANONICAL_STATUS_PATH,
+        ],
+        "rollback authority order or exhaustiveness drifted",
+    )
+    require_snapshots_unchanged(snapshots)
+    require_modes_unchanged(modes)
 
 
 def main() -> int:
@@ -156,7 +237,9 @@ def main() -> int:
         require(stat.S_IMODE(path.stat().st_mode) == 0o640, "atomic writer changed existing file mode")
         require(not list(path.parent.glob(f".{path.name}.*.tmp")), "atomic writer left temporary residue")
 
+    exercise_rollback_failure(module)
     require_snapshots_unchanged(canonical_snapshots(module))
+    require_modes_unchanged(canonical_modes(module))
     print("Deletion-under-load reconcile negative checks passed")
     return 0
 
