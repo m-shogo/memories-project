@@ -272,9 +272,15 @@ def main() -> int:
         run_validator(LOAD_INDEX_VALIDATOR)
         run_validator(LOAD_VALIDATOR)
         run_validator(OPERABILITY_VALIDATOR)
-    except BaseException:
-        atomic_write_bytes(LOAD_PATH, original_load)
-        atomic_write_bytes(STATUS_PATH, original_status)
+    except BaseException as exc:
+        rollback_errors: list[str] = []
+        for path, payload in ((LOAD_PATH, original_load), (STATUS_PATH, original_status)):
+            try:
+                atomic_write_bytes(path, payload)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{path.name}: {rollback_exc}")
+        if rollback_errors:
+            raise RuntimeError(f"{exc}; rollback incomplete: {'; '.join(rollback_errors)}") from exc
         raise
 
     print("Memory OS advanced deletion evidence reconciled")
