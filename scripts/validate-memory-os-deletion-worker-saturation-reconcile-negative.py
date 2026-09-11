@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import tempfile
 from pathlib import Path
 
@@ -153,6 +154,7 @@ def main() -> int:
         raise AssertionError("deletion-worker saturation authority regressed to direct contract publication")
 
     original_contract = reconciler.CONTRACT_PATH.read_bytes()
+    original_contract_mode = stat.S_IMODE(reconciler.CONTRACT_PATH.stat().st_mode)
     original_result = reconciler.RESULT_PATH.read_bytes() if reconciler.RESULT_PATH.exists() else None
     original_validator = reconciler.VALIDATOR_PATH.read_bytes()
     contract = json.loads(original_contract.decode("utf-8"))
@@ -175,6 +177,8 @@ def main() -> int:
 
         if reconciler.CONTRACT_PATH.read_bytes() != original_contract:
             raise AssertionError("reconciler failed to restore contract bytes after post-write validation failure")
+        if stat.S_IMODE(reconciler.CONTRACT_PATH.stat().st_mode) != original_contract_mode:
+            raise AssertionError("reconciler changed contract mode during failed publication and rollback")
         if list(reconciler.CONTRACT_PATH.parent.glob(f".{reconciler.CONTRACT_PATH.name}.*.tmp")):
             raise AssertionError("reconciler left atomic temp authority after rollback")
     finally:
@@ -194,6 +198,12 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="memory-os-deletion-worker-saturation-atomic-") as tmp:
         target = Path(tmp) / "authority.json"
         target.write_bytes(b"before\n")
+        os.chmod(target, 0o640)
+        reconciler.atomic_write_bytes(target, b"mode-check\n")
+        if stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise AssertionError("atomic writer changed existing authority mode")
+        target.write_bytes(b"before\n")
+
         original_replace = reconciler.os.replace
         failed = False
 
@@ -220,10 +230,12 @@ def main() -> int:
             raise AssertionError("synthetic atomic replacement failure was not exercised")
         if target.read_bytes() != b"before\n":
             raise AssertionError("atomic replacement failure mutated canonical target bytes")
+        if stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise AssertionError("atomic replacement failure changed existing authority mode")
         if list(target.parent.glob(f".{target.name}.*.tmp")):
             raise AssertionError("atomic replacement failure left a temp file")
 
-    print("PASS: deletion-worker saturation authority, loader transport, atomic writer transport, atomic publication and rollback are fail-closed")
+    print("PASS: deletion-worker saturation authority, loader transport, mode-preserving atomic publication and rollback are fail-closed")
     return 0
 
 
