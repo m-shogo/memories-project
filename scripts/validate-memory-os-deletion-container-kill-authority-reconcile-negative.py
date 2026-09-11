@@ -125,13 +125,13 @@ def main() -> int:
     expect_atomic_replace_failure(module)
     module.require_canonical_authorities()
 
-    original_operability = module.OPERABILITY_VALIDATOR.read_bytes()
-    original_operability_mode = stat.S_IMODE(module.OPERABILITY_VALIDATOR.stat().st_mode)
+    original_normalize = module.normalize_and_validate_authority
+
+    def reject_post_write() -> None:
+        raise RuntimeError("synthetic post-write aggregate failure")
+
+    module.normalize_and_validate_authority = reject_post_write
     try:
-        module.CANONICAL_ATOMIC_WRITE_BYTES(
-            module.OPERABILITY_VALIDATOR,
-            b"raise SystemExit('synthetic post-write aggregate failure')\n",
-        )
         expect_rejection(module.main, "synthetic post-write aggregate failure")
         if LOAD_CONTRACT.read_bytes() != original_load:
             raise SystemExit("container-kill reconcile failed to roll back load authority")
@@ -142,8 +142,7 @@ def main() -> int:
         if stat.S_IMODE(STATUS.stat().st_mode) != original_status_mode:
             raise SystemExit("container-kill reconcile changed production status mode")
     finally:
-        module.CANONICAL_ATOMIC_WRITE_BYTES(module.OPERABILITY_VALIDATOR, original_operability)
-        module.OPERABILITY_VALIDATOR.chmod(original_operability_mode)
+        module.normalize_and_validate_authority = original_normalize
         module.CANONICAL_ATOMIC_WRITE_BYTES(LOAD_CONTRACT, original_load)
         module.CANONICAL_ATOMIC_WRITE_BYTES(STATUS, original_status)
 
