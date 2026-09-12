@@ -875,11 +875,18 @@ def main(canonical_execution_guard=CANONICAL_GENERATOR_EXECUTION_GUARD) -> int:
     atomic_write_text(OUTPUT, output_text)
     try:
         validate_generated_inventory()
-    except BaseException:
-        if output_before is None:
-            OUTPUT.unlink(missing_ok=True)
-        else:
-            atomic_write_text(OUTPUT, output_before.decode("utf-8"))
+    except BaseException as primary_exc:
+        try:
+            if output_before is None:
+                OUTPUT.unlink(missing_ok=True)
+            else:
+                atomic_write_text(OUTPUT, output_before.decode("utf-8"))
+        except BaseException as rollback_exc:
+            primary_text = str(primary_exc) or primary_exc.__class__.__name__
+            rollback_text = str(rollback_exc) or rollback_exc.__class__.__name__
+            raise SystemExit(
+                f"{primary_text}; rollback incomplete: {rollback_text}"
+            ) from primary_exc
         raise
     print("Memory OS operability admission inventory generated")
     print(f"P0 areas inventoried: {len(areas)}")
