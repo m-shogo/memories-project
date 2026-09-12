@@ -63,8 +63,17 @@ def validate_atomic_diagnostic_publication() -> None:
 def main() -> int:
     module = load_validator()
     required_contracts = {
+        "contracts/operations/migration-production-shaped-admission-contract.v1.json",
         "contracts/operations/release-baseline-registry-contract.v1.json",
         "contracts/operations/release-compatibility-pair-contract.v1.json",
+        "contracts/operations/incident-human-tabletop-evidence-contract.v1.json",
+        "contracts/operations/incident-contact-routing-admission-contract.v1.json",
+        "contracts/operations/observability-stack-deployment-contract.v1.json",
+        "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json",
+        "contracts/operations/deletion-worker-host-failure-contract.v1.json",
+        "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+        "contracts/operations/client-baseline-registry-contract.v1.json",
+        "contracts/operations/production-shaped-failure-drill-contract.v1.json",
         "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
     }
     missing_contracts = sorted(required_contracts - set(module.CONTRACTS))
