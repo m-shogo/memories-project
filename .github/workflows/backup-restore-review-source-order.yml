@@ -5,12 +5,16 @@ on:
     branches: [so]
     paths:
       - 'scripts/validate-memory-os-backup-restore-review-source-order.py'
+      - 'scripts/validate-memory-os-backup-restore-generation-evidence.py'
+      - 'scripts/validate-memory-os-backup-restore-generation-binding.py'
       - 'contracts/operations/backup-restore-generation-evidence-registry.v1.json'
       - 'docs/evidence/backup-restore/**'
       - '.github/workflows/backup-restore-review-source-order.yml'
   pull_request:
     paths:
       - 'scripts/validate-memory-os-backup-restore-review-source-order.py'
+      - 'scripts/validate-memory-os-backup-restore-generation-evidence.py'
+      - 'scripts/validate-memory-os-backup-restore-generation-binding.py'
       - 'contracts/operations/backup-restore-generation-evidence-registry.v1.json'
       - 'docs/evidence/backup-restore/**'
       - '.github/workflows/backup-restore-review-source-order.yml'
@@ -29,11 +33,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Compile validator
-        run: python -m py_compile scripts/validate-memory-os-backup-restore-review-source-order.py
+      - name: Compile review and downstream validators
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore-review-source-order.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-binding.py
       - name: Prove stale review/source ordering is fail-closed
         run: python scripts/validate-memory-os-backup-restore-review-source-order.py --self-test
       - name: Validate canonical recovery review source ordering
         run: python scripts/validate-memory-os-backup-restore-review-source-order.py
-      - name: Prove validator is read-only
-        run: git diff --exit-code
+      - name: Validate downstream generation evidence authority
+        run: python scripts/validate-memory-os-backup-restore-generation-evidence.py
+      - name: Validate downstream generation binding authority
+        run: python scripts/validate-memory-os-backup-restore-generation-binding.py
+      - name: Prove validators are read-only
+        run: |
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
