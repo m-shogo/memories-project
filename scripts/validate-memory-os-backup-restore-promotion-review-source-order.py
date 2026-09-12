@@ -3,9 +3,11 @@
 
 Human Recovery Owner, Security, and Operability review evidence must not predate the
 source commit of the final recovery evidence it reviews. Review timestamps must also
-not claim a time later than the commit that first introduced the review payload. This
-validator is read-only and cannot create promotion authority, production evidence,
-credentials, recovery objectives, or traffic.
+not claim a time later than the commit that first introduced the review payload. The
+committed review payload must remain byte-identical to its creation blob so review
+evidence cannot be rewritten in place after admission. This validator is read-only
+and cannot create promotion authority, production evidence, credentials, recovery
+objectives, or traffic.
 """
 
 from __future__ import annotations
@@ -95,6 +97,22 @@ def first_commit_for_path(ref: str, field: str) -> str:
         f"{field} must have exactly one committed creation point",
     )
     return commits[0]
+
+
+def creation_blob(commit_sha: str, ref: str, field: str) -> bytes:
+    completed = subprocess.run(
+        ["git", "show", f"{commit_sha}:{ref}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0, f"cannot inspect {field} creation blob: {completed.stderr.decode('utf-8', errors='replace').strip()}")
+    return completed.stdout
+
+
+def require_creation_blob_immutable(current: bytes, created: bytes, field: str) -> None:
+    require(current == created, f"{field} review evidence changed after its creation commit")
 
 
 def commit_exists(commit_sha: str, field: str) -> None:
@@ -201,6 +219,11 @@ def validate_row(row: dict[str, Any], index: int, generations: dict[str, dict[st
         ref, path = canonical_review_ref(row.get(name), field)
         review_commit = first_commit_for_path(ref, field)
         require_source_precedes_review(source_commit, review_commit, field)
+        try:
+            current_blob = path.read_bytes()
+        except OSError as exc:
+            raise Fail(f"cannot read {field} current blob: {exc}") from exc
+        require_creation_blob_immutable(current_blob, creation_blob(review_commit, ref, field), field)
         payload = load_json(path, field)
         require(payload.get("recoveryEvidenceId") == evidence_id, f"{field} recoveryEvidenceId binding mismatch")
         reviewed_at = review_time(payload.get("reviewedAt"), field)
@@ -217,6 +240,14 @@ def self_test() -> None:
         require("predates" in str(exc), "self-test rejected stale promotion review at wrong boundary")
     else:
         raise Fail("self-test accepted promotion review that predates recovery source commit")
+
+    require_creation_blob_immutable(b"review-payload\n", b"review-payload\n", "self-test")
+    try:
+        require_creation_blob_immutable(b"rewritten-review\n", b"review-payload\n", "self-test")
+    except Fail as exc:
+        require("changed after its creation commit" in str(exc), "self-test rejected rewritten review at wrong boundary")
+    else:
+        raise Fail("self-test accepted promotion review evidence rewritten after creation")
 
     source_time = datetime(2026, 9, 12, 9, 0, 0, tzinfo=timezone.utc)
     review_time_ok = datetime(2026, 9, 12, 9, 5, 0, tzinfo=timezone.utc)
@@ -240,7 +271,7 @@ def self_test() -> None:
             pass
         else:
             raise Fail("self-test accepted invalid recovery sourceCommitSha")
-    print("PASS: promotion review chronology negative rejects stale/non-descendant commits, malformed source SHAs, and out-of-window review timestamps")
+    print("PASS: promotion review chronology negative rejects stale/non-descendant commits, rewritten creation blobs, malformed source SHAs, and out-of-window review timestamps")
 
 
 def main() -> int:
@@ -270,6 +301,7 @@ def main() -> int:
 
     print(f"PASS: human promotion review source-order binding records={len(rows)} productionEvidence=false productionReady=false")
     print("promotion review predating recovery sourceCommitSha accepted: false")
+    print("promotion review rewritten after creation accepted: false")
     print("promotion review timestamp later than committed review evidence accepted: false")
     print("human promotion remains separate non-automatic authority: true")
     print("production authority created: false")
