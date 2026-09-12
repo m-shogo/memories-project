@@ -77,11 +77,14 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py
-          python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
-          python scripts/validate-memory-os-backup-restore-generation-independent-review.py
           fixture_parent="$(mktemp -d)"
           trap 'rm -rf "$fixture_parent"' EXIT
           cp -a . "$fixture_parent/repo"
+          (
+            cd "$fixture_parent/repo"
+            python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
+          )
+          python scripts/validate-memory-os-backup-restore-generation-independent-review.py
           FIXTURE_ROOT="$fixture_parent/repo" python - <<'PY'
           import importlib.util
           import json
