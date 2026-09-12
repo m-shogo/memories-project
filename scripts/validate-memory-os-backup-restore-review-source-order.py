@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Fail-closed source-order validation for OPS-P0-007 recovery review evidence.
 
-A typed Security, Operability, or cross-generation material-delta review must not predate
-the exact source commit recorded by the generation recovery evidence it approves. Review
-timestamps must also fall between that source commit and the review evidence creation
-commit. The current review payload must remain byte-identical to its creation blob so
-append-only review evidence cannot be rewritten in place after admission. This adds
-chronology and immutability binding without creating evidence, production authority,
-recovery objectives, credentials, or traffic.
+A typed Security, Operability, or cross-generation material-delta review must be created
+strictly after the exact source commit recorded by the generation recovery evidence it
+approves. Review timestamps must also fall between that source commit and the review
+evidence creation commit. The current review payload must remain byte-identical to its
+creation blob so append-only review evidence cannot be rewritten in place after
+admission. This adds chronology and immutability binding without creating evidence,
+production authority, recovery objectives, credentials, or traffic.
 """
 
 from __future__ import annotations
@@ -131,6 +131,8 @@ def require_source_precedes_review(source_commit: str, review_commit: str, field
                                    ancestor_check: Callable[[str, str], bool] = is_ancestor) -> None:
     require(SHA40.fullmatch(source_commit) is not None, f"{field} sourceCommitSha invalid")
     require(SHA40.fullmatch(review_commit) is not None, f"{field} review commit invalid")
+    require(source_commit != review_commit,
+            f"{field} review must be created strictly after sourceCommitSha")
     require(ancestor_check(source_commit, review_commit),
             f"{field} review predates or is not descended from sourceCommitSha")
 
@@ -180,6 +182,12 @@ def self_test() -> None:
     review = "2" * 40
     require_source_precedes_review(source, review, "self-test", ancestor_check=lambda _a, _b: True)
     try:
+        require_source_precedes_review(source, source, "self-test", ancestor_check=lambda _a, _b: True)
+    except Fail as exc:
+        require("strictly after" in str(exc), "self-test rejected same-commit review at wrong boundary")
+    else:
+        raise Fail("self-test accepted review created in source commit")
+    try:
         require_source_precedes_review(source, review, "self-test", ancestor_check=lambda _a, _b: False)
     except Fail as exc:
         require("predates" in str(exc), "self-test rejected stale review at wrong boundary")
@@ -215,7 +223,7 @@ def self_test() -> None:
             require(label in str(exc), f"self-test rejected review timestamp at wrong boundary: {exc}")
         else:
             raise Fail("self-test accepted review timestamp outside source/review commit window")
-    print("PASS: review source-order negative rejects stale/non-descendant commits, rewritten creation blobs, malformed source SHAs, and out-of-window review timestamps")
+    print("PASS: review source-order negative rejects same-commit/stale/non-descendant commits, rewritten creation blobs, malformed source SHAs, and out-of-window review timestamps")
 
 
 def main() -> int:
@@ -235,6 +243,7 @@ def main() -> int:
     for index, row in enumerate(rows):
         validate_row(row, index)
     print(f"PASS: recovery review source-order binding records={len(rows)} productionEvidence=false productionReady=false")
+    print("review created in sourceCommitSha accepted: false")
     print("review predating sourceCommitSha accepted: false")
     print("review rewritten after creation accepted: false")
     print("review timestamp outside source/review commit window accepted: false")
