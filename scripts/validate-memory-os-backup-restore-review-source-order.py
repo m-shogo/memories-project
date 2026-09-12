@@ -2,9 +2,10 @@
 """Fail-closed source-order validation for OPS-P0-007 recovery review evidence.
 
 A typed Security, Operability, or cross-generation material-delta review must not predate
-the exact source commit recorded by the generation recovery evidence it approves. This
-adds a chronology binding without creating evidence, production authority, recovery
-objectives, credentials, or traffic.
+the exact source commit recorded by the generation recovery evidence it approves. Review
+timestamps must also fall between that source commit and the review evidence creation
+commit. This adds chronology binding without creating evidence, production authority,
+recovery objectives, credentials, or traffic.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -81,6 +83,26 @@ def commit_exists(commit_sha: str, field: str) -> None:
     require(completed.returncode == 0, f"{field} sourceCommitSha must resolve to a commit")
 
 
+def commit_time(commit_sha: str, field: str) -> datetime:
+    value = git_output(["show", "-s", "--format=%cI", commit_sha], field)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise Fail(f"cannot parse {field} commit timestamp") from exc
+    require(parsed.tzinfo is not None, f"{field} commit timestamp must be timezone-aware")
+    return parsed.astimezone(timezone.utc)
+
+
+def review_time(value: Any, field: str) -> datetime:
+    require(isinstance(value, str) and len(value) == 20 and value.endswith("Z"),
+            f"{field}.reviewedAt must be canonical UTC RFC3339 seconds")
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise Fail(f"{field}.reviewedAt must be canonical UTC RFC3339 seconds") from exc
+    return parsed
+
+
 def is_ancestor(ancestor: str, descendant: str) -> bool:
     completed = subprocess.run(["git", "merge-base", "--is-ancestor", ancestor, descendant], cwd=ROOT,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -99,11 +121,18 @@ def require_source_precedes_review(source_commit: str, review_commit: str, field
             f"{field} review predates or is not descended from sourceCommitSha")
 
 
+def require_review_time_window(reviewed_at: datetime, source_time: datetime,
+                               review_commit_time: datetime, field: str) -> None:
+    require(source_time <= reviewed_at, f"{field}.reviewedAt predates sourceCommitSha")
+    require(reviewed_at <= review_commit_time, f"{field}.reviewedAt is later than review evidence commit")
+
+
 def validate_row(row: dict[str, Any], index: int) -> None:
     source_commit = row.get("sourceCommitSha")
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit) is not None,
             f"records[{index}].sourceCommitSha invalid")
     commit_exists(source_commit, f"records[{index}]")
+    source_time = commit_time(source_commit, f"records[{index}].sourceCommitSha")
 
     refs: list[tuple[str, Any, bool]] = [
         ("securityReviewRef", row.get("securityReviewRef"), False),
@@ -119,9 +148,12 @@ def validate_row(row: dict[str, Any], index: int) -> None:
 
     for name, value, material_delta in refs:
         field = f"records[{index}].{name}"
-        ref, _path = canonical_review_ref(value, field, material_delta=material_delta)
+        ref, path = canonical_review_ref(value, field, material_delta=material_delta)
         review_commit = first_commit_for_path(ref, field)
         require_source_precedes_review(source_commit, review_commit, field)
+        payload = load_json(path, field)
+        reviewed_at = review_time(payload.get("reviewedAt"), field)
+        require_review_time_window(reviewed_at, source_time, commit_time(review_commit, field), field)
 
 
 def self_test() -> None:
@@ -141,7 +173,22 @@ def self_test() -> None:
             pass
         else:
             raise Fail("self-test accepted invalid sourceCommitSha")
-    print("PASS: review source-order negative rejects stale/non-descendant and malformed source commit bindings")
+
+    source_time = datetime(2026, 9, 12, 9, 0, 0, tzinfo=timezone.utc)
+    review_time_ok = datetime(2026, 9, 12, 9, 5, 0, tzinfo=timezone.utc)
+    commit_time_ok = datetime(2026, 9, 12, 9, 10, 0, tzinfo=timezone.utc)
+    require_review_time_window(review_time_ok, source_time, commit_time_ok, "self-test")
+    for stale, label in (
+        (datetime(2026, 9, 12, 8, 59, 59, tzinfo=timezone.utc), "predates sourceCommitSha"),
+        (datetime(2026, 9, 12, 9, 10, 1, tzinfo=timezone.utc), "later than review evidence commit"),
+    ):
+        try:
+            require_review_time_window(stale, source_time, commit_time_ok, "self-test")
+        except Fail as exc:
+            require(label in str(exc), f"self-test rejected review timestamp at wrong boundary: {exc}")
+        else:
+            raise Fail("self-test accepted review timestamp outside source/review commit window")
+    print("PASS: review source-order negative rejects stale/non-descendant commits, malformed source SHAs, and out-of-window review timestamps")
 
 
 def main() -> int:
@@ -162,6 +209,7 @@ def main() -> int:
         validate_row(row, index)
     print(f"PASS: recovery review source-order binding records={len(rows)} productionEvidence=false productionReady=false")
     print("review predating sourceCommitSha accepted: false")
+    print("review timestamp outside source/review commit window accepted: false")
     print("production authority created: false")
     return 0
 
