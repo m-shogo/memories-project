@@ -205,6 +205,7 @@ def main() -> int:
         ("CONTRACT", module.REGISTRY),
         ("REGISTRY", module.CONTRACT),
         ("MATERIAL_DELTA_VALIDATOR", SUBSTITUTE),
+        ("REVIEW_SOURCE_ORDER_VALIDATOR", SUBSTITUTE),
         ("VALIDATOR", SUBSTITUTE),
     ):
         expect_authority_substitution_fail(module, field, substitute)
@@ -222,6 +223,7 @@ def main() -> int:
         ("require_utc_rfc3339", lambda value, _field: value),
         ("validate_review", lambda *_args: ("docs/evidence/backup-restore/fake.json", "reviewer-fake")),
         ("load_material_delta_validator", lambda: object()),
+        ("load_review_source_order_validator", lambda: object()),
     ):
         expect_execution_substitution_fail(module, field, replacement)
     expect_main_candidate_substitution_fail(module)
@@ -275,8 +277,11 @@ def main() -> int:
     expect_contract_fail(module, lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"), "required review field removed")
     expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("independentReviewMustBindRecoveryObjectivesId", False), "binding rule disabled")
     expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("candidateDerivationMustUseTypedIndependentReviewAuthority", False), "candidate review authority delegation disabled")
+    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("independentReviewMustBeCreatedStrictlyAfterSourceCommit", False), "independent review source chronology disabled")
+    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustBeCreatedStrictlyAfterSourceCommit", False), "material-delta review source chronology disabled")
     expect_contract_fail(module, lambda contract: contract["promotionBoundary"].__setitem__("completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews", False), "independent review promotion boundary disabled")
     expect_contract_fail(module, lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"), "candidate material-delta validator substituted")
+    expect_contract_fail(module, lambda contract: contract.__setitem__("reviewSourceOrderValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"), "candidate review source-order validator substituted")
     expect_contract_fail(module, lambda contract: contract["independentReviewRoles"].__setitem__("securityReviewRef", "OPERABILITY"), "review role map substituted")
 
     original_history = module.git_history
@@ -295,9 +300,10 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, unsafe production boundaries, wrong roles, non-approved reviews, candidate/promotion contract drift, post-commit edits, and production promotion")
+    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, source-order authority substitution, generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, unsafe production boundaries, wrong roles, non-approved reviews, chronology/candidate/promotion contract drift, post-commit edits, and production promotion")
     print("runtime data/executable authority substitution accepted: false")
     print("runtime execution helper substitution accepted: false")
+    print("review source-order authority substitution accepted: false")
     print("main candidate authority substitution accepted: false")
     print("canonical generation evidence authority mutated: false")
     print("human production promotion remains separate: true")
