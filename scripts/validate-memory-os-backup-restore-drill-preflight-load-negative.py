@@ -162,6 +162,72 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
     print("PASS rollback: production status restored byte-for-byte after aggregate rejection")
 
 
+def prove_rollback_failure_diagnostics(reconciler: object, tmp: Path) -> None:
+    contract = tmp / "preflight-contract-rollback-failure.json"
+    status = tmp / "production-operability-status-rollback-failure.json"
+    shutil.copyfile(CANONICAL_CONTRACT, contract)
+    shutil.copyfile(CANONICAL_STATUS, status)
+    before_status = status.read_bytes()
+
+    original_contract = reconciler.CONTRACT
+    original_status = reconciler.STATUS
+    original_run = reconciler.subprocess.run
+    original_write = reconciler.write_text
+    observed_commands: list[list[str]] = []
+    write_count = 0
+
+    expected_paths = [
+        str(reconciler.load_validator_module().GEN_VALIDATOR),
+        str(reconciler.load_validator_module().OBJECTIVE_VALIDATOR),
+        str(reconciler.load_validator_module().DRILL_VALIDATOR),
+        str(reconciler.VALIDATOR_MODULE),
+        str(reconciler.OPERABILITY_VALIDATOR),
+    ]
+
+    def fail_only_aggregate_post_reconcile(*args, **kwargs):
+        command = [str(item) for item in (args[0] if args else [])]
+        observed_commands.append(command)
+        call_index = len(observed_commands) - 1
+        require(call_index < len(expected_paths), "unexpected extra preflight validator invocation during rollback-failure proof")
+        require(command[-1] == expected_paths[call_index], f"preflight rollback-failure validator order drift at call {call_index + 1}: {command}")
+        if call_index < 4:
+            return SimpleNamespace(returncode=0, stdout="upstream/preflight authority validator pass", stderr="")
+        return SimpleNamespace(returncode=1, stdout="forced post-reconcile operability validator failure", stderr="")
+
+    def fail_first_rollback_write(path: Path, text: str) -> None:
+        nonlocal write_count
+        write_count += 1
+        if write_count == 3:
+            raise reconciler.Fail("synthetic first rollback write failure")
+        original_write(path, text)
+
+    reconciler.CONTRACT = contract
+    reconciler.STATUS = status
+    reconciler.subprocess.run = fail_only_aggregate_post_reconcile
+    reconciler.write_text = fail_first_rollback_write
+    try:
+        try:
+            reconciler._reconcile()
+        except reconciler.Fail as exc:
+            diagnostic = str(exc)
+            require("forced post-reconcile operability validator failure" in diagnostic, f"primary preflight failure diagnostic lost: {diagnostic}")
+            require("rollback incomplete" in diagnostic, f"rollback incompleteness diagnostic missing: {diagnostic}")
+            require("synthetic first rollback write failure" in diagnostic, f"rollback failure diagnostic missing: {diagnostic}")
+        else:
+            raise Fail("rollback-failure transaction unexpectedly succeeded")
+    finally:
+        reconciler.CONTRACT = original_contract
+        reconciler.STATUS = original_status
+        reconciler.subprocess.run = original_run
+        reconciler.write_text = original_write
+
+    require(len(observed_commands) == 5, "expected exact five-stage validation chain during rollback-failure proof")
+    require(write_count == 4, f"rollback failure stopped later authority restoration: write_count={write_count}")
+    require(status.read_bytes() == before_status, "production status was not restored after earlier rollback failure")
+    print("PASS rollback: later preflight authorities are still restored after the first rollback write fails")
+    print("PASS diagnostic: primary post-validation failure preserved alongside rollback incomplete failure")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -188,6 +254,7 @@ def main() -> int:
         expect_domain_fail("preflight reconcile authority path is unreadable directory", lambda: reconciler.load(directory_authority), reconciler.Fail)
 
         prove_transactional_rollback(reconciler, tmp)
+        prove_rollback_failure_diagnostics(reconciler, tmp)
 
     escaped = Path("/tmp/memory-os-preflight-reconcile-escaped.json")
     expect_domain_fail("preflight reconcile authority path escapes repository", lambda: reconciler.load(escaped), reconciler.Fail)
@@ -202,6 +269,8 @@ def main() -> int:
     print("preflight/status non-atomic writes accepted: false")
     print("preflight and operability validators execute inside reconcile transaction: true")
     print("failed aggregate post-validation leaves derived authority mutation behind: false")
+    print("rollback failure masks primary post-validation diagnostic: false")
+    print("earlier rollback failure stops later authority restoration: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
