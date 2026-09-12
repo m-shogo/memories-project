@@ -3,16 +3,40 @@ name: Backup Restore Generation Evidence Rollback Diagnostics Negative
 on:
   pull_request:
     paths:
-      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py"
       - ".github/workflows/backup-restore-generation-evidence-rollback-diagnostics-negative.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py"
   push:
     branches:
       - so
     paths:
-      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
-      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py"
       - ".github/workflows/backup-restore-generation-evidence-rollback-diagnostics-negative.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -28,6 +52,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Confirm exact clean rollback diagnostics source
         run: |
           set -euo pipefail
@@ -39,14 +67,19 @@ jobs:
       - name: Compile generation evidence rollback diagnostics negative
         run: |
           set -euo pipefail
-          python3 -m py_compile \
+          python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-binding.py \
+            scripts/validate-memory-os-operability.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
 
       - name: Prove generation evidence rollback diagnostics remain fail-closed
         run: |
           set -euo pipefail
-          python3 scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
 
       - name: Prove negative suite leaves canonical authorities untouched
         run: |
