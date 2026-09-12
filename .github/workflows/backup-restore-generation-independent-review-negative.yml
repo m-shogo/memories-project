@@ -79,6 +79,40 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review.py
+          python - <<'PY'
+          import importlib.util
+          import json
+          from pathlib import Path
+
+          root = Path.cwd()
+          validator_path = root / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+          spec = importlib.util.spec_from_file_location("candidate_count_boundary_negative", validator_path)
+          if spec is None or spec.loader is None:
+              raise SystemExit("cannot load independent-review validator")
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          canonical = module.REGISTRY.read_bytes()
+          try:
+              registry = json.loads(canonical)
+              registry["records"] = [{}]
+              registry["productionEquivalentRecoveryCandidateCount"] = 1
+              module.REGISTRY.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+              try:
+                  module.main()
+              except module.Fail as exc:
+                  expected = "productionEquivalentRecoveryCandidateCount cannot exceed independently reviewed records"
+                  if expected not in str(exc):
+                      raise SystemExit(f"candidate-count boundary rejected at wrong authority: {exc}")
+              else:
+                  raise SystemExit("unreviewed generation evidence was allowed to contribute a production-equivalent recovery candidate")
+          finally:
+              module.REGISTRY.write_bytes(canonical)
+
+          if module.REGISTRY.read_bytes() != canonical:
+              raise SystemExit("canonical generation evidence registry was not restored after candidate-count negative")
+          print("PASS: unreviewed generation evidence cannot contribute a production-equivalent recovery candidate")
+          PY
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
