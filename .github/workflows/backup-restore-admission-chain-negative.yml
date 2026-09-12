@@ -29,6 +29,8 @@ on:
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
@@ -104,6 +106,8 @@ on:
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
@@ -184,6 +188,8 @@ jobs:
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py \
+            scripts/validate-memory-os-backup-restore-review-source-order.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py \
@@ -229,6 +235,10 @@ jobs:
             scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py \
             scripts/validate-memory-os-operability.py
+      - name: Validate recovery review source order
+        run: python scripts/validate-memory-os-backup-restore-review-source-order.py
+      - name: Validate generation independent review authority
+        run: python scripts/validate-memory-os-backup-restore-generation-independent-review.py
       - name: Generate strict OPS-P0-007 admission snapshot
         run: python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py
       - name: Validate strict OPS-P0-007 admission snapshot
