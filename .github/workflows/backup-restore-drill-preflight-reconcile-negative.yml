@@ -53,10 +53,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Validate exact clean authority source
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            expected="${{ github.event.pull_request.head.sha }}"
+          else
+            expected="${{ github.sha }}"
+          fi
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
       - name: Validate preflight partial-publication rollback
         run: |
           set -euo pipefail
