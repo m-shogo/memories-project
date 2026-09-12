@@ -8,6 +8,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
@@ -32,6 +33,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
@@ -76,6 +78,7 @@ jobs:
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
