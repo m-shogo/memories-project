@@ -4,8 +4,9 @@
 Security and Operability review payloads must be typed, distinct, repository-contained,
 append-only in Git history after their first committed version, and bound to the exact
 recovery authority they approve. Cross-generation candidates must also satisfy the
-canonical typed material-delta review authority. This validator never creates review
-evidence or production authority.
+canonical typed material-delta review authority. All candidate reviews must satisfy the
+canonical source-commit chronology authority before candidate admission. This validator
+never creates review evidence or production authority.
 """
 
 from __future__ import annotations
@@ -22,12 +23,14 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
 REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
 MATERIAL_DELTA_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-material-delta-review.py")
+REVIEW_SOURCE_ORDER_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-review-source-order.py")
 VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-independent-review.py")
 CONTRACT = ROOT / CONTRACT_REL
 REGISTRY = ROOT / REGISTRY_REL
 EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
 REVIEW_SCHEMA = "memory-os-backup-restore-generation-review-evidence.v1"
 MATERIAL_DELTA_VALIDATOR = ROOT / MATERIAL_DELTA_VALIDATOR_REL
+REVIEW_SOURCE_ORDER_VALIDATOR = ROOT / REVIEW_SOURCE_ORDER_VALIDATOR_REL
 VALIDATOR = ROOT / VALIDATOR_REL
 REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
 REQUIRED_FIELDS = {
@@ -77,6 +80,7 @@ def enforce_runtime_authorities() -> None:
         (CONTRACT, CONTRACT_REL, "generation evidence contract"),
         (REGISTRY, REGISTRY_REL, "generation evidence registry"),
         (MATERIAL_DELTA_VALIDATOR, MATERIAL_DELTA_VALIDATOR_REL, "candidate material-delta review validator"),
+        (REVIEW_SOURCE_ORDER_VALIDATOR, REVIEW_SOURCE_ORDER_VALIDATOR_REL, "candidate review source-order validator"),
         (VALIDATOR, VALIDATOR_REL, "generation independent-review validator"),
     ):
         require_exact_repo_file(path, expected, field)
@@ -97,6 +101,7 @@ def validate_contract_authority() -> None:
     require(contract.get("independentReviewEvidenceSchemaVersion") == REVIEW_SCHEMA, "independent review evidence schema authority drift")
     require(contract.get("independentReviewEvidenceRoot") == EVIDENCE_ROOT.as_posix(), "independent review evidence root authority drift")
     require(contract.get("materialDeltaReviewValidator") == MATERIAL_DELTA_VALIDATOR_REL.as_posix(), "candidate material-delta review validator authority drift")
+    require(contract.get("reviewSourceOrderValidator") == REVIEW_SOURCE_ORDER_VALIDATOR_REL.as_posix(), "candidate review source-order validator authority drift")
     fields = contract.get("requiredIndependentReviewEvidenceFields")
     require(isinstance(fields, list) and all(isinstance(field, str) and field for field in fields) and len(fields) == len(set(fields)) and set(fields) == REQUIRED_FIELDS, "independent review required field authority drift")
     require(contract.get("independentReviewRoles") == ROLE_BY_REF, "independent review role authority drift")
@@ -111,6 +116,8 @@ def validate_contract_authority() -> None:
         "independentReviewMustBeApproved",
         "independentReviewReviewerPseudonymsMustBeDistinct",
         "independentReviewPayloadMustRemainAppendOnlyAfterFirstCommit",
+        "independentReviewMustBeCreatedStrictlyAfterSourceCommit",
+        "crossGenerationMaterialDeltaReviewMustBeCreatedStrictlyAfterSourceCommit",
         "independentReviewCannotAuthorizeAutomaticPromotion",
     ):
         require(rules.get(rule) is True, f"independent review contract rule drift: {rule}")
@@ -193,6 +200,18 @@ def load_material_delta_validator():
     return module
 
 
+def load_review_source_order_validator():
+    require_exact_repo_file(REVIEW_SOURCE_ORDER_VALIDATOR, REVIEW_SOURCE_ORDER_VALIDATOR_REL, "candidate review source-order validator")
+    spec = importlib.util.spec_from_file_location("memory_os_review_source_order_for_candidate_reviews", REVIEW_SOURCE_ORDER_VALIDATOR)
+    require(spec is not None and spec.loader is not None, "cannot load candidate review source-order validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT", None) == CONTRACT, "candidate review source-order contract authority drift")
+    require(getattr(module, "REGISTRY", None) == REGISTRY, "candidate review source-order registry authority drift")
+    require(callable(getattr(module, "validate_row", None)), "candidate review source-order authority missing")
+    return module
+
+
 CANONICAL_REQUIRE = require
 CANONICAL_EXECUTION_HELPERS = (
     enforce_runtime_authorities,
@@ -205,6 +224,7 @@ CANONICAL_EXECUTION_HELPERS = (
     require_utc_rfc3339,
     validate_review,
     load_material_delta_validator,
+    load_review_source_order_validator,
 )
 CANONICAL_EXECUTION_TRANSPORT = (
     subprocess.run,
@@ -215,6 +235,7 @@ CANONICAL_AUTHORITY_CONFIG = (
     CONTRACT_REL.as_posix(),
     REGISTRY_REL.as_posix(),
     MATERIAL_DELTA_VALIDATOR_REL.as_posix(),
+    REVIEW_SOURCE_ORDER_VALIDATOR_REL.as_posix(),
     VALIDATOR_REL.as_posix(),
     EVIDENCE_ROOT.as_posix(),
     REVIEW_SCHEMA,
@@ -252,6 +273,7 @@ def enforce_execution_authority(
         require_utc_rfc3339,
         validate_review,
         load_material_delta_validator,
+        load_review_source_order_validator,
     )
     if current_helpers != canonical_helpers:
         raise Fail("generation independent-review execution helper drift")
@@ -266,6 +288,7 @@ def enforce_execution_authority(
         CONTRACT_REL.as_posix(),
         REGISTRY_REL.as_posix(),
         MATERIAL_DELTA_VALIDATOR_REL.as_posix(),
+        REVIEW_SOURCE_ORDER_VALIDATOR_REL.as_posix(),
         VALIDATOR_REL.as_posix(),
         EVIDENCE_ROOT.as_posix(),
         REVIEW_SCHEMA,
@@ -291,6 +314,12 @@ def candidate_reviews_approved(
     enforce_execution_authority()
     enforce_runtime_authorities()
     validate_contract_authority()
+    try:
+        load_review_source_order_validator().validate_row(row, -1)
+    except Exception as exc:
+        if isinstance(exc, RuntimeError) and exc.__class__.__name__ == "Fail":
+            raise Fail(f"review source-order authority invalid: {exc}") from exc
+        raise
     try:
         material_delta_ok = load_material_delta_validator().material_delta_review_approved(row)
     except Exception as exc:
@@ -336,6 +365,7 @@ def main(
     print("generation independent-review execution helper substitution accepted: false")
     print("generation independent-review execution transport substitution accepted: false")
     print("paired semantic authority substitution accepted: false")
+    print("review source-order authority required before candidate admission: true")
     print("human production promotion remains separate: true")
     return 0
 
