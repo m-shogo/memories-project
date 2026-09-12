@@ -85,11 +85,29 @@ def main() -> int:
         "module loader transport drift",
     )
 
+    original_run_validator = module.run_validator
+    invoked: list[Path] = []
+
+    def observe_validator(path: Path, expected_relative: Path, label: str) -> None:
+        invoked.append(expected_relative)
+        original_run_validator(path, expected_relative, label)
+
+    module.run_validator = observe_validator
+    try:
+        module.main()
+    finally:
+        module.run_validator = original_run_validator
+    require(
+        module.INDEPENDENT_REVIEW_VALIDATOR_REL in invoked,
+        "canonical generation-evidence validation did not execute independent-review authority",
+    )
+
     print("Memory OS generation-evidence execution transport negative PASS")
     print("execution guard substitution accepted: false")
     print("subprocess validation transport substitution accepted: false")
     print("import spec transport substitution accepted: false")
     print("module loader transport substitution accepted: false")
+    print("central independent-review execution observed: true")
     print("generation evidence created: false")
     print("production evidence: false")
     print("production decision: NO_GO")
