@@ -4,6 +4,15 @@ on:
   pull_request:
     paths:
       - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
@@ -16,10 +25,13 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
@@ -30,6 +42,15 @@ on:
       - so
     paths:
       - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
@@ -42,10 +63,13 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
@@ -90,10 +114,13 @@ jobs:
             scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py \
             scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py \
