@@ -1,0 +1,60 @@
+name: Backup Restore Promotion Review Source Order
+
+on:
+  push:
+    branches: [so]
+    paths:
+      - 'scripts/validate-memory-os-backup-restore-promotion-review-source-order.py'
+      - 'scripts/register-memory-os-backup-restore-promotion-review.py'
+      - 'scripts/validate-memory-os-backup-restore-promotion-review.py'
+      - 'scripts/validate-memory-os-backup-restore-promotion-review-negative.py'
+      - 'contracts/operations/backup-restore-promotion-review-contract.v1.json'
+      - 'contracts/operations/backup-restore-promotion-review-registry.v1.json'
+      - 'contracts/operations/backup-restore-generation-evidence-registry.v1.json'
+      - 'docs/evidence/backup-restore/**'
+      - '.github/workflows/backup-restore-promotion-review-source-order.yml'
+  pull_request:
+    paths:
+      - 'scripts/validate-memory-os-backup-restore-promotion-review-source-order.py'
+      - 'scripts/register-memory-os-backup-restore-promotion-review.py'
+      - 'scripts/validate-memory-os-backup-restore-promotion-review.py'
+      - 'scripts/validate-memory-os-backup-restore-promotion-review-negative.py'
+      - 'contracts/operations/backup-restore-promotion-review-contract.v1.json'
+      - 'contracts/operations/backup-restore-promotion-review-registry.v1.json'
+      - 'contracts/operations/backup-restore-generation-evidence-registry.v1.json'
+      - 'docs/evidence/backup-restore/**'
+      - '.github/workflows/backup-restore-promotion-review-source-order.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile chronology and promotion validators
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore-promotion-review-source-order.py \
+            scripts/register-memory-os-backup-restore-promotion-review.py \
+            scripts/validate-memory-os-backup-restore-promotion-review.py \
+            scripts/validate-memory-os-backup-restore-promotion-review-negative.py
+      - name: Prove stale human promotion review chronology is fail-closed
+        run: python scripts/validate-memory-os-backup-restore-promotion-review-source-order.py --self-test
+      - name: Validate canonical human promotion review chronology
+        run: python scripts/validate-memory-os-backup-restore-promotion-review-source-order.py
+      - name: Validate downstream human promotion review authority
+        run: python scripts/validate-memory-os-backup-restore-promotion-review.py
+      - name: Prove validators are read-only
+        run: |
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
