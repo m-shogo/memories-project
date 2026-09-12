@@ -112,11 +112,12 @@ def main() -> int:
             )
             require(replace_calls == 8, f"rollback failure skipped later authority restores: replace calls={replace_calls}")
 
+            # A deterministic candidate publication may be byte-identical to the original
+            # authority. Do not infer rollback execution from a byte difference on the
+            # intentionally failed first restore; replace-call accounting proves the failed
+            # attempt and the later restore assertions prove rollback-all behavior.
             first_failed = targets["REGISTRY"]
-            require(
-                first_failed.read_bytes() != originals[first_failed],
-                "synthetically failed first rollback unexpectedly restored generation evidence registry",
-            )
+            require(mode(first_failed) == original_modes[first_failed], "failed first rollback drifted authority mode")
             for attr in ("CONTRACT", "BINDING", "STATUS"):
                 path = targets[attr]
                 require(path.read_bytes() == originals[path], f"later rollback restore skipped authority bytes: {path.name}")
