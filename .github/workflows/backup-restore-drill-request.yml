@@ -39,6 +39,7 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -87,6 +88,7 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -149,6 +151,7 @@ jobs:
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
@@ -169,6 +172,7 @@ jobs:
           python scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py
           python scripts/reconcile-memory-os-backup-restore-drill-request.py
           python scripts/validate-memory-os-backup-restore-drill-request.py
+          python scripts/validate-memory-os-backup-restore-review-source-order.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           python scripts/validate-memory-os-backup-restore-generation-binding.py
@@ -232,6 +236,7 @@ jobs:
               scripts/reconcile-memory-os-backup-restore-drill-request.py \
               scripts/register-memory-os-backup-restore-generation-evidence.py \
               scripts/validate-memory-os-backup-restore-generation-evidence.py \
+              scripts/validate-memory-os-backup-restore-review-source-order.py \
               scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
               scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
               scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
@@ -254,6 +259,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-review-source-order.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1 || code=$?; fi
@@ -386,6 +392,7 @@ jobs:
           python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py
+          python scripts/validate-memory-os-backup-restore-review-source-order.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           python scripts/validate-memory-os-backup-restore-generation-binding.py
