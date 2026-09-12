@@ -22,6 +22,7 @@ on:
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
@@ -32,6 +33,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
@@ -85,6 +88,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
+            scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
@@ -95,6 +100,7 @@ jobs:
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-review-source-order.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1 || code=$?; fi
@@ -119,6 +125,7 @@ jobs:
             : > "$log"
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-review-source-order.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1
             python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1
