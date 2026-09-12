@@ -3,11 +3,14 @@
 
 A typed Security, Operability, or cross-generation material-delta review must be created
 strictly after the exact source commit recorded by the generation recovery evidence it
-approves. Review timestamps must also fall between that source commit and the review
-evidence creation commit. The current review payload must remain byte-identical to its
-creation blob so append-only review evidence cannot be rewritten in place after
-admission. This adds chronology and immutability binding without creating evidence,
-production authority, recovery objectives, credentials, or traffic.
+approves. Independent Security/Operability reviews remain optional until candidate
+review begins, but once either appears both must be present. Cross-generation material-
+delta review authority remains mandatory for cross-generation evidence. Review timestamps
+must also fall between the source commit and the review evidence creation commit. The
+current review payload must remain byte-identical to its creation blob so append-only
+review evidence cannot be rewritten in place after admission. This adds chronology and
+immutability binding without creating evidence, production authority, recovery objectives,
+credentials, or traffic.
 """
 
 from __future__ import annotations
@@ -177,6 +180,21 @@ def require_review_time_window(reviewed_at: datetime, source_time: datetime,
     require(reviewed_at <= review_commit_time, f"{field}.reviewedAt is later than review evidence commit")
 
 
+def independent_review_refs(row: dict[str, Any], index: int) -> list[tuple[str, str, bool]]:
+    security = row.get("securityReviewRef")
+    operability = row.get("operabilityReviewRef")
+    if security is None and operability is None:
+        return []
+    require(
+        isinstance(security, str) and security and isinstance(operability, str) and operability,
+        f"records[{index}] must provide Security and Operability reviews together",
+    )
+    return [
+        ("securityReviewRef", security, False),
+        ("operabilityReviewRef", operability, False),
+    ]
+
+
 def validate_row(row: dict[str, Any], index: int) -> None:
     source_commit = row.get("sourceCommitSha")
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit) is not None,
@@ -184,10 +202,7 @@ def validate_row(row: dict[str, Any], index: int) -> None:
     commit_exists(source_commit, f"records[{index}]")
     source_time = commit_time(source_commit, f"records[{index}].sourceCommitSha")
 
-    refs: list[tuple[str, Any, bool]] = [
-        ("securityReviewRef", row.get("securityReviewRef"), False),
-        ("operabilityReviewRef", row.get("operabilityReviewRef"), False),
-    ]
+    refs: list[tuple[str, Any, bool]] = list(independent_review_refs(row, index))
     source_generation = row.get("sourceEnvironmentGenerationId")
     target_generation = row.get("restoreTargetGenerationId")
     if source_generation != target_generation:
@@ -235,6 +250,19 @@ def self_test() -> None:
         else:
             raise Fail("self-test accepted invalid sourceCommitSha")
 
+    require(independent_review_refs({}, 0) == [], "self-test rejected unreviewed non-candidate evidence")
+    for partial in (
+        {"securityReviewRef": "docs/evidence/backup-restore/security/review.json"},
+        {"operabilityReviewRef": "docs/evidence/backup-restore/operability/review.json"},
+    ):
+        try:
+            independent_review_refs(partial, 0)
+        except Fail as exc:
+            require("must provide Security and Operability reviews together" in str(exc),
+                    "self-test rejected partial review pair at wrong boundary")
+        else:
+            raise Fail("self-test accepted partial independent review pair")
+
     require_creation_blob_immutable(b"review-payload\n", b"review-payload\n", "self-test")
     try:
         require_creation_blob_immutable(b"rewritten-review\n", b"review-payload\n", "self-test")
@@ -257,7 +285,7 @@ def self_test() -> None:
             require(label in str(exc), f"self-test rejected review timestamp at wrong boundary: {exc}")
         else:
             raise Fail("self-test accepted review timestamp outside source/review commit window")
-    print("PASS: review source-order negative rejects same-commit/stale/non-descendant commits, rewritten creation blobs, malformed source SHAs, and out-of-window review timestamps")
+    print("PASS: review source-order negative rejects same-commit/stale/non-descendant commits, partial independent review pairs, rewritten creation blobs, malformed source SHAs, and out-of-window review timestamps while allowing unreviewed non-candidate evidence")
 
 
 def main() -> int:
@@ -280,6 +308,9 @@ def main() -> int:
         validate_row(row, index)
     print(f"PASS: recovery review source-order binding records={len(rows)} productionEvidence=false productionReady=false")
     print("generation review contract source-order authority: enforced")
+    print("unreviewed non-candidate generation evidence accepted: true")
+    print("partial independent review pairs accepted: false")
+    print("cross-generation material-delta chronology remains mandatory: true")
     print("review created in sourceCommitSha accepted: false")
     print("review predating sourceCommitSha accepted: false")
     print("review rewritten after creation accepted: false")
