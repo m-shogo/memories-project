@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Fail-closed chronology validation for human backup/restore promotion reviews.
 
-Human Recovery Owner, Security, and Operability review evidence must not predate the
-source commit of the final recovery evidence it reviews. Review timestamps must also
-not claim a time later than the commit that first introduced the review payload. The
-committed review payload must remain byte-identical to its creation blob so review
-evidence cannot be rewritten in place after admission. This validator is read-only
-and cannot create promotion authority, production evidence, credentials, recovery
-objectives, or traffic.
+Human Recovery Owner, Security, and Operability review evidence must be created strictly
+after the source commit of the final recovery evidence it reviews. Review timestamps
+must also not claim a time later than the commit that first introduced the review
+payload. The committed review payload must remain byte-identical to its creation blob
+so review evidence cannot be rewritten in place after admission. This validator is
+read-only and cannot create promotion authority, production evidence, credentials,
+recovery objectives, or traffic.
 """
 
 from __future__ import annotations
@@ -169,6 +169,7 @@ def require_source_precedes_review(
 ) -> None:
     require(SHA40.fullmatch(source_commit) is not None, f"{field} sourceCommitSha invalid")
     require(SHA40.fullmatch(review_commit) is not None, f"{field} review commit invalid")
+    require(source_commit != review_commit, f"{field} human promotion review must be created strictly after recovery sourceCommitSha")
     require(
         ancestor_check(source_commit, review_commit),
         f"{field} human promotion review predates or is not descended from recovery sourceCommitSha",
@@ -235,6 +236,12 @@ def self_test() -> None:
     review = "2" * 40
     require_source_precedes_review(source, review, "self-test", ancestor_check=lambda _a, _b: True)
     try:
+        require_source_precedes_review(source, source, "self-test", ancestor_check=lambda _a, _b: True)
+    except Fail as exc:
+        require("strictly after" in str(exc), "self-test rejected same-commit promotion review at wrong boundary")
+    else:
+        raise Fail("self-test accepted human promotion review created in recovery source commit")
+    try:
         require_source_precedes_review(source, review, "self-test", ancestor_check=lambda _a, _b: False)
     except Fail as exc:
         require("predates" in str(exc), "self-test rejected stale promotion review at wrong boundary")
@@ -271,7 +278,7 @@ def self_test() -> None:
             pass
         else:
             raise Fail("self-test accepted invalid recovery sourceCommitSha")
-    print("PASS: promotion review chronology negative rejects stale/non-descendant commits, rewritten creation blobs, malformed source SHAs, and out-of-window review timestamps")
+    print("PASS: promotion review chronology negative rejects same-commit/stale/non-descendant commits, rewritten creation blobs, malformed source SHAs, and out-of-window review timestamps")
 
 
 def main() -> int:
@@ -300,6 +307,7 @@ def main() -> int:
         validate_row(row, index, generations)
 
     print(f"PASS: human promotion review source-order binding records={len(rows)} productionEvidence=false productionReady=false")
+    print("promotion review created in recovery sourceCommitSha accepted: false")
     print("promotion review predating recovery sourceCommitSha accepted: false")
     print("promotion review rewritten after creation accepted: false")
     print("promotion review timestamp later than committed review evidence accepted: false")
