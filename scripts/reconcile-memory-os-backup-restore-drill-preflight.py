@@ -195,9 +195,9 @@ def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_err
         except Exception as rollback_exc:
             rollback_failures.append(f"{repo_relative(path)}: {rollback_exc}")
     if rollback_failures:
+        primary_text = str(reconcile_error) or reconcile_error.__class__.__name__
         raise Fail(
-            "restore drill preflight reconcile failed and rollback could not restore all canonical authorities: "
-            + "; ".join(rollback_failures)
+            f"{primary_text}; rollback incomplete: " + "; ".join(rollback_failures)
         ) from reconcile_error
 
 
