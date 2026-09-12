@@ -4,7 +4,9 @@
 A typed Security, Operability, or cross-generation material-delta review must not predate
 the exact source commit recorded by the generation recovery evidence it approves. Review
 timestamps must also fall between that source commit and the review evidence creation
-commit. This adds chronology binding without creating evidence, production authority,
+commit. The current review payload must remain byte-identical to its creation blob so
+append-only review evidence cannot be rewritten in place after admission. This adds
+chronology and immutability binding without creating evidence, production authority,
 recovery objectives, credentials, or traffic.
 """
 
@@ -75,6 +77,18 @@ def first_commit_for_path(ref: str, field: str) -> str:
     require(len(commits) == 1 and SHA40.fullmatch(commits[0]) is not None,
             f"{field} must have exactly one committed creation point")
     return commits[0]
+
+
+def creation_blob(commit_sha: str, ref: str, field: str) -> bytes:
+    completed = subprocess.run(["git", "show", f"{commit_sha}:{ref}"], cwd=ROOT,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    require(completed.returncode == 0,
+            f"cannot inspect {field} creation blob: {completed.stderr.decode('utf-8', errors='replace').strip()}")
+    return completed.stdout
+
+
+def require_creation_blob_immutable(current: bytes, created: bytes, field: str) -> None:
+    require(current == created, f"{field} review evidence changed after its creation commit")
 
 
 def commit_exists(commit_sha: str, field: str) -> None:
@@ -151,6 +165,11 @@ def validate_row(row: dict[str, Any], index: int) -> None:
         ref, path = canonical_review_ref(value, field, material_delta=material_delta)
         review_commit = first_commit_for_path(ref, field)
         require_source_precedes_review(source_commit, review_commit, field)
+        try:
+            current_blob = path.read_bytes()
+        except OSError as exc:
+            raise Fail(f"cannot read {field} current blob: {exc}") from exc
+        require_creation_blob_immutable(current_blob, creation_blob(review_commit, ref, field), field)
         payload = load_json(path, field)
         reviewed_at = review_time(payload.get("reviewedAt"), field)
         require_review_time_window(reviewed_at, source_time, commit_time(review_commit, field), field)
@@ -174,6 +193,14 @@ def self_test() -> None:
         else:
             raise Fail("self-test accepted invalid sourceCommitSha")
 
+    require_creation_blob_immutable(b"review-payload\n", b"review-payload\n", "self-test")
+    try:
+        require_creation_blob_immutable(b"rewritten-review\n", b"review-payload\n", "self-test")
+    except Fail as exc:
+        require("changed after its creation commit" in str(exc), "self-test rejected rewritten review at wrong boundary")
+    else:
+        raise Fail("self-test accepted review evidence rewritten after creation")
+
     source_time = datetime(2026, 9, 12, 9, 0, 0, tzinfo=timezone.utc)
     review_time_ok = datetime(2026, 9, 12, 9, 5, 0, tzinfo=timezone.utc)
     commit_time_ok = datetime(2026, 9, 12, 9, 10, 0, tzinfo=timezone.utc)
@@ -188,7 +215,7 @@ def self_test() -> None:
             require(label in str(exc), f"self-test rejected review timestamp at wrong boundary: {exc}")
         else:
             raise Fail("self-test accepted review timestamp outside source/review commit window")
-    print("PASS: review source-order negative rejects stale/non-descendant commits, malformed source SHAs, and out-of-window review timestamps")
+    print("PASS: review source-order negative rejects stale/non-descendant commits, rewritten creation blobs, malformed source SHAs, and out-of-window review timestamps")
 
 
 def main() -> int:
@@ -209,6 +236,7 @@ def main() -> int:
         validate_row(row, index)
     print(f"PASS: recovery review source-order binding records={len(rows)} productionEvidence=false productionReady=false")
     print("review predating sourceCommitSha accepted: false")
+    print("review rewritten after creation accepted: false")
     print("review timestamp outside source/review commit window accepted: false")
     print("production authority created: false")
     return 0
