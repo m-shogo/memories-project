@@ -54,6 +54,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
@@ -159,6 +160,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
@@ -271,6 +273,7 @@ jobs:
           python -m py_compile scripts/register-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-review-source-order.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-generation-independent-review.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
           python -m py_compile scripts/reconcile-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-binding.py
@@ -390,6 +393,9 @@ jobs:
 
       - name: Validate generation-bound backup/restore evidence registry
         run: python scripts/validate-memory-os-backup-restore-generation-evidence.py
+
+      - name: Validate generation recovery independent reviews
+        run: python scripts/validate-memory-os-backup-restore-generation-independent-review.py
 
       - name: Validate generation-evidence upstream writer authority
         run: python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
