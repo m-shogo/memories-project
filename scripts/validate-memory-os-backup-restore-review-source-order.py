@@ -21,7 +21,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
 REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+SELF_REL = Path("scripts/validate-memory-os-backup-restore-review-source-order.py")
+CONTRACT = ROOT / CONTRACT_REL
 REGISTRY = ROOT / REGISTRY_REL
 EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
 MATERIAL_DELTA_ROOT = EVIDENCE_ROOT / "material-delta"
@@ -44,6 +47,37 @@ def load_json(path: Path, field: str) -> dict[str, Any]:
         raise Fail(f"{field} unreadable or invalid JSON: {exc}") from exc
     require(isinstance(value, dict), f"{field} root must be object")
     return value
+
+
+def validate_contract(contract: dict[str, Any]) -> None:
+    require(
+        contract.get("schemaVersion") == "memory-os-backup-restore-generation-evidence.v1",
+        "generation evidence contract schema drift",
+    )
+    require(contract.get("reviewSourceOrderValidator") == SELF_REL.as_posix(), "recovery review source-order validator authority drift")
+    rules = contract.get("recordRules")
+    require(isinstance(rules, dict), "generation evidence recordRules missing")
+    require(
+        rules.get("independentReviewMustBeCreatedStrictlyAfterSourceCommit") is True,
+        "generation evidence contract must require post-source independent reviews",
+    )
+    require(
+        rules.get("crossGenerationMaterialDeltaReviewMustBeCreatedStrictlyAfterSourceCommit") is True,
+        "generation evidence contract must require post-source material-delta review",
+    )
+    require(
+        rules.get("independentReviewPayloadMustRemainAppendOnlyAfterFirstCommit") is True,
+        "generation evidence contract must preserve independent review creation payloads",
+    )
+    require(
+        rules.get("crossGenerationMaterialDeltaReviewMustRemainAppendOnlyAfterFirstCommit") is True,
+        "generation evidence contract must preserve material-delta review creation payloads",
+    )
+    readiness = contract.get("readiness")
+    require(
+        isinstance(readiness, dict) and readiness.get("reviewSourceOrderValidatorImplemented") is True,
+        "generation evidence review source-order readiness drift",
+    )
 
 
 def canonical_review_ref(value: Any, field: str, material_delta: bool = False) -> tuple[str, Path]:
@@ -231,6 +265,8 @@ def main() -> int:
         self_test()
         return 0
     require(len(sys.argv) == 1, "usage: validate-memory-os-backup-restore-review-source-order.py [--self-test]")
+    contract = load_json(CONTRACT, "generation evidence contract")
+    validate_contract(contract)
     registry = load_json(REGISTRY, "generation evidence registry")
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1",
             "generation evidence registry schema drift")
@@ -243,6 +279,7 @@ def main() -> int:
     for index, row in enumerate(rows):
         validate_row(row, index)
     print(f"PASS: recovery review source-order binding records={len(rows)} productionEvidence=false productionReady=false")
+    print("generation review contract source-order authority: enforced")
     print("review created in sourceCommitSha accepted: false")
     print("review predating sourceCommitSha accepted: false")
     print("review rewritten after creation accepted: false")
