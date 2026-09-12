@@ -8,6 +8,7 @@ on:
       - "contracts/operations/requests/operability-admission-inventory.v1.json"
       - "contracts/operations/operability-admission-inventory.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -18,6 +19,7 @@ on:
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**/*.json"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
@@ -34,6 +36,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
@@ -92,6 +95,7 @@ on:
       - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
       - "contracts/operations/backup-restore-promotion-review-contract.v1.json"
       - "contracts/operations/backup-restore-promotion-review-registry.v1.json"
+      - "docs/evidence/backup-restore/**/*.json"
       - "contracts/operations/release-baseline-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "scripts/register-memory-os-release-baseline.py"
@@ -123,6 +127,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
@@ -147,7 +152,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -171,6 +176,7 @@ jobs:
           python scripts/validate-memory-os-backup-restore-drill-preflight.py
           python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
           python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
+          python scripts/validate-memory-os-backup-restore-review-source-order.py
       - name: Validate backup/restore admission chain negatives
         run: |
           python scripts/validate-memory-os-backup-restore-admission-chain-negative.py
