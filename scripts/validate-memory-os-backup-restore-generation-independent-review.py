@@ -355,16 +355,33 @@ def main(
     require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "generation evidence registry production boundary drift")
     rows = registry.get("records")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation evidence registry records invalid")
+    reviewed_records = 0
     for index, row in enumerate(rows):
+        security_ref = row.get("securityReviewRef")
+        operability_ref = row.get("operabilityReviewRef")
+        if security_ref is None and operability_ref is None:
+            continue
+        require(
+            isinstance(security_ref, str) and security_ref and isinstance(operability_ref, str) and operability_ref,
+            f"records[{index}] must provide Security and Operability reviews together",
+        )
         try:
             candidate_reviews_approved(row)
         except Fail as exc:
             raise Fail(f"records[{index}] independent review authority invalid: {exc}") from exc
-    print(f"PASS: generation candidate review authority records={len(rows)} productionEvidence=false productionReady=false")
+        reviewed_records += 1
+    candidate_count = registry.get("productionEquivalentRecoveryCandidateCount")
+    require(
+        isinstance(candidate_count, int) and not isinstance(candidate_count, bool) and 0 <= candidate_count <= reviewed_records,
+        "productionEquivalentRecoveryCandidateCount cannot exceed independently reviewed records",
+    )
+    print(f"PASS: generation independent-review authority records={len(rows)} reviewedRecords={reviewed_records} productionEvidence=false productionReady=false")
     print("canonical generation evidence contract/registry authority substitution accepted: false")
     print("generation independent-review execution helper substitution accepted: false")
     print("generation independent-review execution transport substitution accepted: false")
     print("paired semantic authority substitution accepted: false")
+    print("unreviewed generation evidence may remain non-candidate: true")
+    print("partial independent review pairs accepted: false")
     print("review source-order authority required before candidate admission: true")
     print("human production promotion remains separate: true")
     return 0
