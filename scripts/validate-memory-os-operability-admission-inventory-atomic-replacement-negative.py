@@ -39,6 +39,7 @@ def main() -> int:
     status_before = CANONICAL_STATUS.read_bytes()
     output_mode_before = CANONICAL_OUTPUT.stat().st_mode & 0o7777
     original_replace = generator.os.replace
+    original_json = generator.json
 
     try:
         CANONICAL_OUTPUT.chmod(0o640)
@@ -74,8 +75,58 @@ def main() -> int:
         require(CANONICAL_STATUS.read_bytes() == status_before, "atomic replace rejection mutated canonical production status")
         leftovers = list(CANONICAL_OUTPUT.parent.glob(f".{CANONICAL_OUTPUT.name}.*.tmp"))
         require(not leftovers, f"atomic replace rejection left temporary operability inventory authority files: {leftovers}")
+
+        class InvalidInventoryJsonProxy:
+            def __getattr__(self, name: str):
+                return getattr(original_json, name)
+
+            def dumps(self, *args, **kwargs) -> str:
+                text = original_json.dumps(*args, **kwargs)
+                expected = '"schemaVersion": "memory-os-operability-admission-inventory.v1"'
+                require(expected in text, "generated inventory schema marker missing from rollback diagnostic fixture")
+                return text.replace(expected, '"schemaVersion": "synthetic-invalid"', 1)
+
+        output_replace_count = 0
+
+        def reject_rollback_replace(source: str | Path, destination: str | Path) -> None:
+            nonlocal output_replace_count
+            if Path(destination) == CANONICAL_OUTPUT:
+                output_replace_count += 1
+                if output_replace_count == 2:
+                    raise OSError("synthetic inventory rollback rejection")
+            original_replace(source, destination)
+
+        generator.json = InvalidInventoryJsonProxy()
+        generator.os.replace = reject_rollback_replace
+        try:
+            try:
+                generator.main()
+            except SystemExit as exc:
+                diagnostic = str(exc)
+                require("generated inventory invalid: inventory schema drift" in diagnostic, f"primary inventory validator diagnostic missing: {diagnostic}")
+                require("rollback incomplete" in diagnostic, f"rollback incomplete diagnostic missing: {diagnostic}")
+                require("synthetic inventory rollback rejection" in diagnostic, f"rollback failure diagnostic missing: {diagnostic}")
+            else:
+                raise Fail("synthetic inventory validator plus rollback failure unexpectedly accepted")
+        finally:
+            generator.os.replace = original_replace
+            generator.json = original_json
+            generator.atomic_write_text(CANONICAL_OUTPUT, output_before.decode("utf-8"))
+
+        require(output_replace_count == 2, f"inventory rollback diagnostic fixture expected two authority replacements, got {output_replace_count}")
+        require(CANONICAL_OUTPUT.read_bytes() == output_before, "rollback diagnostic cleanup mutated canonical operability inventory bytes")
+        require(
+            CANONICAL_OUTPUT.stat().st_mode & 0o7777 == 0o640,
+            "rollback diagnostic cleanup mutated canonical operability inventory mode",
+        )
+        require(CANONICAL_STATUS.read_bytes() == status_before, "rollback diagnostic failure mutated canonical production status")
+        leftovers = list(CANONICAL_OUTPUT.parent.glob(f".{CANONICAL_OUTPUT.name}.*.tmp"))
+        require(not leftovers, f"rollback diagnostic failure left temporary operability inventory authority files: {leftovers}")
     finally:
         generator.os.replace = original_replace
+        generator.json = original_json
+        if CANONICAL_OUTPUT.read_bytes() != output_before:
+            generator.atomic_write_text(CANONICAL_OUTPUT, output_before.decode("utf-8"))
         CANONICAL_OUTPUT.chmod(output_mode_before)
 
     require(CANONICAL_OUTPUT.read_bytes() == output_before, "atomic mode test cleanup mutated canonical operability inventory")
@@ -90,6 +141,8 @@ def main() -> int:
     print("non-atomic inventory authority write accepted: false")
     print("canonical inventory mutated on failed atomic replace: false")
     print("canonical inventory mode mutated on failed atomic replace: false")
+    print("primary inventory validator diagnostic preserved on rollback failure: true")
+    print("rollback failure diagnostic preserved: true")
     print("production evidence: false")
     print("production ready: false")
     print("production decision: NO_GO")
