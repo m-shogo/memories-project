@@ -1,0 +1,36 @@
+name: Backup Restore Generation Evidence Rollback Diagnostics Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py"
+      - ".github/workflows/backup-restore-generation-evidence-rollback-diagnostics-negative.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Compile generation evidence rollback diagnostics negative
+        run: |
+          python3 -m py_compile \
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
+
+      - name: Prove generation evidence rollback diagnostics remain fail-closed
+        run: python3 scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
+
+      - name: Prove negative suite leaves canonical authorities untouched
+        run: git diff --exit-code
