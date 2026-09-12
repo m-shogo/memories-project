@@ -375,8 +375,15 @@ def main(canonical_execution_guard=enforce_execution_authority) -> int:
     try:
         atomic_write_text(OUTPUT, output_text)
         validate_generated_snapshot()
-    except (Exception, SystemExit):
-        atomic_write_text(OUTPUT, previous.decode("utf-8"))
+    except (Exception, SystemExit) as primary_exc:
+        try:
+            atomic_write_text(OUTPUT, previous.decode("utf-8"))
+        except (Exception, SystemExit) as rollback_exc:
+            primary_text = str(primary_exc) or primary_exc.__class__.__name__
+            rollback_text = str(rollback_exc) or rollback_exc.__class__.__name__
+            raise SystemExit(
+                f"{primary_text}; rollback incomplete: {rollback_text}"
+            ) from primary_exc
         raise
     print("Memory OS OPS-P0-007 strict admission snapshot generated")
     print(f"stage: {stage}")
