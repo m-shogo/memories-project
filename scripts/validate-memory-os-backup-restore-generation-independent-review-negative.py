@@ -6,7 +6,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,25 +38,38 @@ def head_sha() -> str:
     return value
 
 
-def expect_fail(module, registry: dict, label: str) -> None:
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as handle:
-        path = Path(handle.name)
-        json.dump(registry, handle)
-        handle.write("\n")
-    original_registry = module.REGISTRY
-    original_enforcer = module.enforce_runtime_authorities
+def with_canonical_registry(module, registry: dict, action) -> None:
+    canonical = module.REGISTRY.read_bytes()
     try:
-        module.REGISTRY = path
-        module.enforce_runtime_authorities = lambda: None
+        module.REGISTRY.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+        action()
+    finally:
+        module.REGISTRY.write_bytes(canonical)
+    require(module.REGISTRY.read_bytes() == canonical, "canonical generation evidence registry was not restored after negative exercise")
+
+
+def expect_fail(module, registry: dict, label: str, expected: str | None = None) -> None:
+    def action() -> None:
         try:
             module.main()
-        except module.Fail:
+        except module.Fail as exc:
+            if expected is not None:
+                require(expected in str(exc), f"negative case rejected at wrong boundary ({label}): {exc}")
             return
         raise Fail(f"negative case unexpectedly passed: {label}")
-    finally:
-        module.enforce_runtime_authorities = original_enforcer
-        module.REGISTRY = original_registry
-        path.unlink(missing_ok=True)
+
+    with_canonical_registry(module, registry, action)
+
+
+def expect_pass(module, registry: dict, label: str) -> None:
+    def action() -> None:
+        try:
+            result = module.main()
+        except module.Fail as exc:
+            raise Fail(f"positive case unexpectedly failed ({label}): {exc}") from exc
+        require(result == 0, f"positive case returned non-zero: {label}")
+
+    with_canonical_registry(module, registry, action)
 
 
 def expect_authority_substitution_fail(module, field: str, substitute: Path) -> None:
@@ -228,6 +240,20 @@ def main() -> int:
         expect_execution_substitution_fail(module, field, replacement)
     expect_main_candidate_substitution_fail(module)
 
+    unreviewed = base_row()
+    unreviewed.pop("securityReviewRef")
+    unreviewed.pop("operabilityReviewRef")
+    unreviewed.pop("materialDeltaReviewRef")
+    expect_pass(module, registry(unreviewed), "unreviewed non-candidate generation evidence")
+
+    security_only = dict(unreviewed)
+    security_only["securityReviewRef"] = "docs/evidence/backup-restore/security/synthetic-review.json"
+    expect_fail(module, registry(security_only), "security-only partial review pair", "must provide Security and Operability reviews together")
+
+    operability_only = dict(unreviewed)
+    operability_only["operabilityReviewRef"] = "docs/evidence/backup-restore/operability/synthetic-review.json"
+    expect_fail(module, registry(operability_only), "operability-only partial review pair", "must provide Security and Operability reviews together")
+
     expect_fail(module, registry(base_row()), "generic repository review refs")
 
     same_ref = base_row()
@@ -300,12 +326,14 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, source-order authority substitution, generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, unsafe production boundaries, wrong roles, non-approved reviews, chronology/candidate/promotion contract drift, post-commit edits, and production promotion")
+    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, source-order authority substitution, partial review pairs, generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, unsafe production boundaries, wrong roles, non-approved reviews, chronology/candidate/promotion contract drift, post-commit edits, and production promotion while preserving unreviewed non-candidate evidence")
     print("runtime data/executable authority substitution accepted: false")
     print("runtime execution helper substitution accepted: false")
     print("review source-order authority substitution accepted: false")
     print("main candidate authority substitution accepted: false")
-    print("canonical generation evidence authority mutated: false")
+    print("unreviewed non-candidate generation evidence accepted: true")
+    print("partial independent review pairs accepted: false")
+    print("canonical generation evidence authority restored after negative exercises: true")
     print("human production promotion remains separate: true")
     return 0
 
