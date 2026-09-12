@@ -8,6 +8,8 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
@@ -23,6 +25,7 @@ on:
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
   push:
     branches:
       - so
@@ -32,6 +35,8 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
@@ -47,6 +52,7 @@ on:
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
   workflow_dispatch:
 
 permissions:
@@ -76,6 +82,8 @@ jobs:
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/memory_os_backup_restore_blockers.py \
+            scripts/validate-memory-os-backup-restore-review-source-order.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py \
@@ -86,6 +94,8 @@ jobs:
             scripts/validate-memory-os-local-apple-replay-restore.py \
             scripts/validate-memory-os-local-coherent-recovery-set.py \
             scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
+          python scripts/validate-memory-os-backup-restore-review-source-order.py
+          python scripts/validate-memory-os-backup-restore-generation-independent-review.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py
