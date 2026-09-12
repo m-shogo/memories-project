@@ -95,6 +95,7 @@ jobs:
           python scripts/validate-memory-os-recovery-objectives.py
           python scripts/validate-memory-os-backup-restore-drill-request.py
           python scripts/validate-memory-os-backup-restore-review-source-order.py
+          python scripts/validate-memory-os-backup-restore-generation-independent-review.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py
