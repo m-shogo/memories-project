@@ -69,13 +69,19 @@ jobs:
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
-      - name: Validate preflight partial-publication rollback
+      - name: Compile preflight rollback proof
         run: |
           set -euo pipefail
           python -m py_compile \
             scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py
+      - name: Prove preflight partial-publication rollback
+        run: |
+          set -euo pipefail
           python scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py
+      - name: Verify rollback proof is read-only
+        run: |
+          set -euo pipefail
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
