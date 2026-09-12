@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import importlib.util
 import os
 import shutil
@@ -43,6 +44,37 @@ def expect_slot_fail(module, value: str, *, contains: str) -> None:
         raise AssertionError(f"unsafe authority file slot unexpectedly accepted: {value}")
 
 
+def workflow_path_patterns(section: str) -> set[str]:
+    patterns: set[str] = set()
+    for line in section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('- "') and stripped.endswith('"'):
+            patterns.add(stripped[3:-1])
+    return patterns
+
+
+def validate_workflow_trigger_coverage(required_contracts: set[str]) -> None:
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    try:
+        pull_section = text.split("  pull_request:\n", 1)[1].split("  push:\n", 1)[0]
+        push_section = text.split("  push:\n", 1)[1].split("  workflow_dispatch:\n", 1)[0]
+    except (IndexError, ValueError) as exc:
+        raise AssertionError("unable to parse admission linkage workflow trigger sections") from exc
+    required_paths = required_contracts | {
+        ".github/workflows/admission-authority-linkage.yml",
+        "scripts/validate-memory-os-admission-authority-linkage.py",
+        "scripts/validate-memory-os-admission-authority-linkage-negative.py",
+    }
+    for trigger, section in (("pull_request", pull_section), ("push", push_section)):
+        patterns = workflow_path_patterns(section)
+        missing = sorted(
+            path for path in required_paths
+            if not any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+        )
+        if missing:
+            raise AssertionError(f"{trigger} does not cover admission linkage authorities: {missing}")
+
+
 def validate_atomic_diagnostic_publication() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     required_fragments = (
@@ -79,6 +111,7 @@ def main() -> int:
     missing_contracts = sorted(required_contracts - set(module.CONTRACTS))
     if missing_contracts:
         raise AssertionError(f"high-impact admission contracts are not covered: {missing_contracts}")
+    validate_workflow_trigger_coverage(required_contracts)
     required_file_keys = {
         "sourceReleasePairRegistry",
         "registry",
