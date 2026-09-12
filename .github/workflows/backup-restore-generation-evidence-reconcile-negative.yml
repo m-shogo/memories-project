@@ -9,6 +9,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
@@ -24,6 +25,7 @@ on:
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
   push:
     branches:
       - so
@@ -34,6 +36,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
@@ -49,6 +52,7 @@ on:
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
   workflow_dispatch:
 
 permissions:
@@ -79,6 +83,7 @@ jobs:
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-review-source-order.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
@@ -87,6 +92,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-binding-transport-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-backup-restore-review-source-order.py
+          python scripts/validate-memory-os-backup-restore-generation-independent-review.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
