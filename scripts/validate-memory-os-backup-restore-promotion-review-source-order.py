@@ -21,8 +21,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_REL = Path("contracts/operations/backup-restore-promotion-review-contract.v1.json")
 PROMOTION_REGISTRY_REL = Path("contracts/operations/backup-restore-promotion-review-registry.v1.json")
 GENERATION_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+SELF_REL = Path("scripts/validate-memory-os-backup-restore-promotion-review-source-order.py")
+CONTRACT = ROOT / CONTRACT_REL
 PROMOTION_REGISTRY = ROOT / PROMOTION_REGISTRY_REL
 GENERATION_REGISTRY = ROOT / GENERATION_REGISTRY_REL
 EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
@@ -50,6 +53,24 @@ def load_json(path: Path, field: str) -> dict[str, Any]:
         raise Fail(f"{field} unreadable or invalid JSON: {exc}") from exc
     require(isinstance(value, dict), f"{field} root must be object")
     return value
+
+
+def validate_contract(contract: dict[str, Any]) -> None:
+    require(
+        contract.get("schemaVersion") == "memory-os-backup-restore-promotion-review-contract.v1",
+        "promotion review contract schema drift",
+    )
+    require(contract.get("sourceOrderValidator") == SELF_REL.as_posix(), "promotion review source-order validator authority drift")
+    rules = contract.get("rules")
+    require(isinstance(rules, dict), "promotion review contract rules missing")
+    require(
+        rules.get("humanReviewMustBeCreatedStrictlyAfterRecoverySourceCommit") is True,
+        "promotion review contract must require post-source human reviews",
+    )
+    require(
+        rules.get("humanReviewPayloadMustRemainAppendOnlyAfterFirstCommit") is True,
+        "promotion review contract must require immutable committed human review payloads",
+    )
 
 
 def canonical_review_ref(value: Any, field: str) -> tuple[str, Path]:
@@ -287,6 +308,8 @@ def main() -> int:
         return 0
     require(len(sys.argv) == 1, "usage: validate-memory-os-backup-restore-promotion-review-source-order.py [--self-test]")
 
+    contract = load_json(CONTRACT, "promotion review contract")
+    validate_contract(contract)
     promotion = load_json(PROMOTION_REGISTRY, "promotion review registry")
     generation = load_json(GENERATION_REGISTRY, "generation evidence registry")
     require(
@@ -307,6 +330,7 @@ def main() -> int:
         validate_row(row, index, generations)
 
     print(f"PASS: human promotion review source-order binding records={len(rows)} productionEvidence=false productionReady=false")
+    print("promotion review contract source-order authority: enforced")
     print("promotion review created in recovery sourceCommitSha accepted: false")
     print("promotion review predating recovery sourceCommitSha accepted: false")
     print("promotion review rewritten after creation accepted: false")
