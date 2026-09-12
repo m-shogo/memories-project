@@ -34,6 +34,7 @@ on:
       - "scripts/register-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-promotion-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
@@ -72,6 +73,7 @@ on:
       - "scripts/register-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-promotion-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
@@ -121,10 +123,13 @@ jobs:
             scripts/register-memory-os-backup-restore-promotion-review.py \
             scripts/validate-memory-os-backup-restore-promotion-review-negative.py \
             scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py \
+            scripts/validate-memory-os-backup-restore-promotion-review-source-order.py \
             scripts/validate-memory-os-backup-restore-promotion-review.py \
             scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-backup-restore-promotion-review.py
           python scripts/reconcile-memory-os-backup-restore-promotion-review.py
+          python scripts/validate-memory-os-backup-restore-promotion-review-source-order.py --self-test
+          python scripts/validate-memory-os-backup-restore-promotion-review-source-order.py
           python scripts/validate-memory-os-backup-restore-promotion-review.py
           python scripts/validate-memory-os-backup-restore-promotion-review-negative.py
           python scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py
@@ -173,11 +178,14 @@ jobs:
             scripts/register-memory-os-backup-restore-promotion-review.py \
             scripts/validate-memory-os-backup-restore-promotion-review-negative.py \
             scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py \
+            scripts/validate-memory-os-backup-restore-promotion-review-source-order.py \
             scripts/validate-memory-os-backup-restore-promotion-review.py \
             scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-backup-restore-promotion-review.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review-source-order.py --self-test >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review-source-order.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
