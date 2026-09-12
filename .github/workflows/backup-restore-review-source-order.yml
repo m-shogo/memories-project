@@ -1,0 +1,39 @@
+name: Backup Restore Review Source Order
+
+on:
+  push:
+    branches: [so]
+    paths:
+      - 'scripts/validate-memory-os-backup-restore-review-source-order.py'
+      - 'contracts/operations/backup-restore-generation-evidence-registry.v1.json'
+      - 'docs/evidence/backup-restore/**'
+      - '.github/workflows/backup-restore-review-source-order.yml'
+  pull_request:
+    paths:
+      - 'scripts/validate-memory-os-backup-restore-review-source-order.py'
+      - 'contracts/operations/backup-restore-generation-evidence-registry.v1.json'
+      - 'docs/evidence/backup-restore/**'
+      - '.github/workflows/backup-restore-review-source-order.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile validator
+        run: python -m py_compile scripts/validate-memory-os-backup-restore-review-source-order.py
+      - name: Prove stale review/source ordering is fail-closed
+        run: python scripts/validate-memory-os-backup-restore-review-source-order.py --self-test
+      - name: Validate canonical recovery review source ordering
+        run: python scripts/validate-memory-os-backup-restore-review-source-order.py
+      - name: Prove validator is read-only
+        run: git diff --exit-code
