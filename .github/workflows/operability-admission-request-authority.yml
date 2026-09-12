@@ -37,6 +37,7 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
@@ -128,6 +129,7 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
@@ -177,6 +179,7 @@ jobs:
           python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
           python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
           python scripts/validate-memory-os-backup-restore-review-source-order.py
+          python scripts/validate-memory-os-backup-restore-generation-independent-review.py
       - name: Validate backup/restore admission chain negatives
         run: |
           python scripts/validate-memory-os-backup-restore-admission-chain-negative.py
