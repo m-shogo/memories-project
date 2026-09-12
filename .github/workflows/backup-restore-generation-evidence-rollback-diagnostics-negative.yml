@@ -1,6 +1,11 @@
 name: Backup Restore Generation Evidence Rollback Diagnostics Negative
 
 on:
+  pull_request:
+    paths:
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py"
+      - ".github/workflows/backup-restore-generation-evidence-rollback-diagnostics-negative.yml"
   push:
     branches:
       - so
@@ -20,17 +25,32 @@ jobs:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Confirm exact clean rollback diagnostics source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
 
       - name: Compile generation evidence rollback diagnostics negative
         run: |
+          set -euo pipefail
           python3 -m py_compile \
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
 
       - name: Prove generation evidence rollback diagnostics remain fail-closed
-        run: python3 scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
+        run: |
+          set -euo pipefail
+          python3 scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
 
       - name: Prove negative suite leaves canonical authorities untouched
-        run: git diff --exit-code
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
