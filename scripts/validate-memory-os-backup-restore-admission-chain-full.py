@@ -82,6 +82,7 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-generation-binding-negative.py", "generation binding negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py", "typed non-resurrection registry aggregate negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-admission.py", "typed non-resurrection admission"),
+    ("scripts/validate-memory-os-backup-restore-promotion-review-source-order.py", "human promotion review source-order authority"),
     ("scripts/validate-memory-os-backup-restore-promotion-review.py", "human promotion review authority"),
     ("scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py", "human promotion review reconcile negative"),
     ("scripts/validate-memory-os-backup-restore.py", "aggregate backup/restore authority"),
