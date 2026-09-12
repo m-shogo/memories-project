@@ -22,6 +22,7 @@ WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence
 EXPECTED_LOCK_REL = Path("contracts/operations/.backup-restore-generation-evidence.lock")
 NEGATIVE_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-evidence-negative.py")
 SEMANTIC_NEGATIVE_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-semantic-generation-negative.py")
+REVIEW_SOURCE_ORDER_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-review-source-order.py")
 CONTRACT = ROOT / CONTRACT_REL
 REGISTRY = ROOT / REGISTRY_REL
 GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
@@ -33,6 +34,7 @@ WRITER = ROOT / WRITER_REL
 EXPECTED_LOCK = ROOT / EXPECTED_LOCK_REL
 NEGATIVE_VALIDATOR = ROOT / NEGATIVE_VALIDATOR_REL
 SEMANTIC_NEGATIVE_VALIDATOR = ROOT / SEMANTIC_NEGATIVE_VALIDATOR_REL
+REVIEW_SOURCE_ORDER_VALIDATOR = ROOT / REVIEW_SOURCE_ORDER_VALIDATOR_REL
 
 
 class Fail(RuntimeError):
@@ -99,6 +101,7 @@ def enforce_runtime_authorities() -> None:
         (WRITER, WRITER_REL, "generation evidence writer"),
         (NEGATIVE_VALIDATOR, NEGATIVE_VALIDATOR_REL, "generation evidence negative validator"),
         (SEMANTIC_NEGATIVE_VALIDATOR, SEMANTIC_NEGATIVE_VALIDATOR_REL, "semantic generation negative validator"),
+        (REVIEW_SOURCE_ORDER_VALIDATOR, REVIEW_SOURCE_ORDER_VALIDATOR_REL, "review source-order validator"),
     ):
         require_exact_repo_file(path, expected, field)
     require_canonical_lock_path(EXPECTED_LOCK, EXPECTED_LOCK_REL, "generation evidence append lock")
@@ -389,6 +392,7 @@ def main(canonical_execution_guard=CANONICAL_EXECUTION_GUARD) -> int:
     require(binding_readiness.get("productionReady") is False, "generation binding readiness cannot promote production")
 
     validate_negative_admission_suite(contract)
+    run_validator(REVIEW_SOURCE_ORDER_VALIDATOR, REVIEW_SOURCE_ORDER_VALIDATOR_REL, "review source-order validator")
 
     print("Memory OS drill-bound generation backup/restore evidence validation PASS")
     print("generation evidence validator canonical runtime authorities enforced: true")
@@ -406,6 +410,7 @@ def main(canonical_execution_guard=CANONICAL_EXECUTION_GUARD) -> int:
     print("boolean registry/contract/binding counts accepted: false")
     print("contract artifact refs canonical and repository-contained: true")
     print("candidate-level independent review cross-authority binding: enforced")
+    print("review source-order chronology binding: enforced")
     print("human production-promotion separation cross-authority binding: enforced")
     print("historical evidence audit after request supersession: allowed")
     print("new evidence without current drill request: forbidden")
