@@ -59,6 +59,7 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py", "generation material-delta review negative"),
     ("scripts/validate-memory-os-backup-restore-generation-independent-review.py", "generation independent-review authority"),
     ("scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py", "generation independent-review negative"),
+    ("scripts/validate-memory-os-backup-restore-review-source-order.py", "generation recovery review source-order authority"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py", "typed non-resurrection contract-path negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-negative.py", "typed non-resurrection semantic negative"),
     ("scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py", "typed non-resurrection source-binding negative"),
