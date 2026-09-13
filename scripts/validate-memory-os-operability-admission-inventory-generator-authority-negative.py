@@ -143,40 +143,58 @@ def prove_generator_atomic_publication(generator: Any) -> None:
         finally:
             generator.os.replace = original_replace
         require(rejected, "inventory atomic replace rejection unexpectedly accepted")
-        require(target.read_bytes() == after_success, "inventory atomic replace rejection changed canonical bytes")
-        require(target.stat().st_mode & 0o7777 == mode_after_success, "inventory atomic replace rejection changed canonical mode")
+        require(target.read_bytes() == after_success, "inventory atomic replace rejection changed fixture bytes")
+        require(target.stat().st_mode & 0o7777 == mode_after_success, "inventory atomic replace rejection changed fixture mode")
         require(not list(target.parent.glob(f".{target.name}.*.tmp")), "inventory atomic replace rejection left temporary files")
     print("PASS generator atomic publication: mode preserved, replace rejection fail-closed, temporary files cleaned")
 
 
 def prove_generator_post_validation_rollback_mode(generator: Any) -> None:
-    output = generator.OUTPUT
-    validator = generator.INVENTORY_VALIDATOR
-    output_before = output.read_bytes()
-    output_mode_before = output.stat().st_mode & 0o7777
-    validator_before = validator.read_bytes()
-    validator_mode_before = validator.stat().st_mode & 0o7777
-    try:
+    canonical_output = generator.OUTPUT
+    canonical_output_before = canonical_output.read_bytes()
+    canonical_output_mode_before = canonical_output.stat().st_mode & 0o7777
+    original_output = generator.OUTPUT
+    original_guard = generator.enforce_generator_execution_authority
+    original_identity = generator.require_generator_authority_identity
+    original_post_validator = generator.validate_generated_inventory
+
+    with tempfile.TemporaryDirectory(prefix=".tmp-inventory-rollback-", dir=ROOT / "contracts/operations") as tmpdir:
+        output = Path(tmpdir) / canonical_output.name
+        output.write_bytes(canonical_output_before)
         output.chmod(0o640)
-        validator.write_text("def main():\n    return 1\n", encoding="utf-8")
-        rejected = False
+        output_before = output.read_bytes()
+        fixture_guard = lambda: None
+
+        def reject_post_validation() -> None:
+            raise SystemExit("generated inventory invalid: synthetic post-write validator rejection")
+
+        generator.OUTPUT = output
+        generator.enforce_generator_execution_authority = fixture_guard
+        generator.require_generator_authority_identity = lambda: None
+        generator.validate_generated_inventory = reject_post_validation
         try:
-            generator.main()
-        except SystemExit as exc:
-            require(exc.code not in (None, 0), "post-write inventory validator rejection produced successful SystemExit")
-            require("generated inventory invalid" in str(exc), f"post-write inventory rejection used wrong boundary: {exc}")
-            rejected = True
-        require(rejected, "post-write inventory validator rejection unexpectedly accepted")
-        require(output.read_bytes() == output_before, "post-write inventory validator rejection failed exact-byte rollback")
-        require(output.stat().st_mode & 0o7777 == 0o640, "post-write inventory rollback changed canonical inventory mode")
-        require(not list(output.parent.glob(f".{output.name}.*.tmp")), "post-write inventory rollback left temporary authority files")
-    finally:
-        validator.write_bytes(validator_before)
-        validator.chmod(validator_mode_before)
-        output.chmod(output_mode_before)
-    require(output.read_bytes() == output_before, "post-write rollback probe changed canonical inventory bytes after cleanup")
-    require(output.stat().st_mode & 0o7777 == output_mode_before, "post-write rollback probe failed to restore original inventory mode")
-    print("PASS generator rollback: post-write validation failure restores canonical inventory bytes and existing mode")
+            rejected = False
+            try:
+                generator.main(canonical_execution_guard=fixture_guard)
+            except SystemExit as exc:
+                require(exc.code not in (None, 0), "post-write inventory validator rejection produced successful SystemExit")
+                require("generated inventory invalid" in str(exc), f"post-write inventory rejection used wrong boundary: {exc}")
+                rejected = True
+            require(rejected, "post-write inventory validator rejection unexpectedly accepted")
+            require(output.read_bytes() == output_before, "post-write inventory validator rejection failed exact-byte fixture rollback")
+            require(output.stat().st_mode & 0o7777 == 0o640, "post-write inventory fixture rollback changed mode")
+            require(not list(output.parent.glob(f".{output.name}.*.tmp")), "post-write inventory rollback left temporary fixture files")
+        finally:
+            generator.validate_generated_inventory = original_post_validator
+            generator.require_generator_authority_identity = original_identity
+            generator.enforce_generator_execution_authority = original_guard
+            generator.OUTPUT = original_output
+
+    require(canonical_output.read_bytes() == canonical_output_before, "post-write rollback negative mutated canonical inventory bytes")
+    require(canonical_output.stat().st_mode & 0o7777 == canonical_output_mode_before, "post-write rollback negative mutated canonical inventory mode")
+    require(INVENTORY_VALIDATOR.is_file() and not INVENTORY_VALIDATOR.is_symlink(), "canonical inventory validator identity changed during rollback negative")
+    print("PASS generator rollback: post-write validation failure restores fixture inventory bytes and mode")
+    print("PASS boundary: post-write rollback negative leaves canonical inventory/validator untouched")
 
 
 def main() -> int:
@@ -310,6 +328,7 @@ def main() -> int:
     print("inventory generator atomic replace failure accepted: false")
     print("inventory generator atomic replace residue accepted: false")
     print("post-write inventory rollback mode loss accepted: false")
+    print("post-write rollback negative canonical authority mutation accepted: false")
     print("symlinked canonical input accepted by direct generator: false")
     print("symlinked foundation path counted as canonical foundation: false")
     print("fixture setup failure can strand canonical input authority: false")
