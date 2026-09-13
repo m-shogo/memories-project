@@ -80,6 +80,46 @@ jobs:
           fixture_parent="$(mktemp -d)"
           trap 'rm -rf "$fixture_parent"' EXIT
           cp -a . "$fixture_parent/repo"
+          FIXTURE_ROOT="$fixture_parent/repo" python - <<'PY'
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["FIXTURE_ROOT"])
+          validator_path = root / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+          contract_path = root / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+          registry_path = root / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+          original_contract = contract_path.read_bytes()
+          original_registry = registry_path.read_bytes()
+
+          registry = json.loads(original_registry)
+          registry["records"] = []
+          registry["productionEquivalentRecoveryCandidateCount"] = 0
+          registry_path.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+
+          contract = json.loads(original_contract)
+          contract["materialDeltaReviewEvidenceSchemaVersion"] = "memory-os-backup-restore-material-delta-review.v0"
+          contract_path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+
+          spec = importlib.util.spec_from_file_location("empty_review_material_delta_authority_negative", validator_path)
+          if spec is None or spec.loader is None:
+              raise SystemExit("cannot load independent-review validator fixture")
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          try:
+              module.main()
+          except module.Fail as exc:
+              expected = "material-delta review evidence schema authority drift"
+              if expected not in str(exc):
+                  raise SystemExit(f"empty-review material-delta drift rejected at wrong authority: {exc}")
+          else:
+              raise SystemExit("empty-review material-delta semantic authority drift was accepted")
+          finally:
+              contract_path.write_bytes(original_contract)
+              registry_path.write_bytes(original_registry)
+          print("PASS: empty-review independent-review main rejects material-delta semantic authority drift without requiring candidate evidence")
+          PY
           (
             cd "$fixture_parent/repo"
             python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
