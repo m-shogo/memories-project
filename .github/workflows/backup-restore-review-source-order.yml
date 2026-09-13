@@ -10,6 +10,7 @@ on:
       - 'scripts/validate-memory-os-backup-restore-generation-independent-review.py'
       - 'scripts/validate-memory-os-backup-restore-generation-material-delta-review.py'
       - 'scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py'
+      - 'scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py'
       - 'contracts/operations/backup-restore-generation-evidence-contract.v1.json'
       - 'contracts/operations/backup-restore-generation-evidence-registry.v1.json'
       - 'docs/evidence/backup-restore/**'
@@ -22,6 +23,7 @@ on:
       - 'scripts/validate-memory-os-backup-restore-generation-independent-review.py'
       - 'scripts/validate-memory-os-backup-restore-generation-material-delta-review.py'
       - 'scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py'
+      - 'scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py'
       - 'contracts/operations/backup-restore-generation-evidence-contract.v1.json'
       - 'contracts/operations/backup-restore-generation-evidence-registry.v1.json'
       - 'docs/evidence/backup-restore/**'
@@ -57,13 +59,15 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-binding.py \
             scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
-            scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
       - name: Prove stale review/source ordering is fail-closed
         run: python scripts/validate-memory-os-backup-restore-review-source-order.py --self-test
       - name: Validate canonical recovery review source ordering
         run: python scripts/validate-memory-os-backup-restore-review-source-order.py
       - name: Validate typed cross-generation material-delta authority
         run: |
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
       - name: Validate downstream generation evidence authority
