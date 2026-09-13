@@ -10,6 +10,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
@@ -37,6 +39,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
@@ -84,6 +88,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/validate-memory-os-backup-restore-generation-independent-review.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
@@ -94,6 +100,8 @@ jobs:
             scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-backup-restore-review-source-order.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
