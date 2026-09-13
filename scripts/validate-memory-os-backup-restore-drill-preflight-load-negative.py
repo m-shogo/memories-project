@@ -27,6 +27,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
 def load_module(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
@@ -88,28 +92,44 @@ def prove_data_and_executable_authority_rejection(reconciler: object) -> None:
 
 
 def prove_atomic_write_failure(reconciler: object) -> None:
-    contract_before = CANONICAL_CONTRACT.read_bytes()
-    status_before = CANONICAL_STATUS.read_bytes()
-    original_replace = reconciler.os.replace
+    canonical_contract_before = CANONICAL_CONTRACT.read_bytes()
+    canonical_status_before = CANONICAL_STATUS.read_bytes()
+    canonical_contract_mode = mode(CANONICAL_CONTRACT)
+    canonical_status_mode = mode(CANONICAL_STATUS)
 
-    def reject_replace(source: str | Path, destination: str | Path) -> None:
-        raise OSError("synthetic atomic replace rejection")
+    with tempfile.TemporaryDirectory(prefix=".tmp-preflight-atomic-write-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        contract = tmp / CANONICAL_CONTRACT.name
+        shutil.copyfile(CANONICAL_CONTRACT, contract)
+        contract.chmod(canonical_contract_mode)
+        contract_before = contract.read_bytes()
+        contract_mode = mode(contract)
+        original_replace = reconciler.os.replace
 
-    reconciler.os.replace = reject_replace
-    try:
-        expect_domain_fail(
-            "preflight atomic replace rejection",
-            lambda: reconciler.write_text(CANONICAL_CONTRACT, contract_before.decode("utf-8") + " "),
-            reconciler.Fail,
-        )
-    finally:
-        reconciler.os.replace = original_replace
+        def reject_replace(source: str | Path, destination: str | Path) -> None:
+            raise OSError("synthetic atomic replace rejection")
 
-    require(CANONICAL_CONTRACT.read_bytes() == contract_before, "atomic replace rejection mutated canonical preflight contract")
-    require(CANONICAL_STATUS.read_bytes() == status_before, "atomic replace rejection mutated canonical production status")
-    leftovers = list(CANONICAL_CONTRACT.parent.glob(f".{CANONICAL_CONTRACT.name}.*.tmp")) + list(CANONICAL_STATUS.parent.glob(f".{CANONICAL_STATUS.name}.*.tmp"))
-    require(not leftovers, f"atomic replace rejection left temporary preflight authority files: {leftovers}")
-    print("PASS boundary: failed atomic preflight write preserves canonical bytes and cleans temporary files")
+        reconciler.os.replace = reject_replace
+        try:
+            expect_domain_fail(
+                "preflight atomic replace rejection",
+                lambda: reconciler.write_text(contract, contract_before.decode("utf-8") + " "),
+                reconciler.Fail,
+            )
+        finally:
+            reconciler.os.replace = original_replace
+
+        require(contract.read_bytes() == contract_before, "atomic replace rejection mutated fixture preflight contract")
+        require(mode(contract) == contract_mode, "atomic replace rejection changed fixture preflight contract mode")
+        leftovers = list(contract.parent.glob(f".{contract.name}.*.tmp"))
+        require(not leftovers, f"atomic replace rejection left temporary fixture authority files: {leftovers}")
+
+    require(CANONICAL_CONTRACT.read_bytes() == canonical_contract_before, "atomic replace proof mutated canonical preflight contract")
+    require(CANONICAL_STATUS.read_bytes() == canonical_status_before, "atomic replace proof mutated canonical production status")
+    require(mode(CANONICAL_CONTRACT) == canonical_contract_mode, "atomic replace proof changed canonical preflight contract mode")
+    require(mode(CANONICAL_STATUS) == canonical_status_mode, "atomic replace proof changed canonical production status mode")
+    print("PASS boundary: failed atomic preflight fixture write preserves exact bytes+mode and cleans temporary files")
+    print("PASS boundary: canonical preflight/status authorities remain read-only during atomic write negative proof")
 
 
 def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
