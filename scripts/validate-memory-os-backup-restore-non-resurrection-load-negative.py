@@ -108,12 +108,14 @@ def prove_reconcile_operability_rollback() -> None:
             source = getattr(reconciler, attr)
             target = tmp / source.name
             shutil.copyfile(source, target)
+            target.chmod(source.stat().st_mode & 0o7777)
             paths[attr] = target
 
         originals: dict[str, Any] = {attr: getattr(reconciler, attr) for attr in paths}
         originals["enforce_runtime_authorities"] = reconciler.enforce_runtime_authorities
         originals["run_post_validator"] = reconciler.run_post_validator
         before = {attr: path.read_bytes() for attr, path in paths.items()}
+        before_modes = {attr: path.stat().st_mode & 0o7777 for attr, path in paths.items()}
         observed: list[str] = []
 
         def fail_only_aggregate_post_reconcile(path: Path, expected_relative: Path, label: str) -> None:
@@ -139,12 +141,13 @@ def prove_reconcile_operability_rollback() -> None:
             )
             require(observed == ["typed non-resurrection validator", "operability validator"], "typed post-write validator order drift")
             for attr, path in paths.items():
-                require(path.read_bytes() == before[attr], f"{attr} drift after operability rollback")
+                require(path.read_bytes() == before[attr], f"{attr} bytes drift after operability rollback")
+                require((path.stat().st_mode & 0o7777) == before_modes[attr], f"{attr} mode drift after operability rollback")
         finally:
             for attr, value in originals.items():
                 setattr(reconciler, attr, value)
 
-    print("PASS rollback: typed recovery authority restored byte-for-byte after operability failure")
+    print("PASS rollback: typed recovery authority restored exact bytes+mode after operability failure")
 
 
 def main() -> int:
