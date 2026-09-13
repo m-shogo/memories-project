@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
-TEMP_PARENT = ROOT / "contracts/operations"
+TEMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
 class Fail(RuntimeError):
