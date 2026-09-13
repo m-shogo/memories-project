@@ -6,10 +6,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import subprocess
+import shutil
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
@@ -71,6 +72,68 @@ def assert_canonical_unchanged(
         require(file_mode(STATUS) == status_mode, f"{label} changed canonical production status mode")
 
 
+@contextmanager
+def isolated_authorities(reconciler: object) -> Iterator[None]:
+    original_names = (
+        "ROOT",
+        "CONTRACT",
+        "REGISTRY",
+        "GEN_SCHEMA",
+        "ENV_VALIDATOR",
+        "WRITER",
+        "VALIDATOR",
+        "OPERABILITY_VALIDATOR",
+        "NEGATIVE",
+        "STATUS",
+    )
+    originals = {name: getattr(reconciler, name) for name in original_names}
+    relative_paths = set(Path(ref) for ref in reconciler.REFS)
+    relative_paths.add(reconciler.OPERABILITY_VALIDATOR_REL)
+    relative_paths.add(reconciler.STATUS_REL)
+
+    with tempfile.TemporaryDirectory(prefix=".tmp-environment-generation-authorities-", dir=TMP_PARENT) as tmpdir:
+        fixture_root = Path(tmpdir)
+        for relative in sorted(relative_paths, key=lambda value: value.as_posix()):
+            source = ROOT / relative
+            destination = fixture_root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+
+        reconciler.ROOT = fixture_root
+        for name, relative_name in (
+            ("CONTRACT", "CONTRACT_REL"),
+            ("REGISTRY", "REGISTRY_REL"),
+            ("GEN_SCHEMA", "GEN_SCHEMA_REL"),
+            ("ENV_VALIDATOR", "ENV_VALIDATOR_REL"),
+            ("WRITER", "WRITER_REL"),
+            ("VALIDATOR", "VALIDATOR_REL"),
+            ("OPERABILITY_VALIDATOR", "OPERABILITY_VALIDATOR_REL"),
+            ("NEGATIVE", "NEGATIVE_REL"),
+            ("STATUS", "STATUS_REL"),
+        ):
+            setattr(reconciler, name, fixture_root / getattr(reconciler, relative_name))
+
+        contract_bytes = reconciler.CONTRACT.read_bytes()
+        registry_bytes = reconciler.REGISTRY.read_bytes()
+        status_bytes = reconciler.STATUS.read_bytes()
+        contract_mode = file_mode(reconciler.CONTRACT)
+        registry_mode = file_mode(reconciler.REGISTRY)
+        status_mode = file_mode(reconciler.STATUS)
+        try:
+            yield
+            require(reconciler.CONTRACT.read_bytes() == contract_bytes, "fixture generation contract did not roll back byte-for-byte")
+            require(reconciler.REGISTRY.read_bytes() == registry_bytes, "fixture generation registry changed unexpectedly")
+            require(reconciler.STATUS.read_bytes() == status_bytes, "fixture production status did not roll back byte-for-byte")
+            require(file_mode(reconciler.CONTRACT) == contract_mode, "fixture generation contract mode did not roll back")
+            require(file_mode(reconciler.REGISTRY) == registry_mode, "fixture generation registry mode changed unexpectedly")
+            require(file_mode(reconciler.STATUS) == status_mode, "fixture production status mode did not roll back")
+            leftovers = list(reconciler.CONTRACT.parent.glob(".*.tmp"))
+            require(not leftovers, f"fixture generation transaction left temporary files: {leftovers}")
+        finally:
+            for name, value in originals.items():
+                setattr(reconciler, name, value)
+
+
 def validate_atomic_diagnostic_publication() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     required_fragments = (
@@ -105,14 +168,8 @@ def prove_atomic_write_mode_preservation(reconciler: object) -> None:
     print("PASS boundary: atomic environment-generation authority replace preserves existing file mode")
 
 
-def prove_atomic_write_failure(
-    reconciler: object,
-    canonical_contract: bytes,
-    canonical_registry: bytes,
-    canonical_status: bytes,
-    canonical_contract_mode: int,
-    canonical_status_mode: int,
-) -> None:
+def prove_atomic_write_failure(reconciler: object) -> None:
+    contract_bytes = reconciler.CONTRACT.read_bytes()
     original_replace = reconciler.os.replace
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
@@ -122,35 +179,21 @@ def prove_atomic_write_failure(
     try:
         expect_domain_fail(
             "environment generation atomic replace rejection",
-            lambda: reconciler.write_text(CONTRACT, canonical_contract.decode("utf-8") + " "),
+            lambda: reconciler.write_text(reconciler.CONTRACT, contract_bytes.decode("utf-8") + " "),
             reconciler.Fail,
             "cannot atomically write",
         )
     finally:
         reconciler.os.replace = original_replace
 
-    assert_canonical_unchanged(
-        canonical_contract,
-        canonical_registry,
-        canonical_status,
-        "atomic replace rejection",
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
-    contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
-    status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    require(reconciler.CONTRACT.read_bytes() == contract_bytes, "atomic replace rejection changed fixture generation contract")
+    contract_leftovers = list(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp"))
+    status_leftovers = list(reconciler.STATUS.parent.glob(f".{reconciler.STATUS.name}.*.tmp"))
     require(not contract_leftovers and not status_leftovers, "atomic write rejection left temporary generation authority files")
-    print("PASS boundary: failed atomic environment-generation write preserves canonical bytes/mode and cleans temporary files")
+    print("PASS boundary: failed atomic environment-generation write preserves fixture bytes/mode and cleans temporary files")
 
 
-def prove_second_authority_replace_rollback(
-    reconciler: object,
-    canonical_contract: bytes,
-    canonical_registry: bytes,
-    canonical_status: bytes,
-    canonical_contract_mode: int,
-    canonical_status_mode: int,
-) -> None:
+def prove_second_authority_replace_rollback(reconciler: object) -> None:
     original_replace = reconciler.os.replace
     replace_count = 0
 
@@ -173,21 +216,13 @@ def prove_second_authority_replace_rollback(
         reconciler.os.replace = original_replace
 
     require(replace_count == 4, f"second-authority failure did not execute full two-authority rollback: replace_count={replace_count}")
-    assert_canonical_unchanged(
-        canonical_contract,
-        canonical_registry,
-        canonical_status,
-        "second-authority replace rollback",
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
-    contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
-    status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    contract_leftovers = list(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp"))
+    status_leftovers = list(reconciler.STATUS.parent.glob(f".{reconciler.STATUS.name}.*.tmp"))
     require(
         not contract_leftovers and not status_leftovers,
         "second-authority replace rollback left temporary generation authority files",
     )
-    print("PASS rollback: second-authority replace failure restores both authorities byte-for-byte and mode-for-mode")
+    print("PASS rollback: second-authority replace failure restores fixture authorities byte-for-byte and mode-for-mode")
 
 
 def prove_rollback_restore_failure_attempts_all(reconciler: object) -> None:
@@ -280,6 +315,31 @@ def prove_primary_and_rollback_diagnostics_preserved(
         canonical_status_mode,
     )
     print("PASS diagnostics: primary generation-status failure preserved alongside rollback failure")
+
+
+def prove_aggregate_validator_rollback(reconciler: object) -> None:
+    observed: list[str] = []
+    original_run_validator = reconciler.run_validator
+
+    def fail_after_generation_validator(path: Path, expected_relative: Path, label: str) -> None:
+        observed.append(label)
+        if path == reconciler.OPERABILITY_VALIDATOR:
+            raise reconciler.Fail("operability validator failed: synthetic aggregate failure")
+        return None
+
+    reconciler.run_validator = fail_after_generation_validator
+    try:
+        expect_domain_fail(
+            "post-write aggregate operability failure",
+            reconciler.main,
+            reconciler.Fail,
+            "operability validator failed",
+        )
+    finally:
+        reconciler.run_validator = original_run_validator
+
+    require(observed == ["generation validator", "operability validator"], f"post-write validator order drift: {observed}")
+    print("PASS rollback: aggregate operability failure restores fixture generation authorities")
 
 
 def main() -> int:
@@ -387,22 +447,10 @@ def main() -> int:
     print("PASS preserve: environment generation evidence ordering is deterministic")
 
     prove_atomic_write_mode_preservation(reconciler)
-    prove_atomic_write_failure(
-        reconciler,
-        canonical_contract,
-        canonical_registry,
-        canonical_status,
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
-    prove_second_authority_replace_rollback(
-        reconciler,
-        canonical_contract,
-        canonical_registry,
-        canonical_status,
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
+    with isolated_authorities(reconciler):
+        prove_atomic_write_failure(reconciler)
+    with isolated_authorities(reconciler):
+        prove_second_authority_replace_rollback(reconciler)
     prove_rollback_restore_failure_attempts_all(reconciler)
     prove_primary_and_rollback_diagnostics_preserved(
         reconciler,
@@ -412,37 +460,18 @@ def main() -> int:
         canonical_contract_mode,
         canonical_status_mode,
     )
+    with isolated_authorities(reconciler):
+        prove_aggregate_validator_rollback(reconciler)
 
-    observed: list[str] = []
-    original_run_validator = reconciler.run_validator
-
-    def fail_after_generation_validator(path: Path, expected_relative: Path, label: str) -> None:
-        observed.append(label)
-        if path == reconciler.OPERABILITY_VALIDATOR:
-            raise reconciler.Fail("operability validator failed: synthetic aggregate failure")
-        return None
-
-    reconciler.run_validator = fail_after_generation_validator
-    try:
-        expect_domain_fail(
-            "post-write aggregate operability failure",
-            reconciler.main,
-            reconciler.Fail,
-            "operability validator failed",
-        )
-    finally:
-        reconciler.run_validator = original_run_validator
-
-    require(observed == ["generation validator", "operability validator"], f"post-write validator order drift: {observed}")
     assert_canonical_unchanged(
         canonical_contract,
         canonical_registry,
         canonical_status,
-        "aggregate rollback",
+        "isolated transactional negatives",
         canonical_contract_mode,
         canonical_status_mode,
     )
-
+    print("PASS boundary: transactional environment-generation negatives keep canonical authorities read-only")
     print("PASS rollback: environment generation contract/registry/status preserved byte-for-byte and mode-for-mode")
     print("canonical generation data/executable substitutions accepted: false")
     print("generation evidence reordering accepted: false")
