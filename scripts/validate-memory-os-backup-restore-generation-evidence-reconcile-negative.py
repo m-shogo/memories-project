@@ -109,32 +109,40 @@ def prove_direct_authority_identity(reconciler: object) -> None:
 
 
 def prove_atomic_write_failure(reconciler: object) -> None:
-    before = {path: path.read_bytes() for path in CANONICAL.values()}
+    canonical_before = {path: (path.read_bytes(), mode(path)) for path in CANONICAL.values()}
     original_replace = reconciler.os.replace
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
         raise OSError("synthetic atomic replace rejection")
 
-    reconciler.os.replace = reject_replace
-    try:
-        target = CANONICAL["CONTRACT"]
-        try:
-            reconciler.write_text(target, before[target].decode("utf-8") + " ")
-        except reconciler.Fail as exc:
-            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
-        else:
-            raise Fail("synthetic generation-evidence atomic replace failure unexpectedly accepted")
-    finally:
-        reconciler.os.replace = original_replace
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-atomic-write-", dir=TMP_PARENT) as tmpdir:
+        target = Path(tmpdir) / "generation-evidence-contract.json"
+        source = CANONICAL["CONTRACT"]
+        shutil.copyfile(source, target)
+        target.chmod(0o640)
+        fixture_before = target.read_bytes()
+        fixture_mode = mode(target)
 
-    for path, expected in before.items():
-        require(path.read_bytes() == expected, f"atomic replace rejection mutated canonical authority: {path.name}")
-    leftovers: list[Path] = []
-    for attr in MUTATED:
-        path = CANONICAL[attr]
-        leftovers.extend(path.parent.glob(f".{path.name}.*.tmp"))
-    require(not leftovers, f"atomic replace rejection left temporary generation-evidence authority files: {leftovers}")
-    print("PASS boundary: failed atomic generation-evidence write preserves canonical bytes and cleans temporary files")
+        reconciler.os.replace = reject_replace
+        try:
+            try:
+                reconciler.write_text(target, fixture_before.decode("utf-8") + " ")
+            except reconciler.Fail as exc:
+                require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("synthetic generation-evidence atomic replace failure unexpectedly accepted")
+        finally:
+            reconciler.os.replace = original_replace
+
+        require(target.read_bytes() == fixture_before, "atomic replace rejection mutated fixture authority bytes")
+        require(mode(target) == fixture_mode, "atomic replace rejection mutated fixture authority mode")
+        leftovers = list(target.parent.glob(f".{target.name}.*.tmp"))
+        require(not leftovers, f"atomic replace rejection left temporary fixture files: {leftovers}")
+
+    for path, (expected_bytes, expected_mode) in canonical_before.items():
+        require(path.read_bytes() == expected_bytes, f"atomic replace rejection mutated canonical authority: {path.name}")
+        require(mode(path) == expected_mode, f"atomic replace rejection changed canonical authority mode: {path.name}")
+    print("PASS boundary: failed atomic generation-evidence write is fixture-isolated and preserves canonical bytes and modes")
 
 
 def prove_mode_preserving_write(reconciler: object) -> None:
