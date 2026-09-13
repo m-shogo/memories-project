@@ -149,6 +149,11 @@ SOURCES: tuple[tuple[str, str, str, str, str], ...] = (
     ),
 )
 
+REQUIRED_BACKUP_REVIEW_COMMAND_SOURCES = {
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+}
+
 COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
     (
         "scripts/validate-memory-os-production-equivalent-environment-generation.py",
@@ -201,6 +206,16 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "backup/restore generation evidence executable authority",
     ),
     (
+        "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+        "memory_os_inventory_source_backup_generation_independent_review",
+        "backup/restore generation independent-review authority",
+    ),
+    (
+        "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+        "memory_os_inventory_source_backup_generation_material_delta_review",
+        "backup/restore generation material-delta review authority",
+    ),
+    (
         "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
         "memory_os_inventory_source_backup_non_resurrection_contract",
         "backup/restore typed non-resurrection authority",
@@ -234,6 +249,7 @@ def enforce_runtime_authority(
     canonical_request_constraints: frozenset[str] = frozenset(REQUEST_CONSTRAINTS),
     canonical_sources: tuple[tuple[str, str, str, str, str], ...] = SOURCES,
     canonical_command_sources: tuple[tuple[str, str, str], ...] = COMMAND_SOURCES,
+    canonical_required_backup_review_command_sources: frozenset[str] = frozenset(REQUIRED_BACKUP_REVIEW_COMMAND_SOURCES),
 ) -> None:
     expected_root = Path(enforce_runtime_authority.__code__.co_filename).resolve().parents[1]
     try:
@@ -250,6 +266,16 @@ def enforce_runtime_authority(
     )
     require(SOURCES == canonical_sources, "inventory source registry authority sequence drift")
     require(COMMAND_SOURCES == canonical_command_sources, "inventory source command authority sequence drift")
+    require(
+        frozenset(REQUIRED_BACKUP_REVIEW_COMMAND_SOURCES) == canonical_required_backup_review_command_sources,
+        "inventory required backup review command authority set drift",
+    )
+    command_paths = [relative for relative, _module_name, _label in COMMAND_SOURCES]
+    for relative in REQUIRED_BACKUP_REVIEW_COMMAND_SOURCES:
+        require(
+            command_paths.count(relative) == 1,
+            f"inventory source authority must validate required backup review authority exactly once: {relative}",
+        )
     self_path = expected_root / canonical_self_rel
     try:
         lexical = self_path.relative_to(expected_root)
@@ -442,6 +468,7 @@ def main(canonical_execution_guard=enforce_execution_authority) -> int:
     print("operability inventory generation request authority: PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
     print(f"validated backup/restore derived authorities: {len(COMMAND_SOURCES)}")
+    print("required independent/material-delta review authorities validated directly: true")
     print(f"validated human tabletop scenarios: {human_tabletop_count}")
     print("canonical load contract/results/status validation: PASS")
     print("boolean validator exit codes accepted as success: false")
