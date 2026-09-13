@@ -15,6 +15,7 @@ CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-re
 CANONICAL_ELIGIBILITY = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 CANONICAL_OBJECTIVES = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 SUBSTITUTE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
 class Fail(RuntimeError):
@@ -35,7 +36,7 @@ def load_authority_validator(name: str):
 
 
 def repo_temp_module(prefix: str, content: str) -> Path:
-    fd, raw_path = tempfile.mkstemp(prefix=prefix, suffix=".py", dir=ROOT / "scripts")
+    fd, raw_path = tempfile.mkstemp(prefix=prefix, suffix=".py", dir=TMP_PARENT)
     os.close(fd)
     path = Path(raw_path)
     path.write_text(content, encoding="utf-8")
@@ -69,7 +70,7 @@ def canonical_writer_module(
 ) -> str:
     return (
         "from pathlib import Path\n"
-        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "ROOT = Path(__file__).resolve().parents[3]\n"
         f"CONTRACT = ROOT / '{contract}'\n"
         f"REGISTRY = ROOT / '{registry}'\n"
         f"GEN_REGISTRY = ROOT / '{gen_registry}'\n"
@@ -90,7 +91,7 @@ def canonical_reconciler_module(
 ) -> str:
     return (
         "from pathlib import Path\n"
-        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "ROOT = Path(__file__).resolve().parents[3]\n"
         f"CONTRACT = ROOT / '{contract}'\n"
         "REGISTRY = ROOT / 'contracts/operations/backup-restore-drill-request-registry.v1.json'\n"
         f"GEN_REGISTRY = ROOT / '{gen_registry}'\n"
@@ -212,6 +213,7 @@ def main() -> int:
         (SUBSTITUTE, "repository-contained substitute"),
     ):
         require(path.is_file(), f"missing {field}: {path}")
+    require(TMP_PARENT.is_dir(), "isolated operability fixture parent missing")
 
     expect_rejection(
         "writer-eligibility-substitution",
@@ -270,6 +272,7 @@ def main() -> int:
     )
 
     print("PASS: drill request executable/data/lock authority substitutions are rejected")
+    print("PASS: substitution modules are isolated under operability fixtures, not canonical scripts")
     return 0
 
 
