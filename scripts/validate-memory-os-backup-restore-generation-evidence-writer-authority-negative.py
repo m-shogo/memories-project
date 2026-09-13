@@ -30,6 +30,7 @@ EXPECTED_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore
 EXPECTED_NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 EXPECTED_INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
 EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
+TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
 class Fail(RuntimeError):
@@ -184,7 +185,7 @@ def repo_temp_module(prefix: str, overrides: dict[str, str]) -> Path:
     lines = [
         "import argparse",
         "from pathlib import Path",
-        "ROOT = Path(__file__).resolve().parents[1]",
+        "ROOT = Path(__file__).resolve().parents[3]",
     ]
     for name, relative in values.items():
         lines.append(f"{name} = ROOT / {relative!r}")
@@ -201,7 +202,7 @@ def repo_temp_module(prefix: str, overrides: dict[str, str]) -> Path:
             "    return 0",
         ]
     )
-    fd, raw_path = tempfile.mkstemp(prefix=prefix, suffix=".py", dir=ROOT / "scripts")
+    fd, raw_path = tempfile.mkstemp(prefix=prefix, suffix=".py", dir=TMP_PARENT)
     os.close(fd)
     path = Path(raw_path)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -243,6 +244,7 @@ def expect_contract_ref_rejection(field: str, replacement: str, expected_message
 
 def main() -> int:
     require(AUTHORITY_VALIDATOR.is_file(), "authority validator missing")
+    require(TMP_PARENT.is_dir(), "isolated operability fixture parent missing")
     reject_writer_cli_substitutions()
     reject_generation_validator_substitutions()
 
@@ -293,6 +295,7 @@ def main() -> int:
     print("generation-evidence writer CLI authority substitutions accepted: false")
     print("generation-evidence validator data/writer substitutions accepted: false")
     print("generation-evidence validator negative authority substitutions accepted: false")
+    print("generation-evidence substitution modules isolated under operability fixtures: true")
     return 0
 
 
