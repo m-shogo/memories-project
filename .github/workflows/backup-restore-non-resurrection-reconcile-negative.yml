@@ -10,6 +10,8 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
@@ -37,6 +39,8 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
@@ -84,6 +88,8 @@ jobs:
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/validate-memory-os-backup-restore-generation-independent-review.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py \
@@ -96,6 +102,8 @@ jobs:
             scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-review-source-order.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py
