@@ -41,6 +41,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -92,6 +93,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -154,6 +156,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-backup-restore-admission-chain-authority-negative.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
@@ -191,6 +194,9 @@ jobs:
 
       - name: Validate generation recovery independent review negatives
         run: python scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
+
+      - name: Validate generation material-delta execution authority
+        run: python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
 
       - name: Validate generation material-delta review authority
         run: python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
