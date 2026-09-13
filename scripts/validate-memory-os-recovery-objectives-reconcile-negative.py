@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-recovery-objectives.py"
@@ -66,6 +68,55 @@ def assert_canonical_unchanged(
         require(file_mode(STATUS) == status_mode, f"{label} changed canonical production status mode")
 
 
+@contextmanager
+def isolated_authorities(reconciler: object) -> Iterator[None]:
+    relative_paths = (
+        reconciler.CONTRACT_REL,
+        reconciler.REGISTRY_REL,
+        reconciler.WRITER_REL,
+        reconciler.VALIDATOR_REL,
+        reconciler.OPERABILITY_VALIDATOR_REL,
+        reconciler.STATUS_REL,
+        Path("scripts/reconcile-memory-os-recovery-objectives.py"),
+        Path(".github/workflows/recovery-objectives-admission.yml"),
+    )
+    originals = {
+        name: getattr(reconciler, name)
+        for name in ("ROOT", "CONTRACT", "REGISTRY", "WRITER", "VALIDATOR", "OPERABILITY_VALIDATOR", "STATUS")
+    }
+    with tempfile.TemporaryDirectory(prefix=".tmp-recovery-objective-authorities-", dir=TMP_PARENT) as tmpdir:
+        fixture_root = Path(tmpdir)
+        for relative in relative_paths:
+            source = ROOT / relative
+            destination = fixture_root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+
+        reconciler.ROOT = fixture_root
+        reconciler.CONTRACT = fixture_root / reconciler.CONTRACT_REL
+        reconciler.REGISTRY = fixture_root / reconciler.REGISTRY_REL
+        reconciler.WRITER = fixture_root / reconciler.WRITER_REL
+        reconciler.VALIDATOR = fixture_root / reconciler.VALIDATOR_REL
+        reconciler.OPERABILITY_VALIDATOR = fixture_root / reconciler.OPERABILITY_VALIDATOR_REL
+        reconciler.STATUS = fixture_root / reconciler.STATUS_REL
+
+        contract_bytes = reconciler.CONTRACT.read_bytes()
+        status_bytes = reconciler.STATUS.read_bytes()
+        contract_mode = file_mode(reconciler.CONTRACT)
+        status_mode = file_mode(reconciler.STATUS)
+        try:
+            yield
+            require(reconciler.CONTRACT.read_bytes() == contract_bytes, "fixture recovery objective contract did not roll back byte-for-byte")
+            require(reconciler.STATUS.read_bytes() == status_bytes, "fixture production status did not roll back byte-for-byte")
+            require(file_mode(reconciler.CONTRACT) == contract_mode, "fixture recovery objective contract mode did not roll back")
+            require(file_mode(reconciler.STATUS) == status_mode, "fixture production status mode did not roll back")
+            leftovers = list(reconciler.CONTRACT.parent.glob(".*.tmp"))
+            require(not leftovers, f"fixture recovery objective transaction left temporary files: {leftovers}")
+        finally:
+            for name, value in originals.items():
+                setattr(reconciler, name, value)
+
+
 def validate_atomic_diagnostic_publication() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     required_fragments = (
@@ -100,13 +151,8 @@ def prove_atomic_write_mode_preservation(reconciler: object) -> None:
     print("PASS boundary: atomic recovery objective authority replace preserves existing file mode")
 
 
-def prove_atomic_write_failure(
-    reconciler: object,
-    canonical_contract: bytes,
-    canonical_status: bytes,
-    canonical_contract_mode: int,
-    canonical_status_mode: int,
-) -> None:
+def prove_atomic_write_failure(reconciler: object) -> None:
+    contract_bytes = reconciler.CONTRACT.read_bytes()
     original_replace = reconciler.os.replace
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
@@ -116,24 +162,18 @@ def prove_atomic_write_failure(
     try:
         expect_domain_fail(
             "recovery objective atomic replace rejection",
-            lambda: reconciler.write_text(CONTRACT, canonical_contract.decode("utf-8") + " "),
+            lambda: reconciler.write_text(reconciler.CONTRACT, contract_bytes.decode("utf-8") + " "),
             reconciler.Fail,
             "cannot atomically write",
         )
     finally:
         reconciler.os.replace = original_replace
 
-    assert_canonical_unchanged(
-        canonical_contract,
-        canonical_status,
-        "atomic replace rejection",
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
-    contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
-    status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    require(reconciler.CONTRACT.read_bytes() == contract_bytes, "atomic replace rejection changed fixture contract")
+    contract_leftovers = list(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp"))
+    status_leftovers = list(reconciler.STATUS.parent.glob(f".{reconciler.STATUS.name}.*.tmp"))
     require(not contract_leftovers and not status_leftovers, "atomic write rejection left temporary recovery objective authority files")
-    print("PASS boundary: failed atomic recovery objective write preserves canonical bytes/mode and cleans temporary files")
+    print("PASS boundary: failed atomic recovery objective write preserves fixture bytes/mode and cleans temporary files")
 
 
 def prove_rollback_attempts_all_restores(reconciler: object) -> None:
@@ -164,13 +204,7 @@ def prove_rollback_attempts_all_restores(reconciler: object) -> None:
     print("PASS rollback: recovery objective restore failure still attempts contract and status")
 
 
-def prove_primary_and_rollback_failures_are_preserved(
-    reconciler: object,
-    canonical_contract: bytes,
-    canonical_status: bytes,
-    canonical_contract_mode: int,
-    canonical_status_mode: int,
-) -> None:
+def prove_primary_and_rollback_failures_are_preserved(reconciler: object) -> None:
     original_run_validator = reconciler.run_validator
     original_restore = reconciler.restore_original_text
 
@@ -201,24 +235,10 @@ def prove_primary_and_rollback_failures_are_preserved(
     finally:
         reconciler.run_validator = original_run_validator
         reconciler.restore_original_text = original_restore
-
-    assert_canonical_unchanged(
-        canonical_contract,
-        canonical_status,
-        "primary+rollback diagnostic negative",
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
     print("PASS rollback: recovery objective reconcile preserves primary and rollback failure diagnostics")
 
 
-def prove_second_replace_transaction_rollback(
-    reconciler: object,
-    canonical_contract: bytes,
-    canonical_status: bytes,
-    canonical_contract_mode: int,
-    canonical_status_mode: int,
-) -> None:
+def prove_second_replace_transaction_rollback(reconciler: object) -> None:
     original_replace = reconciler.os.replace
     replace_destinations: list[Path] = []
 
@@ -240,23 +260,49 @@ def prove_second_replace_transaction_rollback(
         reconciler.os.replace = original_replace
 
     require(
-        replace_destinations == [CONTRACT, STATUS, CONTRACT, STATUS],
+        replace_destinations == [reconciler.CONTRACT, reconciler.STATUS, reconciler.CONTRACT, reconciler.STATUS],
         f"recovery objective second-replace rollback order drift: {replace_destinations}",
     )
-    assert_canonical_unchanged(
-        canonical_contract,
-        canonical_status,
-        "second authority replace rollback",
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
-    contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
-    status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    contract_leftovers = list(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp"))
+    status_leftovers = list(reconciler.STATUS.parent.glob(f".{reconciler.STATUS.name}.*.tmp"))
     require(
         not contract_leftovers and not status_leftovers,
         "second authority replace rejection left temporary recovery objective authority files",
     )
-    print("PASS rollback: second authority replace rejection restores contract/status byte-for-byte and mode-for-mode")
+    print("PASS rollback: second authority replace rejection restores fixture contract/status byte-for-byte and mode-for-mode")
+
+
+def prove_aggregate_validator_rollback(reconciler: object) -> None:
+    original_run_validator = reconciler.run_validator
+    validator_calls: list[tuple[Path, str]] = []
+
+    def fail_aggregate_validator(path: Path, label: str) -> None:
+        validator_calls.append((path, label))
+        if path == reconciler.OPERABILITY_VALIDATOR:
+            raise reconciler.Fail("post-reconcile aggregate operability validator failed: forced negative")
+        return None
+
+    reconciler.run_validator = fail_aggregate_validator
+    try:
+        expect_domain_fail(
+            "post-write aggregate operability rejection",
+            reconciler.main,
+            reconciler.Fail,
+            "aggregate operability validator failed",
+        )
+    finally:
+        reconciler.run_validator = original_run_validator
+
+    require(
+        validator_calls
+        == [
+            (reconciler.VALIDATOR, "recovery objective validator"),
+            (reconciler.OPERABILITY_VALIDATOR, "aggregate operability validator"),
+        ],
+        f"recovery objective post-write validator order drift: {validator_calls}",
+    )
+    print("PASS rollback: aggregate operability rejection restores fixture recovery objective contract/status byte-for-byte and mode-for-mode")
+    print("PASS boundary: post-write validator order is recovery objective then aggregate Operability")
 
 
 def main() -> int:
@@ -348,66 +394,24 @@ def main() -> int:
             expect_domain_fail("objective authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
     prove_atomic_write_mode_preservation(reconciler)
-    prove_atomic_write_failure(
-        reconciler,
-        canonical_contract,
-        canonical_status,
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
+    with isolated_authorities(reconciler):
+        prove_atomic_write_failure(reconciler)
     prove_rollback_attempts_all_restores(reconciler)
-    prove_primary_and_rollback_failures_are_preserved(
-        reconciler,
-        canonical_contract,
-        canonical_status,
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
-    prove_second_replace_transaction_rollback(
-        reconciler,
-        canonical_contract,
-        canonical_status,
-        canonical_contract_mode,
-        canonical_status_mode,
-    )
+    with isolated_authorities(reconciler):
+        prove_primary_and_rollback_failures_are_preserved(reconciler)
+    with isolated_authorities(reconciler):
+        prove_second_replace_transaction_rollback(reconciler)
+    with isolated_authorities(reconciler):
+        prove_aggregate_validator_rollback(reconciler)
 
-    original_run_validator = reconciler.run_validator
-    validator_calls: list[tuple[Path, str]] = []
-
-    def fail_aggregate_validator(path: Path, label: str) -> None:
-        validator_calls.append((path, label))
-        if path == reconciler.OPERABILITY_VALIDATOR:
-            raise reconciler.Fail("post-reconcile aggregate operability validator failed: forced negative")
-        return None
-
-    reconciler.run_validator = fail_aggregate_validator
-    try:
-        expect_domain_fail(
-            "post-write aggregate operability rejection",
-            reconciler.main,
-            reconciler.Fail,
-            "aggregate operability validator failed",
-        )
-    finally:
-        reconciler.run_validator = original_run_validator
-
-    require(
-        validator_calls
-        == [
-            (reconciler.VALIDATOR, "recovery objective validator"),
-            (reconciler.OPERABILITY_VALIDATOR, "aggregate operability validator"),
-        ],
-        f"recovery objective post-write validator order drift: {validator_calls}",
-    )
     assert_canonical_unchanged(
         canonical_contract,
         canonical_status,
-        "aggregate rollback",
+        "isolated transactional negatives",
         canonical_contract_mode,
         canonical_status_mode,
     )
-    print("PASS rollback: aggregate operability rejection restores recovery objective contract/status byte-for-byte and mode-for-mode")
-    print("PASS boundary: post-write validator order is recovery objective then aggregate Operability")
+    print("PASS boundary: transactional recovery objective negatives keep canonical authorities read-only")
     print("paired recovery objective fixture substitution accepted: false")
     print("recovery objective data/executable substitution accepted: false")
     print("recovery objective evidence reordering accepted: false")
