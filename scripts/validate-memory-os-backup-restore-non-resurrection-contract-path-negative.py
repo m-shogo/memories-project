@@ -15,6 +15,7 @@ EXPECTED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection
 EXPECTED_GEN_EVIDENCE_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 EXPECTED_GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
+TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 class Fail(RuntimeError):
     pass
@@ -104,6 +105,7 @@ def reject_typed_writer_substitution(validator: Any) -> None:
         typed_writer.GEN_WRITER = original_generation_writer
 
 def main() -> int:
+    require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     validator = load_validator()
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
@@ -113,14 +115,14 @@ def main() -> int:
     expect_rejected(validator, "absolute in-repository authority ref", lambda: validator.canonical_repo_file_ref(str(ROOT / canonical), "negative.absolute"))
     expect_rejected(validator, "parent traversal authority ref", lambda: validator.canonical_repo_file_ref("scripts/../scripts/validate-memory-os-backup-restore-non-resurrection-admission.py", "negative.parent"))
 
-    with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-path-negative-") as tmp:
-        outside = Path(tmp) / "outside.json"
-        outside.write_text("{}\n", encoding="utf-8")
-        link = ROOT / "docs/fixtures/memory-os-operability/.non-resurrection-path-negative-link.json"
-        loop = ROOT / "docs/fixtures/memory-os-operability/.non-resurrection-path-negative-loop.json"
-        require(not link.exists() and not link.is_symlink(), "temporary negative symlink path already exists")
-        require(not loop.exists() and not loop.is_symlink(), "temporary negative symlink-loop path already exists")
-        try:
+    with tempfile.TemporaryDirectory(prefix=".tmp-non-resurrection-path-negative-", dir=TMP_PARENT) as fixture_tmp:
+        fixture_dir = Path(fixture_tmp)
+        with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-path-negative-") as outside_tmp:
+            outside = Path(outside_tmp) / "outside.json"
+            outside.write_text("{}\n", encoding="utf-8")
+            link = fixture_dir / "escaped-authority.json"
+            loop = fixture_dir / "loop-authority.json"
+
             link.symlink_to(outside)
             ref = link.relative_to(ROOT).as_posix()
             expect_rejected(validator, "repo-local symlink escaping repository", lambda: validator.canonical_repo_file_ref(ref, "negative.symlink"))
@@ -128,9 +130,6 @@ def main() -> int:
             loop.symlink_to(loop.name)
             loop_ref = loop.relative_to(ROOT).as_posix()
             expect_rejected(validator, "repo-local authority symlink loop", lambda: validator.canonical_repo_file_ref(loop_ref, "negative.symlinkLoop"))
-        finally:
-            link.unlink(missing_ok=True)
-            loop.unlink(missing_ok=True)
 
     reject_typed_writer_cli_substitutions(validator)
     reject_typed_writer_substitution(validator)
