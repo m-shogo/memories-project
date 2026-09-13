@@ -15,7 +15,6 @@ INVENTORY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-i
 SOURCE_AUTHORITY = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
 INPUT_REL = Path("contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json")
 INPUT = ROOT / INPUT_REL
-ALIAS_TARGET = INPUT.parent / ".inventory-generator-input-authority-target.json"
 ENV_GENERATION_VALIDATOR = "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 INDEPENDENT_REVIEW_VALIDATOR = "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
 MATERIAL_DELTA_REVIEW_VALIDATOR = "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
@@ -107,18 +106,10 @@ def expect_generator_execution_rejected(module: Any, field: str, replacement: An
     require(rejected, f"inventory generator accepted substituted runtime authority {field}")
 
 
-def restore_input(input_before: bytes, input_mode_before: int) -> None:
-    INPUT.unlink(missing_ok=True)
-    INPUT.write_bytes(input_before)
-    INPUT.chmod(input_mode_before)
-    ALIAS_TARGET.unlink(missing_ok=True)
-
-
 def prove_generator_atomic_publication(generator: Any) -> None:
     with tempfile.TemporaryDirectory(prefix=".tmp-inventory-atomic-", dir=ROOT / "contracts/operations") as tmpdir:
         target = Path(tmpdir) / "inventory.json"
-        before = b'{"before":true}\n'
-        target.write_bytes(before)
+        target.write_bytes(b'{"before":true}\n')
         target.chmod(0o640)
         generator.atomic_write_text(target, '{"after":true}\n')
         require(target.read_bytes() == b'{"after":true}\n', "inventory atomic publication payload drift")
@@ -195,6 +186,34 @@ def prove_generator_post_validation_rollback_mode(generator: Any) -> None:
     require(INVENTORY_VALIDATOR.is_file() and not INVENTORY_VALIDATOR.is_symlink(), "canonical inventory validator identity changed during rollback negative")
     print("PASS generator rollback: post-write validation failure restores fixture inventory bytes and mode")
     print("PASS boundary: post-write rollback negative leaves canonical inventory/validator untouched")
+
+
+def prove_generator_symlink_rejection(generator: Any) -> None:
+    input_before = INPUT.read_bytes()
+    input_mode_before = INPUT.stat().st_mode & 0o7777
+    output_before = generator.OUTPUT.read_bytes()
+    with tempfile.TemporaryDirectory(prefix=".tmp-inventory-symlink-", dir=ROOT / "contracts/operations") as tmpdir:
+        fixture_dir = Path(tmpdir)
+        target = fixture_dir / "target.json"
+        alias = fixture_dir / "alias.json"
+        target.write_bytes(input_before)
+        alias.symlink_to(target.name)
+        alias_rel = alias.relative_to(ROOT).as_posix()
+        rejected = False
+        try:
+            generator.load(alias_rel)
+        except SystemExit as exc:
+            require(exc.code not in (None, 0), "symlinked fixture input produced successful SystemExit")
+            rejected = True
+        require(rejected, "direct inventory generator accepted symlinked fixture input authority")
+        require(generator.exists(alias_rel) is False, "symlinked fixture path counted as canonical foundation")
+        require(alias.is_symlink(), "symlink fixture identity drifted during rejection probe")
+        require(target.read_bytes() == input_before, "symlink rejection changed fixture target bytes")
+    require(INPUT.is_file() and not INPUT.is_symlink(), "symlink negative changed canonical input identity")
+    require(INPUT.read_bytes() == input_before, "symlink negative changed canonical input bytes")
+    require(INPUT.stat().st_mode & 0o7777 == input_mode_before, "symlink negative changed canonical input mode")
+    require(generator.OUTPUT.read_bytes() == output_before, "symlink negative changed canonical inventory")
+    print("PASS boundary: symlink rejection uses isolated fixture and leaves canonical input/inventory untouched")
 
 
 def main() -> int:
@@ -279,37 +298,7 @@ def main() -> int:
 
     prove_generator_atomic_publication(generator)
     prove_generator_post_validation_rollback_mode(generator)
-
-    require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input missing or already symlinked")
-    require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture already exists")
-    input_before = INPUT.read_bytes()
-    input_mode_before = INPUT.stat().st_mode & 0o7777
-    output_before = generator.OUTPUT.read_bytes()
-
-    try:
-        ALIAS_TARGET.write_bytes(input_before)
-        INPUT.unlink()
-        INPUT.symlink_to(ALIAS_TARGET.name)
-        rejected = False
-        try:
-            generator.load(INPUT_REL.as_posix())
-        except SystemExit as exc:
-            require(exc.code not in (None, 0), "symlinked canonical input produced successful SystemExit")
-            rejected = True
-        require(rejected, "direct inventory generator accepted symlinked canonical input authority")
-        require(generator.exists(INPUT_REL.as_posix()) is False, "symlinked foundation path counted as canonical foundation")
-        require(generator.OUTPUT.read_bytes() == output_before, "input authority rejection mutated canonical inventory")
-    finally:
-        restore_input(input_before, input_mode_before)
-
-    require(INPUT.is_file() and not INPUT.is_symlink(), "canonical inventory input was not restored")
-    require(INPUT.read_bytes() == input_before, "canonical inventory input bytes changed after negative probe")
-    require(
-        INPUT.stat().st_mode & 0o7777 == input_mode_before,
-        "canonical inventory input mode changed after negative probe",
-    )
-    require(not ALIAS_TARGET.exists() and not ALIAS_TARGET.is_symlink(), "inventory input alias fixture cleanup failed")
-    require(generator.OUTPUT.read_bytes() == output_before, "negative probe mutated canonical inventory")
+    prove_generator_symlink_rejection(generator)
 
     print("Memory OS operability inventory generator authority negative PASS")
     print("full environment-generation admission authority validated before inventory generation: true")
@@ -329,12 +318,9 @@ def main() -> int:
     print("inventory generator atomic replace residue accepted: false")
     print("post-write inventory rollback mode loss accepted: false")
     print("post-write rollback negative canonical authority mutation accepted: false")
-    print("symlinked canonical input accepted by direct generator: false")
-    print("symlinked foundation path counted as canonical foundation: false")
-    print("fixture setup failure can strand canonical input authority: false")
-    print("rejected probe mutated canonical input authority: false")
-    print("rejected probe mutated canonical input authority mode: false")
-    print("rejected probe mutated canonical inventory: false")
+    print("symlinked fixture input accepted by direct generator: false")
+    print("symlinked fixture path counted as canonical foundation: false")
+    print("symlink negative canonical authority mutation accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
