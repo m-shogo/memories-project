@@ -197,7 +197,9 @@ def load_material_delta_validator():
     require(getattr(module, "CONTRACT", None) == CONTRACT, "candidate material-delta review contract authority drift")
     require(getattr(module, "REGISTRY", None) == REGISTRY, "candidate material-delta review registry authority drift")
     require(callable(getattr(module, "material_delta_review_approved", None)), "candidate material-delta review authority missing")
-    require(callable(getattr(module, "main", None)), "candidate material-delta review validator main missing")
+    require(callable(getattr(module, "enforce_execution_authority", None)), "candidate material-delta execution authority missing")
+    require(callable(getattr(module, "enforce_runtime_authorities", None)), "candidate material-delta runtime authority missing")
+    require(callable(getattr(module, "validate_contract_authority", None)), "candidate material-delta contract authority missing")
     return module
 
 
@@ -351,12 +353,14 @@ def main(
     enforce_runtime_authorities()
     validate_contract_authority()
     try:
-        material_delta_result = load_material_delta_validator().main()
+        material_delta_validator = load_material_delta_validator()
+        material_delta_validator.enforce_execution_authority()
+        material_delta_validator.enforce_runtime_authorities()
+        material_delta_validator.validate_contract_authority()
     except Exception as exc:
         if isinstance(exc, RuntimeError) and exc.__class__.__name__ == "Fail":
             raise Fail(f"material-delta review authority invalid: {exc}") from exc
         raise
-    require(material_delta_result == 0, "material-delta review validator did not pass")
     registry = load_json(REGISTRY, "generation evidence registry")
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "generation evidence registry schema drift")
     require(registry.get("appendOnly") is True, "generation evidence registry must remain append-only")
