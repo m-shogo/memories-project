@@ -197,6 +197,7 @@ def load_material_delta_validator():
     require(getattr(module, "CONTRACT", None) == CONTRACT, "candidate material-delta review contract authority drift")
     require(getattr(module, "REGISTRY", None) == REGISTRY, "candidate material-delta review registry authority drift")
     require(callable(getattr(module, "material_delta_review_approved", None)), "candidate material-delta review authority missing")
+    require(callable(getattr(module, "main", None)), "candidate material-delta review validator main missing")
     return module
 
 
@@ -349,6 +350,13 @@ def main(
     enforce_execution_authority()
     enforce_runtime_authorities()
     validate_contract_authority()
+    try:
+        material_delta_result = load_material_delta_validator().main()
+    except Exception as exc:
+        if isinstance(exc, RuntimeError) and exc.__class__.__name__ == "Fail":
+            raise Fail(f"material-delta review authority invalid: {exc}") from exc
+        raise
+    require(material_delta_result == 0, "material-delta review validator did not pass")
     registry = load_json(REGISTRY, "generation evidence registry")
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "generation evidence registry schema drift")
     require(registry.get("appendOnly") is True, "generation evidence registry must remain append-only")
@@ -380,6 +388,7 @@ def main(
     print("generation independent-review execution helper substitution accepted: false")
     print("generation independent-review execution transport substitution accepted: false")
     print("paired semantic authority substitution accepted: false")
+    print("material-delta semantic authority validated even without reviewed records: true")
     print("unreviewed generation evidence may remain non-candidate: true")
     print("partial independent review pairs accepted: false")
     print("review source-order authority required before candidate admission: true")
