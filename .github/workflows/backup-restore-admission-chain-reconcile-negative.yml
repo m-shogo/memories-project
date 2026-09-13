@@ -12,6 +12,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
@@ -38,6 +39,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
@@ -84,12 +86,14 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py \
             scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py \
             scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-backup-restore-review-source-order.py
           python scripts/validate-memory-os-backup-restore-generation-independent-review.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
           python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
