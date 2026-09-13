@@ -158,13 +158,19 @@ def main() -> int:
     finally:
         helper.GEN_WRITER = original_writer
 
-    with tempfile.TemporaryDirectory(prefix="memory-os-generation-writer-outside-") as outside_tmp:
-        outside_writer = Path(outside_tmp) / "outside-generation-writer.py"
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-writer-isolated-") as fixture_tmp:
+        fixture_base = Path(fixture_tmp)
+        fixture_root = fixture_base / "repo"
+        fixture_scripts = fixture_root / "scripts"
+        fixture_scripts.mkdir(parents=True)
+        outside_writer = fixture_base / "outside-generation-writer.py"
         outside_writer.write_text("VALUE = 1\n", encoding="utf-8")
-        escaped_link = ROOT / ".tmp-generation-eligibility-writer-escape.py"
-        loop_link = ROOT / ".tmp-generation-eligibility-writer-loop.py"
+        escaped_link = fixture_scripts / "generation-eligibility-writer-escape.py"
+        loop_link = fixture_scripts / "generation-eligibility-writer-loop.py"
+        original_root = helper.ROOT
         original_writer = helper.GEN_WRITER
         try:
+            helper.ROOT = fixture_root
             helper.GEN_WRITER = outside_writer
             expect_rejected("semantic generation writer absolute path escapes repository", helper.load_generation_writer, helper.Fail)
             escaped_link.symlink_to(outside_writer)
@@ -175,11 +181,7 @@ def main() -> int:
             expect_rejected("semantic generation writer symlink loop", helper.load_generation_writer, helper.Fail)
         finally:
             helper.GEN_WRITER = original_writer
-            for path in (escaped_link, loop_link):
-                try:
-                    path.unlink()
-                except FileNotFoundError:
-                    pass
+            helper.ROOT = original_root
 
     runtime_substitutions = (
         ("ROOT", ROOT / "contracts"),
