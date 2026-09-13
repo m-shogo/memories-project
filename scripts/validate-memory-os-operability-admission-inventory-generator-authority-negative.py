@@ -17,6 +17,8 @@ INPUT_REL = Path("contracts/operations/rate-limit-distributed-runtime-admission-
 INPUT = ROOT / INPUT_REL
 ALIAS_TARGET = INPUT.parent / ".inventory-generator-input-authority-target.json"
 ENV_GENERATION_VALIDATOR = "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+INDEPENDENT_REVIEW_VALIDATOR = "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+MATERIAL_DELTA_REVIEW_VALIDATOR = "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
 ADMISSION_CHAIN_VALIDATOR = "scripts/validate-memory-os-backup-restore-admission-chain.py"
 
 
@@ -186,6 +188,16 @@ def main() -> int:
         command_paths.count(ENV_GENERATION_VALIDATOR) == 1,
         "inventory source authority must validate the full environment-generation admission authority exactly once",
     )
+    required_review_validators = {INDEPENDENT_REVIEW_VALIDATOR, MATERIAL_DELTA_REVIEW_VALIDATOR}
+    require(
+        source_authority.REQUIRED_BACKUP_REVIEW_COMMAND_SOURCES == required_review_validators,
+        "inventory required backup review command authority set drift",
+    )
+    for required_review_validator in required_review_validators:
+        require(
+            command_paths.count(required_review_validator) == 1,
+            f"inventory source authority must validate required backup review authority exactly once: {required_review_validator}",
+        )
     require(
         ADMISSION_CHAIN_VALIDATOR not in command_paths,
         "pre-generation source authority must not validate the inventory-dependent end-to-end admission chain",
@@ -198,6 +210,7 @@ def main() -> int:
     expect_source_authority_rejected(source_authority, "REQUEST_CONSTRAINTS", tuple())
     expect_source_authority_rejected(source_authority, "SOURCES", tuple(reversed(source_authority.SOURCES)))
     expect_source_authority_rejected(source_authority, "COMMAND_SOURCES", tuple(reversed(source_authority.COMMAND_SOURCES)))
+    expect_source_authority_rejected(source_authority, "REQUIRED_BACKUP_REVIEW_COMMAND_SOURCES", set())
     source_authority.enforce_runtime_authority()
 
     expect_source_execution_rejected(source_authority, "enforce_execution_authority", lambda: None)
@@ -282,10 +295,12 @@ def main() -> int:
 
     print("Memory OS operability inventory generator authority negative PASS")
     print("full environment-generation admission authority validated before inventory generation: true")
+    print("independent/material-delta source authorities validated before inventory generation: true")
     print("inventory-dependent end-to-end admission chain validated before inventory generation: false")
     print("inventory source-authority repository root substitution accepted: false")
     print("inventory source-authority self/request shape substitution accepted: false")
     print("inventory source registry/command sequence substitution accepted: false")
+    print("inventory required backup review command authority substitution accepted: false")
     print("inventory source execution helper substitution accepted: false")
     print("inventory validator execution helper substitution accepted: false")
     print("inventory validator canonical data authority substitution accepted: false")
