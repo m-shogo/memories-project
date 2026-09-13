@@ -39,6 +39,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
@@ -96,6 +97,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
       - "scripts/validate-memory-os-backup-restore-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
@@ -165,6 +167,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py \
             scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
@@ -188,6 +191,9 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py
           python scripts/validate-memory-os-backup-restore-review-source-order.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
           python scripts/reconcile-memory-os-backup-non-resurrection-authority.py
           python scripts/reconcile-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
@@ -268,6 +274,7 @@ jobs:
           scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
           scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
           scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
+          scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
           scripts/validate-memory-os-backup-restore-review-source-order.py
           scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
           scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
@@ -314,6 +321,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py \
             scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
@@ -338,6 +346,9 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-review-source-order.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
@@ -385,6 +396,9 @@ jobs:
             python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-review-source-order.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
