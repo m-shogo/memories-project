@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -55,6 +56,31 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
 
 def repo_rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
+
+
+@contextmanager
+def isolated_review_evidence_namespace(writer):
+    fixture_root = ROOT / "docs/fixtures/memory-os-operability"
+    require(fixture_root.is_dir(), "isolated operability fixture namespace missing")
+    original_evidence_root = writer.EVIDENCE_ROOT
+    original_load = writer.load
+    with tempfile.TemporaryDirectory(prefix=".promotion-review-negative-", dir=fixture_root) as tmp:
+        isolated_root = Path(tmp)
+
+        def isolated_load(path: Path) -> dict[str, Any]:
+            value = original_load(path)
+            if Path(path) == writer.CONTRACT:
+                value = copy.deepcopy(value)
+                value["reviewEvidenceRoot"] = repo_rel(isolated_root)
+            return value
+
+        writer.EVIDENCE_ROOT = isolated_root
+        writer.load = isolated_load
+        try:
+            yield isolated_root
+        finally:
+            writer.load = original_load
+            writer.EVIDENCE_ROOT = original_evidence_root
 
 
 def review_payload(
@@ -256,8 +282,8 @@ def main() -> int:
             writer.atomic_restore = original_atomic_restore
 
     require(writer.EVIDENCE_ROOT.is_dir(), "monitored backup/restore evidence namespace missing")
-    with tempfile.TemporaryDirectory(prefix=".promotion-review-negative-", dir=writer.EVIDENCE_ROOT) as tmp:
-        record, paths = build_fixture(Path(tmp))
+    with isolated_review_evidence_namespace(writer) as evidence_root:
+        record, paths = build_fixture(evidence_root)
 
         expect_rejected("no current final recovery candidate", lambda: writer.validate_record(copy.deepcopy(record)))
         try:
