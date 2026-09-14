@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject corrupt contact-routing authority before append/reconcile mutation."""
+"""Reject corrupt contact-routing authority without mutating canonical checkout."""
 
 from __future__ import annotations
 
@@ -7,7 +7,9 @@ import copy
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,19 +19,44 @@ CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contr
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-incident-contact-routing.py"
+INCIDENT_RESPONSE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-response.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-incident-contact-routing.py"
-TEMP_POST_SOURCE = ROOT / "docs/fixtures/memory-os-operability/.incident-contact-routing-post-source-negative.tmp"
-TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.incident-contact-routing-symlink-negative.tmp"
-POST_WRITE_MARKER = Path("/tmp/memory-os-incident-contact-routing-post-write-negative.count")
+WORKFLOW = ROOT / ".github/workflows/incident-contact-routing-admission.yml"
+FIXTURE_ROOT = ROOT / "docs/fixtures/memory-os-operability"
+
+CANONICALS = (
+    REGISTRY,
+    OBS_REGISTRY,
+    CONTRACT,
+    STATUS,
+    WRITER,
+    VALIDATOR,
+    INCIDENT_RESPONSE_VALIDATOR,
+    OPERABILITY_VALIDATOR,
+    RECONCILER,
+    WORKFLOW,
+)
 
 
 def file_mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
 
 
+def snapshot() -> dict[Path, tuple[bytes, int]]:
+    return {path: (path.read_bytes(), file_mode(path)) for path in CANONICALS}
+
+
+def assert_canonical_unchanged(before: dict[Path, tuple[bytes, int]], label: str) -> None:
+    for path, (payload, mode) in before.items():
+        if path.read_bytes() != payload:
+            raise RuntimeError(f"{label} mutated canonical bytes: {path.relative_to(ROOT)}")
+        if file_mode(path) != mode:
+            raise RuntimeError(f"{label} changed canonical mode: {path.relative_to(ROOT)}")
+
+
 def load_writer():
-    spec = importlib.util.spec_from_file_location("incident_contact_routing_writer", WRITER)
+    spec = importlib.util.spec_from_file_location("incident_contact_routing_writer_negative", WRITER)
     if spec is None or spec.loader is None:
         raise RuntimeError("unable to load contact routing writer")
     module = importlib.util.module_from_spec(spec)
@@ -46,7 +73,7 @@ def load_reconciler():
     return module
 
 
-def expect_writer_rejected(writer, registry, label: str) -> None:
+def expect_writer_rejected(writer, registry: dict, label: str) -> None:
     try:
         writer.validate_registry_for_append(registry, validate_rows=False)
     except writer.Fail:
@@ -54,76 +81,55 @@ def expect_writer_rejected(writer, registry, label: str) -> None:
     raise RuntimeError(f"writer accepted corrupt contact routing registry: {label}")
 
 
-def expect_writer_append_rollback(writer, registry, registry_bytes: bytes, registry_mode: int) -> None:
+def expect_writer_append_rollback(
+    writer,
+    registry: dict,
+    canonical_before: dict[Path, tuple[bytes, int]],
+) -> None:
+    original_registry = writer.REGISTRY
     original_validator = writer.validate_registry_for_append
     calls = 0
+    with tempfile.TemporaryDirectory(prefix="incident-contact-routing-writer-", dir=FIXTURE_ROOT) as tmp:
+        fixture_registry = Path(tmp) / REGISTRY.name
+        shutil.copy2(REGISTRY, fixture_registry)
+        fixture_bytes = fixture_registry.read_bytes()
+        fixture_mode = file_mode(fixture_registry)
 
-    def injected_validator(value, *, validate_rows=True):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            return None
-        raise writer.Fail("injected post-append registry validation failure")
+        def injected_validator(value, *, validate_rows=True):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return None
+            raise writer.Fail("injected post-append registry validation failure")
 
-    candidate = copy.deepcopy(registry)
-    candidate["appendOnly"] = False
-    try:
-        writer.validate_registry_for_append = injected_validator
+        candidate = copy.deepcopy(registry)
+        candidate["appendOnly"] = False
         try:
-            writer.commit_registry_candidate(registry, candidate)
-        except writer.Fail:
-            pass
-        else:
-            raise RuntimeError("writer accepted injected post-append contact-routing registry validation failure")
-        if REGISTRY.read_bytes() != registry_bytes:
-            raise RuntimeError("post-append validation failure left contact-routing registry mutated")
-        if file_mode(REGISTRY) != registry_mode:
-            raise RuntimeError("post-append validation failure changed contact-routing registry mode")
-    finally:
-        writer.validate_registry_for_append = original_validator
-        REGISTRY.write_bytes(registry_bytes)
-        os.chmod(REGISTRY, registry_mode)
+            writer.REGISTRY = fixture_registry
+            writer.validate_registry_for_append = injected_validator
+            try:
+                writer.commit_registry_candidate(registry, candidate)
+            except writer.Fail:
+                pass
+            else:
+                raise RuntimeError("writer accepted injected post-append registry validation failure")
+        finally:
+            writer.REGISTRY = original_registry
+            writer.validate_registry_for_append = original_validator
+
+        if fixture_registry.read_bytes() != fixture_bytes:
+            raise RuntimeError("writer rollback did not restore isolated registry bytes")
+        if file_mode(fixture_registry) != fixture_mode:
+            raise RuntimeError("writer rollback did not restore isolated registry mode")
+        if list(fixture_registry.parent.glob(".incident-contact-routing.*.tmp")):
+            raise RuntimeError("writer rollback left isolated temp residue")
+
+    assert_canonical_unchanged(canonical_before, "writer rollback negative")
 
 
-def expect_ref_rejected(writer, ref: str, source: str, label: str) -> None:
-    try:
-        writer.source_bound_ref(ref, source, "negativeEvidenceRef")
-    except writer.Fail:
-        return
-    raise RuntimeError(f"writer accepted invalid source-bound evidence: {label}")
-
-
-def expect_generic_reviews_rejected(writer, source: str) -> None:
-    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
-    record = {
-        "contactRoutingId": "icr_negative_review",
-        "observabilityStackId": "obsstack_negative_review",
-        "environmentIdentityDigest": "0" * 64,
-        "privacyReviewRef": "contracts/operations/production-operability-status.json",
-        "operabilityReviewRef": "contracts/operations/incident-contact-routing-admission-contract.v1.json",
-    }
-    try:
-        writer.validate_independent_reviews(record, source, contract)
-    except writer.Fail:
-        return
-    raise RuntimeError("generic repository JSON files were accepted as typed contact-routing independent reviews")
-
-
-def expect_validator_rejected(label: str) -> None:
-    completed = subprocess.run(
-        ["python", str(VALIDATOR)],
-        cwd=ROOT,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if completed.returncode != 0:
-        return
-    raise RuntimeError(f"validator accepted corrupt contact-routing authority: {label}")
-
-
-def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: bytes) -> None:
+def expect_reconciler_authority_rejected(
+    canonical_before: dict[Path, tuple[bytes, int]],
+) -> None:
     reconciler = load_reconciler()
     substitutions = (
         ("CONTRACT", reconciler.STATUS, "contact routing contract authority drift"),
@@ -146,52 +152,118 @@ def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: by
                     raise RuntimeError(f"{field} substitution rejected at wrong boundary: {exc}") from exc
             else:
                 raise RuntimeError(f"contact routing reconciler accepted {field} authority substitution")
-            if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
-                raise RuntimeError(f"{field} substitution mutated contact routing authority")
         finally:
             setattr(reconciler, field, original)
+        assert_canonical_unchanged(canonical_before, f"{field} authority substitution")
     reconciler.enforce_runtime_authorities()
 
 
-def expect_second_replace_rollback(
-    contract_bytes: bytes,
-    status_bytes: bytes,
-    contract_mode: int,
-    status_mode: int,
-) -> None:
+def fixture_pair(prefix: str) -> tuple[tempfile.TemporaryDirectory, Path, Path]:
+    temporary = tempfile.TemporaryDirectory(prefix=prefix, dir=FIXTURE_ROOT)
+    root = Path(temporary.name)
+    contract = root / CONTRACT.name
+    status = root / STATUS.name
+    shutil.copy2(CONTRACT, contract)
+    shutil.copy2(STATUS, status)
+    return temporary, contract, status
+
+
+def assert_pair_restored(contract: Path, status: Path, expected: dict[Path, tuple[bytes, int]], label: str) -> None:
+    for path in (contract, status):
+        payload, mode = expected[path]
+        if path.read_bytes() != payload:
+            raise RuntimeError(f"{label} did not restore {path.name} bytes")
+        if file_mode(path) != mode:
+            raise RuntimeError(f"{label} did not restore {path.name} mode")
+        if list(path.parent.glob(f".{path.name}.*.tmp")):
+            raise RuntimeError(f"{label} left {path.name} temp residue")
+
+
+def expect_second_replace_rollback(canonical_before: dict[Path, tuple[bytes, int]]) -> None:
     reconciler = load_reconciler()
-    original_replace = reconciler.os.replace
-    calls = 0
-
-    def fail_second_replace(source, target):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            raise OSError("synthetic second authority replace rejection")
-        return original_replace(source, target)
-
+    temporary, fixture_contract, fixture_status = fixture_pair("incident-contact-routing-pair-")
     try:
-        reconciler.os.replace = fail_second_replace
-        try:
-            reconciler.commit_validated_pair(
-                json.loads(contract_bytes.decode("utf-8")),
-                json.loads(status_bytes.decode("utf-8")),
-            )
-        except OSError:
-            pass
-        else:
-            raise RuntimeError("reconciler accepted second authority replace rejection")
-    finally:
-        reconciler.os.replace = original_replace
+        expected = {
+            fixture_contract: (fixture_contract.read_bytes(), file_mode(fixture_contract)),
+            fixture_status: (fixture_status.read_bytes(), file_mode(fixture_status)),
+        }
+        original_contract = reconciler.CONTRACT
+        original_status = reconciler.STATUS
+        original_validators = reconciler.POST_WRITE_VALIDATORS
+        original_replace = reconciler.os.replace
+        calls = 0
 
-    if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
-        raise RuntimeError("second authority replace rejection did not restore contract/status bytes")
-    if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
-        raise RuntimeError("second authority replace rejection did not restore contract/status modes")
-    if list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")):
-        raise RuntimeError("second authority replace rejection left contract temp residue")
-    if list(STATUS.parent.glob(f".{STATUS.name}.*.tmp")):
-        raise RuntimeError("second authority replace rejection left status temp residue")
+        def fail_second_replace(source, target):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("synthetic second authority replace rejection")
+            return original_replace(source, target)
+
+        try:
+            reconciler.CONTRACT = fixture_contract
+            reconciler.STATUS = fixture_status
+            reconciler.POST_WRITE_VALIDATORS = ()
+            reconciler.os.replace = fail_second_replace
+            try:
+                reconciler.commit_validated_pair(
+                    json.loads(expected[fixture_contract][0].decode("utf-8")),
+                    json.loads(expected[fixture_status][0].decode("utf-8")),
+                )
+            except OSError:
+                pass
+            else:
+                raise RuntimeError("reconciler accepted second authority replace rejection")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.CONTRACT = original_contract
+            reconciler.STATUS = original_status
+            reconciler.POST_WRITE_VALIDATORS = original_validators
+
+        assert_pair_restored(fixture_contract, fixture_status, expected, "second replace rejection")
+    finally:
+        temporary.cleanup()
+    assert_canonical_unchanged(canonical_before, "second replace rollback negative")
+
+
+def expect_post_write_rollback(canonical_before: dict[Path, tuple[bytes, int]]) -> None:
+    reconciler = load_reconciler()
+    temporary, fixture_contract, fixture_status = fixture_pair("incident-contact-routing-post-write-")
+    try:
+        root = fixture_contract.parent
+        pass_validator = root / "validate-pass.py"
+        fail_validator = root / "validate-fail.py"
+        pass_validator.write_text("raise SystemExit(0)\n", encoding="utf-8")
+        fail_validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
+        expected = {
+            fixture_contract: (fixture_contract.read_bytes(), file_mode(fixture_contract)),
+            fixture_status: (fixture_status.read_bytes(), file_mode(fixture_status)),
+        }
+        original_contract = reconciler.CONTRACT
+        original_status = reconciler.STATUS
+        original_validators = reconciler.POST_WRITE_VALIDATORS
+        try:
+            reconciler.CONTRACT = fixture_contract
+            reconciler.STATUS = fixture_status
+            reconciler.POST_WRITE_VALIDATORS = (pass_validator, fail_validator)
+            contract = json.loads(expected[fixture_contract][0].decode("utf-8"))
+            status = json.loads(expected[fixture_status][0].decode("utf-8"))
+            contract["currentAuthority"]["admittedRoutingCount"] = 999
+            try:
+                reconciler.commit_validated_pair(contract, status)
+            except reconciler.Fail as exc:
+                if fail_validator.name not in str(exc):
+                    raise RuntimeError(f"post-write failure rejected at wrong boundary: {exc}") from exc
+            else:
+                raise RuntimeError("reconciler accepted injected post-write validator failure")
+        finally:
+            reconciler.CONTRACT = original_contract
+            reconciler.STATUS = original_status
+            reconciler.POST_WRITE_VALIDATORS = original_validators
+        assert_pair_restored(fixture_contract, fixture_status, expected, "post-write validation rejection")
+    finally:
+        temporary.cleanup()
+    assert_canonical_unchanged(canonical_before, "post-write rollback negative")
 
 
 def create_descendant_commit() -> str:
@@ -211,96 +283,52 @@ def create_descendant_commit() -> str:
     ).strip()
 
 
-def expect_post_write_rollback(
-    contract_bytes: bytes,
-    status_bytes: bytes,
-    contract_mode: int,
-    status_mode: int,
-) -> None:
-    validator_bytes = VALIDATOR.read_bytes()
-    validator_mode = file_mode(VALIDATOR)
-    wrapper = f'''#!/usr/bin/env python3
-from pathlib import Path
-marker = Path({str(POST_WRITE_MARKER)!r})
-count = int(marker.read_text(encoding="utf-8")) if marker.exists() else 0
-marker.write_text(str(count + 1), encoding="utf-8")
-raise SystemExit(0 if count == 0 else 1)
-'''
+def expect_ref_rejected(writer, ref: str, source: str, label: str) -> None:
     try:
-        POST_WRITE_MARKER.unlink(missing_ok=True)
-        VALIDATOR.write_text(wrapper, encoding="utf-8")
-        completed = subprocess.run(
-            ["python", str(RECONCILER)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        if completed.returncode == 0:
-            raise RuntimeError("reconciler accepted injected post-write validator failure")
-        if CONTRACT.read_bytes() != contract_bytes:
-            raise RuntimeError("post-write validator failure left contact routing contract mutated")
-        if STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("post-write validator failure left production operability status mutated")
-        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
-            raise RuntimeError("post-write validator failure changed contract/status permission mode")
-    finally:
-        VALIDATOR.write_bytes(validator_bytes)
-        os.chmod(VALIDATOR, validator_mode)
-        POST_WRITE_MARKER.unlink(missing_ok=True)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-        os.chmod(CONTRACT, contract_mode)
-        os.chmod(STATUS, status_mode)
+        writer.source_bound_ref(ref, source, "negativeEvidenceRef")
+    except writer.Fail:
+        return
+    raise RuntimeError(f"writer accepted invalid source-bound evidence: {label}")
 
 
-def expect_aggregate_post_write_rollback(
-    contract_bytes: bytes,
-    status_bytes: bytes,
-    contract_mode: int,
-    status_mode: int,
-) -> None:
-    operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
-    operability_mode = file_mode(OPERABILITY_VALIDATOR)
+def expect_source_bound_ref_negatives(writer, source: str, canonical_before: dict[Path, tuple[bytes, int]]) -> None:
+    with tempfile.TemporaryDirectory(prefix="incident-contact-routing-ref-", dir=FIXTURE_ROOT) as tmp:
+        root = Path(tmp)
+        post_source = root / "post-source.tmp"
+        symlink = root / "symlink.tmp"
+        post_source.write_text("created after source commit\n", encoding="utf-8")
+        expect_ref_rejected(writer, str(post_source.relative_to(ROOT)), source, "post-source evidence")
+        try:
+            symlink.symlink_to(ROOT / "README.md")
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            expect_ref_rejected(writer, str(symlink.relative_to(ROOT)), source, "symlink evidence")
+    assert_canonical_unchanged(canonical_before, "source-bound ref negatives")
+
+
+def expect_generic_reviews_rejected(writer, source: str) -> None:
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    record = {
+        "contactRoutingId": "icr_negative_review",
+        "observabilityStackId": "obsstack_negative_review",
+        "environmentIdentityDigest": "0" * 64,
+        "privacyReviewRef": "contracts/operations/production-operability-status.json",
+        "operabilityReviewRef": "contracts/operations/incident-contact-routing-admission-contract.v1.json",
+    }
     try:
-        OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
-        completed = subprocess.run(
-            ["python", str(RECONCILER)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        if completed.returncode == 0:
-            raise RuntimeError("reconciler accepted injected aggregate operability failure")
-        if CONTRACT.read_bytes() != contract_bytes:
-            raise RuntimeError("aggregate failure left contact routing contract mutated")
-        if STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("aggregate failure left production operability status mutated")
-        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
-            raise RuntimeError("aggregate failure changed contract/status permission mode")
-    finally:
-        OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
-        os.chmod(OPERABILITY_VALIDATOR, operability_mode)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-        os.chmod(CONTRACT, contract_mode)
-        os.chmod(STATUS, status_mode)
+        writer.validate_independent_reviews(record, source, contract)
+    except writer.Fail:
+        return
+    raise RuntimeError("generic repository JSON files were accepted as typed contact-routing independent reviews")
 
 
 def main() -> int:
+    if not FIXTURE_ROOT.is_dir():
+        raise RuntimeError("canonical operability fixture directory missing")
+    canonical_before = snapshot()
     writer = load_writer()
-    registry_bytes = REGISTRY.read_bytes()
-    observability_registry_bytes = OBS_REGISTRY.read_bytes()
-    contract_bytes = CONTRACT.read_bytes()
-    status_bytes = STATUS.read_bytes()
-    registry_mode = file_mode(REGISTRY)
-    observability_registry_mode = file_mode(OBS_REGISTRY)
-    contract_mode = file_mode(CONTRACT)
-    status_mode = file_mode(STATUS)
-    registry = json.loads(registry_bytes.decode("utf-8"))
+    registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
 
     cases = []
     candidate = copy.deepcopy(registry)
@@ -315,13 +343,13 @@ def main() -> int:
     candidate = copy.deepcopy(registry)
     candidate["schemaVersion"] = "memory-os-incident-contact-routing-admission-registry.v999"
     cases.append(("registry schema drift", candidate))
-
     for label, candidate in cases:
         expect_writer_rejected(writer, candidate, label)
 
-    expect_writer_append_rollback(writer, registry, registry_bytes, registry_mode)
-    expect_reconciler_authority_rejected(contract_bytes, status_bytes)
-    expect_second_replace_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
+    expect_writer_append_rollback(writer, registry, canonical_before)
+    expect_reconciler_authority_rejected(canonical_before)
+    expect_second_replace_rollback(canonical_before)
+    expect_post_write_rollback(canonical_before)
 
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if not writer.source_is_ancestor(source):
@@ -330,99 +358,13 @@ def main() -> int:
     if writer.source_is_ancestor(descendant):
         raise RuntimeError("future descendant commit was accepted as source ancestor")
     expect_generic_reviews_rejected(writer, source)
+    expect_source_bound_ref_negatives(writer, source, canonical_before)
 
-    try:
-        contract = json.loads(contract_bytes.decode("utf-8"))
-        contract["appendLockPath"] = "contracts/operations/.incident-contact-routing-alternate.lock"
-        CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
-        expect_validator_rejected("append lock binding drift")
-    finally:
-        CONTRACT.write_bytes(contract_bytes)
-        os.chmod(CONTRACT, contract_mode)
-
-    try:
-        TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
-        expect_ref_rejected(
-            writer,
-            str(TEMP_POST_SOURCE.relative_to(ROOT)),
-            source,
-            "post-source evidence",
-        )
-        try:
-            TEMP_SYMLINK.symlink_to(ROOT / "README.md")
-        except (OSError, NotImplementedError):
-            pass
-        else:
-            expect_ref_rejected(
-                writer,
-                str(TEMP_SYMLINK.relative_to(ROOT)),
-                source,
-                "symlink evidence",
-            )
-    finally:
-        TEMP_POST_SOURCE.unlink(missing_ok=True)
-        TEMP_SYMLINK.unlink(missing_ok=True)
-
-    try:
-        observability_registry = json.loads(observability_registry_bytes.decode("utf-8"))
-        observability_registry["admittedStackCount"] = True
-        OBS_REGISTRY.write_text(json.dumps(observability_registry, indent=2) + "\n", encoding="utf-8")
-        try:
-            writer.observability_stack("obsstack_missing_negative")
-        except writer.Fail as exc:
-            if "observability stack authority invalid" not in str(exc):
-                raise RuntimeError(f"unexpected observability delegation failure: {exc}") from exc
-        else:
-            raise RuntimeError("contact routing accepted corrupt observability stack authority")
-    finally:
-        OBS_REGISTRY.write_bytes(observability_registry_bytes)
-        os.chmod(OBS_REGISTRY, observability_registry_mode)
-
-    try:
-        corrupted = copy.deepcopy(registry)
-        corrupted["admittedRoutingCount"] = True
-        REGISTRY.write_text(json.dumps(corrupted, indent=2) + "\n", encoding="utf-8")
-
-        completed = subprocess.run(
-            ["python", str(RECONCILER)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        if completed.returncode == 0:
-            raise RuntimeError("reconciler accepted corrupt contact routing registry")
-        if CONTRACT.read_bytes() != contract_bytes:
-            raise RuntimeError("rejected reconcile mutated contact routing contract")
-        if STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("rejected reconcile mutated production operability status")
-        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
-            raise RuntimeError("rejected reconcile changed contract/status permission mode")
-    finally:
-        REGISTRY.write_bytes(registry_bytes)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-        os.chmod(REGISTRY, registry_mode)
-        os.chmod(CONTRACT, contract_mode)
-        os.chmod(STATUS, status_mode)
-
-    expect_post_write_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
-    expect_aggregate_post_write_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
-
-    if REGISTRY.read_bytes() != registry_bytes or file_mode(REGISTRY) != registry_mode:
-        raise RuntimeError("negative validation failed to restore contact routing registry")
-    if OBS_REGISTRY.read_bytes() != observability_registry_bytes or file_mode(OBS_REGISTRY) != observability_registry_mode:
-        raise RuntimeError("negative validation failed to restore observability stack registry")
-    if CONTRACT.read_bytes() != contract_bytes or file_mode(CONTRACT) != contract_mode:
-        raise RuntimeError("negative validation failed to restore contact routing contract")
-    if STATUS.read_bytes() != status_bytes or file_mode(STATUS) != status_mode:
-        raise RuntimeError("negative validation failed to restore production operability status")
-    print("PASS: contact routing rejects local/upstream/review/lock authority corruption without mutation")
-    print("PASS: contact routing reconciler rejects all canonical executable/data authority substitutions without mutation")
-    print("PASS: contact routing direct append rolls back on post-append validation failure")
-    print("PASS: contact routing second replace rejection rolls back contract/status bytes and modes")
-    print("PASS: contact routing post-write and aggregate validation failures roll back contract and status")
+    assert_canonical_unchanged(canonical_before, "contact routing negative suite")
+    print("PASS: contact routing rejects corrupt registry, executable/data authority substitutions, and invalid source-bound evidence")
+    print("PASS: contact routing writer rollback uses only isolated registry authority")
+    print("PASS: contact routing second-replace and post-write failures roll back isolated contract/status bytes and modes")
+    print("canonical contact-routing authority mutated by negative suite: false")
     print("generic repository JSON accepted as privacy/operability review: false")
     print("automatic production promotion authorized: false")
     return 0
