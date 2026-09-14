@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +64,86 @@ def assert_canonical_unchanged(
         require(CANONICAL_REGISTRY.stat().st_mode & 0o777 == expected_registry_mode, f"{name} changed promotion review registry mode")
 
 
+def assert_fixture_unchanged(
+    reconciler: Any,
+    original_contract: bytes,
+    original_registry: bytes,
+    name: str,
+    expected_contract_mode: int,
+    expected_registry_mode: int,
+) -> None:
+    require(reconciler.CONTRACT.read_bytes() == original_contract, f"{name} changed isolated promotion review contract bytes")
+    require(reconciler.REGISTRY.read_bytes() == original_registry, f"{name} changed isolated promotion review registry bytes")
+    require(reconciler.CONTRACT.stat().st_mode & 0o777 == expected_contract_mode, f"{name} changed isolated promotion review contract mode")
+    require(reconciler.REGISTRY.stat().st_mode & 0o777 == expected_registry_mode, f"{name} changed isolated promotion review registry mode")
+
+
+@contextmanager
+def isolated_reconcile_authorities(reconciler: Any):
+    path_fields = (
+        "ROOT", "CONTRACT", "REGISTRY", "GEN_REGISTRY", "WRITER", "VALIDATOR",
+        "OPERABILITY_VALIDATOR", "STATUS",
+    )
+    original_paths = {field: getattr(reconciler, field) for field in path_fields}
+    original_load_writer = reconciler.load_writer
+    original_validate_generation_registry = reconciler.validate_generation_registry
+    original_run_validator = reconciler.run_validator
+
+    class FixturePromotionWriter:
+        @staticmethod
+        def reconcile_current_decision(registry: dict[str, Any]) -> tuple[list[dict[str, Any]], Any]:
+            rows = registry.get("records")
+            require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "isolated promotion review rows invalid")
+            return rows, registry.get("currentDecisionId")
+
+    class FixtureGenerationWriter:
+        @staticmethod
+        def candidate(_row: dict[str, Any]) -> bool:
+            return False
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-promotion-review-reconcile-negative-") as tmp:
+        fixture_root = Path(tmp)
+        sources = (
+            (CANONICAL_CONTRACT, reconciler.CONTRACT_REL),
+            (CANONICAL_REGISTRY, reconciler.REGISTRY_REL),
+            (ROOT / reconciler.GEN_REGISTRY_REL, reconciler.GEN_REGISTRY_REL),
+            (ROOT / reconciler.WRITER_REL, reconciler.WRITER_REL),
+            (ROOT / reconciler.VALIDATOR_REL, reconciler.VALIDATOR_REL),
+            (ROOT / reconciler.OPERABILITY_VALIDATOR_REL, reconciler.OPERABILITY_VALIDATOR_REL),
+            (ROOT / reconciler.STATUS_REL, reconciler.STATUS_REL),
+        )
+        for source, relative in sources:
+            destination = fixture_root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+
+        reconciler.ROOT = fixture_root
+        reconciler.CONTRACT = fixture_root / reconciler.CONTRACT_REL
+        reconciler.REGISTRY = fixture_root / reconciler.REGISTRY_REL
+        reconciler.GEN_REGISTRY = fixture_root / reconciler.GEN_REGISTRY_REL
+        reconciler.WRITER = fixture_root / reconciler.WRITER_REL
+        reconciler.VALIDATOR = fixture_root / reconciler.VALIDATOR_REL
+        reconciler.OPERABILITY_VALIDATOR = fixture_root / reconciler.OPERABILITY_VALIDATOR_REL
+        reconciler.STATUS = fixture_root / reconciler.STATUS_REL
+        reconciler.load_writer = lambda: FixturePromotionWriter()
+
+        def isolated_generation_registry(_writer: Any, registry: dict[str, Any]):
+            rows = registry.get("records")
+            require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "isolated generation evidence rows invalid")
+            return FixtureGenerationWriter(), rows
+
+        reconciler.validate_generation_registry = isolated_generation_registry
+        reconciler.run_validator = lambda _path, _label: None
+        try:
+            yield reconciler
+        finally:
+            reconciler.load_writer = original_load_writer
+            reconciler.validate_generation_registry = original_validate_generation_registry
+            reconciler.run_validator = original_run_validator
+            for field, value in original_paths.items():
+                setattr(reconciler, field, value)
+
+
 def expect_authority_substitution_rejected(
     reconciler: Any,
     attribute: str,
@@ -102,54 +184,52 @@ def validate_atomic_diagnostic_publication() -> None:
 
 
 def prove_mode_preserving_atomic_write(reconciler: Any, original_contract: bytes, original_registry: bytes) -> None:
-    original_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
-    original_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
-    try:
-        CANONICAL_CONTRACT.chmod(0o640)
-        CANONICAL_REGISTRY.chmod(0o640)
-        reconciler.write_text(CANONICAL_CONTRACT, original_contract.decode("utf-8"))
-        reconciler.write_text(CANONICAL_REGISTRY, original_registry.decode("utf-8"))
-        assert_canonical_unchanged(original_contract, original_registry, "mode-preserving atomic write", 0o640, 0o640)
-    finally:
-        CANONICAL_CONTRACT.write_bytes(original_contract)
-        CANONICAL_REGISTRY.write_bytes(original_registry)
-        CANONICAL_CONTRACT.chmod(original_contract_mode)
-        CANONICAL_REGISTRY.chmod(original_registry_mode)
-    print("PASS boundary: successful atomic promotion-review writes preserve authority modes")
+    canonical_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
+    canonical_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
+    with isolated_reconcile_authorities(reconciler):
+        fixture_contract = reconciler.CONTRACT.read_bytes()
+        fixture_registry = reconciler.REGISTRY.read_bytes()
+        reconciler.CONTRACT.chmod(0o640)
+        reconciler.REGISTRY.chmod(0o640)
+        reconciler.write_text(reconciler.CONTRACT, fixture_contract.decode("utf-8"))
+        reconciler.write_text(reconciler.REGISTRY, fixture_registry.decode("utf-8"))
+        assert_fixture_unchanged(reconciler, fixture_contract, fixture_registry, "mode-preserving atomic write", 0o640, 0o640)
+    assert_canonical_unchanged(original_contract, original_registry, "isolated mode-preserving atomic write", canonical_contract_mode, canonical_registry_mode)
+    print("PASS boundary: successful atomic promotion-review writes preserve isolated authority modes without mutating canonical authorities")
 
 
 def prove_atomic_write_failure(reconciler: Any, original_contract: bytes, original_registry: bytes) -> None:
     original_replace = reconciler.os.replace
-    original_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
-    original_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
+    canonical_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
+    canonical_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
         raise OSError("synthetic atomic replace rejection")
 
-    try:
-        CANONICAL_CONTRACT.chmod(0o640)
-        CANONICAL_REGISTRY.chmod(0o640)
+    with isolated_reconcile_authorities(reconciler):
+        fixture_contract = reconciler.CONTRACT.read_bytes()
+        fixture_registry = reconciler.REGISTRY.read_bytes()
+        reconciler.CONTRACT.chmod(0o640)
+        reconciler.REGISTRY.chmod(0o640)
         reconciler.os.replace = reject_replace
         try:
-            reconciler.write_text(CANONICAL_CONTRACT, original_contract.decode("utf-8") + " ")
-        except reconciler.Fail as exc:
-            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
-        else:
-            raise Fail("synthetic promotion-review atomic replace failure unexpectedly accepted")
+            try:
+                reconciler.write_text(reconciler.CONTRACT, fixture_contract.decode("utf-8") + " ")
+            except reconciler.Fail as exc:
+                require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("synthetic promotion-review atomic replace failure unexpectedly accepted")
 
-        assert_canonical_unchanged(original_contract, original_registry, "atomic replace rejection", 0o640, 0o640)
-        leftovers = (
-            list(CANONICAL_CONTRACT.parent.glob(f".{CANONICAL_CONTRACT.name}.*.tmp"))
-            + list(CANONICAL_REGISTRY.parent.glob(f".{CANONICAL_REGISTRY.name}.*.tmp"))
-        )
-        require(not leftovers, f"atomic replace rejection left temporary promotion-review authority files: {leftovers}")
-    finally:
-        reconciler.os.replace = original_replace
-        CANONICAL_CONTRACT.write_bytes(original_contract)
-        CANONICAL_REGISTRY.write_bytes(original_registry)
-        CANONICAL_CONTRACT.chmod(original_contract_mode)
-        CANONICAL_REGISTRY.chmod(original_registry_mode)
-    print("PASS boundary: failed atomic promotion-review write preserves canonical bytes/modes and cleans temporary files")
+            assert_fixture_unchanged(reconciler, fixture_contract, fixture_registry, "atomic replace rejection", 0o640, 0o640)
+            leftovers = (
+                list(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp"))
+                + list(reconciler.REGISTRY.parent.glob(f".{reconciler.REGISTRY.name}.*.tmp"))
+            )
+            require(not leftovers, f"atomic replace rejection left temporary isolated promotion-review authority files: {leftovers}")
+        finally:
+            reconciler.os.replace = original_replace
+    assert_canonical_unchanged(original_contract, original_registry, "isolated atomic replace rejection", canonical_contract_mode, canonical_registry_mode)
+    print("PASS boundary: failed atomic promotion-review write preserves isolated bytes/modes and canonical authorities")
 
 
 def prove_second_replace_failure_rolls_back_transaction(
@@ -158,8 +238,8 @@ def prove_second_replace_failure_rolls_back_transaction(
     original_registry: bytes,
 ) -> None:
     original_replace = reconciler.os.replace
-    original_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
-    original_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
+    canonical_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
+    canonical_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
     replace_calls = 0
 
     def reject_second_replace(source: str | Path, destination: str | Path) -> None:
@@ -169,37 +249,38 @@ def prove_second_replace_failure_rolls_back_transaction(
             raise OSError("synthetic second promotion-review replace rejection")
         original_replace(source, destination)
 
-    try:
-        CANONICAL_CONTRACT.chmod(0o640)
-        CANONICAL_REGISTRY.chmod(0o640)
+    with isolated_reconcile_authorities(reconciler):
+        fixture_contract = reconciler.CONTRACT.read_bytes()
+        fixture_registry = reconciler.REGISTRY.read_bytes()
+        reconciler.CONTRACT.chmod(0o640)
+        reconciler.REGISTRY.chmod(0o640)
         reconciler.os.replace = reject_second_replace
         try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("cannot atomically write" in str(exc), f"second replace rejected at wrong boundary: {exc}")
-        else:
-            raise Fail("synthetic second promotion-review replace failure unexpectedly accepted")
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                require("cannot atomically write" in str(exc), f"second replace rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("synthetic second promotion-review replace failure unexpectedly accepted")
 
-        require(replace_calls == 4, f"second replace failure did not execute complete two-authority rollback: {replace_calls} replace calls")
-        assert_canonical_unchanged(
-            original_contract,
-            original_registry,
-            "second replace transaction rejection",
-            0o640,
-            0o640,
-        )
-        leftovers = (
-            list(CANONICAL_CONTRACT.parent.glob(f".{CANONICAL_CONTRACT.name}.*.tmp"))
-            + list(CANONICAL_REGISTRY.parent.glob(f".{CANONICAL_REGISTRY.name}.*.tmp"))
-        )
-        require(not leftovers, f"second replace rejection left temporary promotion-review authority files: {leftovers}")
-    finally:
-        reconciler.os.replace = original_replace
-        CANONICAL_CONTRACT.write_bytes(original_contract)
-        CANONICAL_REGISTRY.write_bytes(original_registry)
-        CANONICAL_CONTRACT.chmod(original_contract_mode)
-        CANONICAL_REGISTRY.chmod(original_registry_mode)
-    print("PASS boundary: second promotion-review replace failure rolls back both authorities with exact bytes/modes")
+            require(replace_calls == 4, f"second replace failure did not execute complete two-authority rollback: {replace_calls} replace calls")
+            assert_fixture_unchanged(
+                reconciler,
+                fixture_contract,
+                fixture_registry,
+                "second replace transaction rejection",
+                0o640,
+                0o640,
+            )
+            leftovers = (
+                list(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp"))
+                + list(reconciler.REGISTRY.parent.glob(f".{reconciler.REGISTRY.name}.*.tmp"))
+            )
+            require(not leftovers, f"second replace rejection left temporary isolated promotion-review authority files: {leftovers}")
+        finally:
+            reconciler.os.replace = original_replace
+    assert_canonical_unchanged(original_contract, original_registry, "isolated second replace transaction rejection", canonical_contract_mode, canonical_registry_mode)
+    print("PASS boundary: second promotion-review replace failure rolls back isolated authorities with exact bytes/modes")
 
 
 def prove_rollback_attempts_all_authorities(reconciler: Any) -> None:
@@ -290,12 +371,61 @@ def prove_writer_close_failure_releases_lock() -> None:
             sys.argv = original_argv
 
 
+def prove_aggregate_validator_rejection_rolls_back_transaction(
+    reconciler: Any,
+    original_contract: bytes,
+    original_registry: bytes,
+) -> None:
+    canonical_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
+    canonical_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
+    with isolated_reconcile_authorities(reconciler):
+        fixture_contract = reconciler.CONTRACT.read_bytes()
+        fixture_registry = reconciler.REGISTRY.read_bytes()
+        reconciler.CONTRACT.chmod(0o640)
+        reconciler.REGISTRY.chmod(0o640)
+        original_run_validator = reconciler.run_validator
+        original_write_text = reconciler.write_text
+        labels: list[str] = []
+        injected_contract_write = False
+
+        def fake_run_validator(path: Path, label: str) -> None:
+            labels.append(label)
+            if path == reconciler.OPERABILITY_VALIDATOR:
+                raise reconciler.Fail("synthetic aggregate operability rejection")
+            require(path == reconciler.VALIDATOR, f"unexpected validator path: {path}")
+
+        def tracked_write_text(path: Path, text: str) -> None:
+            nonlocal injected_contract_write
+            if path == reconciler.CONTRACT and not injected_contract_write:
+                injected_contract_write = True
+                original_write_text(path, text + "\n")
+                return
+            original_write_text(path, text)
+
+        reconciler.run_validator = fake_run_validator
+        reconciler.write_text = tracked_write_text
+        try:
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                require("synthetic aggregate operability rejection" in str(exc), f"unexpected reconcile rejection: {exc}")
+            else:
+                raise Fail("aggregate operability rejection unexpectedly accepted")
+
+            require(injected_contract_write, "transaction did not reach contract write before aggregate rejection")
+            require(labels == ["promotion review validator", "aggregate operability validator"], f"unexpected validator order: {labels}")
+            assert_fixture_unchanged(reconciler, fixture_contract, fixture_registry, "aggregate operability rejection", 0o640, 0o640)
+        finally:
+            reconciler.run_validator = original_run_validator
+            reconciler.write_text = original_write_text
+    assert_canonical_unchanged(original_contract, original_registry, "isolated aggregate operability rejection", canonical_contract_mode, canonical_registry_mode)
+    print("PASS boundary: aggregate operability rejection rolls back isolated promotion authorities without mutating canonical state")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
     original_registry = CANONICAL_REGISTRY.read_bytes()
-    original_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
-    original_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
     validate_atomic_diagnostic_publication()
 
     expect_authority_substitution_rejected(reconciler, "CONTRACT", reconciler.REGISTRY, "promotion review contract substitution", "promotion review contract authority drift", original_contract, original_registry)
@@ -311,48 +441,7 @@ def main() -> int:
     prove_second_replace_failure_rolls_back_transaction(reconciler, original_contract, original_registry)
     prove_rollback_attempts_all_authorities(reconciler)
     prove_writer_close_failure_releases_lock()
-
-    original_run_validator = reconciler.run_validator
-    original_write_text = reconciler.write_text
-    labels: list[str] = []
-    injected_contract_write = False
-
-    def fake_run_validator(path: Path, label: str) -> None:
-        labels.append(label)
-        if path == reconciler.OPERABILITY_VALIDATOR:
-            raise reconciler.Fail("synthetic aggregate operability rejection")
-        require(path == reconciler.VALIDATOR, f"unexpected validator path: {path}")
-
-    def tracked_write_text(path: Path, text: str) -> None:
-        nonlocal injected_contract_write
-        if path == reconciler.CONTRACT and not injected_contract_write:
-            injected_contract_write = True
-            original_write_text(path, text + "\n")
-            return
-        original_write_text(path, text)
-
-    reconciler.run_validator = fake_run_validator
-    reconciler.write_text = tracked_write_text
-    try:
-        CANONICAL_CONTRACT.chmod(0o640)
-        CANONICAL_REGISTRY.chmod(0o640)
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("synthetic aggregate operability rejection" in str(exc), f"unexpected reconcile rejection: {exc}")
-        else:
-            raise Fail("aggregate operability rejection unexpectedly accepted")
-
-        require(injected_contract_write, "transaction did not reach contract write before aggregate rejection")
-        require(labels == ["promotion review validator", "aggregate operability validator"], f"unexpected validator order: {labels}")
-        assert_canonical_unchanged(original_contract, original_registry, "aggregate operability rejection", 0o640, 0o640)
-    finally:
-        reconciler.run_validator = original_run_validator
-        reconciler.write_text = original_write_text
-        CANONICAL_CONTRACT.write_bytes(original_contract)
-        CANONICAL_REGISTRY.write_bytes(original_registry)
-        CANONICAL_CONTRACT.chmod(original_contract_mode)
-        CANONICAL_REGISTRY.chmod(original_registry_mode)
+    prove_aggregate_validator_rejection_rolls_back_transaction(reconciler, original_contract, original_registry)
 
     print("Memory OS backup/restore promotion review reconcile negative PASS")
     print("promotion contract substitution accepted: false")
@@ -370,7 +459,8 @@ def main() -> int:
     print("non-atomic promotion-review authority write accepted: false")
     print("non-atomic or mode-drifting promotion-review diagnostic write accepted: false")
     print("promotion validator ran before aggregate operability validator: true")
-    print("aggregate operability rejection rolled back promotion registry/contract bytes and modes: true")
+    print("aggregate operability rejection rolled back isolated promotion registry/contract bytes and modes: true")
+    print("canonical promotion registry/contract mutated by transaction negatives: false")
     print("automatic human promotion authorization created: false")
     print("production evidence created: false")
     print("production traffic changed: false")
