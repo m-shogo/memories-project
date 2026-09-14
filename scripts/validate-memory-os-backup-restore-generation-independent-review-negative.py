@@ -38,14 +38,26 @@ def head_sha() -> str:
     return value
 
 
-def with_canonical_registry(module, registry: dict, action) -> None:
+def with_virtual_registry(module, registry: dict, action) -> None:
     canonical = module.REGISTRY.read_bytes()
+    canonical_mode = module.REGISTRY.stat().st_mode & 0o777
+    payload = json.dumps(registry, indent=2) + "\n"
+    original_read_text = Path.read_text
+
+    def virtual_read_text(path: Path, *args, **kwargs) -> str:
+        if path == module.REGISTRY:
+            encoding = kwargs.get("encoding")
+            require(encoding in (None, "utf-8"), "synthetic generation registry requested with unexpected encoding")
+            return payload
+        return original_read_text(path, *args, **kwargs)
+
+    Path.read_text = virtual_read_text
     try:
-        module.REGISTRY.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
         action()
     finally:
-        module.REGISTRY.write_bytes(canonical)
-    require(module.REGISTRY.read_bytes() == canonical, "canonical generation evidence registry was not restored after negative exercise")
+        Path.read_text = original_read_text
+    require(module.REGISTRY.read_bytes() == canonical, "canonical generation evidence registry mutated during negative exercise")
+    require((module.REGISTRY.stat().st_mode & 0o777) == canonical_mode, "canonical generation evidence registry mode mutated during negative exercise")
 
 
 def expect_fail(module, registry: dict, label: str, expected: str | None = None) -> None:
@@ -58,7 +70,7 @@ def expect_fail(module, registry: dict, label: str, expected: str | None = None)
             return
         raise Fail(f"negative case unexpectedly passed: {label}")
 
-    with_canonical_registry(module, registry, action)
+    with_virtual_registry(module, registry, action)
 
 
 def expect_pass(module, registry: dict, label: str) -> None:
@@ -69,7 +81,7 @@ def expect_pass(module, registry: dict, label: str) -> None:
             raise Fail(f"positive case unexpectedly failed ({label}): {exc}") from exc
         require(result == 0, f"positive case returned non-zero: {label}")
 
-    with_canonical_registry(module, registry, action)
+    with_virtual_registry(module, registry, action)
 
 
 def expect_authority_substitution_fail(module, field: str, substitute: Path) -> None:
@@ -333,7 +345,7 @@ def main() -> int:
     print("main candidate authority substitution accepted: false")
     print("unreviewed non-candidate generation evidence accepted: true")
     print("partial independent review pairs accepted: false")
-    print("canonical generation evidence authority restored after negative exercises: true")
+    print("canonical generation evidence authority mutated during negative exercises: false")
     print("human production promotion remains separate: true")
     return 0
 
