@@ -247,6 +247,48 @@ def verify_atomic_replace_failure(reconciler) -> None:
         raise RuntimeError("atomic replacement failure left temporary isolated incident authority residue")
 
 
+def verify_second_replace_rollback(reconciler, contract, status) -> None:
+    original_contract = reconciler.CONTRACT_PATH.read_bytes()
+    original_status = reconciler.STATUS_PATH.read_bytes()
+    original_contract_mode = stat.S_IMODE(reconciler.CONTRACT_PATH.stat().st_mode)
+    original_status_mode = stat.S_IMODE(reconciler.STATUS_PATH.stat().st_mode)
+    original_replace = reconciler.os.replace
+    calls = 0
+
+    def fail_second_replace(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("synthetic second incident authority replace failure")
+        return original_replace(source, destination)
+
+    reconciler.os.replace = fail_second_replace
+    try:
+        try:
+            reconciler.commit_validated_pair(copy.deepcopy(contract), copy.deepcopy(status))
+        except OSError:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted second incident authority replace failure")
+    finally:
+        reconciler.os.replace = original_replace
+
+    if calls != 4:
+        raise RuntimeError(f"second replace failure did not execute complete two-authority rollback: {calls} replace calls")
+    if reconciler.CONTRACT_PATH.read_bytes() != original_contract:
+        raise RuntimeError("second replace rollback changed isolated incident control contract")
+    if reconciler.STATUS_PATH.read_bytes() != original_status:
+        raise RuntimeError("second replace rollback changed isolated production operability status")
+    if stat.S_IMODE(reconciler.CONTRACT_PATH.stat().st_mode) != original_contract_mode:
+        raise RuntimeError("second replace rollback changed isolated incident contract mode")
+    if stat.S_IMODE(reconciler.STATUS_PATH.stat().st_mode) != original_status_mode:
+        raise RuntimeError("second replace rollback changed isolated production status mode")
+    if list(reconciler.CONTRACT_PATH.parent.glob(f".{reconciler.CONTRACT_PATH.name}.*.tmp")):
+        raise RuntimeError("second replace rollback left isolated incident contract temporary residue")
+    if list(reconciler.STATUS_PATH.parent.glob(f".{reconciler.STATUS_PATH.name}.*.tmp")):
+        raise RuntimeError("second replace rollback left isolated production status temporary residue")
+
+
 def verify_post_write_rollback(reconciler, contract, status) -> None:
     original_contract = reconciler.CONTRACT_PATH.read_bytes()
     original_status = reconciler.STATUS_PATH.read_bytes()
@@ -333,6 +375,7 @@ def main() -> int:
         fixture_contract = json.loads(reconciler.CONTRACT_PATH.read_text(encoding="utf-8"))
         fixture_status = json.loads(reconciler.STATUS_PATH.read_text(encoding="utf-8"))
         verify_atomic_replace_failure(reconciler)
+        verify_second_replace_rollback(reconciler, fixture_contract, fixture_status)
         verify_post_write_rollback(reconciler, fixture_contract, fixture_status)
 
     assert_canonical_unchanged(
@@ -348,6 +391,7 @@ def main() -> int:
     print("PASS: incident authority reconcile rejects data/executable authority substitution")
     print("PASS: incident authority reconcile rejects validator-chain and execution-transport substitution")
     print("PASS: incident authority atomic replacement failure preserves isolated bytes, mode and temp cleanliness")
+    print("PASS: incident authority second replace failure rolls back both isolated authorities exactly")
     print("PASS: incident authority post-write rejection rolls back isolated authorities without mutating canonical authority")
     return 0
 
