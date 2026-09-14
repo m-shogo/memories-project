@@ -253,6 +253,7 @@ def verify_second_replace_rollback(reconciler, contract, status) -> None:
     original_contract_mode = stat.S_IMODE(reconciler.CONTRACT_PATH.stat().st_mode)
     original_status_mode = stat.S_IMODE(reconciler.STATUS_PATH.stat().st_mode)
     original_replace = reconciler.os.replace
+    original_canonical_replace = reconciler.CANONICAL_OS_REPLACE
     calls = 0
 
     def fail_second_replace(source, destination):
@@ -263,6 +264,7 @@ def verify_second_replace_rollback(reconciler, contract, status) -> None:
         return original_replace(source, destination)
 
     reconciler.os.replace = fail_second_replace
+    reconciler.CANONICAL_OS_REPLACE = fail_second_replace
     try:
         try:
             reconciler.commit_validated_pair(copy.deepcopy(contract), copy.deepcopy(status))
@@ -272,6 +274,7 @@ def verify_second_replace_rollback(reconciler, contract, status) -> None:
             raise RuntimeError("reconciler accepted second incident authority replace failure")
     finally:
         reconciler.os.replace = original_replace
+        reconciler.CANONICAL_OS_REPLACE = original_canonical_replace
 
     if calls != 4:
         raise RuntimeError(f"second replace failure did not execute complete two-authority rollback: {calls} replace calls")
