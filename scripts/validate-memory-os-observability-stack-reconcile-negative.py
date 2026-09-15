@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject corrupt observability-stack authority before reconcile mutation."""
+"""Reject corrupt observability-stack authority without mutating canonical authority."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,54 +16,33 @@ REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.
 CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-observability-stack-deployment.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-observability-stack-deployment.py"
 TEMP_POST_SOURCE = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-post-source-negative.tmp"
 TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-symlink-negative.tmp"
-POST_WRITE_MARKER = Path("/tmp/memory-os-observability-stack-post-write-negative.count")
 
 
-def load_writer():
-    spec = importlib.util.spec_from_file_location("observability_stack_writer", WRITER)
+def load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("unable to load observability stack writer")
+        raise RuntimeError(f"unable to load {name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def load_reconciler():
-    spec = importlib.util.spec_from_file_location("observability_stack_reconcile_negative", RECONCILER)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("unable to load observability stack reconciler")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def authority_snapshot(path: Path) -> tuple[bytes, int]:
+    return path.read_bytes(), path.stat().st_mode & 0o7777
 
 
-def authority_mode(path: Path) -> int:
-    return path.stat().st_mode & 0o7777
+def require_canonical_unchanged(snapshots: dict[Path, tuple[bytes, int]], label: str) -> None:
+    for path, (payload, mode) in snapshots.items():
+        if path.read_bytes() != payload:
+            raise RuntimeError(f"{label} mutated canonical bytes: {path.relative_to(ROOT)}")
+        if path.stat().st_mode & 0o7777 != mode:
+            raise RuntimeError(f"{label} mutated canonical mode: {path.relative_to(ROOT)}")
 
 
-def require_pair_unchanged(
-    contract_bytes: bytes,
-    status_bytes: bytes,
-    contract_mode: int,
-    status_mode: int,
-    label: str,
-) -> None:
-    if CONTRACT.read_bytes() != contract_bytes:
-        raise RuntimeError(f"{label} mutated observability stack contract bytes")
-    if STATUS.read_bytes() != status_bytes:
-        raise RuntimeError(f"{label} mutated production operability status bytes")
-    if authority_mode(CONTRACT) != contract_mode:
-        raise RuntimeError(f"{label} mutated observability stack contract mode")
-    if authority_mode(STATUS) != status_mode:
-        raise RuntimeError(f"{label} mutated production operability status mode")
-
-
-def expect_writer_rejected(writer, registry, label: str) -> None:
+def expect_writer_rejected(writer, registry: dict, label: str) -> None:
     try:
         writer.validate_registry_for_append(registry, validate_rows=False)
     except writer.Fail:
@@ -70,32 +50,38 @@ def expect_writer_rejected(writer, registry, label: str) -> None:
     raise RuntimeError(f"writer accepted corrupt observability stack registry: {label}")
 
 
-def expect_writer_append_rollback(writer, registry, registry_bytes: bytes) -> None:
-    original_validator = writer.validate_registry_for_append
-    calls = 0
+def expect_writer_append_rollback(writer, registry: dict, snapshots: dict[Path, tuple[bytes, int]]) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-observability-writer-negative-") as temp_dir:
+        run_registry = Path(temp_dir) / REGISTRY.name
+        run_registry.write_bytes(REGISTRY.read_bytes())
+        original_registry = writer.REGISTRY
+        original_validator = writer.validate_registry_for_append
+        calls = 0
 
-    def injected_validator(value, *, validate_rows=True):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            return None
-        raise writer.Fail("injected post-append registry validation failure")
+        def injected_validator(value, *, validate_rows=True):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return None
+            raise writer.Fail("injected post-append registry validation failure")
 
-    candidate = copy.deepcopy(registry)
-    candidate["appendOnly"] = False
-    try:
-        writer.validate_registry_for_append = injected_validator
+        candidate = copy.deepcopy(registry)
+        candidate["appendOnly"] = False
         try:
-            writer.commit_registry_candidate(registry, candidate)
-        except writer.Fail:
-            pass
-        else:
-            raise RuntimeError("writer accepted injected post-append registry validation failure")
-        if REGISTRY.read_bytes() != registry_bytes:
-            raise RuntimeError("post-append validation failure left observability stack registry mutated")
-    finally:
-        writer.validate_registry_for_append = original_validator
-        REGISTRY.write_bytes(registry_bytes)
+            writer.REGISTRY = run_registry
+            writer.validate_registry_for_append = injected_validator
+            try:
+                writer.commit_registry_candidate(registry, candidate)
+            except writer.Fail:
+                pass
+            else:
+                raise RuntimeError("writer accepted injected post-append registry validation failure")
+            if run_registry.read_bytes() != REGISTRY.read_bytes():
+                raise RuntimeError("post-append validation failure did not roll back run-local registry")
+        finally:
+            writer.REGISTRY = original_registry
+            writer.validate_registry_for_append = original_validator
+    require_canonical_unchanged(snapshots, "writer rollback negative")
 
 
 def expect_ref_rejected(writer, ref: str, source: str, label: str) -> None:
@@ -121,27 +107,7 @@ def expect_generic_reviews_rejected(writer, source: str) -> None:
     raise RuntimeError("generic repository JSON files were accepted as typed observability independent reviews")
 
 
-def expect_validator_rejected(label: str) -> None:
-    completed = subprocess.run(
-        ["python", str(VALIDATOR)],
-        cwd=ROOT,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if completed.returncode != 0:
-        return
-    raise RuntimeError(f"validator accepted corrupt observability stack authority: {label}")
-
-
-def expect_reconciler_authority_rejected(
-    contract_bytes: bytes,
-    status_bytes: bytes,
-    contract_mode: int,
-    status_mode: int,
-) -> None:
-    reconciler = load_reconciler()
+def expect_reconciler_authority_rejected(reconciler, snapshots: dict[Path, tuple[bytes, int]]) -> None:
     substitutions = (
         ("CONTRACT", reconciler.STATUS, "observability stack contract authority drift"),
         ("REGISTRY", reconciler.STATUS, "observability stack registry authority drift"),
@@ -167,61 +133,96 @@ def expect_reconciler_authority_rejected(
                     raise RuntimeError(f"{field} substitution rejected at wrong boundary: {exc}") from exc
             else:
                 raise RuntimeError(f"reconciler accepted {field} authority substitution")
-            require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, f"{field} substitution")
+            require_canonical_unchanged(snapshots, f"{field} substitution")
         finally:
             setattr(reconciler, field, original)
     reconciler.enforce_runtime_authorities()
 
 
-def expect_atomic_pair_transport(
-    contract_bytes: bytes,
-    status_bytes: bytes,
-    contract_mode: int,
-    status_mode: int,
-) -> None:
-    reconciler = load_reconciler()
-    try:
-        CONTRACT.chmod(0o640)
-        STATUS.chmod(0o640)
-        reconciler.atomic_replace_bytes(CONTRACT, contract_bytes)
-        reconciler.atomic_replace_bytes(STATUS, status_bytes)
-        require_pair_unchanged(contract_bytes, status_bytes, 0o640, 0o640, "successful atomic publication")
-
+def expect_run_local_transaction_rollback(reconciler, snapshots: dict[Path, tuple[bytes, int]]) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-observability-pair-negative-") as temp_dir:
+        temp = Path(temp_dir)
+        run_contract = temp / CONTRACT.name
+        run_status = temp / STATUS.name
+        run_contract.write_bytes(CONTRACT.read_bytes())
+        run_status.write_bytes(STATUS.read_bytes())
+        run_contract.chmod(0o640)
+        run_status.chmod(0o640)
+        originals = (reconciler.CONTRACT, reconciler.STATUS, reconciler.POST_WRITE_VALIDATORS)
         original_replace = reconciler.os.replace
-        replace_calls = 0
-
-        def reject_second_replace(source, destination):
-            nonlocal replace_calls
-            replace_calls += 1
-            if replace_calls == 2:
-                raise OSError("synthetic second authority replace rejection")
-            return original_replace(source, destination)
-
-        reconciler.os.replace = reject_second_replace
         try:
+            reconciler.CONTRACT = run_contract
+            reconciler.STATUS = run_status
+            reconciler.POST_WRITE_VALIDATORS = ()
+            reconciler.atomic_replace_bytes(run_contract, run_contract.read_bytes())
+            reconciler.atomic_replace_bytes(run_status, run_status.read_bytes())
+            if (run_contract.stat().st_mode & 0o7777, run_status.stat().st_mode & 0o7777) != (0o640, 0o640):
+                raise RuntimeError("run-local successful atomic publication changed authority modes")
+
+            before_contract = run_contract.read_bytes()
+            before_status = run_status.read_bytes()
+            replace_calls = 0
+
+            def reject_second_replace(source, destination):
+                nonlocal replace_calls
+                replace_calls += 1
+                if replace_calls == 2:
+                    raise OSError("synthetic second authority replace rejection")
+                return original_replace(source, destination)
+
+            reconciler.os.replace = reject_second_replace
             try:
                 reconciler.commit_validated_pair(
-                    json.loads(contract_bytes.decode("utf-8")),
-                    json.loads(status_bytes.decode("utf-8")),
+                    json.loads(before_contract.decode("utf-8")),
+                    json.loads(before_status.decode("utf-8")),
                 )
             except OSError as exc:
                 if "synthetic second authority replace rejection" not in str(exc):
                     raise
             else:
-                raise RuntimeError("observability pair publication accepted a rejected second atomic replace")
+                raise RuntimeError("observability pair publication accepted rejected second atomic replace")
+            if run_contract.read_bytes() != before_contract or run_status.read_bytes() != before_status:
+                raise RuntimeError("run-local second-replace failure did not roll back authority pair")
+            leftovers = list(temp.glob(".*.tmp"))
+            if leftovers:
+                raise RuntimeError(f"run-local pair publication left temporary files: {leftovers}")
         finally:
             reconciler.os.replace = original_replace
+            reconciler.CONTRACT, reconciler.STATUS, reconciler.POST_WRITE_VALIDATORS = originals
+    require_canonical_unchanged(snapshots, "run-local transaction rollback negative")
 
-        require_pair_unchanged(contract_bytes, status_bytes, 0o640, 0o640, "second replace rollback")
-        leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")) + list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
-        if leftovers:
-            raise RuntimeError(f"observability pair publication left temporary authority files: {leftovers}")
-    finally:
-        CONTRACT.chmod(contract_mode)
-        STATUS.chmod(status_mode)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-    require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, "atomic transport cleanup")
+
+def expect_run_local_post_validation_rollback(reconciler, snapshots: dict[Path, tuple[bytes, int]]) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-observability-validator-negative-") as temp_dir:
+        temp = Path(temp_dir)
+        run_contract = temp / CONTRACT.name
+        run_status = temp / STATUS.name
+        run_contract.write_bytes(CONTRACT.read_bytes())
+        run_status.write_bytes(STATUS.read_bytes())
+        failing_validator = temp / "failing-validator.py"
+        failing_validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
+        originals = (reconciler.CONTRACT, reconciler.STATUS, reconciler.POST_WRITE_VALIDATORS)
+        try:
+            reconciler.CONTRACT = run_contract
+            reconciler.STATUS = run_status
+            reconciler.POST_WRITE_VALIDATORS = (failing_validator,)
+            before_contract = run_contract.read_bytes()
+            before_status = run_status.read_bytes()
+            contract = json.loads(before_contract.decode("utf-8"))
+            status = json.loads(before_status.decode("utf-8"))
+            contract["currentAuthority"]["admittedStackCount"] = 987654
+            try:
+                reconciler.commit_validated_pair(contract, status)
+            except reconciler.Fail as exc:
+                if "failed validation" not in str(exc):
+                    raise
+            else:
+                raise RuntimeError("run-local pair publication accepted post-write validator failure")
+            if run_contract.read_bytes() != before_contract or run_status.read_bytes() != before_status:
+                raise RuntimeError("run-local post-write validator failure did not roll back authority pair")
+        finally:
+            reconciler.CONTRACT, reconciler.STATUS, reconciler.POST_WRITE_VALIDATORS = originals
+    require_canonical_unchanged(snapshots, "run-local post-validation rollback negative")
 
 
 def create_descendant_commit() -> str:
@@ -241,100 +242,29 @@ def create_descendant_commit() -> str:
     ).strip()
 
 
-def expect_post_write_rollback(
-    contract_bytes: bytes,
-    status_bytes: bytes,
-    contract_mode: int,
-    status_mode: int,
-) -> None:
-    validator_bytes = VALIDATOR.read_bytes()
-    wrapper = f'''#!/usr/bin/env python3
-from pathlib import Path
-marker = Path({str(POST_WRITE_MARKER)!r})
-count = int(marker.read_text(encoding="utf-8")) if marker.exists() else 0
-marker.write_text(str(count + 1), encoding="utf-8")
-raise SystemExit(0 if count == 0 else 1)
-'''
-    try:
-        POST_WRITE_MARKER.unlink(missing_ok=True)
-        VALIDATOR.write_text(wrapper, encoding="utf-8")
-        completed = subprocess.run(
-            ["python", str(RECONCILER)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        if completed.returncode == 0:
-            raise RuntimeError("reconciler accepted injected post-write validator failure")
-        require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, "post-write validator failure")
-    finally:
-        VALIDATOR.write_bytes(validator_bytes)
-        POST_WRITE_MARKER.unlink(missing_ok=True)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-        CONTRACT.chmod(contract_mode)
-        STATUS.chmod(status_mode)
-
-
-def expect_aggregate_post_write_rollback(
-    contract_bytes: bytes,
-    status_bytes: bytes,
-    contract_mode: int,
-    status_mode: int,
-) -> None:
-    operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
-    try:
-        OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
-        completed = subprocess.run(
-            ["python", str(RECONCILER)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        if completed.returncode == 0:
-            raise RuntimeError("reconciler accepted injected aggregate operability failure")
-        require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, "aggregate failure")
-    finally:
-        OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-        CONTRACT.chmod(contract_mode)
-        STATUS.chmod(status_mode)
-
-
 def main() -> int:
-    writer = load_writer()
-    registry_bytes = REGISTRY.read_bytes()
-    contract_bytes = CONTRACT.read_bytes()
-    status_bytes = STATUS.read_bytes()
-    contract_mode = authority_mode(CONTRACT)
-    status_mode = authority_mode(STATUS)
-    registry = json.loads(registry_bytes.decode("utf-8"))
+    writer = load_module("observability_stack_writer", WRITER)
+    reconciler = load_module("observability_stack_reconcile_negative", RECONCILER)
+    snapshots = {path: authority_snapshot(path) for path in (REGISTRY, CONTRACT, STATUS, WRITER, RECONCILER)}
+    registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
 
     cases = []
-    candidate = copy.deepcopy(registry)
-    candidate["admittedStackCount"] = True
-    cases.append(("boolean admitted count", candidate))
-    candidate = copy.deepcopy(registry)
-    candidate["appendOnly"] = False
-    cases.append(("append-only disabled", candidate))
-    candidate = copy.deepcopy(registry)
-    candidate["productionReady"] = True
-    cases.append(("production ready escalation", candidate))
-    candidate = copy.deepcopy(registry)
-    candidate["schemaVersion"] = "memory-os-observability-stack-deployment-registry.v999"
-    cases.append(("registry schema drift", candidate))
-
+    for label, key, value in (
+        ("boolean admitted count", "admittedStackCount", True),
+        ("append-only disabled", "appendOnly", False),
+        ("production ready escalation", "productionReady", True),
+        ("registry schema drift", "schemaVersion", "memory-os-observability-stack-deployment-registry.v999"),
+    ):
+        candidate = copy.deepcopy(registry)
+        candidate[key] = value
+        cases.append((label, candidate))
     for label, candidate in cases:
         expect_writer_rejected(writer, candidate, label)
 
-    expect_writer_append_rollback(writer, registry, registry_bytes)
-    expect_atomic_pair_transport(contract_bytes, status_bytes, contract_mode, status_mode)
-    expect_reconciler_authority_rejected(contract_bytes, status_bytes, contract_mode, status_mode)
+    expect_writer_append_rollback(writer, registry, snapshots)
+    expect_reconciler_authority_rejected(reconciler, snapshots)
+    expect_run_local_transaction_rollback(reconciler, snapshots)
+    expect_run_local_post_validation_rollback(reconciler, snapshots)
 
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if not writer.source_is_ancestor(source):
@@ -345,68 +275,23 @@ def main() -> int:
     expect_generic_reviews_rejected(writer, source)
 
     try:
-        contract = json.loads(contract_bytes.decode("utf-8"))
-        contract["appendLockPath"] = "contracts/operations/.observability-stack-deployment-alternate.lock"
-        CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
-        expect_validator_rejected("append lock binding drift")
-    finally:
-        CONTRACT.write_bytes(contract_bytes)
-        CONTRACT.chmod(contract_mode)
-
-    try:
         TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
-        expect_ref_rejected(
-            writer,
-            str(TEMP_POST_SOURCE.relative_to(ROOT)),
-            source,
-            "post-source evidence",
-        )
+        expect_ref_rejected(writer, str(TEMP_POST_SOURCE.relative_to(ROOT)), source, "post-source evidence")
         try:
             TEMP_SYMLINK.symlink_to(ROOT / "README.md")
         except (OSError, NotImplementedError):
             pass
         else:
-            expect_ref_rejected(
-                writer,
-                str(TEMP_SYMLINK.relative_to(ROOT)),
-                source,
-                "symlink evidence",
-            )
+            expect_ref_rejected(writer, str(TEMP_SYMLINK.relative_to(ROOT)), source, "symlink evidence")
     finally:
         TEMP_POST_SOURCE.unlink(missing_ok=True)
         TEMP_SYMLINK.unlink(missing_ok=True)
 
-    try:
-        corrupted = copy.deepcopy(registry)
-        corrupted["admittedStackCount"] = True
-        REGISTRY.write_text(json.dumps(corrupted, indent=2) + "\n", encoding="utf-8")
-        completed = subprocess.run(
-            ["python", str(RECONCILER)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        if completed.returncode == 0:
-            raise RuntimeError("reconciler accepted corrupt observability stack registry")
-        require_pair_unchanged(contract_bytes, status_bytes, contract_mode, status_mode, "rejected reconcile")
-    finally:
-        REGISTRY.write_bytes(registry_bytes)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-        CONTRACT.chmod(contract_mode)
-        STATUS.chmod(status_mode)
-
-    expect_post_write_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
-    expect_aggregate_post_write_rollback(contract_bytes, status_bytes, contract_mode, status_mode)
-
-    print("PASS: observability stack registry/source-binding/review/lock corruption is rejected without mutation")
-    print("PASS: observability stack reconciler rejects all canonical executable/data authority substitutions without mutation")
-    print("PASS: observability stack direct append rolls back on post-append validation failure")
-    print("PASS: observability stack authority publication preserves modes and rolls back a rejected second atomic replace")
-    print("PASS: observability stack post-write and aggregate validation failures roll back contract and status bytes/modes")
-    print("generic repository JSON accepted as independent review: false")
+    require_canonical_unchanged(snapshots, "complete observability reconcile negative suite")
+    print("PASS: observability stack corrupt registry/source/review inputs are rejected read-only")
+    print("PASS: observability reconciler rejects canonical authority substitutions without mutation")
+    print("PASS: writer and pair rollback negatives mutate run-local copies only")
+    print("PASS: second-replace and post-write validator failures roll back run-local authority bytes/modes")
     print("automatic production promotion authorized: false")
     return 0
 
