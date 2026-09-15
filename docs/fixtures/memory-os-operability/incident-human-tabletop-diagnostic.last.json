@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "incident-human-tabletop-evidence",
+  "result": "FAIL",
+  "sourceCommitSha": "8a79a52c1b78d443b296b4896b661781595861f3",
+  "exitCode": 1,
+  "output": "PASS reject: human tabletop writer CLI CANONICAL_VALIDATOR substitution\nPASS reject: human tabletop writer CLI TABLETOP_CONTRACT substitution\nPASS reject: human tabletop writer CLI INCIDENT_POLICY substitution\nPASS reject: human tabletop writer CLI PLAN substitution\nPASS reject: human tabletop writer CLI LEDGER substitution\nMemory OS human tabletop writer authority negative suite PASS\nwriter CLI validator/contract/policy/plan/ledger substitution accepted: false\nhuman tabletop evidence generated: false\nproduction evidence generated: false\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-incident-human-tabletop-source-negative.py\", line 200, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-incident-human-tabletop-source-negative.py\", line 187, in main\n    expect_second_replace_rollback()\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-incident-human-tabletop-source-negative.py\", line 136, in expect_second_replace_rollback\n    module.commit_validated_pair(module.load(contract), module.load(status))\n                                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-incident-human-tabletops.py\", line 108, in load\n    require(isinstance(value, dict), f\"root must be object: {path.relative_to(ROOT)}\")\n                                                             ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/pathlib.py\", line 682, in relative_to\n    raise ValueError(f\"{str(self)!r} is not in the subpath of {str(other)!r}\")\nValueError: '/tmp/memory-os-tabletop-reconcile-negative-5x2z2hzj/incident-human-tabletop-evidence-contract.v1.json' is not in the subpath of '/home/runner/work/memories-project/memories-project'\n",
+  "containsSecrets": false,
+  "acceptedCompletedScenarioCount": 0,
+  "productionRecoveryDrillCompleted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
