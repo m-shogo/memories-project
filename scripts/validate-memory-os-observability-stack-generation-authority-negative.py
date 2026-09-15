@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Reject corrupt environment-generation authority before observability-stack admission."""
+"""Reject corrupt environment-generation authority without mutating canonical registry."""
 
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
-import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,23 +13,52 @@ GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-ge
 VALIDATOR = ROOT / "scripts/validate-memory-os-observability-stack-deployment.py"
 
 
-def expect_rejected(label: str) -> None:
-    completed = subprocess.run(
-        ["python", str(VALIDATOR)],
-        cwd=ROOT,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+def mode(path: Path) -> int:
+    return path.stat().st_mode & 0o7777
+
+
+def load_validator():
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_observability_stack_generation_authority_negative",
+        VALIDATOR,
     )
-    if completed.returncode != 0:
-        return
-    raise RuntimeError(f"observability-stack validator accepted corrupt generation authority: {label}")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load observability-stack validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def expect_rejected(validator, candidate: dict, label: str) -> None:
+    original_load = validator.load
+
+    def overlay_load(path: Path):
+        if path == validator.GEN_REGISTRY:
+            return copy.deepcopy(candidate)
+        return original_load(path)
+
+    validator.load = overlay_load
+    try:
+        try:
+            validator.main()
+        except validator.Fail:
+            return
+        raise RuntimeError(f"observability-stack validator accepted corrupt generation authority: {label}")
+    finally:
+        validator.load = original_load
 
 
 def main() -> int:
-    original = GEN_REGISTRY.read_bytes()
-    registry = json.loads(original.decode("utf-8"))
+    original_bytes = GEN_REGISTRY.read_bytes()
+    original_mode = mode(GEN_REGISTRY)
+    registry = json.loads(original_bytes.decode("utf-8"))
+    validator = load_validator()
+
+    if validator.GEN_REGISTRY != GEN_REGISTRY:
+        raise RuntimeError("observability-stack validator generation registry authority drift")
+    if validator.VALIDATOR if hasattr(validator, "VALIDATOR") else False:
+        raise RuntimeError("unexpected nested validator authority")
+
     cases: list[tuple[str, dict]] = []
 
     candidate = copy.deepcopy(registry)
@@ -44,17 +73,20 @@ def main() -> int:
     candidate["productionEvidence"] = True
     cases.append(("production evidence escalation", candidate))
 
-    try:
-        for label, candidate in cases:
-            GEN_REGISTRY.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
-            expect_rejected(label)
-    finally:
-        GEN_REGISTRY.write_bytes(original)
+    for label, candidate in cases:
+        expect_rejected(validator, candidate, label)
+        if GEN_REGISTRY.read_bytes() != original_bytes:
+            raise RuntimeError(f"{label} mutated canonical environment-generation registry bytes")
+        if mode(GEN_REGISTRY) != original_mode:
+            raise RuntimeError(f"{label} changed canonical environment-generation registry mode")
 
-    if GEN_REGISTRY.read_bytes() != original:
-        raise RuntimeError("generation authority negative failed to restore registry")
+    if GEN_REGISTRY.read_bytes() != original_bytes:
+        raise RuntimeError("generation authority negative mutated canonical registry")
+    if mode(GEN_REGISTRY) != original_mode:
+        raise RuntimeError("generation authority negative changed canonical registry mode")
 
-    print("PASS: observability stack rejects corrupt environment-generation authority before admission")
+    print("PASS: observability stack rejects corrupt environment-generation authority through read-only overlay")
+    print("canonical environment-generation registry mutated by negative suite: false")
     print("production evidence generated: false")
     print("production readiness changed: false")
     return 0
