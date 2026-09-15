@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Pin human-tabletop sourceCommitSha, reconcile authority identity and rollback."""
+"""Pin human-tabletop sourceCommitSha and exercise reconcile rollback read-only."""
 
 from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,11 +17,23 @@ OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-incident-human-tabletops.py"
 CONTRACT = ROOT / "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
-POST_WRITE_MARKER = Path("/tmp/memory-os-incident-human-tabletop-post-write-negative.count")
+CANONICAL = (CONTRACT, STATUS, VALIDATOR, OPERABILITY_VALIDATOR, RECONCILER)
 
 
 def file_mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
+
+
+def snapshot(paths=CANONICAL):
+    return {path: (path.read_bytes(), file_mode(path)) for path in paths}
+
+
+def assert_unchanged(before, context: str) -> None:
+    for path, (payload, mode) in before.items():
+        if path.read_bytes() != payload:
+            raise RuntimeError(f"{context} mutated canonical bytes: {path.relative_to(ROOT)}")
+        if file_mode(path) != mode:
+            raise RuntimeError(f"{context} mutated canonical mode: {path.relative_to(ROOT)}")
 
 
 def load_module(name: str, path: Path):
@@ -50,9 +64,7 @@ def descendant_commit() -> str:
     })
     return subprocess.check_output(
         ["git", "commit-tree", tree, "-p", "HEAD", "-m", "human tabletop non-ancestor fixture"],
-        cwd=ROOT,
-        env=env,
-        text=True,
+        cwd=ROOT, env=env, text=True,
     ).strip()
 
 
@@ -83,121 +95,85 @@ def expect_reconcile_authority_identity() -> None:
     module.enforce_runtime_authorities()
 
 
+def fixture_pair(module, directory: Path) -> tuple[Path, Path]:
+    contract = directory / CONTRACT.name
+    status = directory / STATUS.name
+    shutil.copy2(CONTRACT, contract)
+    shutil.copy2(STATUS, status)
+    module.CONTRACT = contract
+    module.STATUS = status
+    return contract, status
+
+
+def assert_fixture_restored(contract: Path, status: Path, before, context: str) -> None:
+    for path in (contract, status):
+        payload, mode = before[path]
+        if path.read_bytes() != payload or file_mode(path) != mode:
+            raise RuntimeError(f"{context} did not restore fixture authority: {path.name}")
+        if list(path.parent.glob(f".{path.name}.*.tmp")):
+            raise RuntimeError(f"{context} left fixture temp residue: {path.name}")
+
+
 def expect_second_replace_rollback() -> None:
+    canonical = snapshot()
     module = load_reconciler()
-    contract_bytes = CONTRACT.read_bytes()
-    status_bytes = STATUS.read_bytes()
-    contract_mode = file_mode(CONTRACT)
-    status_mode = file_mode(STATUS)
-    original_replace = module.os.replace
-    calls = 0
+    with tempfile.TemporaryDirectory(prefix="memory-os-tabletop-reconcile-negative-") as raw:
+        contract, status = fixture_pair(module, Path(raw))
+        before = snapshot((contract, status))
+        original_replace = module.os.replace
+        calls = 0
 
-    def fail_second_replace(source, target):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            raise OSError("synthetic second authority replace rejection")
-        return original_replace(source, target)
+        def fail_second_replace(source, target):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("synthetic second authority replace rejection")
+            return original_replace(source, target)
 
-    try:
-        module.os.replace = fail_second_replace
         try:
-            module.commit_validated_pair(module.load(CONTRACT), module.load(STATUS))
-        except OSError:
-            pass
-        else:
-            raise RuntimeError("human tabletop reconciler accepted second authority replace rejection")
-    finally:
-        module.os.replace = original_replace
-
-    if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
-        raise RuntimeError("second authority replace rejection did not restore human tabletop authority bytes")
-    if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
-        raise RuntimeError("second authority replace rejection did not restore human tabletop authority modes")
-    if list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")):
-        raise RuntimeError("second authority replace rejection left contract temp residue")
-    if list(STATUS.parent.glob(f".{STATUS.name}.*.tmp")):
-        raise RuntimeError("second authority replace rejection left status temp residue")
+            module.os.replace = fail_second_replace
+            try:
+                module.commit_validated_pair(module.load(contract), module.load(status))
+            except OSError:
+                pass
+            else:
+                raise RuntimeError("human tabletop reconciler accepted second authority replace rejection")
+        finally:
+            module.os.replace = original_replace
+        assert_fixture_restored(contract, status, before, "second replace rejection")
+    assert_unchanged(canonical, "second replace negative")
 
 
-def expect_post_write_rollback() -> None:
-    validator_bytes = VALIDATOR.read_bytes()
-    validator_mode = file_mode(VALIDATOR)
-    contract_bytes = CONTRACT.read_bytes()
-    status_bytes = STATUS.read_bytes()
-    contract_mode = file_mode(CONTRACT)
-    status_mode = file_mode(STATUS)
-    wrapper = f'''#!/usr/bin/env python3
-from pathlib import Path
-marker = Path({str(POST_WRITE_MARKER)!r})
-count = int(marker.read_text(encoding="utf-8")) if marker.exists() else 0
-marker.write_text(str(count + 1), encoding="utf-8")
-raise SystemExit(0 if count == 0 else 1)
-'''
-    try:
-        POST_WRITE_MARKER.unlink(missing_ok=True)
-        VALIDATOR.write_text(wrapper, encoding="utf-8")
-        completed = subprocess.run(
-            ["python", str(RECONCILER)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        if completed.returncode == 0:
-            raise RuntimeError("human tabletop reconciler accepted injected post-write validator failure")
-        if CONTRACT.read_bytes() != contract_bytes:
-            raise RuntimeError("post-write failure left human tabletop contract mutated")
-        if STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("post-write failure left production operability status mutated")
-        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
-            raise RuntimeError("post-write failure changed human tabletop authority modes")
-    finally:
-        VALIDATOR.write_bytes(validator_bytes)
-        os.chmod(VALIDATOR, validator_mode)
-        POST_WRITE_MARKER.unlink(missing_ok=True)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-        os.chmod(CONTRACT, contract_mode)
-        os.chmod(STATUS, status_mode)
+def expect_post_write_rollback(fail_validator_index: int, label: str) -> None:
+    canonical = snapshot()
+    module = load_reconciler()
+    with tempfile.TemporaryDirectory(prefix="memory-os-tabletop-post-write-negative-") as raw:
+        contract, status = fixture_pair(module, Path(raw))
+        before = snapshot((contract, status))
+        original_run = module.subprocess.run
+        calls = 0
 
+        def injected_run(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return subprocess.CompletedProcess(args=args[0] if args else None, returncode=1 if calls == fail_validator_index else 0)
 
-def expect_aggregate_post_write_rollback() -> None:
-    operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
-    operability_mode = file_mode(OPERABILITY_VALIDATOR)
-    contract_bytes = CONTRACT.read_bytes()
-    status_bytes = STATUS.read_bytes()
-    contract_mode = file_mode(CONTRACT)
-    status_mode = file_mode(STATUS)
-    try:
-        OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
-        completed = subprocess.run(
-            ["python", str(RECONCILER)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        if completed.returncode == 0:
-            raise RuntimeError("human tabletop reconciler accepted aggregate operability failure")
-        if CONTRACT.read_bytes() != contract_bytes:
-            raise RuntimeError("aggregate failure left human tabletop contract mutated")
-        if STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("aggregate failure left production operability status mutated")
-        if file_mode(CONTRACT) != contract_mode or file_mode(STATUS) != status_mode:
-            raise RuntimeError("aggregate failure changed human tabletop authority modes")
-    finally:
-        OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
-        os.chmod(OPERABILITY_VALIDATOR, operability_mode)
-        CONTRACT.write_bytes(contract_bytes)
-        STATUS.write_bytes(status_bytes)
-        os.chmod(CONTRACT, contract_mode)
-        os.chmod(STATUS, status_mode)
+        try:
+            module.subprocess.run = injected_run
+            try:
+                module.commit_validated_pair(module.load(contract), module.load(status))
+            except module.Fail:
+                pass
+            else:
+                raise RuntimeError(f"human tabletop reconciler accepted injected {label} failure")
+        finally:
+            module.subprocess.run = original_run
+        assert_fixture_restored(contract, status, before, label)
+    assert_unchanged(canonical, f"{label} negative")
 
 
 def main() -> int:
+    canonical = snapshot()
     writer = load_writer()
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if not writer.commit_exists(head) or not writer.source_is_ancestor(head):
@@ -209,12 +185,14 @@ def main() -> int:
         raise RuntimeError("future/side commit was accepted as human tabletop source authority")
     expect_reconcile_authority_identity()
     expect_second_replace_rollback()
-    expect_post_write_rollback()
-    expect_aggregate_post_write_rollback()
+    expect_post_write_rollback(1, "post-write tabletop validator failure")
+    expect_post_write_rollback(4, "aggregate operability validator failure")
+    assert_unchanged(canonical, "human tabletop source negative suite")
     print("PASS: human tabletop source authority is ancestor-only without creating human evidence")
     print("PASS: human tabletop reconcile executable authorities reject substitution")
-    print("PASS: human tabletop second replace rejection rolls back contract/status bytes and modes")
-    print("PASS: human tabletop post-write and aggregate validation failures roll back contract and status")
+    print("PASS: human tabletop second replace rejection rolls back run-local contract/status bytes and modes")
+    print("PASS: human tabletop post-write failures roll back run-local authorities without canonical mutation")
+    print("PASS: canonical tabletop authorities remain byte- and mode-identical")
     return 0
 
 
