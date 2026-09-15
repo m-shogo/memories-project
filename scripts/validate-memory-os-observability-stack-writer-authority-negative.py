@@ -62,6 +62,7 @@ def main() -> int:
     writer.require_actual_cli_authorities()
 
     canonical_registry_before = writer.CANONICAL_REGISTRY.read_bytes()
+    canonical_registry_mode_before = mode(writer.CANONICAL_REGISTRY)
     with tempfile.TemporaryDirectory(prefix="memory-os-observability-stack-authority-") as temp_dir:
         outside = Path(temp_dir) / "outside-authority.json"
         outside.write_text("{}\n", encoding="utf-8")
@@ -152,11 +153,14 @@ def main() -> int:
 
     writer.require_actual_cli_authorities()
     require(writer.CANONICAL_REGISTRY.read_bytes() == canonical_registry_before,
-            "observability stack writer authority negative mutated canonical registry")
+            "observability stack writer authority negative mutated canonical registry bytes")
+    require(mode(writer.CANONICAL_REGISTRY) == canonical_registry_mode_before,
+            "observability stack writer authority negative mutated canonical registry mode")
     print("Memory OS observability stack writer authority negative suite PASS")
     print("writer CLI data/executable/lock substitution accepted: false")
     print("registry mode drift accepted: false")
     print("partial registry publication accepted: false")
+    print("canonical registry bytes/mode mutated: false")
     print("observability deployment evidence generated: false")
     print("production evidence generated: false")
     print("production readiness changed: false")
