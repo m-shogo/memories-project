@@ -117,7 +117,7 @@ def assert_fixture_restored(contract: Path, status: Path, before, context: str) 
 def expect_second_replace_rollback() -> None:
     canonical = snapshot()
     module = load_reconciler()
-    with tempfile.TemporaryDirectory(prefix="memory-os-tabletop-reconcile-negative-") as raw:
+    with tempfile.TemporaryDirectory(prefix=".tabletop-reconcile-negative-", dir=ROOT) as raw:
         contract, status = fixture_pair(module, Path(raw))
         before = snapshot((contract, status))
         original_replace = module.os.replace
@@ -147,7 +147,7 @@ def expect_second_replace_rollback() -> None:
 def expect_post_write_rollback(fail_validator_index: int, label: str) -> None:
     canonical = snapshot()
     module = load_reconciler()
-    with tempfile.TemporaryDirectory(prefix="memory-os-tabletop-post-write-negative-") as raw:
+    with tempfile.TemporaryDirectory(prefix=".tabletop-post-write-negative-", dir=ROOT) as raw:
         contract, status = fixture_pair(module, Path(raw))
         before = snapshot((contract, status))
         original_run = module.subprocess.run
