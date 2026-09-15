@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-local-logical-restore-results.v1",
-  "commitSha": "74344f8abfd903969362ef0d16e98f5806d282b2",
-  "generatedAt": "2026-08-21T08:36:17.188272Z",
+  "commitSha": "41a342b722771769301ea908cf81f57a2bba9261",
+  "generatedAt": "2026-09-15T21:43:31.349062Z",
   "environment": {
     "databaseMode": "EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_LOGICAL_RESTORE",
     "productionEvidence": false,
@@ -10,12 +10,12 @@
   },
   "scenario": {
     "scenarioId": "postgresql-logical-dump-isolated-restore-smoke",
-    "startedAt": "2026-08-21T08:36:14Z",
-    "completedAt": "2026-08-21T08:36:17Z",
-    "durationSeconds": 3,
+    "startedAt": "2026-09-15T21:43:29Z",
+    "completedAt": "2026-09-15T21:43:31Z",
+    "durationSeconds": 2,
     "migrationFilesApplied": 11,
     "sqlIntegrationTestsExecuted": 11,
-    "dumpBytes": 123172,
+    "dumpBytes": 123173,
     "assertions": {
       "runtimeRolesWithoutBypassRls": 4,
       "forceRlsTables": 14,
