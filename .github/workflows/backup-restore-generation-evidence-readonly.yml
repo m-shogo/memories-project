@@ -1,0 +1,105 @@
+name: Backup Restore Generation Evidence Readonly
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-generation-evidence-readonly.yml"
+      - ".github/workflows/backup-restore-generation-evidence.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+  push:
+    branches: [so]
+    paths:
+      - ".github/workflows/backup-restore-generation-evidence-readonly.yml"
+      - ".github/workflows/backup-restore-generation-evidence.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove-readonly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Prove generation evidence authorities are byte and mode immutable
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          authorities=(
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/backup-restore-generation-binding-contract.v1.json
+            contracts/operations/backup-restore-drill-request-contract.v1.json
+            contracts/operations/backup-restore-drill-request-registry.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+            contracts/operations/production-equivalent-environment-generation-contract.v1.json
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json
+            contracts/operations/recovery-objectives-admission-contract.v1.json
+            contracts/operations/recovery-objectives-registry.v1.json
+            contracts/operations/production-operability-status.json
+          )
+          snapshot="$RUNNER_TEMP/generation-evidence-authorities.tsv"
+          : > "$snapshot"
+          for path in "${authorities[@]}"; do
+            test -f "$path"
+            printf '%s\t%s\t%s\n' "$path" "$(sha256sum "$path" | cut -d' ' -f1)" "$(stat -c '%a' "$path")" >> "$snapshot"
+          done
+          python scripts/validate-memory-os-production-equivalent-environment-generation.py
+          python scripts/validate-memory-os-recovery-objectives.py
+          python scripts/validate-memory-os-backup-restore-drill-request.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py
+          python scripts/validate-memory-os-backup-restore-review-source-order.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
+          python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
+          python scripts/reconcile-memory-os-backup-non-resurrection-authority.py
+          python scripts/reconcile-memory-os-backup-restore-generation-evidence.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+          python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-supersession-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-binding.py
+          python scripts/validate-memory-os-backup-restore-generation-binding-negative.py
+          python scripts/validate-memory-os-operability.py
+          while IFS=$'\t' read -r path expected_hash expected_mode; do
+            test "$(sha256sum "$path" | cut -d' ' -f1)" = "$expected_hash" || { echo "canonical authority byte drift: $path" >&2; exit 1; }
+            test "$(stat -c '%a' "$path")" = "$expected_mode" || { echo "canonical authority mode drift: $path" >&2; exit 1; }
+          done < "$snapshot"
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
