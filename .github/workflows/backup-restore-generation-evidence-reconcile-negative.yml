@@ -83,6 +83,19 @@ jobs:
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+          authorities=(
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/backup-restore-generation-binding-contract.v1.json
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json
+            contracts/operations/recovery-objectives-registry.v1.json
+            contracts/operations/backup-restore-drill-request-registry.v1.json
+            contracts/operations/production-operability-status.json
+          )
+          declare -A authority_modes
+          for authority in "${authorities[@]}"; do
+            authority_modes["$authority"]="$(stat -c '%a' "$authority")"
+          done
           python -m py_compile \
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
@@ -115,6 +128,9 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-generation-binding.py
           python scripts/validate-memory-os-operability.py
+          for authority in "${authorities[@]}"; do
+            test "$(stat -c '%a' "$authority")" = "${authority_modes[$authority]}"
+          done
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
