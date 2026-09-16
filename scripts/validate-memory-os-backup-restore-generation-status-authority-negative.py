@@ -47,6 +47,8 @@ def load_binding_validator():
 def expect_direct_authority_rejected(reconciler, name: str, field: str, attribute: str, replacement: Path) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
+    contract_mode_before = stat.S_IMODE(CONTRACT.stat().st_mode)
+    status_mode_before = stat.S_IMODE(STATUS.stat().st_mode)
     original = getattr(reconciler, attribute)
     setattr(reconciler, attribute, replacement)
     try:
@@ -58,6 +60,8 @@ def expect_direct_authority_rejected(reconciler, name: str, field: str, attribut
             raise Fail(f"direct generation status reconciler unexpectedly accepted: {name}")
         require(CONTRACT.read_bytes() == contract_before, f"canonical contract mutated while rejecting {name}")
         require(STATUS.read_bytes() == status_before, f"canonical status mutated while rejecting {name}")
+        require(stat.S_IMODE(CONTRACT.stat().st_mode) == contract_mode_before, f"canonical contract mode mutated while rejecting {name}")
+        require(stat.S_IMODE(STATUS.stat().st_mode) == status_mode_before, f"canonical status mode mutated while rejecting {name}")
     finally:
         setattr(reconciler, attribute, original)
 
@@ -65,6 +69,8 @@ def expect_direct_authority_rejected(reconciler, name: str, field: str, attribut
 def expect_binding_authority_rejected(binding, name: str, field: str, attribute: str, replacement: Path) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
+    contract_mode_before = stat.S_IMODE(CONTRACT.stat().st_mode)
+    status_mode_before = stat.S_IMODE(STATUS.stat().st_mode)
     original = getattr(binding, attribute)
     setattr(binding, attribute, replacement)
     try:
@@ -76,6 +82,8 @@ def expect_binding_authority_rejected(binding, name: str, field: str, attribute:
             raise Fail(f"direct generation binding validator unexpectedly accepted: {name}")
         require(CONTRACT.read_bytes() == contract_before, f"canonical contract mutated while rejecting {name}")
         require(STATUS.read_bytes() == status_before, f"canonical status mutated while rejecting {name}")
+        require(stat.S_IMODE(CONTRACT.stat().st_mode) == contract_mode_before, f"canonical contract mode mutated while rejecting {name}")
+        require(stat.S_IMODE(STATUS.stat().st_mode) == status_mode_before, f"canonical status mode mutated while rejecting {name}")
     finally:
         setattr(binding, attribute, original)
 
