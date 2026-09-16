@@ -76,14 +76,28 @@ jobs:
       - name: Start local MinIO
         run: |
           set -euo pipefail
+          image=quay.io/minio/minio:latest
+          pulled=false
+          for attempt in 1 2 3; do
+            if docker pull "$image"; then
+              pulled=true
+              break
+            fi
+            sleep $((attempt * 5))
+          done
+          test "$pulled" = true
           docker run -d --name memory-os-deletion-load-minio \
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio server /data
+            "$image" server /data
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
               exit 0
+            fi
+            if ! docker inspect --format '{{.State.Running}}' memory-os-deletion-load-minio | grep -qx true; then
+              docker logs memory-os-deletion-load-minio
+              exit 1
             fi
             sleep 1
           done
