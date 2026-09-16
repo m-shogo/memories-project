@@ -1,0 +1,54 @@
+name: Backup Restore Generation Binding Readonly
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-generation-binding-readonly.yml"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
+      - "contracts/operations/**"
+  push:
+    branches: [so]
+    paths:
+      - ".github/workflows/backup-restore-generation-binding-readonly.yml"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
+      - "contracts/operations/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-generation-binding-readonly-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prove generation binding authorities remain read-only
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
