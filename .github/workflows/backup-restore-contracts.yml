@@ -131,6 +131,39 @@ jobs:
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
 
+      - name: Snapshot canonical authority modes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import stat
+          from pathlib import Path
+
+          authorities = [
+              "contracts/operations/backup-restore-contract.v1.json",
+              "contracts/operations/backup-restore-admission-chain-contract.v1.json",
+              "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+              "contracts/operations/backup-restore-drill-request-contract.v1.json",
+              "contracts/operations/backup-restore-drill-request-registry.v1.json",
+              "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+              "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+              "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+              "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+              "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+              "contracts/operations/operability-admission-inventory.v1.json",
+              "contracts/operations/production-operability-status.json",
+          ]
+          snapshot = {}
+          for authority in authorities:
+              path = Path(authority)
+              if not path.is_file():
+                  raise SystemExit(f"missing canonical authority: {authority}")
+              snapshot[authority] = stat.S_IMODE(path.stat().st_mode)
+          Path("/tmp/backup-restore-contract-authority-modes.json").write_text(
+              json.dumps(snapshot, sort_keys=True), encoding="utf-8"
+          )
+          PY
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -213,6 +246,26 @@ jobs:
       - name: Prove backup/restore contract gate is read-only
         run: |
           set -euo pipefail
+          python - <<'PY'
+          import json
+          import stat
+          from pathlib import Path
+
+          snapshot_path = Path("/tmp/backup-restore-contract-authority-modes.json")
+          if not snapshot_path.is_file():
+              raise SystemExit("missing canonical authority mode snapshot")
+          expected = json.loads(snapshot_path.read_text(encoding="utf-8"))
+          for authority, expected_mode in expected.items():
+              path = Path(authority)
+              if not path.is_file():
+                  raise SystemExit(f"canonical authority disappeared: {authority}")
+              actual_mode = stat.S_IMODE(path.stat().st_mode)
+              if actual_mode != expected_mode:
+                  raise SystemExit(
+                      f"canonical authority mode drifted: {authority}: "
+                      f"expected {expected_mode:o}, got {actual_mode:o}"
+                  )
+          PY
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
