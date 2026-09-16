@@ -69,6 +69,16 @@ jobs:
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+          authorities=(
+            contracts/operations/backup-restore-drill-preflight-contract.v1.json
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json
+            contracts/operations/recovery-objectives-registry.v1.json
+            contracts/operations/backup-restore-drill-request-registry.v1.json
+            contracts/operations/production-operability-status.json
+          )
+          for authority in "${authorities[@]}"; do
+            printf '%s %s\n' "$authority" "$(stat -c '%a' "$authority")"
+          done > "$RUNNER_TEMP/preflight-authority-modes.before"
       - name: Compile preflight rollback proof
         run: |
           set -euo pipefail
@@ -82,6 +92,17 @@ jobs:
       - name: Verify rollback proof is read-only
         run: |
           set -euo pipefail
+          authorities=(
+            contracts/operations/backup-restore-drill-preflight-contract.v1.json
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json
+            contracts/operations/recovery-objectives-registry.v1.json
+            contracts/operations/backup-restore-drill-request-registry.v1.json
+            contracts/operations/production-operability-status.json
+          )
+          for authority in "${authorities[@]}"; do
+            printf '%s %s\n' "$authority" "$(stat -c '%a' "$authority")"
+          done > "$RUNNER_TEMP/preflight-authority-modes.after"
+          cmp "$RUNNER_TEMP/preflight-authority-modes.before" "$RUNNER_TEMP/preflight-authority-modes.after"
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
