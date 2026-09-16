@@ -64,6 +64,24 @@ jobs:
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
 
+      - name: Snapshot canonical authority modes
+        run: |
+          set -euo pipefail
+          snapshot="$RUNNER_TEMP/backup-restore-generation-evidence-rollback-diagnostics-authority-modes.txt"
+          : > "$snapshot"
+          for path in \
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json \
+            contracts/operations/recovery-objectives-registry.v1.json \
+            contracts/operations/backup-restore-drill-request-registry.v1.json \
+            contracts/operations/backup-restore-generation-binding-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          do
+            test -f "$path"
+            printf '%s %s\n' "$path" "$(stat -c '%a' "$path")" >> "$snapshot"
+          done
+
       - name: Compile generation evidence rollback diagnostics negative
         run: |
           set -euo pipefail
@@ -80,6 +98,20 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-backup-restore-generation-evidence-rollback-diagnostics-negative.py
+
+      - name: Prove canonical authority modes remain unchanged
+        run: |
+          set -euo pipefail
+          snapshot="$RUNNER_TEMP/backup-restore-generation-evidence-rollback-diagnostics-authority-modes.txt"
+          test -s "$snapshot"
+          while read -r path expected_mode; do
+            test -f "$path"
+            actual_mode="$(stat -c '%a' "$path")"
+            test "$actual_mode" = "$expected_mode" || {
+              echo "canonical authority mode drift: $path expected=$expected_mode actual=$actual_mode" >&2
+              exit 1
+            }
+          done < "$snapshot"
 
       - name: Prove negative suite leaves canonical authorities untouched
         run: |
