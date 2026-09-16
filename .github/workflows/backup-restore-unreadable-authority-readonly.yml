@@ -1,0 +1,115 @@
+name: Backup Restore Unreadable Authority Readonly
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-unreadable-authority-readonly.yml"
+      - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/validate-memory-os-*-load-negative.py"
+      - "scripts/validate-memory-os-*-writer-authority-negative.py"
+  push:
+    branches: [so]
+    paths:
+      - ".github/workflows/backup-restore-unreadable-authority-readonly.yml"
+      - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/validate-memory-os-*-load-negative.py"
+      - "scripts/validate-memory-os-*-writer-authority-negative.py"
+
+permissions:
+  contents: read
+
+jobs:
+  readonly-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Require exact clean source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Snapshot canonical authority bytes and modes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          paths = [
+              "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+              "contracts/operations/backup-restore-drill-request-contract.v1.json",
+              "contracts/operations/backup-restore-drill-request-registry.v1.json",
+              "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+              "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+              "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+              "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+              "contracts/operations/recovery-objectives-registry.v1.json",
+              "contracts/operations/production-operability-status.json",
+          ]
+          snapshot = {}
+          for raw in paths:
+              p = Path(raw)
+              snapshot[raw] = {
+                  "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                  "mode": os.stat(p).st_mode & 0o7777,
+              }
+          Path("/tmp/unreadable-authority-snapshot.json").write_text(json.dumps(snapshot, sort_keys=True), encoding="utf-8")
+          PY
+      - name: Run canonical unreadable-authority negative suite
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py
+          python scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py
+      - name: Prove canonical authority bytes and modes are immutable
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          before = json.loads(Path("/tmp/unreadable-authority-snapshot.json").read_text(encoding="utf-8"))
+          after = {}
+          for raw in before:
+              p = Path(raw)
+              after[raw] = {
+                  "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                  "mode": os.stat(p).st_mode & 0o7777,
+              }
+          if after != before:
+              raise SystemExit("canonical unreadable-authority suite mutated authority bytes or permission modes")
+          PY
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
