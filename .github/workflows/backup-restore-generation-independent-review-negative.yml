@@ -62,6 +62,11 @@ jobs:
       - name: Validate final-candidate independent-review authority read-only
         run: |
           set -euo pipefail
+          mode_snapshot="$(mktemp)"
+          stat -c '%a %n' \
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
+            > "$mode_snapshot"
           python -m py_compile \
             scripts/validate-memory-os-backup-restore-review-source-order.py \
             scripts/validate-memory-os-backup-restore-generation-independent-review.py \
@@ -158,3 +163,10 @@ jobs:
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
+          current_modes="$(mktemp)"
+          stat -c '%a %n' \
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
+            > "$current_modes"
+          diff -u "$mode_snapshot" "$current_modes"
+          rm -f "$mode_snapshot" "$current_modes"
