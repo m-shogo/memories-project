@@ -77,6 +77,18 @@ jobs:
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+          authorities=(
+            contracts/operations/backup-restore-admission-chain-contract.v1.json
+            contracts/operations/backup-restore-drill-preflight-contract.v1.json
+            contracts/operations/backup-restore-drill-request-registry.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/backup-restore-generation-binding-contract.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+            contracts/operations/production-operability-status.json
+          )
+          mode_snapshot="$(mktemp)"
+          trap 'rm -f "$mode_snapshot"' EXIT
+          stat -c '%n %a' "${authorities[@]}" > "$mode_snapshot"
           python -m py_compile \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             scripts/request-memory-os-backup-restore-drill.py \
@@ -99,6 +111,7 @@ jobs:
           python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-admission-chain.py
           python scripts/validate-memory-os-operability.py
+          stat -c '%n %a' "${authorities[@]}" | diff -u "$mode_snapshot" -
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
