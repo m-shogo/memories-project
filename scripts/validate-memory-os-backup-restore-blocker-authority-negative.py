@@ -88,6 +88,7 @@ def main() -> int:
     module = load_module()
     value = ops7_missing_evidence()
     status_before = STATUS.read_bytes()
+    status_mode_before = STATUS.stat().st_mode
     baseline = tuple(module.CANONICAL_GAPS)
     require(len(baseline) == 6, "canonical blocker count must remain six")
     require(value == list(baseline), "Production Status does not match canonical blocker helper")
@@ -125,6 +126,7 @@ def main() -> int:
     require(tuple(module.CANONICAL_GAPS) == baseline, "negative probes mutated canonical blocker authority")
     require(ops7_missing_evidence() == value, "negative probes mutated canonical Production Status blockers")
     require(STATUS.read_bytes() == status_before, "semantic overlay authority probes mutated canonical Production Status")
+    require(STATUS.stat().st_mode == status_mode_before, "semantic overlay authority probes mutated canonical Production Status mode")
 
     print("Memory OS backup/restore blocker authority negative PASS")
     print("canonical blocker count: 6")
@@ -139,6 +141,7 @@ def main() -> int:
     print("semantic Production Status path substitution accepted: false")
     print("semantic repository root substitution accepted: false")
     print("Production Status blockers mutated: false")
+    print("Production Status mode mutated: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
