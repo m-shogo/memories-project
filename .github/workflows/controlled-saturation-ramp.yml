@@ -88,18 +88,32 @@ jobs:
       - name: Start local MinIO
         run: |
           set -euo pipefail
+          image=quay.io/minio/minio:latest
+          pulled=false
+          for attempt in 1 2 3; do
+            if docker pull "$image"; then
+              pulled=true
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          test "$pulled" = true
           docker run -d --name memory-os-controlled-saturation-minio \
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio server /data
+            "$image" server /data
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
               exit 0
             fi
+            if ! docker inspect -f '{{.State.Running}}' memory-os-controlled-saturation-minio 2>/dev/null | grep -qx true; then
+              docker logs memory-os-controlled-saturation-minio || true
+              exit 1
+            fi
             sleep 1
           done
-          docker logs memory-os-controlled-saturation-minio
+          docker logs memory-os-controlled-saturation-minio || true
           exit 1
 
       - name: Execute bounded ramp and validate result
