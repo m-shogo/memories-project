@@ -83,6 +83,19 @@ jobs:
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+          authorities=(
+            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/production-operability-status.json
+          )
+          modes="$RUNNER_TEMP/non-resurrection-authority-modes.txt"
+          : > "$modes"
+          for authority in "${authorities[@]}"; do
+            test -f "$authority"
+            printf '%s %s\n' "$(stat -c '%a' "$authority")" "$authority" >> "$modes"
+          done
           python -m py_compile \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
@@ -115,6 +128,9 @@ jobs:
           python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
           python scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+          while read -r expected_mode authority; do
+            test "$(stat -c '%a' "$authority")" = "$expected_mode"
+          done < "$modes"
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
