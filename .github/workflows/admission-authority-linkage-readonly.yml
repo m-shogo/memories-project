@@ -1,0 +1,115 @@
+name: Admission Authority Linkage Readonly
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/admission-authority-linkage-readonly.yml"
+      - ".github/workflows/admission-authority-linkage.yml"
+      - "contracts/operations/requests/admission-authority-linkage.v1.json"
+      - "contracts/operations/*admission-contract.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
+      - "contracts/operations/release-compatibility-pair-contract.v1.json"
+      - "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
+      - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/client-baseline-registry-contract.v1.json"
+      - "contracts/operations/observability-stack-deployment-contract.v1.json"
+      - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "scripts/validate-memory-os-admission-authority-linkage.py"
+      - "scripts/validate-memory-os-admission-authority-linkage-negative.py"
+  push:
+    branches: [so]
+    paths:
+      - ".github/workflows/admission-authority-linkage-readonly.yml"
+      - ".github/workflows/admission-authority-linkage.yml"
+      - "contracts/operations/requests/admission-authority-linkage.v1.json"
+      - "contracts/operations/*admission-contract.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
+      - "contracts/operations/release-compatibility-pair-contract.v1.json"
+      - "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
+      - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/client-baseline-registry-contract.v1.json"
+      - "contracts/operations/observability-stack-deployment-contract.v1.json"
+      - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "scripts/validate-memory-os-admission-authority-linkage.py"
+      - "scripts/validate-memory-os-admission-authority-linkage-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admission-authority-linkage-readonly-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  prove-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Snapshot canonical authorities
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          paths = [
+              Path('contracts/operations/requests/admission-authority-linkage.v1.json'),
+              Path('contracts/operations/backup-restore-generation-binding-contract.v1.json'),
+              Path('contracts/operations/production-equivalent-environment-generation-contract.v1.json'),
+              Path('contracts/operations/production-operability-status.json'),
+          ]
+          snapshot = {}
+          for path in paths:
+              if not path.is_file():
+                  raise SystemExit(f'missing canonical authority: {path}')
+              snapshot[str(path)] = {
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                  'mode': os.stat(path).st_mode & 0o7777,
+              }
+          Path('/tmp/admission-authority-linkage-authorities.json').write_text(
+              json.dumps(snapshot, sort_keys=True), encoding='utf-8')
+          PY
+      - name: Validate linkage chain
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-admission-authority-linkage.py \
+            scripts/validate-memory-os-admission-authority-linkage-negative.py
+          python scripts/validate-memory-os-admission-authority-linkage.py
+          python scripts/validate-memory-os-admission-authority-linkage-negative.py
+      - name: Prove canonical authorities unchanged
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          before = json.loads(Path('/tmp/admission-authority-linkage-authorities.json').read_text(encoding='utf-8'))
+          for raw_path, expected in before.items():
+              path = Path(raw_path)
+              if not path.is_file():
+                  raise SystemExit(f'canonical authority disappeared: {path}')
+              actual = {
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                  'mode': os.stat(path).st_mode & 0o7777,
+              }
+              if actual != expected:
+                  raise SystemExit(f'canonical authority mutated: {path}: expected={expected} actual={actual}')
+          PY
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
