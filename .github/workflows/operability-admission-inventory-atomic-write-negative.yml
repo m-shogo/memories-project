@@ -1,0 +1,52 @@
+name: Operability Admission Inventory Atomic Write Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/operability-admission-inventory-atomic-write-negative.yml"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-atomic-write-negative.py"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+  pull_request:
+    paths:
+      - ".github/workflows/operability-admission-inventory-atomic-write-negative.yml"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-atomic-write-negative.py"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  atomic-write-negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Capture canonical inventory authority
+        run: |
+          set -euo pipefail
+          sha256sum contracts/operations/operability-admission-inventory.v1.json > /tmp/inventory.sha256
+          stat -c '%a' contracts/operations/operability-admission-inventory.v1.json > /tmp/inventory.mode
+      - name: Prove failed atomic replacement rolls back cleanly
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/generate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory-atomic-write-negative.py
+          python scripts/validate-memory-os-operability-admission-inventory-atomic-write-negative.py
+      - name: Prove canonical authority remained exact
+        run: |
+          set -euo pipefail
+          sha256sum -c /tmp/inventory.sha256
+          test "$(stat -c '%a' contracts/operations/operability-admission-inventory.v1.json)" = "$(cat /tmp/inventory.mode)"
+          test -z "$(find contracts/operations -maxdepth 1 -name '.operability-admission-inventory.v1.json.*.tmp' -print -quit)"
+          test -z "$(git status --porcelain)"
