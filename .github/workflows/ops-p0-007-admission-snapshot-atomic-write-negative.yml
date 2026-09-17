@@ -1,0 +1,52 @@
+name: OPS P0 007 Admission Snapshot Atomic Write Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/ops-p0-007-admission-snapshot-atomic-write-negative.yml"
+      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-atomic-write-negative.py"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+  pull_request:
+    paths:
+      - ".github/workflows/ops-p0-007-admission-snapshot-atomic-write-negative.yml"
+      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-atomic-write-negative.py"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  atomic-write-negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Capture canonical snapshot authority
+        run: |
+          set -euo pipefail
+          sha256sum contracts/operations/ops-p0-007-admission-snapshot.v1.json > /tmp/snapshot.sha256
+          stat -c '%a' contracts/operations/ops-p0-007-admission-snapshot.v1.json > /tmp/snapshot.mode
+      - name: Prove failed atomic replacement rolls back cleanly
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot-atomic-write-negative.py
+          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-atomic-write-negative.py
+      - name: Prove canonical authority remained exact
+        run: |
+          set -euo pipefail
+          sha256sum -c /tmp/snapshot.sha256
+          test "$(stat -c '%a' contracts/operations/ops-p0-007-admission-snapshot.v1.json)" = "$(cat /tmp/snapshot.mode)"
+          test -z "$(find contracts/operations -maxdepth 1 -name '.ops-p0-007-admission-snapshot.v1.json.*.tmp' -print -quit)"
+          test -z "$(git status --porcelain)"
