@@ -50,7 +50,11 @@ jobs:
       - name: Require deterministic output and no residue
         run: |
           set -euo pipefail
-          sha256sum -c /tmp/inventory.before.sha256
+          if ! sha256sum -c /tmp/inventory.before.sha256; then
+            echo "::error::Canonical operability admission inventory is stale relative to deterministic generation"
+            git --no-pager diff -- contracts/operations/operability-admission-inventory.v1.json
+            exit 1
+          fi
           test "$(stat -c '%a' contracts/operations/operability-admission-inventory.v1.json)" = "$(cat /tmp/inventory.before.mode)"
           test -z "$(find contracts/operations -maxdepth 1 -type f -name '.operability-admission-inventory.v1.json.*.tmp' -print -quit)"
           test -z "$(git status --porcelain)"
