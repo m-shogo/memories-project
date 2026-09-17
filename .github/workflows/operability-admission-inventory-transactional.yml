@@ -1,0 +1,57 @@
+name: Operability Admission Inventory Transactional
+
+on:
+  push:
+    branches: [so]
+    paths:
+      - "scripts/run-memory-os-operability-admission-inventory-transactional.py"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "contracts/operations/*registry.v1.json"
+      - "contracts/operations/backup-restore-*.json"
+      - ".github/workflows/operability-admission-inventory-transactional.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operability-admission-inventory-transactional-so
+  cancel-in-progress: false
+
+jobs:
+  transactional-generation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Capture exact source and canonical output state
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain)"
+          sha256sum contracts/operations/operability-admission-inventory.v1.json > /tmp/inventory.before.sha256
+          stat -c '%a' contracts/operations/operability-admission-inventory.v1.json > /tmp/inventory.before.mode
+      - name: Run transactional deterministic inventory generation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/run-memory-os-operability-admission-inventory-transactional.py \
+            scripts/generate-memory-os-operability-admission-inventory.py
+          python scripts/run-memory-os-operability-admission-inventory-transactional.py
+      - name: Require deterministic output and no residue
+        run: |
+          set -euo pipefail
+          sha256sum -c /tmp/inventory.before.sha256
+          test "$(stat -c '%a' contracts/operations/operability-admission-inventory.v1.json)" = "$(cat /tmp/inventory.before.mode)"
+          test -z "$(find contracts/operations -maxdepth 1 -type f -name '.operability-admission-inventory.v1.json.*.tmp' -print -quit)"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
