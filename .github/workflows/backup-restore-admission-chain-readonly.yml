@@ -1,0 +1,99 @@
+name: Backup Restore Admission Chain Readonly
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-admission-chain-readonly.yml"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-full.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "contracts/operations/backup-restore-*.json"
+      - "contracts/operations/production-equivalent-environment-*.json"
+      - "contracts/operations/recovery-objectives-*.json"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+      - "contracts/operations/production-operability-status.json"
+  push:
+    branches: [so]
+    paths:
+      - ".github/workflows/backup-restore-admission-chain-readonly.yml"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-full.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "contracts/operations/backup-restore-*.json"
+      - "contracts/operations/production-equivalent-environment-*.json"
+      - "contracts/operations/recovery-objectives-*.json"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+      - "contracts/operations/production-operability-status.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-admission-chain-readonly-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: true
+
+jobs:
+  readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prove end-to-end admission authority immutability
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          authorities=(
+            contracts/operations/backup-restore-admission-chain-contract.v1.json
+            contracts/operations/backup-restore-drill-preflight-contract.v1.json
+            contracts/operations/backup-restore-drill-request-registry.v1.json
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/backup-restore-generation-binding-contract.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+            contracts/operations/backup-restore-promotion-review-contract.v1.json
+            contracts/operations/backup-restore-promotion-review-registry.v1.json
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json
+            contracts/operations/recovery-objectives-registry.v1.json
+            contracts/operations/operability-admission-inventory.v1.json
+            contracts/operations/ops-p0-007-admission-snapshot.v1.json
+            contracts/operations/production-operability-status.json
+          )
+
+          snapshot="$(mktemp)"
+          trap 'rm -f "$snapshot"' EXIT
+          for authority in "${authorities[@]}"; do
+            test -f "$authority"
+            printf '%s\t%s\t%s\n' "$authority" "$(sha256sum "$authority" | cut -d' ' -f1)" "$(stat -c '%a' "$authority")"
+          done > "$snapshot"
+
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore-admission-chain-full.py \
+            scripts/validate-memory-os-backup-restore-admission-chain.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-backup-restore-admission-chain-full.py
+          python scripts/validate-memory-os-backup-restore-admission-chain.py
+          python scripts/validate-memory-os-operability.py
+
+          current="$(mktemp)"
+          trap 'rm -f "$snapshot" "$current"' EXIT
+          for authority in "${authorities[@]}"; do
+            printf '%s\t%s\t%s\n' "$authority" "$(sha256sum "$authority" | cut -d' ' -f1)" "$(stat -c '%a' "$authority")"
+          done > "$current"
+          diff -u "$snapshot" "$current"
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
