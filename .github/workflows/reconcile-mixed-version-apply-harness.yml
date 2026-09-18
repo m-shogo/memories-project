@@ -6,10 +6,12 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-mixed-version-apply-harness.yml"
+      - ".github/workflows/mixed-version-apply.yml"
       - "scripts/run-memory-os-mixed-version-apply-drill.sh"
   pull_request:
     paths:
       - ".github/workflows/reconcile-mixed-version-apply-harness.yml"
+      - ".github/workflows/mixed-version-apply.yml"
       - "scripts/run-memory-os-mixed-version-apply-drill.sh"
   workflow_dispatch:
 
@@ -40,8 +42,8 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("scripts/run-memory-os-mixed-version-apply-drill.sh")
-          text = path.read_text(encoding="utf-8")
+          harness = Path("scripts/run-memory-os-mixed-version-apply-drill.sh")
+          text = harness.read_text(encoding="utf-8")
           insecure = (
               "CREATE FUNCTION memory_os.test_block_apply_memory_insert()\n"
               "RETURNS trigger\n"
@@ -59,19 +61,36 @@ jobs:
           if text.count(secure) == 1 and text.count(insecure) == 0:
               print("Termination test trigger authority is already secure.")
           elif text.count(insecure) == 1 and text.count(secure) == 0:
-              path.write_text(text.replace(insecure, secure), encoding="utf-8")
+              harness.write_text(text.replace(insecure, secure), encoding="utf-8")
               print("Reconciled termination test trigger authority.")
           else:
               raise SystemExit("termination test trigger definition drift")
+
+          workflow = Path(".github/workflows/mixed-version-apply.yml")
+          workflow_text = workflow.read_text(encoding="utf-8")
+          legacy = "            minio/minio server /data"
+          pinned = "            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data"
+          legacy_count = workflow_text.count(legacy)
+          pinned_count = workflow_text.count(pinned)
+          if legacy_count == 0 and pinned_count == 2:
+              print("Mixed-version MinIO fixture image is already pinned to Quay.")
+          elif legacy_count == 2 and pinned_count == 0:
+              workflow.write_text(workflow_text.replace(legacy, pinned), encoding="utf-8")
+              print("Reconciled both mixed-version MinIO fixture image references.")
+          else:
+              raise SystemExit(
+                  f"mixed-version MinIO image authority drift: legacy={legacy_count} pinned={pinned_count}"
+              )
           PY
           bash -n scripts/run-memory-os-mixed-version-apply-drill.sh
+          git diff --check
           git diff --exit-code
 
   reconcile:
     if: >-
       github.event_name != 'pull_request' &&
       (github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'fix(compat): secure termination test trigger'))
+      !contains(github.event.head_commit.message, 'fix(compat): reconcile mixed-version harness'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -81,7 +100,7 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Reconcile exact test-trigger authority
+      - name: Reconcile exact harness authority
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
@@ -89,8 +108,8 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("scripts/run-memory-os-mixed-version-apply-drill.sh")
-          text = path.read_text(encoding="utf-8")
+          harness = Path("scripts/run-memory-os-mixed-version-apply-drill.sh")
+          text = harness.read_text(encoding="utf-8")
           insecure = (
               "CREATE FUNCTION memory_os.test_block_apply_memory_insert()\n"
               "RETURNS trigger\n"
@@ -108,19 +127,38 @@ jobs:
           if text.count(secure) == 1 and text.count(insecure) == 0:
               print("Termination test trigger authority is already secure.")
           elif text.count(insecure) == 1 and text.count(secure) == 0:
-              path.write_text(text.replace(insecure, secure), encoding="utf-8")
+              harness.write_text(text.replace(insecure, secure), encoding="utf-8")
               print("Reconciled termination test trigger authority.")
           else:
               raise SystemExit("termination test trigger definition drift")
+
+          workflow = Path(".github/workflows/mixed-version-apply.yml")
+          workflow_text = workflow.read_text(encoding="utf-8")
+          legacy = "            minio/minio server /data"
+          pinned = "            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data"
+          legacy_count = workflow_text.count(legacy)
+          pinned_count = workflow_text.count(pinned)
+          if legacy_count == 0 and pinned_count == 2:
+              print("Mixed-version MinIO fixture image is already pinned to Quay.")
+          elif legacy_count == 2 and pinned_count == 0:
+              workflow.write_text(workflow_text.replace(legacy, pinned), encoding="utf-8")
+              print("Reconciled both mixed-version MinIO fixture image references.")
+          else:
+              raise SystemExit(
+                  f"mixed-version MinIO image authority drift: legacy={legacy_count} pinned={pinned_count}"
+              )
           PY
           bash -n scripts/run-memory-os-mixed-version-apply-drill.sh
+          git diff --check
 
       - name: Commit exact harness correction
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
           test "$source_sha" = "${{ github.sha }}"
-          git add scripts/run-memory-os-mixed-version-apply-drill.sh
+          git add \
+            scripts/run-memory-os-mixed-version-apply-drill.sh \
+            .github/workflows/mixed-version-apply.yml
           if git diff --cached --quiet; then
             echo "Mixed-version Apply harness is already current."
             exit 0
@@ -128,7 +166,7 @@ jobs:
           git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "fix(compat): secure termination test trigger"
+          git commit -m "fix(compat): reconcile mixed-version harness"
           remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
           if [[ "$remote_sha" != "$source_sha" ]]; then
             echo "Mixed-version Apply harness source is stale: validated $source_sha but so is $remote_sha" >&2
