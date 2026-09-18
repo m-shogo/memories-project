@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-chaos-failure-drill-results.v2",
-  "commitSha": "e2d103192bb6ab16f256bffcf3997e46273e9657",
-  "generatedAt": "2026-09-17T22:10:33.133380Z",
+  "commitSha": "74bb3f1906552ad07e9b4e11bb63c0908bc9d137",
+  "generatedAt": "2026-09-18T21:42:14.241340Z",
   "environment": {
     "mode": "GITHUB_ACTIONS_UBUNTU_LINUX_POSTGRES16_MINIO",
     "productionEvidence": false,
@@ -14,21 +14,21 @@
       "result": "PASS",
       "integrityResult": "PASS",
       "exitCode": 0,
-      "durationSeconds": 1.854311
+      "durationSeconds": 1.796275
     },
     {
       "scenarioId": "parser-restart-after-protocol-failure",
       "result": "PASS",
       "integrityResult": "PASS",
       "exitCode": 0,
-      "durationSeconds": 0.288954
+      "durationSeconds": 0.298948
     },
     {
       "scenarioId": "object-store-outage-and-recovery",
       "result": "PASS",
       "integrityResult": "PASS",
       "exitCode": 0,
-      "durationSeconds": 1.007739,
+      "durationSeconds": 1.026934,
       "assertions": {
         "durablePreviewRowsDuringOutage": 0,
         "spoolEntriesDuringOutage": 0,

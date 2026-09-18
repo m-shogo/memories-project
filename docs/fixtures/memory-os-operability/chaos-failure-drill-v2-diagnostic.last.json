@@ -1,24 +1,24 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "chaos-and-failure-drills-v2",
-  "sourceCommitSha": "e2d103192bb6ab16f256bffcf3997e46273e9657",
+  "sourceCommitSha": "74bb3f1906552ad07e9b4e11bb63c0908bc9d137",
   "result": "PASS",
-  "generatedAt": "2026-09-17T22:10:33.133380Z",
+  "generatedAt": "2026-09-18T21:42:14.241340Z",
   "scenarios": [
     {
       "scenarioId": "api-graceful-interruption-drain",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t0.143s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t0.140s\n"
     },
     {
       "scenarioId": "parser-restart-after-protocol-failure",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.023s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.021s\n"
     },
     {
       "scenarioId": "object-store-outage-and-recovery",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/importflow\t0.368s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/importflow\t0.380s\n"
     }
   ],
   "containsSecrets": false,
