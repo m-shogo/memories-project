@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "autonomous-ops-learning-record.0.1",
+  "date": "2026-09-21",
+  "scope": "OPS-P0-007 admission-chain full runner negative proof",
+  "productionEvidence": false,
+  "readinessEvidence": false,
+  "failure": {
+    "symptom": "The first in-memory transport-substitution negative case replaced subprocess.run on Python's shared subprocess module, so the mutation could leak into later freshly imported target modules.",
+    "evidence": "scripts/validate-memory-os-backup-restore-admission-chain-full-negative.py initially mutated module.subprocess.run without restoring it; importlib reloads the target module but reuses the shared subprocess module object.",
+    "rootCauseOrUnknown": "Verified root cause: the fixture treated an imported process-global module object as target-local mutable state.",
+    "failedApproach": "Mutate subprocess.run and rely on a fresh import of the target to isolate the next negative case.",
+    "correction": "Snapshot subprocess.run for every case and restore it in finally, including when the expected failure diagnostic is wrong.",
+    "recurrenceGuard": "Any in-memory negative test that mutates imported module objects must restore shared dependency state in finally; fresh target import alone is not an isolation boundary.",
+    "retryCondition": "Only treat the transport mutation as proven after an exact-source CI run executes the corrected negative suite successfully."
+  },
+  "success": {
+    "outcome": "A dedicated fail-closed negative proof now covers admission-chain full-runner sequence removal, subprocess transport substitution, transport-guard substitution, and execution-function substitution, and an existing CI-reachable negative entrypoint invokes it transitively.",
+    "evidence": "Commits 7a894d32, dff86af7, and 36c6a262 added the negative suite, isolated shared mutations, and invoked it from validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py, which is already a canonical step of validate-memory-os-backup-restore-admission-chain-full.py. Backup Restore Admission Chain run 35541283165 was created for exact-source head 36c6a262 and was still pending when this record was written; no CI PASS is claimed here.",
+    "whySafe": "The proof mutates imported in-memory objects only, restores shared subprocess state, does not write evidence/registries, and is reached through an existing read/validation path rather than a new production authority.",
+    "reusableMechanism": "Protect meta-runners with negative tests for sequence, transport, guard, and execution-function substitution; make the proof transitively reachable from an already canonical fail-closed CI entrypoint when workflow writes are unavailable.",
+    "protectedAuthorityCheck": "After the changes, contracts/operations/production-operability-status.json still reports productionDecision=NO_GO. No production-equivalent generation, recovery objective, drill request/evidence, credential, traffic, readiness, or promotion authority was created or changed."
+  }
+}
