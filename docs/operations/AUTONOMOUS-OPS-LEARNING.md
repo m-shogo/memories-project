@@ -134,3 +134,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Claim CI success only after a new Operability Contracts run whose head contains this interface correction completes successfully; older runs remain historical evidence only.
+
+## 2026-09-21 — Negative-proof hardening write is a scoped blocker
+
+### Symptom
+- A planned hardening change to `scripts/validate-autonomous-learning-system-negative.py` could not be written through the available repository write path.
+
+### Evidence
+- The attempted write was blocked before a repository commit was created. The branch remained at `ed711a9`; the canonical positive validator still enforces `opsP0007EvidenceMustBeReal=true`, `humanPromotionReviewIsSeparate=true`, exact failure/success field sets, and exact closed-loop order, while the negative suite does not yet mutate each of those authorities independently.
+
+### Root cause or unknown
+- The write-path restriction is external to the repository content; no repository-level cause has been verified. Treat the root cause as unknown until the write capability or policy state changes.
+
+### Failed approach
+- Attempting to extend the existing negative-suite file while its write path was blocked.
+
+### Correction
+- Do not weaken or duplicate the canonical authority to work around the blocker. Preserve the identified mutations as the next executable hardening target and continue independent read-only audits and safe writes elsewhere.
+
+### Recurrence guard
+- Treat a blocked target path as scoped. Do not retry the same mutation through equivalent write routes while the precondition is unchanged, and do not claim missing negative cases are implemented merely because the positive validator enforces the invariant.
+
+### Retry condition
+- Retry the negative-suite hardening only after the repository write capability/policy for that target changes, or a pre-existing canonical executable extension point is found that can add the same negative proof without creating parallel authority.
