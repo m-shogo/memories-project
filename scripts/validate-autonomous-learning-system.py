@@ -13,6 +13,7 @@ CONTRACT = Path("contracts/operations/autonomous-learning-system.json")
 LEARNING = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
 VALIDATOR = Path("scripts/validate-autonomous-learning-system.py")
 NEGATIVE_VALIDATOR = Path("scripts/validate-autonomous-learning-system-negative.py")
+CI_ENTRYPOINT = Path("scripts/validate-memory-os-entry-docs.py")
 EXPECTED_LOOP = [
     "observe", "diagnose", "search_prior_knowledge", "change", "validate",
     "persist_learning", "verify_authority", "continue",
@@ -84,10 +85,19 @@ def validate(repo_root: Path) -> None:
         raise ValidationFailure("executable learning guard binding changed")
     if contract.get("negativeValidator") != NEGATIVE_VALIDATOR.as_posix():
         raise ValidationFailure("negative learning guard binding changed")
+    if contract.get("ciEntrypoint") != CI_ENTRYPOINT.as_posix():
+        raise ValidationFailure("learning CI entrypoint binding changed")
     if not (repo_root / VALIDATOR).is_file():
         raise ValidationFailure("bound executable learning guard is missing")
     if not (repo_root / NEGATIVE_VALIDATOR).is_file():
         raise ValidationFailure("bound negative learning guard is missing")
+    try:
+        ci_entrypoint = (repo_root / CI_ENTRYPOINT).read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ValidationFailure(f"bound learning CI entrypoint is missing: {CI_ENTRYPOINT}") from exc
+    for guard in (VALIDATOR.as_posix(), NEGATIVE_VALIDATOR.as_posix()):
+        if guard not in ci_entrypoint:
+            raise ValidationFailure(f"learning CI entrypoint does not invoke bound guard: {guard}")
 
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
