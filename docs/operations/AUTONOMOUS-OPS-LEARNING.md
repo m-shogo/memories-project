@@ -87,3 +87,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - CI execution remains a separate reachability gap. Do not claim this suite passed in CI until an observed CI path invokes it successfully.
+
+## 2026-09-20 — Destructive negative fixtures need an external canonical harness
+
+### Symptom
+- Operability Contracts run `35504771227` reached the autonomous-learning guards, the positive guard passed, but the negative suite failed on `remove executable guard` before the canonical validator could classify the mutation.
+
+### Evidence
+- CI reported Python could not open the fixture-local `scripts/validate-autonomous-learning-system.py` after that case intentionally deleted it; the expected `AUTONOMOUS LEARNING VALIDATION FAILED` diagnostic was therefore never emitted.
+
+### Root cause
+- The negative-suite runner executed the validator from inside the same mutable fixture whose validator-presence invariant it was testing.
+
+### Failed approach
+- Using the system under destructive mutation as the test harness for proving that the same system detects its own deletion.
+
+### Correction
+- The negative suite now executes the immutable canonical validator from the checked-out source tree while passing the isolated fixture through `--repo-root`.
+- The fixture still contains and can delete its bound validator, so the canonical harness can observe and reject that missing authority deterministically.
+
+### Recurrence guard
+- When a negative case can delete or corrupt the executable under test, execute a trusted harness outside the mutation boundary and point it at the isolated fixture. Do not weaken the expected diagnostic merely to accommodate interpreter-startup failure.
+
+### Retry condition
+- Re-evaluate only from a CI run whose head includes the canonical-harness correction; do not rerun the known-broken `61c3f2a` attempt and call it new evidence.
