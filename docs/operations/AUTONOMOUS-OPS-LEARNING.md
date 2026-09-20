@@ -111,3 +111,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Re-evaluate only from a CI run whose head includes the canonical-harness correction; do not rerun the known-broken `61c3f2a` attempt and call it new evidence.
+
+## 2026-09-20 — CI callers and guards must share an explicit invocation interface
+
+### Symptom
+- Static inspection after the destructive-fixture correction found that the operability entrypoint invokes every learning guard with `--repo-root`, while the negative guard did not accept that option.
+
+### Evidence
+- `scripts/validate-memory-os-entry-docs.py` invokes both bound guards as `<guard> --repo-root <repository>`; the negative guard previously had no argument parser.
+
+### Root cause
+- CI reachability was validated as a textual binding, but the callable interface between the shared entrypoint and each guard was not kept consistent.
+
+### Failed approach
+- Treating a guard path appearing in the CI entrypoint as sufficient proof that the guard is invocable through that entrypoint.
+
+### Correction
+- The negative guard now accepts `--repo-root` and uses that explicit source root for fixture seeding and the immutable canonical harness.
+
+### Recurrence guard
+- Shared CI entrypoints must pass only an interface supported by every bound executable, and reachability reviews must check invocation compatibility as well as path presence.
+
+### Retry condition
+- Claim CI success only after a new Operability Contracts run whose head contains this interface correction completes successfully; older runs remain historical evidence only.
