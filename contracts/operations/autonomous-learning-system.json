@@ -21,5 +21,6 @@
     "humanPromotionReviewIsSeparate": true
   },
   "authority": "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
-  "validator": "scripts/validate-autonomous-learning-system.py"
+  "validator": "scripts/validate-autonomous-learning-system.py",
+  "negativeValidator": "scripts/validate-autonomous-learning-system-negative.py"
 }
