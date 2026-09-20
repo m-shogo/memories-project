@@ -182,3 +182,23 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit wiring when either workflow-write capability changes or an existing canonical executable entrypoint can invoke the suite without duplicating authority. If later inspection proves an existing push/runtime invocation, record that observed path and close only this reachability gap; do not rewrite working CI unnecessarily.
+
+## 2026-09-21 — Transitive validator invocation counts only when the call chain is verified
+
+### Outcome
+- The previously suspected typed non-resurrection main-negative reachability gap was narrowed: the canonical admission validator directly invokes the bound main negative suite, and both PR and push workflow paths invoke that admission validator.
+
+### Evidence
+- `scripts/validate-memory-os-backup-restore-non-resurrection-admission.py` binds `NEGATIVE` to `scripts/validate-memory-os-backup-restore-non-resurrection-negative.py` and calls `run_validator(NEGATIVE, "non-resurrection negative admission suite")` before returning PASS.
+- `.github/workflows/backup-restore-non-resurrection-admission.yml` invokes `python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py` in both the read-only PR path and the push admission path; the bounded push revalidation function invokes it again after resetting to latest `origin/so`.
+
+### Why safe
+- No workflow or production evidence authority was changed. The audit followed the existing canonical call chain rather than adding duplicate CI wiring.
+- The finding does not by itself claim a new exact-source CI success; it establishes static runtime reachability only.
+
+### Reusable mechanism
+- Reachability audits must follow transitive executable calls, not only top-level workflow command lists. Classify a validator as statically runtime-reachable when a workflow-invoked canonical validator deterministically invokes it and fails closed on its nonzero exit.
+- Keep observed exact-source CI success as a separate proof layer from static transitive reachability.
+
+### Protected-authority check
+- This correction changes learning history only. `productionDecision=NO_GO`, real OPS-P0-007 evidence requirements, typed eight-domain coverage, independent review, and separate human promotion authority remain unchanged.
