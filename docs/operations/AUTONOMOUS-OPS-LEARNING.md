@@ -47,3 +47,19 @@ a promotion decision, a recovery objective, or drill evidence.
 6. Periodically compact repeated lessons into stable rules while preserving the historical entries; do not delete failure history merely because the current implementation is green.
 7. Track scoped blockers with their retry condition. A blocker is retried only when that condition changes; meanwhile unrelated safe work continues.
 8. Treat autonomous improvement as: observe -> diagnose -> search prior knowledge -> change -> validate -> persist lesson -> re-read current authority -> continue.
+
+## 2026-09-20 — A guard needs negative proof and CI reachability
+
+### Observed outcome
+- The learning contract is now bound to a canonical positive validator and a dedicated negative validator.
+- The negative suite covers weakened mandatory rules, a weakened `NO_GO` default, broken validator binding, missing learning authority, missing executable guard, and removal of the anti-regression lesson.
+
+### Why this is safer
+- A validator existing in the repository is not enough: its fail-closed behavior must be exercised against representative weakening mutations.
+- The contract now names both guards, and the positive validator fails closed if either binding or file disappears.
+
+### Remaining gap / retry condition
+- The current `Operability Contracts` workflow does not yet invoke these new learning validators; repository search found no existing invocation.
+- Previous workflow-file mutation is a known permission blocker. Do not retry that unchanged write path merely to wire CI.
+- Retry workflow wiring only after workflow-write permission changes, or when an existing non-workflow CI entrypoint can safely invoke the learning guards without duplicating authority.
+- Until then, do not claim the learning negative suite is CI-enforced or passing; only its repository binding is established.
