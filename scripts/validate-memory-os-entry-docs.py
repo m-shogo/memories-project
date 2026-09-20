@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -77,6 +78,29 @@ ENTRYPOINTS = {
     },
 }
 
+LEARNING_GUARDS = (
+    "scripts/validate-autonomous-learning-system.py",
+    "scripts/validate-autonomous-learning-system-negative.py",
+)
+
+
+def validate_learning_guards(failures: list[str]) -> None:
+    """Keep autonomous-learning guards reachable from the existing operability CI path."""
+    for relative in LEARNING_GUARDS:
+        path = REPO_ROOT / relative
+        if not path.is_file():
+            failures.append(f"missing autonomous-learning guard: {relative}")
+            continue
+        completed = subprocess.run(
+            [sys.executable, str(path), "--repo-root", str(REPO_ROOT)],
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        if completed.returncode != 0:
+            failures.append(
+                f"autonomous-learning guard failed: {relative} (exit {completed.returncode})"
+            )
+
 
 def main() -> int:
     failures: list[str] = []
@@ -99,6 +123,8 @@ def main() -> int:
         if "production ready" in lowered and "not production ready" not in lowered:
             failures.append(f"{relative}: unqualified production-ready wording")
 
+    validate_learning_guards(failures)
+
     if failures:
         print("ENTRYPOINT DOCUMENT VALIDATION FAILED", file=sys.stderr)
         for failure in failures:
@@ -107,6 +133,7 @@ def main() -> int:
 
     print("Memory OS entrypoint document validation PASS")
     print(f"entrypoints: {len(ENTRYPOINTS)}")
+    print(f"autonomous-learning guards: {len(LEARNING_GUARDS)}")
     return 0
 
 
