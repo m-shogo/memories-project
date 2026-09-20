@@ -68,8 +68,10 @@ def main() -> int:
         ("weaken mandatory rule", lambda root: edit_contract(root, lambda d: d["rules"].__setitem__("unchangedBlockerIsNotRetried", False))),
         ("weaken NO_GO default", lambda root: edit_contract(root, lambda d: d["protectedInvariants"].__setitem__("productionDecisionDefault", "GO"))),
         ("break executable guard binding", lambda root: edit_contract(root, lambda d: d.__setitem__("validator", "scripts/other.py"))),
+        ("break negative guard binding", lambda root: edit_contract(root, lambda d: d.__setitem__("negativeValidator", "scripts/other-negative.py"))),
         ("remove learning authority", lambda root: (root / LEARNING).unlink()),
         ("remove executable guard", lambda root: (root / VALIDATOR).unlink()),
+        ("remove negative guard", lambda root: (root / NEGATIVE_VALIDATOR).unlink()),
         ("drop anti-regression lesson", lambda root: (root / LEARNING).write_text((root / LEARNING).read_text(encoding="utf-8").replace("Repeating a known failed approach without changed preconditions is a regression", "known failures may be retried"), encoding="utf-8")),
     ]
     for name, mutate in cases:
