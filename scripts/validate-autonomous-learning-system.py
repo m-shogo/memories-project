@@ -25,7 +25,7 @@ TRUE_RULES = {
     "preferExecutableGuard", "verifyProtectedAuthorityAfterChange",
     "scopedBlockerDoesNotStopIndependentWork", "unchangedBlockerIsNotRetried",
     "historyIsAppendOnly", "learningIsNeverProductionEvidence",
-    "learningCannotPromoteReadiness",
+    "learningCannotPromoteReadiness", "ciReachabilityRequired",
 }
 
 
