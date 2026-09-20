@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
 import subprocess
@@ -10,7 +11,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = Path("contracts/operations/autonomous-learning-system.json")
 LEARNING = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
 VALIDATOR = Path("scripts/validate-autonomous-learning-system.py")
@@ -18,35 +19,35 @@ NEGATIVE_VALIDATOR = Path("scripts/validate-autonomous-learning-system-negative.
 CI_ENTRYPOINT = Path("scripts/validate-memory-os-entry-docs.py")
 
 
-def seed(root: Path) -> None:
+def seed(source_root: Path, root: Path) -> None:
     # The positive validator verifies both executable guard bindings and their
     # CI reachability. Seed the complete canonical authority set so the
     # positive control proves a real pass before any mutation is applied.
     for rel in (CONTRACT, LEARNING, VALIDATOR, NEGATIVE_VALIDATOR, CI_ENTRYPOINT):
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / rel, target)
+        shutil.copy2(source_root / rel, target)
 
 
-def run(root: Path) -> subprocess.CompletedProcess[str]:
+def run(source_root: Path, root: Path) -> subprocess.CompletedProcess[str]:
     # Execute the immutable canonical harness from the checked-out source tree
     # against the isolated fixture. This lets a negative case remove the
     # fixture's bound validator and still prove that the canonical guard rejects
     # the missing executable authority, rather than failing in Python startup.
     return subprocess.run(
-        [sys.executable, str(ROOT / VALIDATOR), "--repo-root", str(root)],
+        [sys.executable, str(source_root / VALIDATOR), "--repo-root", str(root)],
         text=True,
         capture_output=True,
         check=False,
     )
 
 
-def require_failure(name: str, mutate) -> None:
+def require_failure(source_root: Path, name: str, mutate) -> None:
     with tempfile.TemporaryDirectory(prefix="learning-negative-") as tmp:
         root = Path(tmp)
-        seed(root)
+        seed(source_root, root)
         mutate(root)
-        result = run(root)
+        result = run(source_root, root)
         if result.returncode == 0:
             raise RuntimeError(f"negative case unexpectedly passed: {name}")
         if "AUTONOMOUS LEARNING VALIDATION FAILED" not in result.stderr:
@@ -67,10 +68,15 @@ def drop_from_entrypoint(root: Path, phrase: str) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
+    args = parser.parse_args()
+    source_root = args.repo_root.resolve()
+
     with tempfile.TemporaryDirectory(prefix="learning-positive-") as tmp:
         root = Path(tmp)
-        seed(root)
-        result = run(root)
+        seed(source_root, root)
+        result = run(source_root, root)
         if result.returncode != 0:
             print(result.stderr, file=sys.stderr)
             return 1
@@ -90,7 +96,7 @@ def main() -> int:
         ("drop anti-regression lesson", lambda root: (root / LEARNING).write_text((root / LEARNING).read_text(encoding="utf-8").replace("Repeating a known failed approach without changed preconditions is a regression", "known failures may be retried"), encoding="utf-8")),
     ]
     for name, mutate in cases:
-        require_failure(name, mutate)
+        require_failure(source_root, name, mutate)
 
     print(f"Autonomous learning negative validation PASS ({len(cases)} fail-closed cases)")
     return 0
