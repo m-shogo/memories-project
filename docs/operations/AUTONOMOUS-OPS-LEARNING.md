@@ -63,3 +63,27 @@ a promotion decision, a recovery objective, or drill evidence.
 - Previous workflow-file mutation is a known permission blocker. Do not retry that unchanged write path merely to wire CI.
 - Retry workflow wiring only after workflow-write permission changes, or when an existing non-workflow CI entrypoint can safely invoke the learning guards without duplicating authority.
 - Until then, do not claim the learning negative suite is CI-enforced or passing; only its repository binding is established.
+
+## 2026-09-20 — Negative fixtures must satisfy the positive control before mutation
+
+### Symptom
+- The autonomous-learning negative suite's temporary positive control could not satisfy the canonical validator after the validator began requiring both positive and negative guard files.
+
+### Evidence
+- `validate-autonomous-learning-system.py` requires `scripts/validate-autonomous-learning-system-negative.py` to exist, while the negative suite's `seed()` copied only the contract, learning authority, and positive validator.
+
+### Root cause
+- The fixture definition did not evolve with the validator's new self-binding invariant.
+
+### Failed approach
+- Treating repository-level guard binding as sufficient without checking that isolated test fixtures reproduce the complete canonical authority set.
+
+### Correction
+- The negative fixture now seeds both executable guards before running its positive control.
+- Negative coverage now also removes or rebinds the negative guard itself, so this dependency cannot silently regress.
+
+### Recurrence guard
+- A negative suite that mutates a fail-closed authority must first establish an unmodified positive control using the same isolated fixture. Fixture dependencies must include every authority required by that canonical positive validator.
+
+### Retry condition
+- CI execution remains a separate reachability gap. Do not claim this suite passed in CI until an observed CI path invokes it successfully.
