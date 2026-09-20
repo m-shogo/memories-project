@@ -12,41 +12,18 @@ from typing import Any
 CONTRACT = Path("contracts/operations/autonomous-learning-system.json")
 LEARNING = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
 VALIDATOR = Path("scripts/validate-autonomous-learning-system.py")
+NEGATIVE_VALIDATOR = Path("scripts/validate-autonomous-learning-system-negative.py")
 EXPECTED_LOOP = [
-    "observe",
-    "diagnose",
-    "search_prior_knowledge",
-    "change",
-    "validate",
-    "persist_learning",
-    "verify_authority",
-    "continue",
+    "observe", "diagnose", "search_prior_knowledge", "change", "validate",
+    "persist_learning", "verify_authority", "continue",
 ]
-FAILURE_FIELDS = {
-    "symptom",
-    "evidence",
-    "rootCauseOrUnknown",
-    "failedApproach",
-    "correction",
-    "recurrenceGuard",
-    "retryCondition",
-}
-SUCCESS_FIELDS = {
-    "outcome",
-    "evidence",
-    "whySafe",
-    "reusableMechanism",
-    "protectedAuthorityCheck",
-}
+FAILURE_FIELDS = {"symptom", "evidence", "rootCauseOrUnknown", "failedApproach", "correction", "recurrenceGuard", "retryCondition"}
+SUCCESS_FIELDS = {"outcome", "evidence", "whySafe", "reusableMechanism", "protectedAuthorityCheck"}
 TRUE_RULES = {
-    "searchBeforeChange",
-    "sameFailedApproachRequiresChangedPrecondition",
-    "preferExecutableGuard",
-    "verifyProtectedAuthorityAfterChange",
-    "scopedBlockerDoesNotStopIndependentWork",
-    "unchangedBlockerIsNotRetried",
-    "historyIsAppendOnly",
-    "learningIsNeverProductionEvidence",
+    "searchBeforeChange", "sameFailedApproachRequiresChangedPrecondition",
+    "preferExecutableGuard", "verifyProtectedAuthorityAfterChange",
+    "scopedBlockerDoesNotStopIndependentWork", "unchangedBlockerIsNotRetried",
+    "historyIsAppendOnly", "learningIsNeverProductionEvidence",
     "learningCannotPromoteReadiness",
 }
 
@@ -105,8 +82,12 @@ def validate(repo_root: Path) -> None:
         raise ValidationFailure("learning authority path changed")
     if contract.get("validator") != VALIDATOR.as_posix():
         raise ValidationFailure("executable learning guard binding changed")
+    if contract.get("negativeValidator") != NEGATIVE_VALIDATOR.as_posix():
+        raise ValidationFailure("negative learning guard binding changed")
     if not (repo_root / VALIDATOR).is_file():
         raise ValidationFailure("bound executable learning guard is missing")
+    if not (repo_root / NEGATIVE_VALIDATOR).is_file():
+        raise ValidationFailure("bound negative learning guard is missing")
 
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
