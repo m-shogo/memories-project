@@ -13,7 +13,8 @@
     "unchangedBlockerIsNotRetried": true,
     "historyIsAppendOnly": true,
     "learningIsNeverProductionEvidence": true,
-    "learningCannotPromoteReadiness": true
+    "learningCannotPromoteReadiness": true,
+    "ciReachabilityRequired": true
   },
   "protectedInvariants": {
     "productionDecisionDefault": "NO_GO",
