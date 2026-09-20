@@ -11,6 +11,7 @@ from typing import Any
 
 CONTRACT = Path("contracts/operations/autonomous-learning-system.json")
 LEARNING = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
+VALIDATOR = Path("scripts/validate-autonomous-learning-system.py")
 EXPECTED_LOOP = [
     "observe",
     "diagnose",
@@ -102,6 +103,10 @@ def validate(repo_root: Path) -> None:
         raise ValidationFailure("human promotion review must remain separate")
     if contract.get("authority") != LEARNING.as_posix():
         raise ValidationFailure("learning authority path changed")
+    if contract.get("validator") != VALIDATOR.as_posix():
+        raise ValidationFailure("executable learning guard binding changed")
+    if not (repo_root / VALIDATOR).is_file():
+        raise ValidationFailure("bound executable learning guard is missing")
 
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
