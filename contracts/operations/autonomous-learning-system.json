@@ -24,9 +24,5 @@
   "authority": "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
   "validator": "scripts/validate-autonomous-learning-system.py",
   "negativeValidator": "scripts/validate-autonomous-learning-system-negative.py",
-  "ciEntrypoint": "scripts/validate-memory-os-entry-docs.py",
-  "guardInvocation": {
-    "arguments": ["--repo-root", "{repoRoot}"],
-    "appliesTo": ["validator", "negativeValidator"]
-  }
+  "ciEntrypoint": "scripts/validate-memory-os-entry-docs.py"
 }
