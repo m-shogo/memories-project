@@ -20,5 +20,6 @@
     "opsP0007EvidenceMustBeReal": true,
     "humanPromotionReviewIsSeparate": true
   },
-  "authority": "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
+  "authority": "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
+  "validator": "scripts/validate-autonomous-learning-system.py"
 }
