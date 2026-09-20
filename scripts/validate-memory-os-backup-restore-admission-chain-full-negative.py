@@ -29,15 +29,21 @@ def load_target():
 
 def expect_fail(label: str, mutation, invoke, expected: str) -> None:
     module = load_target()
-    mutation(module)
+    original_subprocess_run = module.subprocess.run
     try:
-        invoke(module)
-    except module.Fail as exc:
-        if expected not in str(exc):
-            raise Fail(f"{label}: wrong fail-closed diagnostic: {exc}") from exc
-        print(f"PASS negative: {label}")
-        return
-    raise Fail(f"{label}: weakened runner was accepted")
+        mutation(module)
+        try:
+            invoke(module)
+        except module.Fail as exc:
+            if expected not in str(exc):
+                raise Fail(f"{label}: wrong fail-closed diagnostic: {exc}") from exc
+            print(f"PASS negative: {label}")
+            return
+        raise Fail(f"{label}: weakened runner was accepted")
+    finally:
+        # subprocess is a shared imported module; never leak a transport mutation
+        # into a later negative case or its freshly imported target.
+        module.subprocess.run = original_subprocess_run
 
 
 def main() -> int:
