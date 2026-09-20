@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "autonomous-learning-system.0.1",
+  "purpose": "Turn observed execution outcomes into reusable, fail-closed prevention without treating learning as production evidence.",
+  "loop": ["observe", "diagnose", "search_prior_knowledge", "change", "validate", "persist_learning", "verify_authority", "continue"],
+  "requiredFailureFields": ["symptom", "evidence", "rootCauseOrUnknown", "failedApproach", "correction", "recurrenceGuard", "retryCondition"],
+  "requiredSuccessFields": ["outcome", "evidence", "whySafe", "reusableMechanism", "protectedAuthorityCheck"],
+  "rules": {
+    "searchBeforeChange": true,
+    "sameFailedApproachRequiresChangedPrecondition": true,
+    "preferExecutableGuard": true,
+    "verifyProtectedAuthorityAfterChange": true,
+    "scopedBlockerDoesNotStopIndependentWork": true,
+    "unchangedBlockerIsNotRetried": true,
+    "historyIsAppendOnly": true,
+    "learningIsNeverProductionEvidence": true,
+    "learningCannotPromoteReadiness": true
+  },
+  "protectedInvariants": {
+    "productionDecisionDefault": "NO_GO",
+    "opsP0007EvidenceMustBeReal": true,
+    "humanPromotionReviewIsSeparate": true
+  },
+  "authority": "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
+}
