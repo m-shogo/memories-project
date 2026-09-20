@@ -14,10 +14,14 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = Path("contracts/operations/autonomous-learning-system.json")
 LEARNING = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
 VALIDATOR = Path("scripts/validate-autonomous-learning-system.py")
+NEGATIVE_VALIDATOR = Path("scripts/validate-autonomous-learning-system-negative.py")
 
 
 def seed(root: Path) -> None:
-    for rel in (CONTRACT, LEARNING, VALIDATOR):
+    # The positive validator verifies both executable guard bindings. Seed the
+    # complete canonical guard set so the positive control proves a real pass
+    # before any negative mutation is applied.
+    for rel in (CONTRACT, LEARNING, VALIDATOR, NEGATIVE_VALIDATOR):
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / rel, target)
