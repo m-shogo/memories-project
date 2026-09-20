@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py"
+RUNNER_NEGATIVE_PATH = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain-full-negative.py"
 
 
 class Fail(RuntimeError):
@@ -49,6 +52,22 @@ def replace_all(text: str, old: str, new: str, label: str) -> str:
     count = text.count(old)
     require(count > 0, f"negative fixture boundary drift for {label}: expected at least one match")
     return text.replace(old, new)
+
+
+def run_runner_negative() -> None:
+    require(RUNNER_NEGATIVE_PATH.is_file() and not RUNNER_NEGATIVE_PATH.is_symlink(), "admission-chain full runner negative authority missing or substituted")
+    completed = subprocess.run(
+        [sys.executable, str(RUNNER_NEGATIVE_PATH)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    output = f"{completed.stdout}{completed.stderr}"
+    if output:
+        print(output, end="" if output.endswith("\n") else "\n")
+    require(completed.returncode == 0, "admission-chain full runner negative proof failed")
 
 
 def main() -> int:
@@ -108,8 +127,10 @@ def main() -> int:
         expect_reject(module, label, mutated)
 
     require(module.exact_workflow() == canonical, "negative suite mutated canonical workflow authority")
+    run_runner_negative()
     print("Backup/restore admission-chain workflow permission negative PASS")
     print(f"forbidden workflow mutations rejected: {len(cases)}")
+    print("full runner fail-closed negative proof executed: true")
     print("PR tracked/untracked workspace mutation accepted: false")
     print("crash-safe failure diagnostic publication required: true")
     print("production evidence created: false")
