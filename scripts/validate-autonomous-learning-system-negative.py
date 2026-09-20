@@ -29,8 +29,12 @@ def seed(root: Path) -> None:
 
 
 def run(root: Path) -> subprocess.CompletedProcess[str]:
+    # Execute the immutable canonical harness from the checked-out source tree
+    # against the isolated fixture. This lets a negative case remove the
+    # fixture's bound validator and still prove that the canonical guard rejects
+    # the missing executable authority, rather than failing in Python startup.
     return subprocess.run(
-        [sys.executable, str(root / VALIDATOR), "--repo-root", str(root)],
+        [sys.executable, str(ROOT / VALIDATOR), "--repo-root", str(root)],
         text=True,
         capture_output=True,
         check=False,
