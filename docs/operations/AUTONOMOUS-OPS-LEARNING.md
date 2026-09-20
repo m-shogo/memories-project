@@ -157,3 +157,28 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Retry the negative-suite hardening only after the repository write capability/policy for that target changes, or a pre-existing canonical executable extension point is found that can add the same negative proof without creating parallel authority.
+
+## 2026-09-21 — Declared non-resurrection negatives need observed execution, not compilation
+
+### Symptom
+- The typed non-resurrection contract declares a canonical `negativeAdmissionValidator` and `negativeAdmissionCases`, but static workflow inspection shows the admission PR job compiles `scripts/validate-memory-os-backup-restore-non-resurrection-negative.py` without invoking that suite in the visible validation command sequence.
+
+### Evidence
+- The contract binds `scripts/validate-memory-os-backup-restore-non-resurrection-negative.py` as `negativeAdmissionValidator` and enumerates fail-closed cases.
+- `.github/workflows/backup-restore-non-resurrection-admission.yml` includes the negative validator in path triggers and `py_compile`, while the PR validation command sequence invokes source-binding, load, transport, contract-path, and registry-aggregate negative suites but not the bound main negative suite.
+- The main negative suite itself contains executable rejection cases for typed eight-domain evidence, review binding/digests/independence, production-boundary relabeling, registry drift, and rollback.
+
+### Root cause or unknown
+- The repository contains the executable suite and CI dependency declarations, but the observed PR execution list does not establish runtime reachability for that bound suite. Whether the push job invokes it later is not proven by the currently inspected workflow excerpt, so treat full workflow reachability as unknown rather than assuming it.
+
+### Failed approach
+- Treating workflow path triggers and successful Python compilation as equivalent to observed execution of a bound negative validator.
+
+### Correction
+- Do not claim the declared non-resurrection negative suite is CI-executed until a canonical CI command path or an observed run proves invocation. Prefer wiring through an existing non-workflow canonical entrypoint if one exists; do not retry the unchanged workflow-write blocker merely to add a command.
+
+### Recurrence guard
+- For every contract-bound negative validator, distinguish four states: declared, trigger-reachable, compile-checked, and runtime-invoked. Only runtime invocation plus an observed exact-source successful run counts as CI execution proof.
+
+### Retry condition
+- Revisit wiring when either workflow-write capability changes or an existing canonical executable entrypoint can invoke the suite without duplicating authority. If later inspection proves an existing push/runtime invocation, record that observed path and close only this reachability gap; do not rewrite working CI unnecessarily.
