@@ -49,7 +49,7 @@ def expect_fail(label: str, mutation, invoke, expected: str) -> None:
         module.sys.executable = original_sys_executable
 
 
-def expect_symlink_fail() -> None:
+def expect_symlink_fail(label: str, target: str, expected: str) -> None:
     module = load_target()
     with tempfile.TemporaryDirectory(prefix="admission-chain-symlink-") as tmp:
         fixture_root = Path(tmp)
@@ -59,18 +59,18 @@ def expect_symlink_fail() -> None:
         real.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
         linked = scripts / "validator.py"
         try:
-            linked.symlink_to(real.name)
+            linked.symlink_to(target)
         except (NotImplementedError, OSError) as exc:
-            raise Fail(f"script symlink fixture unavailable: {exc}") from exc
+            raise Fail(f"{label}: script symlink fixture unavailable: {exc}") from exc
         module.ROOT = fixture_root
         try:
             module.canonical_script("scripts/validator.py")
         except module.Fail as exc:
-            if "validation authority drift" not in str(exc):
-                raise Fail(f"script symlink substitution: wrong fail-closed diagnostic: {exc}") from exc
-            print("PASS negative: script symlink substitution")
+            if expected not in str(exc):
+                raise Fail(f"{label}: wrong fail-closed diagnostic: {exc}") from exc
+            print(f"PASS negative: {label}")
             return
-        raise Fail("script symlink substitution: symlinked validator was accepted")
+        raise Fail(f"{label}: symlinked validator was accepted")
 
 
 def main() -> int:
@@ -98,7 +98,9 @@ def main() -> int:
         lambda m: m.canonical_script("scripts/../scripts/validate-memory-os-backup-restore-admission-chain-full.py"),
         "validation authority drift",
     )
-    expect_symlink_fail()
+    expect_symlink_fail("script symlink substitution", "real-validator.py", "validation authority drift")
+    expect_symlink_fail("broken script symlink", "missing-validator.py", "validation authority missing or escapes repository")
+    expect_symlink_fail("escaping script symlink", "../../outside-validator.py", "validation authority missing or escapes repository")
     expect_fail(
         "validation sequence removal",
         lambda m: setattr(m, "STEPS", m.STEPS[:-1]),
