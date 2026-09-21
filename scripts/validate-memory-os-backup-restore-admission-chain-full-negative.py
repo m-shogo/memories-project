@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Negative proof for the canonical OPS-P0-007 admission-chain full runner.
 
-This test mutates only the imported in-memory runner. It never changes repository
-files or creates operational evidence.
+This test mutates only the imported in-memory runner or an isolated temporary
+fixture. It never changes repository files or creates operational evidence.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +49,30 @@ def expect_fail(label: str, mutation, invoke, expected: str) -> None:
         module.sys.executable = original_sys_executable
 
 
+def expect_symlink_fail() -> None:
+    module = load_target()
+    with tempfile.TemporaryDirectory(prefix="admission-chain-symlink-") as tmp:
+        fixture_root = Path(tmp)
+        scripts = fixture_root / "scripts"
+        scripts.mkdir()
+        real = scripts / "real-validator.py"
+        real.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        linked = scripts / "validator.py"
+        try:
+            linked.symlink_to(real.name)
+        except (NotImplementedError, OSError) as exc:
+            raise Fail(f"script symlink fixture unavailable: {exc}") from exc
+        module.ROOT = fixture_root
+        try:
+            module.canonical_script("scripts/validator.py")
+        except module.Fail as exc:
+            if "validation authority drift" not in str(exc):
+                raise Fail(f"script symlink substitution: wrong fail-closed diagnostic: {exc}") from exc
+            print("PASS negative: script symlink substitution")
+            return
+        raise Fail("script symlink substitution: symlinked validator was accepted")
+
+
 def main() -> int:
     expect_fail(
         "repository root substitution",
@@ -73,6 +98,7 @@ def main() -> int:
         lambda m: m.canonical_script("scripts/../scripts/validate-memory-os-backup-restore-admission-chain-full.py"),
         "validation authority drift",
     )
+    expect_symlink_fail()
     expect_fail(
         "validation sequence removal",
         lambda m: setattr(m, "STEPS", m.STEPS[:-1]),
