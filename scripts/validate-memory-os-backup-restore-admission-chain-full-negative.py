@@ -30,6 +30,7 @@ def load_target():
 def expect_fail(label: str, mutation, invoke, expected: str) -> None:
     module = load_target()
     original_subprocess_run = module.subprocess.run
+    original_sys_executable = module.sys.executable
     try:
         mutation(module)
         try:
@@ -41,9 +42,10 @@ def expect_fail(label: str, mutation, invoke, expected: str) -> None:
             return
         raise Fail(f"{label}: weakened runner was accepted")
     finally:
-        # subprocess is a shared imported module; never leak a transport mutation
-        # into a later negative case or its freshly imported target.
+        # subprocess and sys are shared imported modules; never leak transport or
+        # interpreter mutations into a later case or its freshly imported target.
         module.subprocess.run = original_subprocess_run
+        module.sys.executable = original_sys_executable
 
 
 def main() -> int:
@@ -60,10 +62,28 @@ def main() -> int:
         "subprocess transport drift",
     )
     expect_fail(
+        "Python executable substitution",
+        lambda m: setattr(m.sys, "executable", str(ROOT)),
+        lambda m: m.enforce_execution_transport(),
+        "Python executable drift",
+    )
+    expect_fail(
         "transport guard substitution",
         lambda m: setattr(m, "enforce_execution_transport", lambda: None),
         lambda m: m.enforce_runtime_authority(),
         "transport guard drift",
+    )
+    expect_fail(
+        "script resolver substitution",
+        lambda m: setattr(m, "canonical_script", lambda relative: ROOT / relative),
+        lambda m: m.run_step(m.STEPS[0][0], m.STEPS[0][1]),
+        "script resolver drift",
+    )
+    expect_fail(
+        "authority guard substitution",
+        lambda m: setattr(m, "enforce_runtime_authority", lambda: None),
+        lambda m: m.main(),
+        "authority guard drift",
     )
     expect_fail(
         "execution function substitution",
