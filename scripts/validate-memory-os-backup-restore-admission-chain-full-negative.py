@@ -50,6 +50,18 @@ def expect_fail(label: str, mutation, invoke, expected: str) -> None:
 
 def main() -> int:
     expect_fail(
+        "repository root substitution",
+        lambda m: setattr(m, "ROOT", ROOT / "scripts"),
+        lambda m: m.enforce_runtime_authority(),
+        "repository root drift",
+    )
+    expect_fail(
+        "self path substitution",
+        lambda m: setattr(m, "SELF_REL", Path("scripts/validate-memory-os-backup-restore-admission-chain.py")),
+        lambda m: m.enforce_runtime_authority(),
+        "self path drift",
+    )
+    expect_fail(
         "validation sequence removal",
         lambda m: setattr(m, "STEPS", m.STEPS[:-1]),
         lambda m: m.enforce_runtime_authority(),
