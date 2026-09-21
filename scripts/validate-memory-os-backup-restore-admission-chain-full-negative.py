@@ -28,6 +28,15 @@ def load_target():
     return module
 
 
+def load_fixture_target(path: Path):
+    spec = importlib.util.spec_from_file_location("admission_chain_full_negative_fixture_target", path)
+    if spec is None or spec.loader is None:
+        raise Fail("cannot load isolated admission-chain full runner fixture")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def expect_fail(label: str, mutation, invoke, expected: str) -> None:
     module = load_target()
     original_subprocess_run = module.subprocess.run
@@ -73,6 +82,38 @@ def expect_symlink_fail(label: str, target: str, expected: str) -> None:
         raise Fail(f"{label}: symlinked validator was accepted")
 
 
+def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="admission-chain-self-symlink-") as tmp:
+        fixture_root = Path(tmp)
+        scripts = fixture_root / "scripts"
+        scripts.mkdir()
+        real = scripts / "runner-real.py"
+        real.write_text(TARGET.read_text(encoding="utf-8"), encoding="utf-8")
+        canonical = scripts / "validate-memory-os-backup-restore-admission-chain-full.py"
+        outside = fixture_root.parent / f"{fixture_root.name}-outside-runner.py"
+        if target == "../outside-runner.py":
+            outside.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            link_target = f"../../{outside.name}"
+        else:
+            link_target = target
+        try:
+            canonical.symlink_to(link_target)
+        except (NotImplementedError, OSError) as exc:
+            outside.unlink(missing_ok=True)
+            raise Fail(f"{label}: self symlink fixture unavailable: {exc}") from exc
+        try:
+            module = load_fixture_target(real)
+            module.enforce_runtime_authority()
+        except module.Fail as exc:
+            if expected not in str(exc):
+                raise Fail(f"{label}: wrong fail-closed diagnostic: {exc}") from exc
+            print(f"PASS negative: {label}")
+            return
+        finally:
+            outside.unlink(missing_ok=True)
+        raise Fail(f"{label}: symlinked runner identity was accepted")
+
+
 def main() -> int:
     expect_fail(
         "repository root substitution",
@@ -86,6 +127,9 @@ def main() -> int:
         lambda m: m.enforce_runtime_authority(),
         "self path drift",
     )
+    expect_self_symlink_fail("self symlink substitution", "runner-real.py", "identity drift")
+    expect_self_symlink_fail("broken self symlink", "missing-runner.py", "missing or escapes repository")
+    expect_self_symlink_fail("escaping self symlink", "../outside-runner.py", "missing or escapes repository")
     expect_fail(
         "script repository escape",
         lambda m: None,
