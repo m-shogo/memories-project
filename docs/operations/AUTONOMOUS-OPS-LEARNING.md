@@ -224,3 +224,25 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - `productionDecision=NO_GO` remains unchanged. Registered generations remain distinct from semantically preflight-eligible generations; reviewed drill requests remain planning-only; new recovery evidence still requires a current executable request; typed eight-domain coverage and independent review remain candidate gates; human production promotion remains separate and non-automatic.
+
+## 2026-09-21 — Stale drill requests already have executable candidate invalidation proof
+
+### Outcome
+- The next cross-layer target did not require a new validator: the canonical generation-evidence negative suite already proves both halves of the lifecycle boundary. New evidence is rejected once its reviewed drill request is no longer current/executable, while historical evidence remains auditable only when the explicit historical-validation mode is used and cannot remain a current candidate.
+- No duplicate mutation or parallel authority was added.
+
+### Evidence
+- `scripts/validate-memory-os-backup-restore-generation-evidence-negative.py` first establishes a valid request-bound generation record and a complete typed overlay, proving the record can satisfy the candidate predicate while the request is current.
+- The same isolated fixture then advances the recovery-objective authority, sets `currentExecutableRequestCount` to zero, rejects normal validation as `stale drill request for new evidence`, accepts only `validate_record(..., require_current_drill_request=False)` for historical audit, and asserts `candidate(valid) is False`.
+- The admission-chain validator separately requires `newEvidenceRequiresCurrentlyExecutableDrillRequest`, `historicalEvidenceMayRemainAuditableAfterDrillRequestStales`, and `staleRequestEvidenceCannotRemainCurrentCandidate` as mandatory true invariants.
+
+### Why safe
+- The proof uses temporary registries and explicitly reports that canonical registries are not mutated. It does not manufacture production-equivalent generations, objectives, production evidence, credentials, traffic, readiness, or promotion.
+- Reusing the existing executable guard avoids divergent definitions of request currency and candidate invalidation.
+
+### Reusable mechanism
+- For lifecycle boundaries, prefer one fixture that demonstrates the positive state transition and then mutates only the lifecycle authority needed to make the prior evidence stale. Require separate assertions for new-write rejection, historical auditability, and current-candidate invalidation; none implies the others automatically.
+- Do not add aggregate-chain mutations merely to duplicate a layer-specific lifecycle proof that is already executable and bound by chain invariants.
+
+### Protected-authority check
+- `productionDecision=NO_GO` remains unchanged. Reviewed drill requests remain planning authority only; new generation evidence still requires a current executable reviewed request; historical evidence cannot become current solely by remaining append-only; typed eight-domain coverage and independent review remain additional candidate gates; human production promotion remains separate and non-automatic.
