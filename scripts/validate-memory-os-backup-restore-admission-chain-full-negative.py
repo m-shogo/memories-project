@@ -62,6 +62,18 @@ def main() -> int:
         "self path drift",
     )
     expect_fail(
+        "script repository escape",
+        lambda m: None,
+        lambda m: m.canonical_script("../outside-validator.py"),
+        "validation authority missing or escapes repository",
+    )
+    expect_fail(
+        "script lexical alias",
+        lambda m: None,
+        lambda m: m.canonical_script("scripts/../scripts/validate-memory-os-backup-restore-admission-chain-full.py"),
+        "validation authority drift",
+    )
+    expect_fail(
         "validation sequence removal",
         lambda m: setattr(m, "STEPS", m.STEPS[:-1]),
         lambda m: m.enforce_runtime_authority(),
