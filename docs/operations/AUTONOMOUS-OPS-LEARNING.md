@@ -202,3 +202,25 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - This correction changes learning history only. `productionDecision=NO_GO`, real OPS-P0-007 evidence requirements, typed eight-domain coverage, independent review, and separate human promotion authority remain unchanged.
+
+## 2026-09-21 — Cross-layer admission guards should be reused before adding new mutations
+
+### Outcome
+- A cross-layer audit found existing executable negative proof for the highest-risk prerequisites at the front of OPS-P0-007: semantic generation eligibility is distinct from registration, two distinct environments remain required, and the recovery objective must be current and explicitly approved.
+- No duplicate validator or parallel authority was added.
+
+### Evidence
+- `scripts/validate-memory-os-backup-restore-drill-preflight-negative.py` rejects legacy registered-generation aliases, removal of semantic preflight eligibility, removal of distinct-environment binding, weakening the minimum generation count from two to one, and removal of the current-approved-objective requirement.
+- `scripts/validate-memory-os-recovery-objectives-negative.py` independently rejects arbitrary repository files as approval, objective/value binding drift, duplicate or missing approval evidence, reviewer identity aliasing, invalid objective values, mutable aliases, and production-evidence relabeling.
+- Exact-source Backup Restore Admission Chain run `35567992636` completed successfully at head `eaac4107274270f220e055f0be55c33405458b61`; this is CI evidence for that admission-chain head, not production evidence.
+
+### Why safe
+- The audit reused existing executable guards instead of weakening, duplicating, or replacing authority.
+- It did not create generations, recovery objectives, drill requests, recovery evidence, credentials, traffic, readiness, or promotion state.
+
+### Reusable mechanism
+- Before adding a cross-layer negative case, inspect both the composing admission-chain suite and the canonical layer-specific negative suites. A boundary is not considered missing merely because the aggregate suite does not duplicate a mutation already enforced by a transitively invoked canonical layer guard.
+- Preserve separate proof labels: static executable coverage, CI reachability, exact-source CI success, and production evidence are distinct states.
+
+### Protected-authority check
+- `productionDecision=NO_GO` remains unchanged. Registered generations remain distinct from semantically preflight-eligible generations; reviewed drill requests remain planning-only; new recovery evidence still requires a current executable request; typed eight-domain coverage and independent review remain candidate gates; human production promotion remains separate and non-automatic.
