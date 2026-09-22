@@ -86,6 +86,9 @@ LEARNING_GUARDS = (
 
 def validate_learning_guards(failures: list[str]) -> None:
     """Keep autonomous-learning guards reachable from the existing operability CI path."""
+    if len(LEARNING_GUARDS) != len(set(LEARNING_GUARDS)):
+        failures.append("duplicate autonomous-learning guard binding")
+        return
     for relative in LEARNING_GUARDS:
         path = REPO_ROOT / relative
         if not path.is_file():
