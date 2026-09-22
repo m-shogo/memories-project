@@ -98,6 +98,13 @@ def validate(repo_root: Path) -> None:
     for guard in (VALIDATOR.as_posix(), NEGATIVE_VALIDATOR.as_posix()):
         if guard not in ci_entrypoint:
             raise ValidationFailure(f"learning CI entrypoint does not invoke bound guard: {guard}")
+    for fragment in (
+        "def validate_learning_guards(failures: list[str]) -> None:",
+        "[sys.executable, str(path), \"--repo-root\", str(REPO_ROOT)]",
+        "validate_learning_guards(failures)",
+    ):
+        if fragment not in ci_entrypoint:
+            raise ValidationFailure(f"learning CI entrypoint lost executable guard invocation: {fragment}")
 
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
