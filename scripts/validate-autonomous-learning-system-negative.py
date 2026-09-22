@@ -67,6 +67,14 @@ def drop_from_entrypoint(root: Path, phrase: str) -> None:
     path.write_text(text.replace(f'    "{phrase}",\n', ""), encoding="utf-8")
 
 
+def replace_in_entrypoint(root: Path, old: str, new: str) -> None:
+    path = root / CI_ENTRYPOINT
+    text = path.read_text(encoding="utf-8")
+    if old not in text:
+        raise RuntimeError(f"negative fixture missing expected CI fragment: {old}")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -94,6 +102,8 @@ def main() -> int:
         ("remove CI entrypoint", lambda root: (root / CI_ENTRYPOINT).unlink()),
         ("disconnect positive guard from CI entrypoint", lambda root: drop_from_entrypoint(root, VALIDATOR.as_posix())),
         ("disconnect negative guard from CI entrypoint", lambda root: drop_from_entrypoint(root, NEGATIVE_VALIDATOR.as_posix())),
+        ("remove CI guard execution call", lambda root: replace_in_entrypoint(root, "    validate_learning_guards(failures)\n", "    # learning guard execution removed\n")),
+        ("drop CI repo-root guard interface", lambda root: replace_in_entrypoint(root, '[sys.executable, str(path), "--repo-root", str(REPO_ROOT)]', '[sys.executable, str(path)]')),
         ("drop anti-regression lesson", lambda root: (root / LEARNING).write_text((root / LEARNING).read_text(encoding="utf-8").replace("Repeating a known failed approach without changed preconditions is a regression", "known failures may be retried"), encoding="utf-8")),
     ]
     for name, mutate in cases:
