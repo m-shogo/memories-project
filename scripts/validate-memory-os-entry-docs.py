@@ -90,6 +90,9 @@ def validate_learning_guards(failures: list[str]) -> None:
     if len(LEARNING_GUARDS) != len(set(LEARNING_GUARDS)):
         failures.append("duplicate autonomous-learning guard binding")
         return
+    if not 1 <= LEARNING_GUARD_TIMEOUT_SECONDS <= 300:
+        failures.append("autonomous-learning guard timeout must remain bounded to 1..300 seconds")
+        return
     for relative in LEARNING_GUARDS:
         path = REPO_ROOT / relative
         if not path.is_file():
