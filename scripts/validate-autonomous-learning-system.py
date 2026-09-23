@@ -101,6 +101,9 @@ def validate(repo_root: Path) -> None:
     for fragment in (
         "def validate_learning_guards(failures: list[str]) -> None:",
         "[sys.executable, str(path), \"--repo-root\", str(REPO_ROOT)]",
+        "LEARNING_GUARD_TIMEOUT_SECONDS = 120",
+        "timeout=LEARNING_GUARD_TIMEOUT_SECONDS",
+        "except subprocess.TimeoutExpired:",
         "validate_learning_guards(failures)",
     ):
         if fragment not in ci_entrypoint:
