@@ -82,6 +82,7 @@ LEARNING_GUARDS = (
     "scripts/validate-autonomous-learning-system.py",
     "scripts/validate-autonomous-learning-system-negative.py",
 )
+LEARNING_GUARD_TIMEOUT_SECONDS = 120
 
 
 def validate_learning_guards(failures: list[str]) -> None:
@@ -94,11 +95,18 @@ def validate_learning_guards(failures: list[str]) -> None:
         if not path.is_file():
             failures.append(f"missing autonomous-learning guard: {relative}")
             continue
-        completed = subprocess.run(
-            [sys.executable, str(path), "--repo-root", str(REPO_ROOT)],
-            cwd=REPO_ROOT,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                [sys.executable, str(path), "--repo-root", str(REPO_ROOT)],
+                cwd=REPO_ROOT,
+                check=False,
+                timeout=LEARNING_GUARD_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            failures.append(
+                f"autonomous-learning guard timed out after {LEARNING_GUARD_TIMEOUT_SECONDS}s: {relative}"
+            )
+            continue
         if completed.returncode != 0:
             failures.append(
                 f"autonomous-learning guard failed: {relative} (exit {completed.returncode})"
