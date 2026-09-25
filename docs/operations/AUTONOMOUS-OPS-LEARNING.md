@@ -246,3 +246,36 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - `productionDecision=NO_GO` remains unchanged. Reviewed drill requests remain planning authority only; new generation evidence still requires a current executable reviewed request; historical evidence cannot become current solely by remaining append-only; typed eight-domain coverage and independent review remain additional candidate gates; human production promotion remains separate and non-automatic.
+
+
+## 2026-09-25 — Repository work must use the GitHub connector and scoped blockers must not disable the loop
+
+### Symptom
+- Repository work was summarized from prior state instead of always grounding the run in the connected GitHub repository, and a scoped write blocker was escalated into disabling the recurring autonomous hardening loop.
+
+### Evidence
+- The user explicitly required `@GitHub` on every memories-project run.
+- The existing learning authority already states that a scoped permission blocker is not a project-wide stop condition and that unchanged blockers must not be retried.
+
+### Root cause or unknown
+- Root cause: execution discipline drift. A scoped safety/write constraint was interpreted too broadly, and connector-grounding was treated as optional instead of a run precondition.
+
+### Failed approach
+- Relying on remembered/prior reported repository state as if it were current.
+- Disabling the recurring autonomous loop because one target write path was blocked.
+
+### Correction
+- Every memories-project run starts by using the GitHub connector to read current `so`, this learning authority, and the autonomous-learning contract before repository decisions.
+- A scoped blocker is recorded with its retry condition; the run then advances independent safe targets.
+- The recurring loop is not disabled merely because one repository target or permission path is blocked.
+
+### Recurrence guard
+- Treat connector-grounded current-state reads as a mandatory run precondition for memories-project work.
+- Treat automation disablement as a separate control-plane action, not an automatic consequence of a repository blocker; only disable it when explicitly requested or when the whole run is genuinely unsafe/invalid rather than one target being blocked.
+- Reports must distinguish freshly observed GitHub state from historical context.
+
+### Retry condition
+- A known blocked write path may be retried only when its recorded permission/capability/precondition changes. Connector reads themselves are retried only on a new run or after a concurrent-state change that requires re-grounding.
+
+### Protected-authority check
+- This lesson is execution-policy history only. It cannot satisfy production evidence/readiness. `productionDecision=NO_GO`, real OPS-P0-007 evidence requirements, typed eight-domain coverage, independent review, and separate human promotion authority remain unchanged.
