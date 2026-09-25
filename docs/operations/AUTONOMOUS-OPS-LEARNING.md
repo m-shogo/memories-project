@@ -348,3 +348,38 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - No production-equivalent generation, objective, drill request/evidence, credential, traffic, readiness, or promotion authority was created. `productionDecision=NO_GO`, real OPS-P0-007 evidence requirements, typed eight-domain coverage, independent review, and separate human promotion authority remain unchanged.
+
+
+## 2026-09-26 — Dependency bootstrap failures must remain observable and must not masquerade as capacity evidence
+
+### Symptom
+- Scheduled Capacity Ramp run `36193439393` failed before the ramp executed because the local MinIO dependency could not start.
+
+### Evidence
+- The failing job reached `Start local MinIO dependency` after PostgreSQL became healthy.
+- `docker run quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` exited 125 with `unauthorized: access to the requested resource is not authorized`.
+- Every ramp execution, publication, reconciliation, diagnostic, and success-enforcement step after dependency startup was skipped, so the run produced no capacity result and no privacy-safe diagnostic commit.
+- A later scheduled load-foundation reconciliation succeeded at current head; that does not convert the failed capacity run into capacity evidence.
+
+### Root cause or unknown
+- Verified immediate cause: the configured MinIO image reference was not pullable by the GitHub-hosted runner at execution time.
+- The external registry-side reason for denying that image is unknown from repository evidence alone.
+
+### Failed approach
+- Treating dependency startup as an unconditional pre-step outside the workflow's bounded failure-capture path. A bootstrap failure therefore bypasses the existing diagnostic recorder entirely.
+
+### Correction
+- Keep this run classified as infrastructure/dependency-bootstrap failure, not a capacity regression and not capacity evidence.
+- Future workflow hardening should bring dependency startup into the bounded diagnostic path and use a repository-reviewed, pullable dependency image reference without weakening exact-source binding or production boundaries.
+- Do not retry the already-known workflow-write blocker merely to apply that change; first require the workflow-write retry condition to change.
+
+### Recurrence guard
+- Capacity/load workflows that depend on external containers should make dependency bootstrap failure observable through the same privacy-safe diagnostic authority as test/validator failure.
+- A dependency-start failure must leave `capacityBoundaryEstablished=false`, must not reconcile capacity readiness, and must not be inferred as an application capacity failure.
+- External image availability is an execution prerequisite, not production evidence.
+
+### Retry condition
+- Retry workflow hardening only after workflow-write capability/policy changes or the canonical workflow file itself changes, satisfying the recorded target-specific retry condition. Re-run the capacity ramp only after the dependency image is demonstrably pullable from the runner path.
+
+### Protected-authority check
+- No capacity result, production traffic, credential, readiness, or promotion authority was created from the failed run. `productionDecision=NO_GO` remains authoritative, and OPS-P0-007 generation/objective/request/typed-coverage/independent-review/human-promotion boundaries remain unchanged.
