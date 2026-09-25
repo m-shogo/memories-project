@@ -310,3 +310,41 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - No production-equivalent generation, objective, review, evidence, credential, traffic, readiness, or promotion state was created. `productionDecision=NO_GO` and separate human promotion authority remain unchanged.
+
+
+## 2026-09-26 — CI reachability must be repository-wide and write blockers remain target-specific
+
+### Symptom
+- A focused typed non-resurrection registry mode/lock-cleanup negative suite exists but was not reachable from the canonical typed non-resurrection admission validator or the end-to-end admission-chain runner.
+- A minimal attempt to make the canonical typed admission validator invoke that existing suite was blocked before GitHub created a commit.
+
+### Evidence
+- `scripts/validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py` proves successful 0640 mode preservation, exact byte/mode rollback, temporary-file cleanup, and lock release/reacquisition after synthetic close failure.
+- `scripts/validate-memory-os-backup-restore-non-resurrection-admission.py` invokes semantic and contract-path negative suites but not the registry-mode suite.
+- `scripts/validate-memory-os-backup-restore-admission-chain-full.py` invokes the typed admission validator but not the registry-mode suite directly.
+- Earlier repository-wide auditing corrected false positives: several ordering and independent-review execution suites omitted from the full runner are nevertheless runtime-invoked by dedicated workflows. Full-runner omission alone is therefore not proof of CI unreachability.
+- The attempted update to the typed admission validator was rejected by the execution safety layer before a GitHub commit; `so` remained unchanged.
+
+### Root cause or unknown
+- Reachability gap root cause: the focused registry publication/lock negative suite was added without a verified canonical runtime caller in the inspected admission path.
+- Write rejection root cause is unknown outside the repository; no repository validator failure or GitHub commit failure was observed.
+
+### Failed approach
+- Treating absence from one aggregate runner as sufficient evidence of CI unreachability.
+- Attempting a direct contents update to the typed admission validator while its target-specific write capability was not known to be allowed.
+
+### Correction
+- Classify reachability only after tracing dedicated workflows and transitive canonical callers.
+- Preserve the registry-mode suite as an existing executable guard; do not duplicate its assertions.
+- Keep the typed admission-validator mutation as a scoped blocked target and continue independent audits rather than routing around the safety layer.
+
+### Recurrence guard
+- A CI reachability finding must distinguish direct aggregate-runner invocation, transitive invocation, dedicated-workflow invocation, and observed exact-source CI execution.
+- A suite is called unreachable only after the relevant repository-wide runtime call graph has been checked.
+- A blocked target file is not retried until its target-specific precondition changes; unrelated writable files do not satisfy that retry condition.
+
+### Retry condition
+- Retry wiring `validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py` into a canonical caller only after the target caller file changes or target-specific write policy/capability changes. Until then, continue read-only reachability and authority audits.
+
+### Protected-authority check
+- No production-equivalent generation, objective, drill request/evidence, credential, traffic, readiness, or promotion authority was created. `productionDecision=NO_GO`, real OPS-P0-007 evidence requirements, typed eight-domain coverage, independent review, and separate human promotion authority remain unchanged.
