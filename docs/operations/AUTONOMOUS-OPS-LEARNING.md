@@ -279,3 +279,34 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - This lesson is execution-policy history only. It cannot satisfy production evidence/readiness. `productionDecision=NO_GO`, real OPS-P0-007 evidence requirements, typed eight-domain coverage, independent review, and separate human promotion authority remain unchanged.
+
+
+## 2026-09-25 — Target-specific write safety remains scoped even when other writes succeed
+
+### Symptom
+- A direct update to `scripts/validate-memory-os-backup-restore-promotion-review-negative.py` was blocked before GitHub created a commit while adding the candidate-revival negative proof.
+
+### Evidence
+- Current `so` remained at `1ec679f8b903719775366c34608829d607edcf15` after the rejected update.
+- The intended change was limited to an isolated synthetic negative fixture: after supersession revokes `currentDecisionId`, make the same synthetic recovery candidate current again and prove both reconcile and append validation refuse to reactivate the historical review.
+- A prior learning-log write succeeded through the GitHub connector, so repository write capability is not globally absent.
+
+### Root cause or unknown
+- Root cause is unknown outside the repository. The rejection occurred in the execution safety layer before a GitHub commit, and no repository validation failure was observed.
+
+### Failed approach
+- Retrying a direct contents update to the already-known blocked promotion-review negative-suite target merely because a different file had become writable.
+
+### Correction
+- Keep the promotion-review negative-suite path as a scoped blocker. Do not route around it with alternate Git object writes or parallel authority.
+- Continue read-only audits and independent safe targets while preserving the exact candidate-revival test design for a later changed precondition.
+
+### Recurrence guard
+- A successful write to one repository path does not by itself satisfy the retry condition for a separately blocked target path. Retry conditions are target/capability specific.
+- Before retrying a blocked target, require evidence that the target-specific safety/capability state changed, not merely that unrelated repository writes work.
+
+### Retry condition
+- Retry this promotion-review negative-suite mutation only after target-specific write policy/capability changes or the canonical file itself changes in a way that demonstrates a new write precondition. Until then, audit without rewriting it.
+
+### Protected-authority check
+- No production-equivalent generation, objective, review, evidence, credential, traffic, readiness, or promotion state was created. `productionDecision=NO_GO` and separate human promotion authority remain unchanged.
