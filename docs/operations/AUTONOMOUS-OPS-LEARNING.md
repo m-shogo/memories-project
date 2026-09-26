@@ -417,3 +417,41 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - No production-equivalent evidence, readiness, credential, traffic, or promotion authority was created. `productionDecision=NO_GO` remains unchanged; OPS-P0-007 real-evidence, typed eight-domain coverage, independent-review, and separate human-promotion boundaries remain authoritative.
+
+
+
+## 2026-09-26 — Authority-writing overlays require explicit runtime reachability and atomic publication
+
+### Symptom
+- The mixed-version chaos overlay can mutate the canonical production operability authority, but no canonical workflow/runtime caller was found for it, and its publication path uses direct `Path.write_text()` with direct `write_bytes()` rollback instead of the repository's stronger atomic-publication pattern.
+
+### Evidence
+- `scripts/reconcile-memory-os-chaos-mixed-version-overlay.py` validates candidate/local mixed-version SIGKILL recovery and requires `productionDecision=NO_GO`, `approvedReleaseCount=0`, `releaseCompatibilityEvidence=false`, and `productionEvidence=false` before updating OPS-P0-009.
+- Its mutation path writes `production-operability-status.json` with `STATUS.write_text(...)`; post-write validator failure restores bytes with `STATUS.write_bytes(original_status)`.
+- Repository code search for the exact mixed-version overlay filename returned no caller.
+- `.github/workflows/reconcile-chaos-authority.yml` path triggers, py_compile set, and execution sequence include the in-flight overlay and process-group focused negative guard but do not include the mixed-version overlay.
+- The sibling in-flight overlay already uses same-directory tempfile creation, flush/fsync, `os.replace`, cleanup, and atomic rollback, demonstrating an existing reusable mechanism.
+
+### Root cause or unknown
+- Verified design gap: the mixed-version overlay was added without explicit canonical runtime reachability and retained an older non-atomic publication/rollback implementation.
+- The historical reason those stronger mechanisms were not adopted is unknown.
+
+### Failed approach
+- Treating the existence of an authority-writing reconciler and its internal post-write validators as sufficient operational coverage without proving a canonical runtime caller.
+- Treating direct write plus byte rollback as equivalent to atomic publication.
+
+### Correction
+- Do not count the mixed-version overlay as CI/runtime-covered until a canonical caller is explicit and observed.
+- When the target becomes writable, reuse the existing in-flight/process-group atomic publication pattern rather than inventing another writer.
+- Add focused negative proof for atomic replace failure/cleanup and rollback before relying on the overlay's mutation boundary.
+
+### Recurrence guard
+- Every script that can mutate a protected authority must have both an explicit canonical runtime caller and deterministic mutation-boundary tests.
+- Authority writers should use same-directory temporary publication with fsync and atomic replace for both forward publication and rollback when the filesystem contract permits it.
+- Repository existence, importability, or internal validation alone does not satisfy `ciReachabilityRequired`.
+
+### Retry condition
+- Harden or wire the mixed-version overlay only after its script/workflow target changes on `so` or target-specific write capability/policy demonstrably changes. Until then, continue independent read-only audits and do not route around the blocker.
+
+### Protected-authority check
+- This lesson is execution-policy history only. Candidate/local mixed-version evidence remains non-production evidence; it cannot create an approved release, production-equivalent recovery evidence, readiness, credentials, traffic, or promotion authority. `productionDecision=NO_GO` and all OPS-P0-007 generation/objective/request/eight-domain/independent-review/human-promotion boundaries remain unchanged.
