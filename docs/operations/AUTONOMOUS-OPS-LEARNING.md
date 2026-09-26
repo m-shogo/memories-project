@@ -383,3 +383,37 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - No capacity result, production traffic, credential, readiness, or promotion authority was created from the failed run. `productionDecision=NO_GO` remains authoritative, and OPS-P0-007 generation/objective/request/typed-coverage/independent-review/human-promotion boundaries remain unchanged.
+
+
+## 2026-09-26 — In-flight cancellation reconcile negative guard is not CI-reachable from its owning workflow
+
+### Symptom
+- The in-flight parser cancellation reconciler has a focused negative suite, but its owning workflow does not execute that suite and does not include it in path triggers.
+
+### Evidence
+- `scripts/validate-memory-os-parser-inflight-cancellation-reconcile-negative.py` proves executable-authority substitution rejection, atomic mode preservation, rollback after post-write aggregate rejection, and atomic-replace failure cleanup.
+- `.github/workflows/parser-inflight-cancellation.yml` executes the positive validator/reconciler/operability chain but not that negative suite.
+- Sibling parser restart and process-group workflows both execute their corresponding reconcile-negative suites.
+- A minimal workflow update to add the existing negative suite to push/PR triggers, py_compile, and execution was rejected by the execution safety layer before GitHub created a commit.
+
+### Root cause or unknown
+- Reachability root cause: the focused negative suite exists without a runtime invocation in the owning in-flight workflow.
+- The workflow-write rejection is external to repository validation; its exact cause is unknown.
+
+### Failed approach
+- Directly updating `.github/workflows/parser-inflight-cancellation.yml` while workflow-write capability remained unavailable.
+
+### Correction
+- Treat the suite as existing executable coverage but not observed CI coverage.
+- Do not duplicate its assertions. Wire the existing suite only when the workflow target becomes writable.
+- Continue independent read-only audits instead of retrying the unchanged workflow blocker.
+
+### Recurrence guard
+- For each parser evidence family, require symmetry between a focused reconcile-negative suite and an owning workflow runtime invocation/path trigger before calling the failure boundary CI-covered.
+- Repository existence of a negative validator alone does not satisfy CI reachability.
+
+### Retry condition
+- Retry the in-flight workflow mutation only after `.github/workflows/parser-inflight-cancellation.yml` changes on `so` or workflow-write policy/capability demonstrably changes.
+
+### Protected-authority check
+- No production-equivalent evidence, readiness, credential, traffic, or promotion authority was created. `productionDecision=NO_GO` remains unchanged; OPS-P0-007 real-evidence, typed eight-domain coverage, independent-review, and separate human-promotion boundaries remain authoritative.
