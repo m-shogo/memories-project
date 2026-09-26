@@ -455,3 +455,29 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - This lesson is execution-policy history only. Candidate/local mixed-version evidence remains non-production evidence; it cannot create an approved release, production-equivalent recovery evidence, readiness, credentials, traffic, or promotion authority. `productionDecision=NO_GO` and all OPS-P0-007 generation/objective/request/eight-domain/independent-review/human-promotion boundaries remain unchanged.
+
+
+
+## 2026-09-27 — Incident-control authority writer is the reusable hardened mutation-boundary reference
+
+### Outcome
+- Read-only cross-family audit identified `scripts/reconcile-memory-os-incident-control-authority.py` as an existing hardened reference for protected-authority reconciliation rather than creating another writer pattern.
+
+### Evidence
+- The reconciler rejects symlinked or path-substituted data, validator and workflow authorities.
+- It binds the execution transport, atomic replacement transport and atomic writer to construction-time canonical objects through `CANONICAL_SUBPROCESS_RUN`, `CANONICAL_OS_REPLACE` and `CANONICAL_ATOMIC_WRITE_BYTES`.
+- Its atomic writer preserves the existing file mode, flushes and fsyncs the same-directory temporary file, publishes with atomic replace, and cleans temporary residue.
+- Its focused reconcile-negative suite exercises authority/validator-chain/transport/writer substitution plus publication and rollback boundaries.
+- The reconciler requires `productionDecision=NO_GO`, keeps OPS-P0-002 PARTIAL, and preserves the human-tabletop, paging, external-contact, production-recovery and independent-review gaps.
+
+### Why safe
+- This run changed only append-only learning history. It did not modify production evidence, operability status, incident evidence, credentials, traffic, readiness or promotion authority.
+- The reference mechanism is fail-closed and explicitly preserves unresolved human and production gaps.
+
+### Reusable mechanism
+- For protected-authority writers, prefer the existing incident-control pattern: exact non-symlink repository authority checks; construction-time binding of subprocess, replacement transport and writer; mode-preserving same-directory tempfile + fsync + atomic replace; exact byte/mode rollback; focused negative substitution tests; and a canonical CI caller.
+- Keep failure injection behind isolated test seams rather than weakening the production transport binding.
+
+### Protected-authority check
+- No production-equivalent generation, objective, recovery evidence, credential, traffic, readiness or promotion authority was created or inferred.
+- `productionDecision=NO_GO` remains mandatory. OPS-P0-007 real-evidence, distinct-environment semantic eligibility, explicitly human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate human promotion authority remain unchanged.
