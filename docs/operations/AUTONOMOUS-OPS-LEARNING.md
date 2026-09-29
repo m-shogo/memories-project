@@ -536,3 +536,33 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-change re-read confirmed `contracts/operations/production-operability-status.json` remains `productionDecision=NO_GO`.
 - No learning or local/CI result is promoted into production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence. OPS-P0-007 distinct-environment semantic eligibility, explicitly human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate human promotion authority remain unchanged.
+
+
+## 2026-09-30 — Live-load mode-preservation retry remains externally blocked after target change
+
+### Symptom
+- A bounded hardening retry for the live-load authority writer could not be written even though the recorded target-change retry condition was satisfied.
+
+### Evidence
+- Branch `so` was freshly observed at `80726616e0055ad3c3355324e4ea7f152fbfcbcd`.
+- `scripts/reconcile-memory-os-live-load-status.py` was freshly observed at blob `758317d3920af062fda315ae42b0c2da0e4004ad`, different from the previously reported blocked target state.
+- The proposed change only imported `stat`, captured the existing authority mode, applied that mode to the same-directory fsynced temporary file, and retained the existing atomic `os.replace` publication.
+- The repository write was rejected by the execution safety layer before GitHub created a commit.
+
+### Root cause or unknown
+- Root cause remains unknown outside repository content. No repository validator or GitHub commit failure was observed.
+
+### Failed approach
+- Retrying the previously blocked live-load writer after target change did not restore write capability for this target.
+
+### Correction
+- Do not route around the safety layer or weaken the writer. Preserve the mode-preservation change as a bounded future hardening target and continue independent safe audits.
+
+### Recurrence guard
+- A target-blob change permits one fresh retry, but a fresh external rejection establishes a new scoped blocker. Do not repeatedly retry equivalent live-load writer mutations after that rejection.
+
+### Retry condition
+- Retry live-load writer hardening only after another relevant target-blob change or an observable target-specific write-capability/policy change.
+
+### Protected-authority check
+- No repository mutation was created by the failed write. Learning remains non-production evidence. `productionDecision=NO_GO` and OPS-P0-007 real-evidence, distinct-environment semantic eligibility, explicit human recovery-objective approval, current executable reviewed request, typed eight-domain coverage, independent review, and separate human promotion authority remain mandatory.
