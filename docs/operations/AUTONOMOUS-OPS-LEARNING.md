@@ -481,3 +481,32 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - No production-equivalent generation, objective, recovery evidence, credential, traffic, readiness or promotion authority was created or inferred.
 - `productionDecision=NO_GO` remains mandatory. OPS-P0-007 real-evidence, distinct-environment semantic eligibility, explicitly human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate human promotion authority remain unchanged.
+
+
+## 2026-09-29 — Repeatability hardening write remains externally blocked after branch advancement
+
+### Symptom
+- The controlled-saturation repeatability mutation-boundary hardening could not be written even after the recorded retry precondition changed.
+
+### Evidence
+- Branch `so` advanced from `da6fdb527d5f42d90a1cf8bb52d3ee2127b98e9c` to `f55f48c9b6dda8788be15f001866c42acfbe1f84`.
+- The target reconciler remained at blob `a30ec769ca2fffd27672abb878ee13c46e90bdac`.
+- A fresh write attempt adding mode preservation and construction-time subprocess/replacement/writer binding was blocked before GitHub created a commit.
+
+### Root cause or unknown
+- The repository content does not explain the refusal. Root cause remains an external write safety/capability restriction.
+
+### Failed approach
+- Retrying the target write solely because branch advancement satisfied the prior broad retry condition did not restore write capability.
+
+### Correction
+- Narrow the retry condition: branch advancement alone is insufficient when the target blob and write capability are unchanged. Continue independent safe audits and do not route around the blocked mutation boundary.
+
+### Recurrence guard
+- For an externally blocked target, require either a target-blob change relevant to the planned mutation or an observed write-capability/policy change before retrying; unrelated branch movement is not enough.
+
+### Retry condition
+- Retry controlled-saturation repeatability hardening only after its target blob changes in a way requiring reconciliation, or repository write capability/policy demonstrably changes.
+
+### Protected-authority check
+- No repository mutation occurred. Production evidence/readiness was not changed or inferred; `productionDecision=NO_GO` and OPS-P0-007 boundaries remain mandatory.
