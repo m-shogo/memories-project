@@ -75,7 +75,7 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(path: Path, payload: bytes, *, _replace=os.replace) -> None:
     require(path.parent.is_dir(), f"authority parent missing: {path_label(path.parent)}")
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     temp_name: str | None = None
@@ -90,7 +90,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temp_name, mode)
-        os.replace(temp_name, path)
+        _replace(temp_name, path)
         temp_name = None
     except OSError as exc:
         raise ReconcileFailure(f"cannot atomically write authority: {path_label(path)}: {exc}") from exc
@@ -152,9 +152,9 @@ def load_canonical_normalizer():
     return normalizer
 
 
-def source_is_ancestor(source_sha: str) -> bool:
+def source_is_ancestor(source_sha: str, *, _run=subprocess.run) -> bool:
     try:
-        return subprocess.run(
+        return _run(
             ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
             cwd=ROOT,
             check=False,
@@ -165,14 +165,14 @@ def source_is_ancestor(source_sha: str) -> bool:
         return False
 
 
-def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
+def run_validator(path: Path, *, expected_sha: str | None = None, _run=subprocess.run) -> None:
     require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
     require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
     env = os.environ.copy()
     if expected_sha is not None:
         env["EXPECTED_COMMIT_SHA"] = expected_sha
     try:
-        completed = subprocess.run(
+        completed = _run(
             [sys.executable, str(path)],
             cwd=ROOT,
             env=env,
