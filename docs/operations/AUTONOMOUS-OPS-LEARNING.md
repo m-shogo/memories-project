@@ -510,3 +510,29 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - No repository mutation occurred. Production evidence/readiness was not changed or inferred; `productionDecision=NO_GO` and OPS-P0-007 boundaries remain mandatory.
+
+
+## 2026-09-30 — Parser restart reconciler binds mutable execution and replacement transports
+
+### Outcome
+- Hardened the parser restart authority reconciler so ancestry checks, validator execution and atomic replacement retain construction-time transport bindings instead of consulting mutable module attributes at call time.
+- Extended the existing focused negative suite to substitute both mutable `subprocess.run` and `os.replace` and prove the bound paths still execute, publish bytes and preserve file mode.
+
+### Evidence
+- Commit `d93b46fce7e5e7bc2f8f852b9be672d82331f396` changed only `scripts/reconcile-memory-os-parser-restart-matrix.py` and `scripts/validate-memory-os-parser-restart-reconcile-negative.py`.
+- The reconciler now captures `subprocess.run` in the ancestry and validator helpers and captures `os.replace` in the atomic writer at function construction time.
+- The focused negative substitutes the mutable module transports and requires HEAD ancestry, canonical parser validator execution, successful atomic publication, exact payload replacement and preservation of mode `0640`.
+- The existing `parser-restart-matrix.yml` already path-triggers, compiles and executes the focused negative for pull-request and non-pull-request paths. No new workflow authority was required.
+- Immediately after publication GitHub reported zero combined-status contexts and zero commit-associated pull-request workflow runs, so no CI PASS is inferred from absence of runs.
+
+### Why safe
+- The change strengthens only mutation transport binding and its negative proof; it does not manufacture or alter production evidence, recovery evidence, credentials, traffic, readiness or promotion authority.
+- Existing same-directory temporary publication, fsync, mode preservation, atomic replacement, rollback and validator semantics remain intact.
+
+### Reusable mechanism
+- When an authority writer already has atomic publication and mode preservation, construction-time default-argument binding is a bounded way to prevent later mutation of module transport attributes from changing the executed subprocess or replacement primitive.
+- Pair the binding with a focused substitution negative that mutates the public module attribute and proves the bound path remains functional; do not count static binding alone as proof.
+
+### Protected-authority check
+- Post-change re-read confirmed `contracts/operations/production-operability-status.json` remains `productionDecision=NO_GO`.
+- No learning or local/CI result is promoted into production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence. OPS-P0-007 distinct-environment semantic eligibility, explicitly human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate human promotion authority remain unchanged.
