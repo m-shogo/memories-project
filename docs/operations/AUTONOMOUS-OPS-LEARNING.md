@@ -566,3 +566,33 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - No repository mutation was created by the failed write. Learning remains non-production evidence. `productionDecision=NO_GO` and OPS-P0-007 real-evidence, distinct-environment semantic eligibility, explicit human recovery-objective approval, current executable reviewed request, typed eight-domain coverage, independent review, and separate human promotion authority remain mandatory.
+
+
+## 2026-09-30 — Capacity-ramp transport-binding hardening is externally blocked
+
+### Symptom
+- The bounded capacity-ramp authority reconciler could not be hardened to retain construction-time subprocess and atomic-replacement transports.
+
+### Evidence
+- Branch `so` was freshly observed at `0bd7b9b462d67dd1064ed4355c5277df061e4416`.
+- `scripts/reconcile-memory-os-capacity-ramp-status.py` was freshly observed at blob `d1fe1c9c7302cfbe861caf249acd611983103513`.
+- The reconciler already preserves file modes, fsyncs same-directory temporary files, uses atomic replacement, and rolls back bytes plus modes transactionally, but validator execution still calls mutable `subprocess.run` and publication still calls mutable `os.replace`.
+- A minimal write binding those two transports at function construction time was rejected before GitHub created a commit.
+
+### Root cause or unknown
+- Root cause remains external/unknown; no repository validator or GitHub commit failure was produced.
+
+### Failed approach
+- Directly hardening the previously unblocked capacity-ramp reconciler through a normal contents update did not pass the execution safety layer.
+
+### Correction
+- Do not route around the refusal or weaken existing atomic/mode-preserving behavior. Continue independent authority-family audits and preserve this as a bounded future hardening target.
+
+### Recurrence guard
+- Treat capacity-ramp transport binding as a scoped blocker. Do not repeat an equivalent write while both the target blob and write capability/policy remain unchanged.
+
+### Retry condition
+- Retry only after a relevant change to the capacity-ramp reconciler blob or an observable target-specific write-capability/policy change.
+
+### Protected-authority check
+- The failed write created no repository mutation. Capacity-ramp/local CI evidence remains non-production evidence; `productionDecision=NO_GO` and all OPS-P0-007 generation/objective/request/eight-domain/independent-review/human-promotion boundaries remain unchanged.
