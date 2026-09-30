@@ -596,3 +596,33 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - The failed write created no repository mutation. Capacity-ramp/local CI evidence remains non-production evidence; `productionDecision=NO_GO` and all OPS-P0-007 generation/objective/request/eight-domain/independent-review/human-promotion boundaries remain unchanged.
+
+
+## 2026-09-30 — Controlled-saturation reconcile-negative CI wiring is externally blocked
+
+### Symptom
+- The existing controlled-saturation direct-reconcile negative could not be wired into its owning workflow's path trigger, compile stage, and runtime validation stage.
+
+### Evidence
+- Branch `so` was freshly observed at `322c21981aefc8b3208f214428e4fdc50c1a3b40` immediately before the write.
+- `.github/workflows/controlled-saturation-ramp.yml` was freshly observed at blob `22d597431f6998ea3f9bcd303cf7c35c1fc9233b`.
+- `scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py` exists at blob `68a6e46a843d0d780606a990d0c9993c0d823f2f` and proves canonical-authority substitution rejection plus atomic-replacement failure rollback/residue behavior, but the owning workflow neither path-triggers on it nor compiles/runs it.
+- A minimal workflow-only change adding that existing negative to the path trigger, `py_compile`, and a pre-load runtime stage was rejected by the execution safety layer before GitHub created a commit.
+
+### Root cause or unknown
+- Root cause remains external/unknown; no repository validator or GitHub commit failure was produced.
+
+### Failed approach
+- Directly wiring the already-existing focused negative into the controlled-saturation workflow through a normal contents update did not pass the execution safety layer.
+
+### Correction
+- Do not route around the refusal or weaken the workflow. Continue independent safe authority-family work and retain this as a bounded CI-reachability target.
+
+### Recurrence guard
+- Treat controlled-saturation reconcile-negative workflow wiring as a scoped blocker. Do not repeat an equivalent workflow write while both the workflow blob and write capability/policy remain unchanged.
+
+### Retry condition
+- Retry only after a relevant change to the controlled-saturation workflow blob or an observable workflow-write capability/policy change.
+
+### Protected-authority check
+- The failed workflow write created no repository mutation. The negative remains non-production guard evidence; `productionDecision=NO_GO` and all OPS-P0-007 generation/objective/request/eight-domain/independent-review/human-promotion boundaries remain unchanged.
