@@ -1,14 +1,14 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "chaos-and-failure-drills",
-  "sourceCommitSha": "1612820203fbb7cdfc9f332ff2a965750759c2ea",
+  "sourceCommitSha": "af4383aa6222763df5c4904ee7a55493598c4dea",
   "result": "PASS",
-  "generatedAt": "2026-09-29T22:33:52.197440Z",
+  "generatedAt": "2026-09-30T22:33:40.183414Z",
   "scenarios": [
     {
       "scenarioId": "api-graceful-interruption-drain",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t0.143s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t0.140s\n"
     },
     {
       "scenarioId": "parser-restart-after-protocol-failure",
