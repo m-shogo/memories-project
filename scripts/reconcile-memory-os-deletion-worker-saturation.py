@@ -54,7 +54,7 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
+def atomic_write_bytes(path: Path, payload: bytes, *, _replace=os.replace) -> None:
     existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     temp_path: Path | None = None
     try:
@@ -71,7 +71,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 os.fchmod(handle.fileno(), existing_mode)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp_path, path)
+        _replace(temp_path, path)
         temp_path = None
     finally:
         if temp_path is not None:

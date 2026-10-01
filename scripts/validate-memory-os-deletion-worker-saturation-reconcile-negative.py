@@ -204,7 +204,7 @@ def main() -> int:
             raise AssertionError("atomic writer changed existing authority mode")
         target.write_bytes(b"before\n")
 
-        original_replace = reconciler.os.replace
+        canonical_replace = reconciler.os.replace
         failed = False
 
         def fail_replace(source_path, destination_path):
@@ -212,19 +212,15 @@ def main() -> int:
             if Path(destination_path) == target and not failed:
                 failed = True
                 raise OSError("synthetic atomic replace failure")
-            return original_replace(source_path, destination_path)
+            return canonical_replace(source_path, destination_path)
 
-        reconciler.os.replace = fail_replace
         try:
-            try:
-                reconciler.atomic_write_bytes(target, b"after\n")
-            except OSError as exc:
-                if "synthetic atomic replace failure" not in str(exc):
-                    raise AssertionError(f"unexpected atomic replacement failure: {exc}") from exc
-            else:
-                raise AssertionError("atomic writer accepted synthetic replacement failure")
-        finally:
-            reconciler.os.replace = original_replace
+            reconciler.atomic_write_bytes(target, b"after\n", _replace=fail_replace)
+        except OSError as exc:
+            if "synthetic atomic replace failure" not in str(exc):
+                raise AssertionError(f"unexpected atomic replacement failure: {exc}") from exc
+        else:
+            raise AssertionError("atomic writer accepted synthetic replacement failure")
 
         if not failed:
             raise AssertionError("synthetic atomic replacement failure was not exercised")
@@ -234,6 +230,30 @@ def main() -> int:
             raise AssertionError("atomic replacement failure changed existing authority mode")
         if list(target.parent.glob(f".{target.name}.*.tmp")):
             raise AssertionError("atomic replacement failure left a temp file")
+
+        target.write_bytes(b"before-binding\n")
+        os.chmod(target, 0o640)
+        mutable_replace_calls = 0
+
+        def reject_mutable_replace(*_args, **_kwargs):
+            nonlocal mutable_replace_calls
+            mutable_replace_calls += 1
+            raise OSError("mutable os.replace transport was invoked")
+
+        reconciler.os.replace = reject_mutable_replace
+        try:
+            reconciler.atomic_write_bytes(target, b"after-binding\n")
+        finally:
+            reconciler.os.replace = canonical_replace
+
+        if mutable_replace_calls != 0:
+            raise AssertionError("bound atomic writer consulted mutable os.replace")
+        if target.read_bytes() != b"after-binding\n":
+            raise AssertionError("bound atomic writer failed to publish expected payload")
+        if stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise AssertionError("bound atomic writer changed existing authority mode")
+        if list(target.parent.glob(f".{target.name}.*.tmp")):
+            raise AssertionError("bound atomic writer left a temp file")
 
     print("PASS: deletion-worker saturation authority, loader transport, mode-preserving atomic publication and rollback are fail-closed")
     return 0
