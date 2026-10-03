@@ -626,3 +626,30 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - The failed workflow write created no repository mutation. The negative remains non-production guard evidence; `productionDecision=NO_GO` and all OPS-P0-007 generation/objective/request/eight-domain/independent-review/human-promotion boundaries remain unchanged.
+
+
+## 2026-10-03 — Explicit failure injection must follow construction-time transport binding
+
+### Outcome
+- Repaired the parser-restart focused negative so atomic replacement failure is injected through the canonical writer's explicit `_replace` seam rather than by mutating `module.os.replace`.
+- Construction-time transport-mutation resistance remains independently proven by `prove_transport_binding()`.
+
+### Evidence
+- Commit `f2467d02e84b3dffaf3b6f5e09485b19157f45b5` changed only `scripts/validate-memory-os-parser-restart-reconcile-negative.py`.
+- The reconciler already binds `os.replace` at function construction time; therefore later mutation of `module.os.replace` cannot inject a replacement failure.
+- The corrected negative wraps the canonical `atomic_write_bytes` and supplies `_replace=reject_replace`, while retaining byte-integrity and temporary-residue assertions.
+- `.github/workflows/parser-restart-matrix.yml` path-triggers on, compiles, and executes this focused negative on push and pull-request paths.
+- Immediately after the commit, GitHub exposed zero commit-associated pull-request workflow runs and zero combined-status contexts, so no CI PASS is inferred yet.
+
+### Why safe
+- Only negative-test failure injection changed; production writer semantics and protected authority content were untouched.
+- The post-change protected-authority re-read confirmed `productionDecision=NO_GO`.
+
+### Reusable mechanism
+- Once a production transport is construction-time bound, real failure-path tests must inject failure through an explicit isolated seam accepted by the canonical writer/helper.
+- Keep module-attribute mutation exclusively for proving that construction-time binding resists later mutation; do not use the same mutation as the mechanism for simulating the transport failure.
+- Preserve rollback bytes/mode and residue assertions independently from transport-binding resistance.
+
+### Protected-authority check
+- No production-equivalent generation, objective, recovery evidence, credential, traffic, readiness or promotion authority was created or inferred.
+- OPS-P0-007 distinct-environment semantic eligibility, explicitly human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate human promotion authority remain unchanged.
