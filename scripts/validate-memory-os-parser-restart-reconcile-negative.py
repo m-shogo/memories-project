@@ -151,16 +151,16 @@ def main() -> int:
         module.source_is_ancestor = lambda _sha: True
         module.load_canonical_normalizer = lambda: (lambda value: value)
         module.validate_authority_chain = lambda _sha: None
-        canonical_replace = module.os.replace
+        canonical_atomic_write = module.atomic_write_bytes
 
         def reject_replace(_source, _target) -> None:
             raise OSError("synthetic atomic replacement rejection")
 
-        try:
-            module.os.replace = reject_replace
-            expect_reconcile_failure(module, "cannot atomically write authority")
-        finally:
-            module.os.replace = canonical_replace
+        def reject_atomic_write(path: Path, payload: bytes) -> None:
+            canonical_atomic_write(path, payload, _replace=reject_replace)
+
+        module.atomic_write_bytes = reject_atomic_write
+        expect_reconcile_failure(module, "cannot atomically write authority")
         if status_path.read_bytes() != original_bytes:
             raise AssertionError("atomic replacement failure mutated parser restart authority")
         residues = list(root.glob(f".{status_path.name}.*.tmp"))
