@@ -653,3 +653,33 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - No production-equivalent generation, objective, recovery evidence, credential, traffic, readiness or promotion authority was created or inferred.
 - OPS-P0-007 distinct-environment semantic eligibility, explicitly human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate human promotion authority remain unchanged.
+
+
+## 2026-10-06 — Cross-workflow raw-diagnostic persistence guard is externally blocked
+
+### Symptom
+- A CI-reachable monotonic guard preventing new repository diagnostics from persisting raw subprocess output could not be added to the existing operability entrypoint.
+
+### Evidence
+- `scripts/validate-memory-os-entry-docs.py` was freshly observed at blob `aa7acc3b6da67fec4701f303281a27025931d5d3`.
+- Existing workflows including parser restart, live-load reconciliation, and deletion container-kill still construct `memory-os-validator-diagnostic.v1` records with a raw `output` field.
+- The proposed bounded check reused the existing CI entrypoint, admitted only an explicit transitional legacy set, rejected any new offender, and rejected stale exceptions after repair.
+- The normal contents update was rejected by the execution safety layer before GitHub created a commit.
+
+### Root cause or unknown
+- Root cause is external/unknown. No repository validator failure or GitHub commit failure was produced.
+
+### Failed approach
+- Extending the existing CI-reachable entry-doc validator with the cross-workflow diagnostic-persistence guard did not pass the execution safety layer.
+
+### Correction
+- Do not create a parallel production/readiness authority and do not retry equivalent writes while the target blob and write capability remain unchanged. Continue independent audits and preserve raw logs as runner-local-only in future writable targets.
+
+### Recurrence guard
+- Treat this entrypoint mutation as a scoped blocker. The intended executable rule remains: repository diagnostics may retain digest, byte count, exit/stage metadata, but new raw subprocess-output persistence must fail closed; transitional exceptions must only decrease.
+
+### Retry condition
+- Retry only after `scripts/validate-memory-os-entry-docs.py` changes from blob `aa7acc3b6da67fec4701f303281a27025931d5d3` or an observable target-specific write-capability/policy change.
+
+### Protected-authority check
+- The failed write created no repository mutation. Learning and diagnostics remain non-production evidence; `productionDecision=NO_GO` and all OPS-P0-007 generation/objective/request/eight-domain/independent-review/human-promotion boundaries remain unchanged.
