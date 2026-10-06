@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -90,6 +91,7 @@ def run_validator(path: Path, label: str, *args: str) -> None:
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -103,6 +105,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        if original_mode is not None:
+            os.chmod(tmp_path, original_mode)
         os.replace(tmp_path, path)
         tmp_path = None
     finally:
