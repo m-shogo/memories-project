@@ -148,7 +148,7 @@ Keep separate fields/concepts:
 user_note
 machine_summary
 source_caption
-~~`
+~~~
 
 The card label 備考 should primarily display user-authored text when present.
 
