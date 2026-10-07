@@ -23,7 +23,15 @@ Found is not "Memories 2" and should not force one combined UI. It is the prospe
 
 ## Current product promise
 
-Found accepts a share from many different apps and sites, remembers the original source, understands the content, and automatically organizes it by what it is, not by where it came from.
+The primary job is intentionally simple:
+
+> 各サービスに散らばった「お気に入り」「後で見る」「欲しいもの」「行きたい」「読みたい」を、一か所で見やすくする。
+
+Users already save things, but often forget which app they saved them in and rarely maintain categories manually. Found should remove that maintenance work.
+
+Found accepts shares/imports from many different apps and sites, remembers the original source, understands the content, and automatically organizes it by what it is, while also preserving the source platform as a browse/filter axis.
+
+Advanced concepts such as intent/resume state are secondary layers. The first product must already be useful as an automatically organized cross-source saved-items library.
 
 Examples:
 
