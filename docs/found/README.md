@@ -84,4 +84,5 @@ Domain-specific rendering can appear after classification, but the user should n
 
 - [Current product direction](current-product-direction.md)
 - [Classification and retrieval model](classification-and-retrieval-model.md)
+- [Source and card presentation](source-and-card-presentation.md)
 - [MVP scope](mvp-scope.md)
