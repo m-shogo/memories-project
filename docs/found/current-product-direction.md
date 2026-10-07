@@ -56,6 +56,116 @@ intent       = optional inferred context
 
 Another TikTok can be entertainment.anime or tech.article. Source is provenance, not meaning.
 
+## Source is also a first-class browse/filter axis
+
+Content meaning is the primary organization axis, but the source platform must remain visible, searchable, and browsable.
+
+Users must be able to open source views such as:
+
+~~~txt
+TikTok
+YouTube
+Instagram
+X
+Qiita
+Zenn
+GitHub
+食べログ
+Recipe sites
+Blogs
+~~~
+
+These are not exclusive folders. They are source facets over the same saved corpus.
+
+Examples:
+
+- TikTok + Food + Restaurant + Ramen
+- YouTube + Entertainment + Anime
+- Qiita + Tech + WordPress
+- Instagram + Food + Recipe + Spare ribs
+
+A user should be able to browse either direction:
+
+~~~txt
+Food → Restaurant → Ramen
+or
+TikTok → Food → Restaurant → Ramen
+~~~
+
+Search must also accept source constraints such as 「TikTokで見たラーメン」 or 「YouTubeでおすすめされてた映画」.
+
+## Multi-source presentation
+
+When multiple media point to the same underlying entity or topic, Found should preserve each source as a separate evidence item while presenting a grouped entity/context when useful.
+
+Example:
+
+~~~txt
+焼肉店 A
+
+Sources
+├ TikTok video
+├ Instagram reel
+├ 食べログ page
+└ official site
+~~~
+
+The grouped view must not erase the individual media items. Users may want to reopen the exact TikTok or YouTube item later.
+
+## Saved-item card
+
+The default card should make heterogeneous media visually scannable.
+
+Required card fields when available:
+
+- thumbnail / preview image;
+- title;
+- short note / 備考;
+- source badge/icon;
+- content type;
+- category / genre chips;
+- location for place content;
+- saved date;
+- original-source link/action.
+
+Example:
+
+~~~txt
+[thumbnail]
+
+炭火焼肉 ○○
+TikTok · 焼肉 · 新宿
+
+備考: 厚切りタンが気になった
+2026/10/08
+~~~
+
+For recipe content:
+
+~~~txt
+[thumbnail]
+
+やわらかスペアリブ
+DELISH KITCHEN · レシピ · 豚肉
+
+備考: 今度すき焼き以外で肉料理したい
+2026/10/08
+~~~
+
+For tech content:
+
+~~~txt
+[thumbnail or site icon]
+
+WordPress pagination 404 fix
+Qiita · Tech · WordPress · pagination
+
+備考: 英語カテゴリのpage/2問題で確認
+2026/10/08
+~~~
+
+Thumbnail handling is source-dependent. If a reliable thumbnail cannot be obtained, show a stable source/site icon or generated placeholder rather than blocking the save.
+
 ## Current top-level domains
 
 These are UI/product hypotheses. Storage must remain extensible.
