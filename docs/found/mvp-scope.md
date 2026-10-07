@@ -132,7 +132,61 @@ Results should show:
 
 Do not require a deep folder tree. Useful filters may include Food, Places, Recipes, Movies, Books, Manga, Anime, Tech, Products, source, genre/topic, location, and saved date.
 
+Source browsing is required, not optional. The user must be able to filter or browse TikTok, YouTube, Instagram, X, Qiita, Zenn, GitHub, 食べログ and other supported sources while keeping the same content taxonomy.
+
+Examples:
+
+~~~txt
+TikTok
+→ Food
+→ Restaurant
+→ Ramen
+
+YouTube
+→ Entertainment
+→ Movie
+
+Qiita
+→ Tech
+→ WordPress
+~~~
+
 あとで見る is a cross-domain state/filter rather than a shelf that erases the real content type.
+
+## P0 saved-card presentation
+
+Mixed media must remain easy to scan in one list/grid.
+
+Each card should show, when available:
+
+- thumbnail / preview image;
+- title;
+- user note / 備考;
+- source badge/icon;
+- category and genre chips;
+- place/location for place content;
+- saved date;
+- action to reopen the original source.
+
+Compact example:
+
+~~~txt
+[thumbnail]  炭火焼肉 ○○
+             TikTok · 焼肉 · 新宿
+             備考: 厚切りタンが気になった
+~~~
+
+Another:
+
+~~~txt
+[thumbnail]  やわらかスペアリブ
+             Recipe site · レシピ · 豚肉
+             備考: 今度作る
+~~~
+
+For text-heavy IT content where no meaningful image exists, use source/site icon or a stable fallback preview instead of delaying capture.
+
+The same entity may contain multiple source cards. Do not replace a TikTok/YouTube/source-specific card with only a normalized entity card, because the user may remember and want the original media itself.
 
 ## P0 corrections
 
