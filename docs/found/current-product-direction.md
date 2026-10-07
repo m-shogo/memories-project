@@ -4,7 +4,35 @@
 
 > Working direction, not an immutable requirement. Validate with real usage and revise when evidence contradicts it.
 
-## Problem
+## Primary problem
+
+People already create many "save for later" records, but those records are fragmented across X bookmarks, Instagram saved posts/reels, TikTok favorites/shares, YouTube Watch Later/playlists, Qiita/Zenn, GitHub, 食べログ/maps, recipe sites, shopping wishlists, browser bookmarks, blogs and articles.
+
+The main pain is not that users lack another place to save. It is that:
+
+- they forget which service contains the saved item;
+- each service has a different save model;
+- they rarely create and maintain categories consistently;
+- wishlists, restaurants, recipes, media recommendations and IT references become separate silos;
+- later, they remember the thing itself but not where it was saved.
+
+Found's first job is to make existing later-use information visible and organized with minimal maintenance.
+
+## Product hierarchy
+
+P0 value:
+
+~~~txt
+scattered favorites / later items / wishlists
+→ one visible library
+→ automatic category / genre / place / topic organization
+→ source still visible
+→ easy browse and search
+~~~
+
+P1/P2 intelligence such as intent clustering, decision memory, resume state and outcome learning may build on this foundation, but they are not required to explain the first product value.
+
+## Problem detail
 
 Useful later-use information is fragmented across X bookmarks, Instagram saved posts/reels, TikTok favorites/shares, YouTube Watch Later/playlists, Qiita/Zenn, GitHub, 食べログ/maps, recipe sites, shopping wishlists, browser bookmarks, blogs and articles.
 
@@ -250,11 +278,14 @@ Useful facets:
 - place genre
 - planned-trip/context relation when reliable
 
-### Shopping / Products
+### Shopping / Products / Wishlist
+
+Shopping is a first-class domain because "欲しいもの" often becomes especially fragmented across EC sites, social media, review articles and videos.
 
 Object types:
 - product
 - service/subscription
+- wishlist item
 - candidate/comparison source
 - review
 
