@@ -6,17 +6,23 @@
 
 ## MVP question
 
-Can a user share useful things from different media without organizing them manually, then later retrieve them by remembered meaning?
+Can a user bring together scattered favorites / later items / wishlists from different media, avoid manual categorization, and still browse or find them later by content, source, genre, place, or remembered meaning?
+
+The MVP should solve a familiar problem before advanced AI behavior:
+
+> 「どこに保存したか忘れた」「カテゴリ分けしてない」「欲しいものが色んなアプリに散らばってる」をなくす。
 
 The MVP is successful if the user experiences:
 
 ~~~txt
-different sources
-→ one reliable save flow
+favorites / later / wishlist items from different sources
+→ one visible saved-items library
 → automatic useful classification
-→ original source preserved
-→ easy rediscovery
+→ source preserved and filterable
+→ easy browse / search / reopen
 ~~~
+
+Intent clustering, resume-state reconstruction and outcome learning are future intelligence layers, not MVP prerequisites.
 
 ## P0 capture
 
