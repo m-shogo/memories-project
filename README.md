@@ -120,6 +120,23 @@ Practical core:
 - Weekly Box / Month Capsule
 - user-explicit “continue following” targets
 
+## Found design track
+
+Found is a separate prospective/later-use product surface inside this repository. It explores cross-source capture and automatic organization of things the user wants to revisit, compare, try, watch/read, visit, or resume.
+
+Examples include X, Instagram, TikTok, YouTube, Qiita, Zenn, GitHub, 食べログ, recipe sites, maps, product pages, blogs and generic web URLs.
+
+Current Found design goals:
+
+- Share first; do not require folders/categories at capture time.
+- Preserve the original URL/source while classifying by content meaning.
+- Automatically distinguish restaurant vs recipe, movie vs book/manga/anime, tech article vs repository/tool, etc.
+- Add useful facets such as ramen/yakiniku, place/area, media genre, or WordPress/PHP/React/Docker topics.
+- Support remembered-fragment retrieval such as 「この前のスペアリブレシピ」 or 「WordPressのページャー404の記事」.
+- Treat 「あとで見る」 as lifecycle state rather than a content category.
+
+Found design documents start at [docs/found/README.md](docs/found/README.md). They are exploratory product authority only and do not override the production/security authority above.
+
 Town is optional emotional visualization after the practical save result. Users do not record life to feed Town growth.
 
 ## Binding stack
