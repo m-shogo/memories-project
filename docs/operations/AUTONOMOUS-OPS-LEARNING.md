@@ -683,3 +683,36 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - The failed write created no repository mutation. Learning and diagnostics remain non-production evidence; `productionDecision=NO_GO` and all OPS-P0-007 generation/objective/request/eight-domain/independent-review/human-promotion boundaries remain unchanged.
+
+## 2026-10-09 — Release writer CLI guard proof write is a scoped blocker
+
+### Symptom
+- An isolated negative proof that the release baseline writer's live CLI calls its canonical authority guard could not be added to the already CI-invoked writer-authority negative suite.
+
+### Evidence
+- At branch `so` HEAD `bba7c53f9a619d7dd81aa4df7be28b762c519db6`, the target `scripts/validate-memory-os-release-baseline-writer-authority-negative.py` had blob `8ee792f53b2ce704b3ece0b421165489a523a91d`.
+- The existing suite checks substitutions by directly invoking `require_actual_cli_authorities()`, but it does not exercise the `main()` call-site binding.
+- The proposed change patched only the loaded writer module's guard to raise an exact synthetic `RegistrationFailure`, invoked `main()` with an invalid confirmation, required one exact sentinel rejection, restored `sys.argv` and the monkeypatch, and asserted canonical contract/registry/status bytes, modes and lock absence.
+- Nine pre-write structural checks passed. The normal GitHub contents update was rejected by the execution safety layer before any commit was created.
+
+### Root cause or unknown
+- The rejection cause is unknown outside the repository. No GitHub commit or repository validator failure was observed.
+
+### Failed approach
+- A normal contents update to this specific CI-reachable negative suite did not pass the write safety boundary.
+
+### Correction
+- Leave the canonical writer and production authorities untouched. Keep this focused main-call-site negative proof as a future target; continue independent read-only audits and safe targets without routing around the rejected write.
+
+### Recurrence guard
+- Do not retry an equivalent mutation on this target while its blob and target-specific write capability/policy remain unchanged. An independently callable guard is not proof that the CLI actually invokes it; bind the call-site with a precise injected sentinel and an invalid confirmation before claiming coverage.
+
+### Retry condition
+- Retry only after a relevant change to target blob `8ee792f53b2ce704b3ece0b421165489a523a91d` or an observed target-specific write capability/policy change.
+
+### Observed success and reusable mechanism
+- Read-only audit confirmed the existing release baseline registry negative suite is directly invoked by the release-baseline-registry workflow, while its `expect_writer_rejected` and `expect_contract_rejected` currently accept any `Exception`; canonical registry/contract/status are also restored via direct writes in several negative cases.
+- This audit was safe because it made no repository mutation. The reusable mechanism is to require exact canonical exception types and isolated temporary fixtures, while keeping static CI reachability distinct from an observed exact-source CI PASS.
+
+### Protected-authority check
+- No commit, executable guard, production evidence or readiness was created by the rejected write. The freshly read status still has `productionDecision=NO_GO` and OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`, blocking=true. Learning remains append-only and cannot satisfy generation/objective/request/eight-domain/independent-review or separate human-promotion gates.
