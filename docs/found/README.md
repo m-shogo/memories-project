@@ -94,4 +94,5 @@ Domain-specific rendering can appear after classification, but the user should n
 - [Classification and retrieval model](classification-and-retrieval-model.md)
 - [Source and card presentation](source-and-card-presentation.md)
 - [MVP scope](mvp-scope.md)
+- [Competitive validation 2026-10-08](competitive-validation-2026-10-08.md)
 - [競合・需要・統合仮説（2026-10-08）](competitive-validation-2026-10-08.md)
