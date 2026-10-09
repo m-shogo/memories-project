@@ -96,6 +96,36 @@ def inventory_payload_fixture(validator: Any, payload: dict[str, Any]):
         yield observed
 
 
+def run_inventory_semantic_case(validator: Any) -> int:
+    """Test-only seam: verify canonical guard, reuse separately proven source preflight.
+
+    The unmodified canonical main() is run once as the positive baseline before
+    any synthetic mutation. This helper never changes repository authority bytes.
+    """
+    canonical_guard = validator.enforce_runtime_authority
+    canonical_sources = validator.validate_source_authorities
+    guard_calls = 0
+
+    def scoped_guard() -> None:
+        nonlocal guard_calls
+        canonical_guard()
+        guard_calls += 1
+        # The full positive control already verified these unchanged sources.
+        # Only the in-memory inventory payload differs across negative cases.
+        validator.validate_source_authorities = lambda: None
+
+    try:
+        with patch.object(validator, "enforce_runtime_authority", scoped_guard):
+            return validator.main(canonical_execution_guard=scoped_guard)
+    finally:
+        validator.validate_source_authorities = canonical_sources
+        require(guard_calls == 1, "semantic fixture must execute canonical runtime guard exactly once")
+        require(
+            validator.validate_source_authorities is canonical_sources,
+            "semantic fixture failed to restore canonical source validation helper",
+        )
+
+
 def expect_inventory_rejected(
     validator: Any,
     canonical: dict[str, Any],
@@ -106,7 +136,7 @@ def expect_inventory_rejected(
     mutate(bad)
     with inventory_payload_fixture(validator, bad) as observed:
         try:
-            validator.main()
+            run_inventory_semantic_case(validator)
         except validator.Fail as exc:
             require(
                 observed["reads"] > 0,
@@ -315,7 +345,7 @@ def main() -> int:
     status_validator.main()
     print("PASS baseline: canonical inventory/status preserve operability authority separation")
     with inventory_payload_fixture(inventory_validator, canonical_inventory) as observed:
-        require(inventory_validator.main() == 0, "unchanged inventory fixture must pass canonical validator")
+        require(run_inventory_semantic_case(inventory_validator) == 0, "unchanged inventory fixture must pass canonical validator")
     require(observed["reads"] > 0, "inventory positive control never read the injected payload")
     print("PASS baseline: in-memory inventory fixture reaches semantic validation")
 
