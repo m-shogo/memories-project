@@ -10,9 +10,11 @@ canonical status wording cannot silently create production authority.
 from __future__ import annotations
 
 import copy
+from contextlib import contextmanager
 import importlib.util
 import json
 import tempfile
+from unittest.mock import patch
 from pathlib import Path
 from typing import Any, Callable
 
@@ -76,6 +78,24 @@ def status_row(value: dict[str, Any]) -> dict[str, Any]:
     return matches[0]
 
 
+@contextmanager
+def inventory_payload_fixture(validator: Any, payload: dict[str, Any]):
+    """Inject only inventory JSON reads; keep canonical path/guard bindings intact."""
+    canonical_path = validator.INVENTORY
+    encoded = json.dumps(payload, indent=2) + "\n"
+    original_read_text = Path.read_text
+    observed = {"reads": 0}
+
+    def read_fixture(path: Path, *args: Any, **kwargs: Any) -> str:
+        if path == canonical_path:
+            observed["reads"] += 1
+            return encoded
+        return original_read_text(path, *args, **kwargs)
+
+    with patch.object(Path, "read_text", read_fixture):
+        yield observed
+
+
 def expect_inventory_rejected(
     validator: Any,
     canonical: dict[str, Any],
@@ -84,18 +104,16 @@ def expect_inventory_rejected(
 ) -> None:
     bad = copy.deepcopy(canonical)
     mutate(bad)
-    with tempfile.TemporaryDirectory(prefix=".memory-os-inventory-promotion-negative-", dir=TEMP_PARENT) as tmp:
-        path = Path(tmp) / "inventory.json"
-        write_json(path, bad)
-        original = validator.INVENTORY
-        validator.INVENTORY = path
+    with inventory_payload_fixture(validator, bad) as observed:
         try:
             validator.main()
-        except validator.Fail:
-            print(f"PASS reject: {name}")
+        except validator.Fail as exc:
+            require(
+                observed["reads"] > 0,
+                f"inventory negative rejected before reading mutated payload: {name}: {exc}",
+            )
+            print(f"PASS semantic inventory reject: {name}")
             return
-        finally:
-            validator.INVENTORY = original
     raise Fail(f"inventory mutation unexpectedly accepted: {name}")
 
 
@@ -296,6 +314,10 @@ def main() -> int:
     inventory_validator.main()
     status_validator.main()
     print("PASS baseline: canonical inventory/status preserve operability authority separation")
+    with inventory_payload_fixture(inventory_validator, canonical_inventory) as observed:
+        require(inventory_validator.main() == 0, "unchanged inventory fixture must pass canonical validator")
+    require(observed["reads"] > 0, "inventory positive control never read the injected payload")
+    print("PASS baseline: in-memory inventory fixture reaches semantic validation")
 
     expect_inventory_authority_path_rejected(inventory_validator, canonical_inventory, canonical_status, "inventory")
     expect_inventory_authority_path_rejected(inventory_validator, canonical_inventory, canonical_status, "status")
