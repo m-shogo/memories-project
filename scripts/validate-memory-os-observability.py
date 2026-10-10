@@ -99,6 +99,16 @@ def check_event_fields(event: dict, contract: dict) -> list[str]:
         value = event.get(field)
         if isinstance(value, str) and len(value) > limit:
             reasons.append(f"field over bound: {field}")
+
+    # JSON booleans are Python ints; type() avoids accepting true/false as
+    # numeric evidence. Typed optional fields must match the Go Event shape.
+    for field in ("statusCode", "durationMs", "count"):
+        if field in event:
+            value = event[field]
+            if type(value) is not int or value < 0 or (field == "statusCode" and not 100 <= value <= 599):
+                reasons.append(f"invalid nonnegative integer field: {field}")
+    if "retryable" in event and type(event["retryable"]) is not bool:
+        reasons.append("retryable must be a boolean")
     return reasons
 
 
