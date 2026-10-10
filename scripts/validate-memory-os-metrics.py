@@ -152,6 +152,8 @@ def parse_go_registry(src: str) -> tuple[dict, dict, dict]:
         if name is None:
             raise Fail(f"unknown metric constant: {name_m.group(1)}")
         labels = re.findall(r'"([^"]+)"', labels_m.group(1)) if labels_m else []
+        if name in registrations:
+            raise Fail(f"duplicate Go metric registration: {name}")
         registrations[name] = {
             "type": kind_map[kind_m.group(1)],
             "labels": labels,
@@ -159,6 +161,24 @@ def parse_go_registry(src: str) -> tuple[dict, dict, dict]:
             "buckets": bucket_vars.get(buckets_m.group(1)) if buckets_m else None,
         }
     return name_consts, bucket_vars, registrations
+
+
+def prove_go_registry_duplicate_rejection(src: str) -> None:
+    """Exercise the real parser against two deterministic duplicate mutations."""
+    calls = re.findall(r'reg\\.register\\(spec\\{.*?\\}\\)', src)
+    if not calls:
+        raise Fail("Go registry duplicate negative proof has no registration")
+    for duplicate in (
+        calls[0],
+        re.sub(r"budget:\\s*\\d+", "budget: 99999", calls[0], count=1),
+    ):
+        try:
+            parse_go_registry(src + "\\n" + duplicate)
+        except Fail as exc:
+            if not str(exc).startswith("duplicate Go metric registration: "):
+                raise Fail(f"Go registry duplicate negative proof failed incorrectly: {exc}") from exc
+        else:
+            raise Fail("Go registry duplicate negative proof was accepted")
 
 
 def main() -> int:
@@ -189,6 +209,7 @@ def main() -> int:
         # types, labels, budgets and histogram buckets, no metric missing on
         # either side.
         _, _, registrations = parse_go_registry(recorder_src)
+        prove_go_registry_duplicate_rejection(recorder_src)
         contract_by_name = {m["metricName"]: m for m in contract["metrics"]}
         if set(registrations) != set(contract_by_name):
             only_go = set(registrations) - set(contract_by_name)
