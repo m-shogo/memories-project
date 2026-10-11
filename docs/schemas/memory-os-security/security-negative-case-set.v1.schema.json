@@ -20,7 +20,7 @@
         "properties": {
           "caseId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
           "targetSchemaId": { "type": "string", "format": "uri", "maxLength": 300 },
-          "baseFixtureRef": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "baseFixtureRef": { "type": "string", "minLength": 1, "maxLength": 300, "pattern": "^docs/fixtures/memory-os-security/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\\.json$" },
           "mutation": {
             "type": "object",
             "additionalProperties": false,
