@@ -716,3 +716,33 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - No commit, executable guard, production evidence or readiness was created by the rejected write. The freshly read status still has `productionDecision=NO_GO` and OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`, blocking=true. Learning remains append-only and cannot satisfy generation/objective/request/eight-domain/independent-review or separate human-promotion gates.
+
+## 2026-10-12 — Independent deletion-worker failure-boundary negative test write blocked
+
+### Symptom
+- An additional CI-reachable Go negative suite for fail-closed deletion-worker boundaries could not be committed.
+
+### Evidence
+- Branch `so` was freshly observed at `4dc15bcba6fbc2905a1b783483079cf5b250b85e`.
+- The proposed new `services/import-api/internal/accountdelete/worker_boundary_test.go` did not exist; the existing `service_test.go` was blob `1e73c3fc036e84da9fafcd24010822e01d43cc23`.
+- `.github/workflows/import-api-security-slice.yml` at blob `ad1aac21ae506c4a4389c4fc68c46e576e469286` path-triggers on `services/import-api/**` and runs `go test -race ./...`.
+- Four proposed tests checked that object-key ledger read failure, partial object erasure, database sweep failure, and claim failure never produce successful deletion receipts or cross the wrong erasure boundary.
+- The normal GitHub create-file call was rejected by the execution safety layer before a commit was created. No repository-level test result was obtained.
+
+### Root cause or unknown
+- The write refusal's root cause remains external/unknown. No repository or GitHub commit error was observed.
+
+### Failed approach
+- Adding a new independent in-package Go negative suite via the ordinary GitHub contents API was rejected.
+
+### Correction
+- Do not route around the refusal or retry the same target unchanged. Continue independent static audits and retain the proposed tests as an unimplemented guard candidate.
+
+### Recurrence guard
+- An isolated test's proposed assertions and static CI reachability are not proof of an executable committed guard or an observed CI PASS. Keep `write blocked`, `CI reachable if committed`, and `CI verified` distinct.
+
+### Retry condition
+- Retry only after an observable change in the write capability/policy for the new target or a relevant target-path state change.
+
+### Protected-authority check
+- No repository mutation or readiness/evidence record was created by the refused test write. Learning remains non-production evidence; `productionDecision=NO_GO` and all OPS-P0-007 semantic generation eligibility, distinct-environment, human-approved current objective, executable reviewed request, typed eight-domain non-resurrection, independent-review, and separate human-promotion gates remain mandatory.
