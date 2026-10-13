@@ -95,10 +95,17 @@ def check_event_fields(event: dict, contract: dict) -> list[str]:
         reasons.append("invalid component")
     if event.get("eventCode") not in contract["eventCodes"]:
         reasons.append("unknown eventCode")
-    for field, limit in bounds.items():
+    # Go emits these as required strings. Do not let non-string JSON values
+    # bypass the string-shape contract merely because other enums are valid.
+    for field in ("timestamp", "eventName"):
         value = event.get(field)
-        if isinstance(value, str) and len(value) > limit:
-            reasons.append(f"field over bound: {field}")
+        if not isinstance(value, str) or not value:
+            reasons.append(f"invalid required string field: {field}")
+    for field, limit in bounds.items():
+        if field in event:
+            value = event[field]
+            if not isinstance(value, str) or len(value) > limit:
+                reasons.append(f"invalid bounded string field: {field}")
 
     # JSON booleans are Python ints; type() avoids accepting true/false as
     # numeric evidence. Typed optional fields must match the Go Event shape.
