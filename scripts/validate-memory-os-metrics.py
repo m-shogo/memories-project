@@ -165,15 +165,15 @@ def parse_go_registry(src: str) -> tuple[dict, dict, dict]:
 
 def prove_go_registry_duplicate_rejection(src: str) -> None:
     """Exercise the real parser against two deterministic duplicate mutations."""
-    calls = re.findall(r'reg\\.register\\(spec\\{.*?\\}\\)', src)
+    calls = re.findall(r'reg\.register\(spec\{.*?\}\)', src)
     if not calls:
         raise Fail("Go registry duplicate negative proof has no registration")
     for duplicate in (
         calls[0],
-        re.sub(r"budget:\\s*\\d+", "budget: 99999", calls[0], count=1),
+        re.sub(r"budget:\s*\d+", "budget: 99999", calls[0], count=1),
     ):
         try:
-            parse_go_registry(src + "\\n" + duplicate)
+            parse_go_registry(src + "\n" + duplicate)
         except Fail as exc:
             if not str(exc).startswith("duplicate Go metric registration: "):
                 raise Fail(f"Go registry duplicate negative proof failed incorrectly: {exc}") from exc
