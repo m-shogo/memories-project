@@ -214,8 +214,16 @@ def main() -> int:
         if repo_root / case_set["baseFixtureRef"] != repo_root / MANIFEST_FIXTURE:
             raise ValidationFailure("semantic case base fixture is not canonical")
 
+        if len(case_set["cases"]) < 6:
+            raise ValidationFailure("Preview spool semantic negative coverage below six cases")
+
         executed = 0
+        seen_case_ids: set[str] = set()
         for case in case_set["cases"]:
+            case_id = case["caseId"]
+            if case_id in seen_case_ids:
+                raise ValidationFailure(f"duplicate Preview spool semantic case ID: {case_id}")
+            seen_case_ids.add(case_id)
             expected = case["expectedIssueCode"]
             if expected not in known_issue_codes:
                 raise ValidationFailure(
