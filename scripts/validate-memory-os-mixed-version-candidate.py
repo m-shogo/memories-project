@@ -60,6 +60,24 @@ def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     return value
 
 
+def require_repository_evidence_file(ref: str, label: str) -> None:
+    """Reject absolute, traversing, noncanonical, and symlink-escaping evidence refs."""
+    relative = Path(ref)
+    require(
+        not relative.is_absolute()
+        and ref == relative.as_posix()
+        and ".." not in relative.parts
+        and "\\\\" not in ref,
+        f"{label} must be a canonical repository-relative file: {ref}",
+    )
+    resolved_root = ROOT.resolve()
+    resolved = (resolved_root / relative).resolve()
+    require(
+        resolved.is_relative_to(resolved_root) and resolved.is_file(),
+        f"{label} missing or outside repository: {ref}",
+    )
+
+
 def is_ancestor(base: str, head: str) -> bool:
     try:
         return subprocess.run(
@@ -111,7 +129,7 @@ def validate_rejections(contract: dict[str, Any]) -> set[str]:
                     "rejected candidate failure record is incomplete")
         refs = strings(item.get("evidenceRefs"), "rejected.evidenceRefs", 4)
         for ref in refs:
-            require((ROOT / ref).exists(), f"rejection evidence missing: {ref}")
+            require_repository_evidence_file(ref, "rejection evidence")
     require(REJECTED_BASELINE_SHA in rejected,
             "known rejected candidate disappeared from registry")
     return rejected
@@ -292,7 +310,7 @@ def main() -> int:
         require(RESULT_REF not in refs,
                 "uncommitted candidate result is listed as evidence")
     for ref in refs:
-        require((ROOT / ref).exists(), f"candidate evidence missing: {ref}")
+        require_repository_evidence_file(ref, "candidate evidence")
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
