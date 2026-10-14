@@ -63,6 +63,15 @@ func NewRegistry() *Registry {
 func (r *Registry) register(s spec) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// Duplicate label names make Prometheus exposition ambiguous. Histograms
+	// reserve "le" for their generated bucket boundary label.
+	seenLabels := make(map[string]struct{}, len(s.labels))
+	for _, label := range s.labels {
+		if _, duplicate := seenLabels[label]; duplicate || (s.kind == TypeHistogram && label == "le") {
+			return false
+		}
+		seenLabels[label] = struct{}{}
+	}
 	if existing, ok := r.specs[s.name]; ok {
 		return existing.kind == s.kind && equalStrings(existing.labels, s.labels) &&
 			equalFloats(existing.buckets, s.buckets) && existing.budget == s.budget
