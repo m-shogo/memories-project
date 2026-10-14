@@ -3,6 +3,8 @@ package metrics
 import (
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -160,5 +162,85 @@ func TestScrapeHandlerRejectsOversizedSnapshot(t *testing.T) {
 	}
 	if strings.Contains(response.Body.String(), strings.Repeat("x", 16)) {
 		t.Fatal("oversized snapshot leaked into error response")
+	}
+}
+
+
+// An observation updates the histogram count and all bucket counts under one
+// registry lock. A scrape must never expose a torn snapshot of those fields.
+func TestPrometheusHistogramSnapshotIsCoherentDuringUpdates(t *testing.T) {
+	registry := NewRegistry()
+	NewRegistryRecorder(registry, nil)
+	labels := map[string]string{"route_template": "other", "route_class": "HEALTH"}
+	const observations = 200
+	const countPrefix = "memory_os_http_request_duration_seconds_count{route_template=\"other\",route_class=\"HEALTH\"} "
+	const infinityPrefix = "memory_os_http_request_duration_seconds_bucket{route_template=\"other\",route_class=\"HEALTH\",le=\"+Inf\"} "
+
+	checkSnapshot := func(snapshot string) (uint64, bool) {
+		var count, infinity uint64
+		var hasCount, hasInfinity bool
+		for _, line := range strings.Split(snapshot, "\n") {
+			switch {
+			case strings.HasPrefix(line, countPrefix):
+				if hasCount {
+					t.Fatal("duplicate histogram count in one scrape")
+				}
+				var err error
+				count, err = strconv.ParseUint(strings.TrimPrefix(line, countPrefix), 10, 64)
+				if err != nil {
+					t.Fatalf("invalid histogram count: %v", err)
+				}
+				hasCount = true
+			case strings.HasPrefix(line, infinityPrefix):
+				if hasInfinity {
+					t.Fatal("duplicate infinity bucket in one scrape")
+				}
+				var err error
+				infinity, err = strconv.ParseUint(strings.TrimPrefix(line, infinityPrefix), 10, 64)
+				if err != nil {
+					t.Fatalf("invalid infinity bucket: %v", err)
+				}
+				hasInfinity = true
+			}
+		}
+		if hasCount != hasInfinity {
+			t.Fatal("histogram count and infinity bucket must appear together")
+		}
+		if hasCount && count != infinity {
+			t.Fatalf("torn histogram scrape: count=%d infinity=%d", count, infinity)
+		}
+		return count, hasCount
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < observations; i++ {
+			registry.observe(MetricHTTPRequestDuration, labels, 0.01)
+			runtime.Gosched()
+		}
+	}()
+	for i := 0; i < observations; i++ {
+		checkSnapshot(registry.Prometheus())
+		runtime.Gosched()
+	}
+	<-done
+	count, present := checkSnapshot(registry.Prometheus())
+	if !present || count != observations {
+		t.Fatalf("final histogram count=%d present=%t, want %d", count, present, observations)
+	}
+}
+
+// Escaping must prevent a future allowlisted label value containing punctuation
+// from injecting a new Prometheus sample or changing the label boundary.
+func TestPrometheusLabelsEscapeInjectionTokens(t *testing.T) {
+	raw := "safe\"}\nINJECTED{\\tail"
+	got := prometheusLabels([]string{"route_template"}, map[string]string{"route_template": raw}, "", "")
+	want := "{route_template=" + strconv.Quote(raw) + "}"
+	if got != want {
+		t.Fatalf("escaped label=%q, want %q", got, want)
+	}
+	if strings.Contains(got, "\n") {
+		t.Fatal("unescaped newline in Prometheus label")
 	}
 }
