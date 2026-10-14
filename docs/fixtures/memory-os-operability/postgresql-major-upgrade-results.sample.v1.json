@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-postgresql-major-upgrade-results.v1",
-  "commitSha": "5cd374a2e747fba842499015236d0574360d29ba",
-  "generatedAt": "2026-10-07T13:44:00.600239Z",
+  "commitSha": "bfafea4f3290aa530b4bd0c4c6496104abd20a0b",
+  "generatedAt": "2026-10-14T12:14:33.385011Z",
   "environment": {
     "mode": "EPHEMERAL_DOCKER_POSTGRESQL_16_TO_17_LOGICAL_FORWARD_RESTORE",
     "productionEvidence": false,
@@ -12,9 +12,9 @@
   },
   "scenario": {
     "scenarioId": "postgresql-16-to-17-logical-forward-upgrade",
-    "startedAt": "2026-10-07T13:43:42Z",
-    "completedAt": "2026-10-07T13:44:00Z",
-    "durationSeconds": 18,
+    "startedAt": "2026-10-14T12:14:16Z",
+    "completedAt": "2026-10-14T12:14:33Z",
+    "durationSeconds": 17,
     "sourceMajor": 16,
     "targetMajor": 17,
     "migrationFilesAppliedPerDatabase": 11,
