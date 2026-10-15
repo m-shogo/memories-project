@@ -18,6 +18,54 @@ EXPECTED_ROLES = {
     "security_reviewer",
     "observability_platform_admin",
 }
+EXPECTED_ROLE_BOUNDARIES = {
+    "on_call_observer": {
+        "permissions": [
+            "read hot searchable structured events",
+            "filter only on bounded contract fields"
+        ],
+        "forbidden": [
+            "bulk export",
+            "retention changes",
+            "access-policy changes",
+            "raw backend administrative access"
+        ]
+    },
+    "incident_commander": {
+        "permissions": [
+            "read hot and warm structured events",
+            "create reviewed privacy-safe incident snapshots",
+            "request time-bounded break-glass access"
+        ],
+        "forbidden": [
+            "unreviewed bulk export",
+            "silent retention extension",
+            "deleting access audit records"
+        ]
+    },
+    "security_reviewer": {
+        "permissions": [
+            "read security, authorization, rate-limit, integrity and deletion events",
+            "review break-glass and export records"
+        ],
+        "forbidden": [
+            "application runtime credential access",
+            "altering incident evidence",
+            "approving own break-glass request"
+        ]
+    },
+    "observability_platform_admin": {
+        "permissions": [
+            "configure retention and sink health",
+            "manage provider integration through reviewed infrastructure changes"
+        ],
+        "forbidden": [
+            "routine event-content access",
+            "self-approved break-glass access",
+            "disabling access audit"
+        ]
+    }
+}
 EXPECTED_TIERS = {
     "hot-searchable": 14,
     "warm-operational": 90,
@@ -82,6 +130,33 @@ def nonempty_unique_strings(value: Any, field: str) -> list[str]:
             f"{field} contains an invalid value")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
     return value
+
+
+def require_role_boundary(role_id: str, permissions: list[str], forbidden: list[str]) -> None:
+    expected = EXPECTED_ROLE_BOUNDARIES[role_id]
+    require(set(permissions) == set(expected["permissions"]),
+            f"{role_id}: permission set drift")
+    require(set(forbidden) == set(expected["forbidden"]),
+            f"{role_id}: forbidden-action set drift")
+
+
+def prove_role_boundary_negative() -> None:
+    """Prove each role rejects both permission escalation and removed prohibitions."""
+    for role_id, expected in EXPECTED_ROLE_BOUNDARIES.items():
+        permissions = list(expected["permissions"])
+        forbidden = list(expected["forbidden"])
+        mutations = (
+            ("added privilege", permissions + ["unreviewed raw account export"], forbidden),
+            ("removed prohibition", permissions, forbidden[1:]),
+        )
+        for label, changed_permissions, changed_forbidden in mutations:
+            try:
+                require_role_boundary(role_id, changed_permissions, changed_forbidden)
+            except ValidationFailure as exc:
+                require("set drift" in str(exc),
+                        f"{role_id}: {label} failed for unexpected reason: {exc}")
+            else:
+                raise ValidationFailure(f"{role_id}: {label} was accepted")
 
 
 def main() -> int:
@@ -155,6 +230,7 @@ def main() -> int:
     require(retention.get("expiryVerified") is False,
             "retention expiry is not verified")
 
+    prove_role_boundary_negative()
     roles = unique_objects(access.get("accessRoles"), "id", "access roles")
     require(set(roles) == EXPECTED_ROLES, f"access role drift: {sorted(roles)}")
     for role_id, role in roles.items():
@@ -164,6 +240,7 @@ def main() -> int:
                                             f"accessRoles.{role_id}.forbidden")
         require(set(permissions).isdisjoint(forbidden),
                 f"{role_id}: a permission is also forbidden")
+        require_role_boundary(role_id, permissions, forbidden)
     require(any("bulk export" in item for item in roles["on_call_observer"]["forbidden"]),
             "on-call observer must not bulk export")
     require(any("own break-glass" in item for item in roles["security_reviewer"]["forbidden"]),
