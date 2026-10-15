@@ -28,6 +28,7 @@
     "count"
   ],
   "boundedStringFields": {
+    "eventName": 128,
     "operation": 64,
     "requestId": 128,
     "correlationId": 128,
