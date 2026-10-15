@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -78,6 +79,9 @@ func TestInvalidPolicyIsRejected(t *testing.T) {
 		{ID: "p", Capacity: 1, RefillPerSec: -1},
 		{ID: "p", Capacity: 2_000_000, RefillPerSec: 1},
 		{ID: "p", Capacity: 1, RefillPerSec: 2_000_000},
+		{ID: "p", Capacity: 1, RefillPerSec: math.NaN()},
+		{ID: "p", Capacity: 1, RefillPerSec: math.Inf(1)},
+		{ID: "p", Capacity: 1, RefillPerSec: math.Inf(-1)},
 	} {
 		if _, err := store.Take("k", bad, base); err == nil {
 			t.Fatalf("invalid policy accepted: %+v", bad)
