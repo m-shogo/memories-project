@@ -26,3 +26,17 @@ func TestPrincipalFromContextRejectsMissingValue(t *testing.T) {
 		t.Fatalf("expected missing principal, got %v", err)
 	}
 }
+
+func TestNilPrincipalContextFailsClosed(t *testing.T) {
+	principal, err := NewVerifiedPrincipal("acct_01J00000000000000000000000", 7, AuthorityIOSUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := WithPrincipal(nil, principal)
+	if ctx != nil || !errors.Is(err, ErrMissingVerifiedPrincipal) {
+		t.Fatalf("nil context write must fail closed: ctx=%v err=%v", ctx, err)
+	}
+	if _, err := PrincipalFromContext(nil); !errors.Is(err, ErrMissingVerifiedPrincipal) {
+		t.Fatalf("nil context read must fail closed: %v", err)
+	}
+}
