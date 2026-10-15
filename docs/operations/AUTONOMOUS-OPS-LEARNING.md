@@ -746,3 +746,36 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - No repository mutation or readiness/evidence record was created by the refused test write. Learning remains non-production evidence; `productionDecision=NO_GO` and all OPS-P0-007 semantic generation eligibility, distinct-environment, human-approved current objective, executable reviewed request, typed eight-domain non-resurrection, independent-review, and separate human-promotion gates remain mandatory.
+
+
+## 2026-10-15 — Incident admission guard writes remain target-scoped
+
+### Symptom
+- The human-tabletop writer negative suite could not be extended with a live CLI call-site sentinel, and the incident-contact-routing validator could not be hardened to reject completion flags with an empty admitted-routing registry.
+
+### Evidence
+- Branch `so` was freshly read at `28b8c3c09efa5b52fbb371667c5fb06e892d8504` before both attempted writes.
+- The human-tabletop negative-suite target was blob `83a8941ac674b4298ce03f227caa5c9922f30571`; its existing test inspects the source string `require_actual_cli_authorities()` but does not execute a sentinel-injected `main()` call to prove the guard is reached.
+- The contact-routing validator target was blob `3494a547a9f896995d54a9e2ec3412525e859ce0`; its registry is empty and its canonical contract currently has all contact-ownership, paging, review and production-evidence flags false. The validator does not compare those completion flags to the empty registry.
+- Both normal GitHub contents updates were rejected by the execution safety layer before a commit. No CI run or executable guard resulted from either attempted change.
+
+### Root cause or unknown
+- The missing runtime call-site and empty-registry flag assertions are verified code-coverage gaps. The cause of the external write refusal is unknown; no GitHub commit or repository validator failure was observed.
+
+### Failed approach
+- Ordinary target-specific contents updates were attempted once each and rejected. Repeating equivalent updates or switching to low-level Git object/ref writes is not an acceptable workaround.
+
+### Correction
+- Retain the human-tabletop call-site sentinel design as an unimplemented negative test, and the contact-routing empty-registry flag comparison as an unimplemented validator guard. Continue independent safe audits without treating these proposals as installed protections.
+
+### Recurrence guard
+- Require a live injected sentinel when claiming a CLI authority guard is actually invoked; source-text presence alone is insufficient. Require zero admitted routing records to imply no owned external contacts, delivered paging, communication path, independent review, or production evidence. Distinguish a proposed guard, a committed guard, and an observed exact-source CI PASS.
+
+### Retry condition
+- Retry the tabletop negative suite only after its blob or target-specific write policy/capability changes. Retry the contact-routing validator only after its blob or target-specific write policy/capability changes. An unrelated successful write does not satisfy either retry condition.
+
+### Observed safe outcome
+- Read-only GitHub inspection verified that both existing incident admission workflows execute their bound negative suites, while the two specific new protections are not present. No human tabletop record, contact-routing record, production evidence, credential, traffic, or promotion authority was created. This audit is reusable as a pattern for verifying transitive CI reachability before claiming a new guard is covered.
+
+### Protected-authority check
+- The status authority still reports `productionDecision=NO_GO` and OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`. This learning record is non-production history only; distinct-environment semantic generation eligibility, explicit human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate human production-promotion authority remain mandatory.
