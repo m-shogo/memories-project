@@ -63,6 +63,38 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def generated_alert_expressions(rule_text: str) -> dict[str, str]:
+    """Read the canonical generated rule blocks without accepting cross-rule fragments."""
+    markers = list(re.finditer(
+        r"(?m)^      - alert: (MemoryOS[A-Za-z0-9]+)\s*$", rule_text,
+    ))
+    require(len(markers) == len(EXPECTED_ALERT_IDS),
+            "generated alert rule count drift")
+    expressions: dict[str, str] = {}
+    for index, marker in enumerate(markers):
+        name = marker.group(1)
+        require(name not in expressions, f"duplicate generated alert: {name}")
+        end = markers[index + 1].start() if index + 1 < len(markers) else len(rule_text)
+        body = rule_text[marker.end():end].splitlines()
+        expression_lines = [
+            position for position, line in enumerate(body)
+            if line.startswith("        expr: ")
+        ]
+        require(len(expression_lines) == 1, f"{name}: generated expression missing/duplicate")
+        position = expression_lines[0]
+        expression = body[position].split("expr: ", 1)[1]
+        if expression == ">-":
+            folded: list[str] = []
+            for line in body[position + 1:]:
+                if not line.startswith("          "):
+                    break
+                folded.append(line.strip())
+            require(folded, f"{name}: empty folded expression")
+            expression = " ".join(folded)
+        expressions[name] = " ".join(expression.split())
+    return expressions
+
+
 def main() -> int:
     metrics = load(METRICS_PATH)
     alerting = load(ALERTING_PATH)
@@ -202,6 +234,14 @@ def main() -> int:
     require(rule_path.is_file(), "Prometheus rule file missing")
     require(runbook_path.is_file(), "metrics alert runbook missing")
     rule_text = rule_path.read_text(encoding="utf-8")
+    generated_expressions = generated_alert_expressions(rule_text)
+    require(set(generated_expressions) == prometheus_names,
+            "generated Prometheus alert names drift from contract")
+    for rule in rules_by_id.values():
+        name = rule["prometheusAlertName"]
+        expected_expression = " ".join(rule["expression"].split())
+        require(generated_expressions[name] == expected_expression,
+                f"{name}: generated expression drift from contract")
     runbook_text = runbook_path.read_text(encoding="utf-8")
     for alert_id, rule in rules_by_id.items():
         for required in (
