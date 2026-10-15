@@ -18,6 +18,7 @@ package ratelimit
 
 import (
 	"errors"
+	"math"
 	"sync"
 	"time"
 )
@@ -45,7 +46,7 @@ func (p Policy) Validate() error {
 	if p.Capacity <= 0 || p.Capacity > 1_000_000 {
 		return errors.New("policy capacity out of range")
 	}
-	if p.RefillPerSec <= 0 || p.RefillPerSec > 1_000_000 {
+	if math.IsNaN(p.RefillPerSec) || p.RefillPerSec <= 0 || p.RefillPerSec > 1_000_000 {
 		return errors.New("policy refill rate out of range")
 	}
 	return nil
