@@ -63,9 +63,12 @@ def unique_strings(value: Any, field: str, *, allow_empty: bool = False) -> list
 def parse_time(value: Any, field: str) -> dt.datetime:
     require(isinstance(value, str) and value, f"{field} must be an RFC3339 timestamp")
     try:
-        return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise ValidationFailure(f"{field} must be an RFC3339 timestamp") from exc
+    require(parsed.tzinfo is not None and parsed.utcoffset() is not None,
+            f"{field} must include an explicit timezone offset")
+    return parsed
 
 
 def scenario_map(policy: dict[str, Any]) -> dict[str, dict[str, Any]]:
