@@ -10,6 +10,9 @@ var ErrMissingVerifiedPrincipal = errors.New("verified principal missing from co
 type principalContextKey struct{}
 
 func WithPrincipal(ctx context.Context, principal Principal) (context.Context, error) {
+	if ctx == nil {
+		return nil, ErrMissingVerifiedPrincipal
+	}
 	if err := principal.Validate(); err != nil {
 		return nil, err
 	}
@@ -17,6 +20,9 @@ func WithPrincipal(ctx context.Context, principal Principal) (context.Context, e
 }
 
 func PrincipalFromContext(ctx context.Context) (Principal, error) {
+	if ctx == nil {
+		return Principal{}, ErrMissingVerifiedPrincipal
+	}
 	principal, ok := ctx.Value(principalContextKey{}).(Principal)
 	if !ok || principal.Validate() != nil {
 		return Principal{}, ErrMissingVerifiedPrincipal
