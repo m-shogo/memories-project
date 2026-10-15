@@ -13,20 +13,26 @@ import (
 // normalized (allowlisted) values, and numeric samples; no free-form string
 // from a caller can reach it.
 func (r *Registry) Export() string {
+	// Keep the registry locked while formatting: each series pointer contains
+	// mutable counts, gauges and histogram buckets updated by concurrent writers.
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	names := make([]string, 0, len(r.specs))
 	for name := range r.specs {
 		names = append(names, name)
 	}
-	r.mu.Unlock()
 	sort.Strings(names)
 
 	var b strings.Builder
 	for _, name := range names {
-		r.mu.Lock()
 		s := r.specs[name]
-		r.mu.Unlock()
-		for _, series := range r.sortedSeries(name) {
+		seriesKeys := make([]string, 0, len(r.seriesMap[name]))
+		for key := range r.seriesMap[name] {
+			seriesKeys = append(seriesKeys, key)
+		}
+		sort.Strings(seriesKeys)
+		for _, key := range seriesKeys {
+			series := r.seriesMap[name][key]
 			labels := renderLabels(s.labels, series.labels)
 			switch s.kind {
 			case TypeCounter:
