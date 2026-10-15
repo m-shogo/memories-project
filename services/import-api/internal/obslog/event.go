@@ -125,6 +125,17 @@ const (
 	ComponentRateLimit      Component = "rate_limit"
 )
 
+// valid rejects caller-created component values outside the contract's closed set.
+func (c Component) valid() bool {
+	switch c {
+	case ComponentHTTP, ComponentApple, ComponentUpload, ComponentPreview,
+		ComponentApply, ComponentDeletionWorker, ComponentImportFlow,
+		ComponentServer, ComponentRateLimit:
+		return true
+	}
+	return false
+}
+
 // Event is the sole shape the logger emits. Required fields (SchemaVersion,
 // Timestamp, Severity, EventName, EventCode, Component, Outcome) are always
 // present; every other field is a pointer or empty-omitted, so an unused field
@@ -191,7 +202,8 @@ func (l *Logger) Emit(event Event) {
 	event.Timestamp = l.now().UTC().Format(time.RFC3339Nano)
 
 	if !event.Severity.valid() || !event.Outcome.valid() || !event.FailureClass.valid() ||
-		!knownEventCode(event.EventCode) || event.EventName == "" {
+		!event.Component.valid() || !knownEventCode(event.EventCode) ||
+		event.EventName == "" || len(event.EventName) > maxIdentifierLen {
 		// Fail closed: rather than emit a malformed or unclassified event,
 		// emit a single fixed internal-invariant marker with no caller strings.
 		event = Event{
