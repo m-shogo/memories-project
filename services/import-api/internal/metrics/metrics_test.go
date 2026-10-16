@@ -168,3 +168,58 @@ func TestDuplicateRegistrationSameShapeIsIdempotent(t *testing.T) {
 		t.Fatal("conflicting re-registration accepted")
 	}
 }
+
+func TestRegistrationRejectsAmbiguousPrometheusLabels(t *testing.T) {
+	tests := []struct {
+		name string
+		spec spec
+	}{
+		{
+			name: "duplicate counter label",
+			spec: spec{name: "ambiguous_counter", kind: TypeCounter, labels: []string{"route_class", "route_class"}, budget: 2},
+		},
+		{
+			name: "duplicate histogram label",
+			spec: spec{name: "ambiguous_histogram", kind: TypeHistogram, labels: []string{"operation", "operation"}, buckets: []float64{0.1, 1}, budget: 2},
+		},
+		{
+			name: "reserved histogram le label",
+			spec: spec{name: "reserved_histogram", kind: TypeHistogram, labels: []string{"operation", "le"}, buckets: []float64{0.1, 1}, budget: 2},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := NewRegistry()
+			if reg.register(tc.spec) {
+				t.Fatal("ambiguous Prometheus label registration accepted")
+			}
+			if reg.TotalSeries() != 0 || reg.SeriesCount(tc.spec.name) != 0 {
+				t.Fatal("rejected registration created series")
+			}
+		})
+	}
+	reg := NewRegistry()
+	if !reg.register(spec{name: "valid_histogram", kind: TypeHistogram, labels: []string{"operation", "outcome"}, buckets: []float64{0.1, 1}, budget: 2}) {
+		t.Fatal("distinct histogram labels were rejected")
+	}
+}
+
+func TestCardinalityDropPreservesAdmittedCounter(t *testing.T) {
+	reg := NewRegistry()
+	if !reg.register(spec{name: "bounded_counter", kind: TypeCounter, labels: []string{"route_class"}, budget: 1}) {
+		t.Fatal("counter registration failed")
+	}
+	reg.incCounter("bounded_counter", map[string]string{"route_class": "HEALTH"}, 7)
+	for i := 0; i < 20; i++ {
+		reg.incCounter("bounded_counter", map[string]string{"route_class": "UNRECOGNIZED"}, 1)
+	}
+	if got := reg.SeriesCount("bounded_counter"); got != 1 {
+		t.Fatalf("series count=%d, want 1", got)
+	}
+	if got := reg.DroppedSeries("bounded_counter"); got != 20 {
+		t.Fatalf("dropped=%d, want 20", got)
+	}
+	if got := reg.SumCounter("bounded_counter", map[string]string{"route_class": "HEALTH"}); got != 7 {
+		t.Fatalf("admitted counter changed after drops: %d", got)
+	}
+}
