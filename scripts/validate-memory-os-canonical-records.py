@@ -97,9 +97,9 @@ def go_canonical_encoding(record: dict[str, Any]) -> str:
         raise ValidationFailure(f"record fields do not match the contract: {sorted(record)}")
     ordered = {key: record[key] for key in order}
     encoded = json.dumps(ordered, separators=(",", ":"), ensure_ascii=False)
-    return (
-        encoded.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
-    )
+    escaped = encoded.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+    # Go encoding/json escapes U+2028 and U+2029 even with UTF-8 output.
+    return escaped.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
 
 def expected_fingerprint(record: dict[str, Any]) -> str:
@@ -123,6 +123,30 @@ def semantic_errors(record: dict[str, Any]) -> list[str]:
     return errors
 
 
+
+def verify_go_line_separator_encoding() -> None:
+    """Keep the Python fixture oracle aligned with Go encoding/json."""
+    record = {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 1,
+        "title": "A\u2028B\u2029C",
+        "occurredAt": "",
+        "url": "",
+        "text": "",
+        "fingerprint": "",
+        "issues": [],
+    }
+    record["fingerprint"] = expected_fingerprint(record)
+    expected = (
+        '{"recordType":"candidate","recordVersion":1,"sourceRow":1,'
+        '"title":"A\\u2028B\\u2029C","occurredAt":"","url":"","text":"",'
+        '"fingerprint":"' + record["fingerprint"] + '","issues":[]}'
+    )
+    if go_canonical_encoding(record) != expected:
+        raise ValidationFailure("Go JSON line-separator escaping drift")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -141,6 +165,7 @@ def main() -> int:
         if RECORD_SCHEMA_ID not in schemas:
             raise ValidationFailure("canonical record schema is not registered")
 
+        verify_go_line_separator_encoding()
         case_set = load_json(repo_root / CASE_SET_FIXTURE)
         case_set_errors = schema_errors(
             case_set, case_set["$schema"], schemas, resources
