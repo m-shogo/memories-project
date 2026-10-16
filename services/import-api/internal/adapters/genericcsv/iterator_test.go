@@ -127,3 +127,43 @@ func TestIteratorMatchesParserForValidInput(t *testing.T) {
 		t.Fatalf("summary mismatch: parser=%#v iterator=%#v", parserSummary, iterator.Summary())
 	}
 }
+
+func TestIteratorCancellationAfterAcceptedRowIsSticky(t *testing.T) {
+	iterator, err := NewIterator(strings.NewReader("title\nA\nB\n"), Options{TitleColumn: "title"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := iterator.Next(context.Background())
+	if err != nil || !first.Accepted {
+		t.Fatalf("first row was not accepted: %#v %v", first, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := iterator.Next(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation after first row, got %v", err)
+	}
+	if _, err := iterator.Next(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled iterator resumed on later context: %v", err)
+	}
+	if got := iterator.Summary(); got.RowsRead != 1 || got.AcceptedRows != 1 {
+		t.Fatalf("cancelled iterator consumed additional rows: %#v", got)
+	}
+}
+
+func TestIteratorNilContextCannotBeUsedToResume(t *testing.T) {
+	iterator, err := NewIterator(strings.NewReader("title\nA\n"), Options{TitleColumn: "title"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, firstErr := iterator.Next(nil)
+	if firstErr == nil {
+		t.Fatal("nil context was accepted")
+	}
+	if _, err := iterator.Next(context.Background()); err != firstErr {
+		t.Fatalf("nil-context failure was not sticky: got %v, want %v", err, firstErr)
+	}
+	if iterator.Summary().RowsRead != 0 {
+		t.Fatalf("nil context consumed input: %#v", iterator.Summary())
+	}
+}
