@@ -63,7 +63,7 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def generated_alert_expressions(rule_text: str) -> dict[str, str]:
+def generated_alert_expressions(rule_text: str) -> tuple[dict[str, str], dict[str, str]]:
     """Read the canonical generated rule blocks without accepting cross-rule fragments."""
     markers = list(re.finditer(
         r"(?m)^      - alert: (MemoryOS[A-Za-z0-9]+)\s*$", rule_text,
@@ -71,10 +71,12 @@ def generated_alert_expressions(rule_text: str) -> dict[str, str]:
     require(len(markers) == len(EXPECTED_ALERT_IDS),
             "generated alert rule count drift")
     expressions: dict[str, str] = {}
+    blocks: dict[str, str] = {}
     for index, marker in enumerate(markers):
         name = marker.group(1)
         require(name not in expressions, f"duplicate generated alert: {name}")
         end = markers[index + 1].start() if index + 1 < len(markers) else len(rule_text)
+        blocks[name] = rule_text[marker.start():end]
         body = rule_text[marker.end():end].splitlines()
         expression_lines = [
             position for position, line in enumerate(body)
@@ -92,7 +94,54 @@ def generated_alert_expressions(rule_text: str) -> dict[str, str]:
             require(folded, f"{name}: empty folded expression")
             expression = " ".join(folded)
         expressions[name] = " ".join(expression.split())
-    return expressions
+    return expressions, blocks
+
+
+def require_alert_rule_metadata(rule: dict[str, Any], block: str) -> None:
+    """Bind each generated rule's metadata to its own alert, not a global text match."""
+    expected = {
+        "alert": ("      - alert: ", rule["prometheusAlertName"]),
+        "for": ("        for: ", rule["for"]),
+        "severity": ("          severity: ", rule["severity"]),
+        "alert_id": ("          alert_id: ", rule["alertId"]),
+        "threshold_status": ("          threshold_status: ", rule["thresholdStatus"].lower()),
+        "runbook": ("          runbook: ", rule["runbook"]),
+    }
+    for field, (prefix, value) in expected.items():
+        matches = [line for line in block.splitlines() if line.startswith(prefix)]
+        require(matches == [prefix + value],
+                f"{rule['alertId']}: generated {field} binding drift")
+
+
+def prove_alert_rule_metadata_negative(rule: dict[str, Any], block: str) -> None:
+    """Mutation checks ensure the per-rule binding cannot silently become global."""
+    require_alert_rule_metadata(rule, block)
+    expected = {
+        "for": ("        for: ", rule["for"]),
+        "severity": ("          severity: ", rule["severity"]),
+        "alert_id": ("          alert_id: ", rule["alertId"]),
+        "threshold_status": ("          threshold_status: ", rule["thresholdStatus"].lower()),
+        "runbook": ("          runbook: ", rule["runbook"]),
+    }
+    for field, (prefix, value) in expected.items():
+        original = prefix + value
+        require(block.count(original) == 1,
+                f"{rule['alertId']}: cannot construct {field} negative control")
+        mutated = block.replace(original, prefix + "__MUTATED__", 1)
+        try:
+            require_alert_rule_metadata(rule, mutated)
+        except ValidationFailure:
+            pass
+        else:
+            raise ValidationFailure(
+                f"{rule['alertId']}: mutated generated {field} was accepted"
+            )
+    try:
+        require_alert_rule_metadata(rule, block + "\\n        for: " + rule["for"])
+    except ValidationFailure:
+        pass
+    else:
+        raise ValidationFailure(f"{rule['alertId']}: duplicate generated for accepted")
 
 
 def main() -> int:
@@ -234,7 +283,7 @@ def main() -> int:
     require(rule_path.is_file(), "Prometheus rule file missing")
     require(runbook_path.is_file(), "metrics alert runbook missing")
     rule_text = rule_path.read_text(encoding="utf-8")
-    generated_expressions = generated_alert_expressions(rule_text)
+    generated_expressions, generated_blocks = generated_alert_expressions(rule_text)
     require(set(generated_expressions) == prometheus_names,
             "generated Prometheus alert names drift from contract")
     for rule in rules_by_id.values():
@@ -242,6 +291,8 @@ def main() -> int:
         expected_expression = " ".join(rule["expression"].split())
         require(generated_expressions[name] == expected_expression,
                 f"{name}: generated expression drift from contract")
+        require_alert_rule_metadata(rule, generated_blocks[name])
+        prove_alert_rule_metadata_negative(rule, generated_blocks[name])
     runbook_text = runbook_path.read_text(encoding="utf-8")
     for alert_id, rule in rules_by_id.items():
         for required in (
@@ -251,8 +302,8 @@ def main() -> int:
             f"for: {rule['for']}",
             rule["runbook"],
         ):
-            require(required in rule_text,
-                    f"{alert_id}: generated rule file missing {required!r}")
+            require(required in generated_blocks[rule["prometheusAlertName"]],
+                    f"{alert_id}: generated rule block missing {required!r}")
         anchor_heading = "## " + alert_id.replace("_", "-")
         require(anchor_heading in runbook_text,
                 f"{alert_id}: runbook heading missing: {anchor_heading}")
