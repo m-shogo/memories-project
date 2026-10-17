@@ -245,7 +245,28 @@ def main() -> int:
                 raise ValidationFailure(f"{case_id}: unknown expectation {expected}")
             counts[expected] += 1
 
-        if counts["accept"] < 3 or counts["reject_schema"] < 5:
+        # Schema rejections alone cannot prove fingerprint semantics or the
+        # Go/Python canonical byte boundary. Keep those negative families
+        # executable even if the fixture set is edited in a later checkpoint.
+        required_negative_ids = {
+            "reject-semantic-fingerprint-mismatch",
+            "reject-semantic-untrimmed-fingerprint",
+            "reject-encoding-pretty-printed",
+            "reject-encoding-reordered-keys",
+            "reject-encoding-trailing-newline",
+            "reject-encoding-unescaped-html",
+        }
+        missing_negative_ids = required_negative_ids - seen_ids
+        if missing_negative_ids:
+            raise ValidationFailure(
+                f"missing mandatory canonical negative cases: {sorted(missing_negative_ids)}"
+            )
+        if (
+            counts["accept"] < 3
+            or counts["reject_schema"] < 5
+            or counts["reject_semantic"] < 2
+            or counts["reject_encoding"] < 4
+        ):
             raise ValidationFailure(f"case coverage is too thin: {counts}")
 
     except ValidationFailure as exc:
