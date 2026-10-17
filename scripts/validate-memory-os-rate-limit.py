@@ -11,6 +11,7 @@ policy-set checker, so a hole in the checker is itself a failure.
 from __future__ import annotations
 
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -103,9 +104,9 @@ def check_policy_set(
                     continue
                 cap = block.get("capacity")
                 refill = block.get("refillPerSecond")
-                if not isinstance(cap, (int, float)) or cap <= 0 or cap > _max_capacity:
+                if type(cap) is not int or not 0 < cap <= _max_capacity:
                     reasons.append(f"{pid}: {guard} capacity out of range")
-                if not isinstance(refill, (int, float)) or refill <= 0 or refill > _max_refill:
+                if type(refill) not in (int, float) or not math.isfinite(refill) or not 0 < refill <= _max_refill:
                     reasons.append(f"{pid}: {guard} refill out of range")
             if policy.get("routeClass") in ("PUBLIC_UNAUTHENTICATED", "PUBLIC_AUTHENTICATED"):
                 if policy.get("failureMode") not in ("fail_closed", "fail_closed_emergency_local"):
