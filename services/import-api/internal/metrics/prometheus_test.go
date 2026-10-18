@@ -165,7 +165,6 @@ func TestScrapeHandlerRejectsOversizedSnapshot(t *testing.T) {
 	}
 }
 
-
 // An observation updates the histogram count and all bucket counts under one
 // registry lock. A scrape must never expose a torn snapshot of those fields.
 func TestPrometheusHistogramSnapshotIsCoherentDuringUpdates(t *testing.T) {
