@@ -137,7 +137,7 @@ def prove_alert_rule_metadata_negative(rule: dict[str, Any], block: str) -> None
                 f"{rule['alertId']}: mutated generated {field} was accepted"
             )
     try:
-        require_alert_rule_metadata(rule, block + "\\n        for: " + rule["for"])
+        require_alert_rule_metadata(rule, block + "\n        for: " + rule["for"])
     except ValidationFailure:
         pass
     else:
