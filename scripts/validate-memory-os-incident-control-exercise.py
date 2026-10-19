@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -208,8 +209,8 @@ def validate_result(result: dict[str, Any], contract: dict[str, Any], expected_s
             exercise.get("productionDrillResult") == "NOT_COMPLETED" and
             exercise.get("closureResult") == "BLOCKED_PENDING_HUMAN_APPROVAL",
             "automated exercise overclaims completion")
-    require(isinstance(exercise.get("durationSeconds"), (int, float)) and
-            exercise["durationSeconds"] >= 0,
+    require(type(exercise.get("durationSeconds")) in (int, float) and
+            math.isfinite(exercise["durationSeconds"]) and exercise["durationSeconds"] >= 0,
             "exercise duration invalid")
 
     scenarios = exercise.get("scenarios")
@@ -234,15 +235,17 @@ def validate_result(result: dict[str, Any], contract: dict[str, Any], expected_s
                 definition["validatorCommands"],
                 f"scenario command order drift: {scenario_id}")
         for control in controls:
-            require(control.get("exitCode") == 0 and control.get("result") == "PASS",
+            require(type(control.get("exitCode")) is int and control["exitCode"] == 0 and
+                    control.get("result") == "PASS",
                     f"scenario validator failed: {scenario_id}")
             require(isinstance(control.get("outputSha256"), str) and
                     DIGEST_RE.fullmatch(control["outputSha256"]) is not None,
                     f"scenario output digest invalid: {scenario_id}")
-            require(isinstance(control.get("outputBytes"), int) and
+            require(type(control.get("outputBytes")) is int and
                     0 <= control["outputBytes"] <= 1_000_000,
                     f"scenario output size invalid: {scenario_id}")
-            require(isinstance(control.get("durationSeconds"), (int, float)) and
+            require(type(control.get("durationSeconds")) in (int, float) and
+                    math.isfinite(control["durationSeconds"]) and
                     0 <= control["durationSeconds"] <= 180,
                     f"scenario duration invalid: {scenario_id}")
         decisions = item.get("decisions")
@@ -296,7 +299,7 @@ def main() -> int:
         require(isinstance(readiness.get(field), bool),
                 f"incident implementation readiness must be boolean: {field}")
     if expected_sha:
-        require(readiness.get("exactSourcePassResultCommitted") in {False, True},
+        require(type(readiness.get("exactSourcePassResultCommitted")) is bool,
                 "exact-source readiness must remain boolean during result commit")
     else:
         require(readiness.get("exactSourcePassResultCommitted") is result_present,
