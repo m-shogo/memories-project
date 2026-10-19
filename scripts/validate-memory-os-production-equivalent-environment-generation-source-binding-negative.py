@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -84,6 +85,64 @@ def evidence_env(refs: tuple[str, ...]) -> dict[str, Any]:
         "materialDeltas": [{"independentReviewRef": refs[6]}],
         "evidenceBoundary": {"independentReviewRef": refs[7]},
     }
+
+
+def run_in_isolated_worktree() -> int:
+    """Keep destructive source-binding fixtures out of the canonical checkout."""
+    protected = (
+        CONTRACT,
+        WRITER,
+        ENVIRONMENT_RECORD_FIXTURE,
+        ROOT / "contracts/operations/production-operability-status.json",
+        ROOT / "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
+        *[path for _, path in EVIDENCE_CASES],
+    )
+    snapshots = {path: (path.read_bytes(), path.stat().st_mode & 0o7777) for path in set(protected)}
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", "-C", str(ROOT), *args],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+
+    head = git("rev-parse", "HEAD")
+    require(head.returncode == 0 and len(head.stdout.strip()) == 40, "cannot resolve canonical source HEAD")
+    status = git("status", "--porcelain")
+    require(status.returncode == 0, "cannot inspect canonical source worktree")
+    require(not status.stdout.strip(), "source-binding negative requires clean canonical source worktree")
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-source-binding-worktree-") as tmp:
+        checkout = Path(tmp) / "checkout"
+        added = False
+        try:
+            result = git("worktree", "add", "--detach", "--quiet", str(checkout), head.stdout.strip())
+            require(result.returncode == 0, f"cannot create detached negative checkout: {result.stderr.strip()}")
+            added = True
+            isolated_script = checkout / "scripts" / Path(__file__).name
+            require(isolated_script.is_file(), "detached negative script missing")
+            result = subprocess.run(
+                [sys.executable, str(isolated_script), "--isolated"],
+                cwd=checkout, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, check=False,
+            )
+            print(result.stdout, end="")
+            if result.stderr:
+                print(result.stderr, end="", file=sys.stderr)
+            require(result.returncode == 0, f"isolated source-binding negative failed: exit={result.returncode}")
+        finally:
+            if added:
+                removal = git("worktree", "remove", "--force", str(checkout))
+                require(removal.returncode == 0, f"cannot remove detached negative checkout: {removal.stderr.strip()}")
+
+    after_head = git("rev-parse", "HEAD")
+    after_status = git("status", "--porcelain")
+    require(after_head.returncode == 0 and after_head.stdout == head.stdout, "canonical source HEAD drift")
+    require(after_status.returncode == 0 and after_status.stdout == status.stdout, "canonical source worktree drift")
+    for path, (payload, mode) in snapshots.items():
+        require(path.read_bytes() == payload, f"canonical authority bytes drift: {path}")
+        require((path.stat().st_mode & 0o7777) == mode, f"canonical authority mode drift: {path}")
+    print("PASS isolation: detached negative checkout removed; canonical source bytes, modes, HEAD and worktree unchanged")
+    return 0
 
 
 def main() -> int:
@@ -184,6 +243,12 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
+        if len(sys.argv) == 1:
+            raise SystemExit(run_in_isolated_worktree())
+        require(
+            sys.argv == [sys.argv[0], "--isolated"] and (ROOT / ".git").is_file(),
+            "destructive source-binding negatives require a detached Git worktree",
+        )
         raise SystemExit(main())
     except Fail as exc:
         print(f"ENVIRONMENT GENERATION SOURCE-BINDING NEGATIVE FAILED: {exc}")
