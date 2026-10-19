@@ -118,16 +118,18 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     require(scenario.get("result") == "PASS", "object restore result is not PASS")
     require(scenario.get("integrityResult") == "PASS",
             "object restore integrity is not PASS")
-    require(scenario.get("sourceVersionsCreated") >= 3,
-            "source version count is insufficient")
-    require(scenario.get("sourceVersionsRemainingAfterLoss") == 0,
-            "source versions remained after simulated loss")
-    require(isinstance(scenario.get("durationSeconds"), int) and
+    require(type(scenario.get("sourceVersionsCreated")) is int and
+            scenario["sourceVersionsCreated"] >= 3,
+            "source version count must be an integer >= 3")
+    require(type(scenario.get("sourceVersionsRemainingAfterLoss")) is int and
+            scenario["sourceVersionsRemainingAfterLoss"] == 0,
+            "source versions remaining after loss must be integer zero")
+    require(type(scenario.get("durationSeconds")) is int and
             scenario["durationSeconds"] >= 0,
-            "result duration is invalid")
-    require(isinstance(scenario.get("contentLength"), int) and
+            "result duration must be a nonnegative integer")
+    require(type(scenario.get("contentLength")) is int and
             scenario["contentLength"] > 0,
-            "content length is invalid")
+            "content length must be a positive integer")
     for field in (
         "selectedSourceVersionDigest", "backupVersionDigest",
         "restoreVersionDigest", "objectKeyDigest", "contentChecksumSha256",
