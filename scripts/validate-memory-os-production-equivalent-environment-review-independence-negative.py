@@ -55,6 +55,10 @@ def main() -> int:
         ("negative count", -1),
         ("string count", "0"),
         ("null count", None),
+        ("zero float count", 0.0),
+        ("positive float count", 3.0),
+        ("array count", []),
+        ("object count", {}),
     ):
         expect_rejected(validator, name, lambda value=value: validator.exact_int(value, name))
 
@@ -88,6 +92,13 @@ def main() -> int:
             require(validator.canonical_repo_file(canonical, Path("review.json"), "review authority") == canonical, "canonical authority file rejected")
             expect_rejected(validator, "absolute review ref", lambda: validator.repo_ref(str(canonical.resolve()), "review"))
             expect_rejected(validator, "parent traversal review ref", lambda: validator.repo_ref("nested/../review.json", "review"))
+            expect_rejected(validator, "noncanonical dot-prefix review ref", lambda: validator.repo_ref("./review.json", "review"))
+            expect_rejected(validator, "missing review ref", lambda: validator.repo_ref("missing-review.json", "review"))
+            directory = root / "review-directory"
+            directory.mkdir()
+            expect_rejected(validator, "directory as review ref", lambda: validator.repo_ref("review-directory", "review"))
+            for name, value in (("null", None), ("boolean", True), ("number", 1), ("object", {})):
+                expect_rejected(validator, f"{name} review ref", lambda value=value: validator.repo_ref(value, "review"))
 
             escaped = root / "escaped-review.json"
             escaped.symlink_to(external)
@@ -97,6 +108,7 @@ def main() -> int:
             aliased = root / "aliased-review.json"
             aliased.symlink_to(internal.name)
             expect_rejected(validator, "authority file symlink alias", lambda: validator.canonical_repo_file(aliased, Path("aliased-review.json"), "review authority"))
+            expect_rejected(validator, "review ref symlink alias", lambda: validator.repo_ref("aliased-review.json", "review"))
 
             loop = root / "loop-review.json"
             loop.symlink_to(loop.name)
