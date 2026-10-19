@@ -122,6 +122,43 @@ def main() -> int:
         ),
     )
 
+    # Exercise additional existing fail-closed boundaries without mutating the
+    # canonical workflow or widening production/publication authority.
+    cases += (
+        (
+            "PR-only validation condition removed",
+            replace_once(canonical, "if: github.event_name == 'pull_request'", "if: github.event_name != 'pull_request'", "PR-only condition"),
+        ),
+        (
+            "PR explicit read-only grant removed",
+            replace_once(canonical, "permissions:\n      contents: read\n", "", "PR read-only grant"),
+        ),
+        (
+            "PR deterministic drift rejection removed",
+            replace_once(canonical, "git diff --exit-code", "echo 'skip PR drift check'", "PR deterministic drift check"),
+        ),
+        (
+            "canonical chain runner skipped",
+            replace_all(canonical, "python scripts/validate-memory-os-backup-restore-admission-chain-full.py", "echo 'skip canonical chain'", "canonical full-chain runner"),
+        ),
+        (
+            "bounded latest-so reset removed",
+            replace_once(canonical, "git reset --hard origin/so", "echo 'skip latest-so reset'", "bounded latest-so reset"),
+        ),
+        (
+            "publication derived-only mutation guard removed",
+            replace_all(canonical, "assert_only_derived_chain_changes", "skip_derived_chain_check", "derived-only publication guard"),
+        ),
+        (
+            "publication write grant removed",
+            replace_once(canonical, "permissions:\n      contents: write\n", "permissions:\n      contents: read\n", "publication-only write grant"),
+        ),
+        (
+            "failure diagnostic fsync removed",
+            replace_once(canonical, "os.fsync(handle.fileno())", "pass  # no fsync", "atomic diagnostic fsync"),
+        ),
+    )
+
     for label, mutated in cases:
         require(mutated != canonical, f"negative mutation did not change workflow: {label}")
         expect_reject(module, label, mutated)
