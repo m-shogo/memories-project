@@ -91,10 +91,13 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
         require(item.get("result") == "PASS", f"{scenario_id} result is not PASS")
         require(item.get("integrityResult") == "PASS",
                 f"{scenario_id} integrity is not PASS")
-        require(isinstance(item.get("durationSeconds"), (int, float)) and
-                item["durationSeconds"] >= 0,
+        duration = item.get("durationSeconds")
+        require(type(duration) in (int, float) and
+                0 <= duration < float("inf"),
                 f"{scenario_id} duration is invalid")
-        require(item.get("exitCode") == 0, f"{scenario_id} exitCode is not zero")
+        exit_code = item.get("exitCode")
+        require(type(exit_code) is int and exit_code == 0,
+                f"{scenario_id} exitCode is not zero")
     for scenario_id in EXPECTED_NOT_RUN:
         item = by_id[scenario_id]
         require(item.get("result") == "NOT_RUN", f"{scenario_id} must remain NOT_RUN")
