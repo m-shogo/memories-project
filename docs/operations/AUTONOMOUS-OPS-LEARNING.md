@@ -779,3 +779,35 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - The status authority still reports `productionDecision=NO_GO` and OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`. This learning record is non-production history only; distinct-environment semantic generation eligibility, explicit human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate human production-promotion authority remain mandatory.
+
+## 2026-10-21 — Legacy status-block check must not silently pass after Round 10 migration
+
+### Symptom
+- The Security Contracts CI job stops at the legacy status-block check because no Markdown files retain its Round 9 HTML status markers.
+
+### Evidence
+- `.github/workflows/security-contracts.yml` invokes `python scripts/render-memory-os-status-block.py --check`.
+- The renderer's `find_marked_files()` returns an empty set when the markers are absent and `--check` exits 1.
+- Current `README.md` and Round 10 authority use an unmarked current-status format; `scripts/validate-memory-os-entry-docs.py` and `scripts/validate-memory-os-operability.py` are existing canonical checks.
+- A bounded update to the renderer at blob `8c25c0fd03ed6b8fd858ea6680d35c0081a270f7` was rejected by the external execution safety layer before a GitHub commit.
+
+### Root cause or unknown
+- The CI mismatch is verified: the workflow still calls a marker-based Round 9 renderer after current documents moved to Round 10.
+- The write rejection's root cause is unknown outside repository content.
+
+### Failed approach
+- Updating the legacy renderer to fail closed by invoking existing Round 10 entrypoint and operability validators when no markers exist was blocked before commit creation.
+
+### Correction
+- Preserve the existing Security Contracts gate and Round 10 production authority. Do not add dummy markers, suppress the CI step, claim a passing run, or route around the blocked target.
+- When the renderer becomes writable, retain legacy marked-file checks, refuse markerless `--write`, and delegate markerless `--check` to the existing canonical Round 10 validators with bounded execution.
+
+### Recurrence guard
+- A generated-document CI check must validate the current document authority rather than require retired historical markers. Markerless fallback must execute current validators and fail closed on missing validators, nonzero exits, or timeout.
+- Distinguish source-level CI reachability from observed exact-HEAD CI success.
+
+### Retry condition
+- Retry the renderer mutation only after a relevant target-blob change or demonstrated target-specific write-policy/capability change; branch movement or an unrelated successful write is insufficient.
+
+### Protected-authority check
+- Before the rejected write, `productionDecision=NO_GO` and OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY` were observed. No commit or production evidence was created; the semantic-generation, distinct-environment, human recovery-objective, current reviewed-drill-request, typed eight-domain non-resurrection, independent-review and separate human-promotion gates remain mandatory.
