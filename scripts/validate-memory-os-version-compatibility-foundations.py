@@ -242,8 +242,19 @@ def validate_candidate_result() -> None:
             scenario.get("integrityResult") == "PASS",
             "candidate result is not PASS")
     assertions = scenario.get("assertions")
-    require(isinstance(assertions, dict) and assertions and all(assertions.values()),
-            "candidate assertions are incomplete")
+    required_assertions = {
+        "baselineIsAncestorOfCurrent",
+        "currentExpandedSchemaAppliedToBothDatabases",
+        "candidateBaselineSqlTestsPassed",
+        "candidateBaselineGoTestsPassed",
+        "candidateExecutionPreservedSchemaFingerprint",
+        "currentSqlTestsPassed",
+        "currentGoTestsPassed",
+    }
+    require(isinstance(assertions, dict) and
+            set(assertions) == required_assertions and
+            all(value is True for value in assertions.values()),
+            "candidate assertions are incomplete or not boolean true")
 
 
 def validate_session_result() -> None:
