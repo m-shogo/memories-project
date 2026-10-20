@@ -151,6 +151,13 @@ def semantic_issue_codes(document: dict[str, Any]) -> set[str]:
     if stream_rows > MAX_SOURCE_ROWS or stream_bytes > MAX_SPOOL_BYTES:
         issues.add("SEC_PREVIEW_SPOOL_LIMIT_EXCEEDED")
 
+    # A non-empty stream cannot legitimately hash to the empty-byte digest.
+    # Enforce this semantically because the SHA-256 schema permits any hex digest.
+    if accepted["sha256"] == EMPTY_SHA256:
+        issues.add("SEC_PREVIEW_SPOOL_BINDING_INVALID")
+    if rejected["recordCount"] > 0 and rejected["sha256"] == EMPTY_SHA256:
+        issues.add("SEC_PREVIEW_SPOOL_BINDING_INVALID")
+
     if rejected["recordCount"] == 0:
         if rejected["byteLength"] != 0 or rejected["sha256"] != EMPTY_SHA256:
             issues.add("SEC_PREVIEW_SPOOL_BINDING_INVALID")
