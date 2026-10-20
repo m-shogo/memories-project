@@ -271,6 +271,13 @@ def main() -> int:
 
     state = contract.get("currentAuthorityState")
     require(isinstance(state, dict), "currentAuthorityState missing")
+    # Python considers False == 0 and 0.0 == 0; these are not count authority.
+    for field in (
+        "reviewedArtifactCount", "retainedRollbackArtifactCount",
+        "replayProvenArtifactCount", "compatibleApprovedReleaseCount",
+    ):
+        require(type(state.get(field)) is int and state[field] >= 0,
+                f"currentAuthorityState.{field} must be a nonnegative integer")
     compatible_release_count = len({
         release_id for item in artifacts for release_id in item.get("compatibleReleaseIds", [])
     })
