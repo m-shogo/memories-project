@@ -314,8 +314,9 @@ def main() -> int:
             "recordContractDefined must be true")
     require(readiness.get("allRequiredScenariosPlanned") is True,
             "allRequiredScenariosPlanned must be true")
-    require(readiness.get("completedScenarioCount") == completed_count,
-            "completedScenarioCount does not match plan records")
+    require(type(readiness.get("completedScenarioCount")) is int
+            and readiness["completedScenarioCount"] == completed_count,
+            "completedScenarioCount must be an exact integer matching plan records")
     require(readiness.get("allRequiredScenariosCompleted") is (completed_count == len(required_ids)),
             "allRequiredScenariosCompleted does not match plan records")
     require(readiness.get("productionRecoveryDrillCompleted") is False,
