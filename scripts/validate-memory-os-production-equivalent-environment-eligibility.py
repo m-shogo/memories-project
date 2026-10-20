@@ -177,7 +177,10 @@ def main(canonical_execution_guard=enforce_execution_identity) -> int:
     readiness = contract.get("readiness")
     require(isinstance(boundary, dict) and isinstance(readiness, dict), "eligibility authority state missing")
     for field, value in expected.items():
-        require(boundary.get(field) == value, f"eligibility boundary drift: {field}")
+        observed = boundary.get(field)
+        require(type(observed) is int and observed >= 0,
+                f"eligibility boundary count must be a nonnegative integer: {field}")
+        require(observed == value, f"eligibility boundary drift: {field}")
     require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False and boundary.get("productionDecision") == "NO_GO", "eligibility authority cannot promote production")
 
     eligible_count = expected["preflightEligibleGenerationCount"]
