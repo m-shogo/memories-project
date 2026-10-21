@@ -78,9 +78,14 @@ def validate_ledger() -> set[str]:
             "tabletop append-only history rule missing")
     required = set(contract.get("requiredScenarioIds", []))
     require(len(required) == 6, "required scenario count drift")
-    LEDGER.mkdir(parents=True, exist_ok=True)
+    require(LEDGER.is_dir() and not LEDGER.is_symlink(), "canonical tabletop ledger directory missing or symlinked")
+    allowed = {"README.md"} | {f"{scenario}.json" for scenario in required}
+    entries = sorted(LEDGER.iterdir())
+    for path in entries:
+        require(path.name in allowed and path.is_file() and not path.is_symlink(),
+                f"unexpected or unsafe tabletop ledger entry: {path.name}")
     scenarios: set[str] = set()
-    for path in sorted(LEDGER.glob("IR-DRILL-*.json")):
+    for path in (item for item in entries if item.suffix == ".json"):
         validate_immutable_ledger_path(path)
         completed = subprocess.run(
             ["python", str(WRITER), "--record", str(path), "--validate-only"],
@@ -96,8 +101,14 @@ def validate_ledger() -> set[str]:
     current = contract.get("currentAuthority")
     readiness = contract.get("readiness")
     require(isinstance(current, dict) and isinstance(readiness, dict), "contract authority missing")
-    require(current.get("acceptedCompletedScenarioCount") in {0, len(scenarios)}, "accepted count drift before reconcile")
-    require(current.get("requiredScenarioCount") == len(required), "requiredScenarioCount drift")
+    accepted = current.get("acceptedCompletedScenarioCount")
+    require(type(accepted) is int and accepted in {0, len(scenarios)},
+            "accepted count must be an exact integer before reconcile")
+    require(type(current.get("requiredScenarioCount")) is int and
+            current["requiredScenarioCount"] == len(required), "requiredScenarioCount drift")
+    require(type(readiness.get("acceptedCompletedScenarioCount")) is int and
+            readiness["acceptedCompletedScenarioCount"] == accepted,
+            "readiness accepted count must match exact integer authority")
     for key in ("productionRecoveryDrillCompleted", "pagingConfigured", "externalContactTreeOwned", "independentIncidentControlReviewCompleted", "productionEvidence", "productionReady"):
         require(current.get(key) is False, f"human tabletop authority cannot enable {key}")
     require(current.get("productionDecision") == "NO_GO", "production decision drift")
