@@ -92,11 +92,13 @@ def expect_main_rejected(module: Any, mutate: Callable[[], None], restore: Calla
         restore()
 
 
-def expect_row_rejected(module: Any, row: dict[str, Any], label: str) -> None:
+def expect_row_rejected(module: Any, row: dict[str, Any], label: str, expected: str) -> None:
+    # A rejection at an unrelated boundary is not proof that the row rule ran.
     required_fields = module.validate_contract_authority()["requiredMaterialDeltaReviewEvidenceFields"]
     try:
         module.validate_row(row, 0, required_fields)
-    except module.Fail:
+    except module.Fail as exc:
+        require(expected in str(exc), f"{label} rejected at wrong boundary: {exc}")
         return
     raise Fail(f"material-delta row semantic negative unexpectedly passed: {label}")
 
@@ -243,6 +245,7 @@ def main() -> int:
             "materialDeltaReviewRef": "SECURITY.md",
         },
         "generic repository review ref",
+        "must remain inside docs/evidence/backup-restore/material-delta/",
     )
     expect_row_rejected(
         module,
@@ -252,6 +255,7 @@ def main() -> int:
             "materialDeltaReviewRef": "docs/evidence/backup-restore/material-delta/should-be-null.json",
         },
         "same-generation non-null review ref",
+        "same-generation restore must not declare materialDeltaReviewRef",
     )
     expect_row_rejected(
         module,
@@ -261,6 +265,7 @@ def main() -> int:
             "materialDeltaReviewRef": "docs/evidence/backup-restore/material-delta/../escape.json",
         },
         "material-delta path traversal",
+        "must be canonical repository-relative path",
     )
 
     require(module.CONTRACT.read_bytes() == canonical_contract, "execution substitution mutated canonical generation evidence contract")
