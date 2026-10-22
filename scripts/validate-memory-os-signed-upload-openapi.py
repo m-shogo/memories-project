@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import argparse
 import json
 import sys
@@ -189,6 +190,8 @@ def validate_global_boundary(document: dict[str, Any]) -> None:
             if method not in {"get", "post", "put", "patch", "delete"}:
                 continue
             if path in unauthenticated_by_design:
+                if method != "post":
+                    raise ValidationFailure(f"unexpected unauthenticated Apple method: {method.upper()} {path}")
                 if operation.get("security"):
                     raise ValidationFailure(f"session-minting endpoint must not require a bearer: {method.upper()} {path}")
                 continue
@@ -222,6 +225,20 @@ def main() -> int:
         validate_create(document)
         validate_complete(document)
         validate_global_boundary(document)
+
+        # A newly added method on the session-minting path must not inherit
+        # the deliberate unauthenticated POST exception.
+        negative = copy.deepcopy(document)
+        negative["paths"]["/v1/auth/apple"]["get"] = {
+            "responses": {"200": {"description": "synthetic unprotected route"}},
+        }
+        try:
+            validate_global_boundary(negative)
+        except ValidationFailure as exc:
+            if "unexpected unauthenticated Apple method: GET /v1/auth/apple" not in str(exc):
+                raise ValidationFailure(f"Apple method negative failed at wrong boundary: {exc}") from exc
+        else:
+            raise ValidationFailure("unprotected Apple GET negative was incorrectly accepted")
     except ValidationFailure as exc:
         print(f"SIGNED UPLOAD OPENAPI VALIDATION FAILED: {exc}", file=sys.stderr)
         return 1
