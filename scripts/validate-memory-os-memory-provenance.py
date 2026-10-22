@@ -31,6 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 INVARIANTS = REPO_ROOT / "docs/fixtures/memory-os-security/memory-provenance-invariants.round9.valid.v1.json"
 CASES = REPO_ROOT / "docs/fixtures/memory-os-security/memory-provenance-cases.round9.v1.json"
 SCHEMA = REPO_ROOT / "docs/schemas/memory-os-security/memory-provenance-invariant-set.v1.schema.json"
+CASE_SCHEMA = REPO_ROOT / "docs/schemas/memory-os-security/memory-provenance-case-set.v1.schema.json"
 
 # Deny reasons the case set is allowed to use. A case citing anything else is a
 # typo or an invented rule, and either way must not pass silently.
@@ -113,9 +114,13 @@ def main() -> int:
         from jsonschema import Draft202012Validator
 
         Draft202012Validator(json.loads(SCHEMA.read_text())).validate(invariant_set)
+        Draft202012Validator(json.loads(CASE_SCHEMA.read_text())).validate(case_set)
     except ImportError:
         print("jsonschema not installed; structural validation skipped", file=sys.stderr)
         return 2
+
+    if case_set["invariantSetPath"] != INVARIANTS.relative_to(REPO_ROOT).as_posix():
+        failures.append("case set invariant authority path drift")
 
     origins = {value["value"]: value for value in invariant_set["originAxis"]["values"]}
     assertions = {value["value"]: value for value in invariant_set["assertionAxis"]["values"]}
