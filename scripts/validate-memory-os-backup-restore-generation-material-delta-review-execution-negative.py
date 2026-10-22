@@ -106,6 +106,15 @@ def main() -> int:
     canonical_contract = module.CONTRACT.read_bytes()
     canonical_registry = module.REGISTRY.read_bytes()
 
+    # A negative is not proof unless its unmodified execution path succeeds.
+    # This is planning/guard validation only, never production recovery evidence.
+    require(
+        module.material_delta_review_approved(same_generation_row()) is True,
+        "unmodified same-generation material-delta candidate failed positive control",
+    )
+    require(module.main() == 0, "unmodified material-delta validator failed positive control")
+    print("PASS positive control: canonical same-generation candidate and validator")
+
     for field, replacement in (
         ("enforce_execution_authority", lambda: None),
         ("enforce_runtime_authorities", lambda: None),
