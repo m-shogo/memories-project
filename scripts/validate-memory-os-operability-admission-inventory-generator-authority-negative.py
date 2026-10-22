@@ -100,6 +100,12 @@ def expect_generator_execution_rejected(module: Any, field: str, replacement: An
         module.main()
     except SystemExit as exc:
         require(exc.code not in (None, 0), f"substituted generator {field} produced successful SystemExit")
+        require(
+            isinstance(exc.code, str)
+            and exc.code.startswith("inventory generator ")
+            and "drift" in exc.code,
+            f"substituted generator {field} rejected outside canonical execution-authority guard: {exc}",
+        )
         rejected = True
     finally:
         setattr(module, field, original)
