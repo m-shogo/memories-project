@@ -28,6 +28,22 @@ def require_fixture_path_vacant(path: Path) -> None:
     # Never delete or replace an existing repository artifact to seed a negative fixture.
     require(not path.exists() and not path.is_symlink(), f"negative fixture path already occupied: {path}")
 
+def require_fixture_parent_canonical(parent: Path, root: Path = ROOT) -> tuple[int, int]:
+    # Vacant leaf paths are unsafe when an ancestor aliases another evidence directory.
+    try:
+        relative = parent.relative_to(root)
+    except ValueError as exc:
+        raise Fail("negative fixture parent escapes canonical root") from exc
+    require(root.is_dir() and not root.is_symlink(), "negative fixture root missing or symlinked")
+    cursor = root
+    for part in relative.parts:
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(), "negative fixture parent missing or symlinked")
+    require(parent.resolve(strict=True) == root.resolve(strict=True) / relative,
+            "negative fixture parent canonical resolution drift")
+    parent_stat = parent.stat()
+    return parent_stat.st_dev, parent_stat.st_ino
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -414,19 +430,61 @@ def main() -> int:
         finally:
             dangling.unlink()
 
+        # Isolated controls never touch repository evidence authorities.
+        isolated_root = Path(tmp) / "isolated-fixture-root"
+        isolated_parent = isolated_root / "evidence"
+        isolated_parent.mkdir(parents=True)
+        parent_identity = require_fixture_parent_canonical(isolated_parent, isolated_root)
+        require(parent_identity == (isolated_parent.stat().st_dev, isolated_parent.stat().st_ino),
+                "isolated fixture parent identity drift")
+        for rejected_parent, expected_diagnostic in (
+            (isolated_root / "missing", "negative fixture parent missing or symlinked"),
+            (Path(tmp), "negative fixture parent escapes canonical root"),
+        ):
+            try:
+                require_fixture_parent_canonical(rejected_parent, isolated_root)
+            except Fail as exc:
+                require(str(exc) == expected_diagnostic, "fixture parent rejection diagnostic drift")
+            else:
+                raise Fail("unsafe negative fixture parent unexpectedly accepted")
+        outside_parent = Path(tmp) / "external-parent"
+        outside_parent.mkdir()
+        alias_parent = isolated_root / "alias"
+        alias_parent.symlink_to(outside_parent, target_is_directory=True)
+        try:
+            try:
+                require_fixture_parent_canonical(alias_parent, isolated_root)
+            except Fail as exc:
+                require(str(exc) == "negative fixture parent missing or symlinked",
+                        "symlinked fixture parent rejection diagnostic drift")
+                require(alias_parent.is_symlink() and alias_parent.resolve() == outside_parent.resolve(),
+                        "isolated symlinked parent was changed")
+                print("PASS reject: symlinked negative fixture parent cannot redirect evidence")
+            else:
+                raise Fail("symlinked negative fixture parent unexpectedly accepted")
+        finally:
+            alias_parent.unlink()
+
         external_evidence = Path(tmp) / "external-evidence.json"
         external_evidence.write_text("{}\n", encoding="utf-8")
         symlink_ref = prefixes[domain_name] + "negative-external-symlink.json"
         symlink_path = ROOT / symlink_ref
-        symlink_path.parent.mkdir(parents=True, exist_ok=True)
+        canonical_parent_identity = require_fixture_parent_canonical(symlink_path.parent)
         require_fixture_path_vacant(symlink_path)
         created_symlink = False
         try:
             symlink_path.symlink_to(external_evidence)
             created_symlink = True
+            created_identity = symlink_path.lstat()
             expect_rejected("writer repo-local evidence symlink escaping repository", lambda: writer.repo_ref(symlink_ref, f"domains.{domain_name}.evidenceRef"))
         finally:
             if created_symlink:
+                require(require_fixture_parent_canonical(symlink_path.parent) == canonical_parent_identity,
+                        "negative fixture parent identity drift before cleanup")
+                current_identity = symlink_path.lstat()
+                require((current_identity.st_dev, current_identity.st_ino) ==
+                        (created_identity.st_dev, created_identity.st_ino),
+                        "negative fixture symlink inode drift before cleanup")
                 require(symlink_path.is_symlink() and symlink_path.resolve() == external_evidence.resolve(), "negative fixture symlink identity drift before cleanup")
                 symlink_path.unlink()
 
