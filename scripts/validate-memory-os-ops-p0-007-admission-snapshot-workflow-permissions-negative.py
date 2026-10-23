@@ -1079,6 +1079,79 @@ def prove_publisher_capture_status_negative(publish: str) -> None:
             raise Fail(f"publisher capture accepted {label}")
 
 
+def require_publisher_staging_allowlist(publish: str) -> None:
+    # A source-bound publisher is still unsafe if it stages unrelated
+    # production authorities or force-pushes the resulting commit.
+    commands = [
+        line.strip() for line in publish.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+        and re.search(r"\bgit[ \t]+(?:add|rm|commit|push)\b", line)
+    ]
+    expected = [
+        "git rm -f docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json 2>/dev/null || true",
+        "git add contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+        "git add -u docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json 2>/dev/null || true",
+        'git commit -m "docs(restore): refresh OPS-P0-007 strict admission snapshot"',
+        "if git push origin HEAD:so; then",
+        "git add docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json",
+        'git commit -m "test(restore): record OPS-P0-007 strict snapshot diagnostic"',
+        "if git push origin HEAD:so; then exit 0; fi",
+    ]
+    require(
+        commands == expected,
+        "strict snapshot publisher staging/push authority allowlist drift",
+    )
+
+
+def prove_publisher_staging_negative(publish: str) -> None:
+    require_publisher_staging_allowlist(publish)
+    mutations = (
+        ("broad staging",
+         "git add contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+         "git add -A"),
+        ("production status staging",
+         "git add contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+         "git add contracts/operations/production-operability-status.json"),
+        ("force push",
+         "if git push origin HEAD:so; then",
+         "if git push --force origin HEAD:so; then"),
+        ("commit all",
+         'git commit -m "docs(restore): refresh OPS-P0-007 strict admission snapshot"',
+         'git commit -am "docs(restore): refresh OPS-P0-007 strict admission snapshot"'),
+        ("diagnostic authority redirect",
+         "git add docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json",
+         "git add docs/evidence/backup-restore/production-evidence.json"),
+    )
+    for label, before, after in mutations:
+        require(publish.count(before) == 1, f"{label} publisher staging fixture drift")
+        mutated = publish.replace(before, after, 1)
+        try:
+            require_publisher_staging_allowlist(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher staging/push authority allowlist drift",
+                f"{label} rejected outside exact staging guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted {label}")
+    anchor = "          git diff --cached --check\n"
+    require(publish.count(anchor) == 1, "publisher extra staging fixture drift")
+    mutated = publish.replace(
+        anchor,
+        "          git add contracts/operations/production-operability-status.json\n" + anchor,
+        1,
+    )
+    try:
+        require_publisher_staging_allowlist(mutated)
+    except Fail as exc:
+        require(
+            str(exc) == "strict snapshot publisher staging/push authority allowlist drift",
+            f"extra staging rejected outside exact guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot publisher accepted extra production status staging")
+
+
 def require_publisher_revalidation_calls(publish: str) -> None:
     # A function definition or comment is not a call. Preserve the three
     # current retry/finalization call sites in enabled run-step shell bodies.
@@ -1354,6 +1427,7 @@ def main() -> int:
     require("refusing stale strict snapshot" in publish, "strict snapshot publication workflow must fail closed on stale authority")
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
     prove_publisher_capture_status_negative(publish)
+    prove_publisher_staging_negative(publish)
     prove_publisher_revalidation_call_binding(publish)
     prove_publisher_shell_fail_closed_negative(publish)
     require_full_admission_chain(publish, "strict snapshot publication workflow")
