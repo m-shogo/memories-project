@@ -105,20 +105,20 @@ def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[
 
 def prove_learning_guard_classifier(failures: list[str]) -> None:
     """Prove that a no-op, truncated suite or spurious success cannot pass."""
-    positive = "Autonomous improvement/learning contract validation PASS\\n"
-    negative = "Autonomous learning negative validation PASS (22 fail-closed cases)\\n"
+    positive = "Autonomous improvement/learning contract validation PASS\n"
+    negative = "Autonomous learning negative validation PASS (22 fail-closed cases)\n"
     cases = (
         ("positive", LEARNING_GUARDS[0], 0, positive, "", True),
         ("negative", LEARNING_GUARDS[1], 0, negative, "", True),
         ("expanded negative", LEARNING_GUARDS[1], 0,
-         "Autonomous learning negative validation PASS (23 fail-closed cases)\\n", "", True),
+         "Autonomous learning negative validation PASS (23 fail-closed cases)\n", "", True),
         ("missing output", LEARNING_GUARDS[0], 0, "", "", False),
         ("nonzero with success text", LEARNING_GUARDS[0], 1, positive, "", False),
         ("stderr with success text", LEARNING_GUARDS[0], 0, positive, "injected", False),
         ("truncated negative", LEARNING_GUARDS[1], 0,
-         "Autonomous learning negative validation PASS (21 fail-closed cases)\\n", "", False),
+         "Autonomous learning negative validation PASS (21 fail-closed cases)\n", "", False),
         ("nonnumeric count", LEARNING_GUARDS[1], 0,
-         "Autonomous learning negative validation PASS (False fail-closed cases)\\n", "", False),
+         "Autonomous learning negative validation PASS (False fail-closed cases)\n", "", False),
         ("extra output", LEARNING_GUARDS[1], 0, negative + "ignored", "", False),
         ("unbound guard", "scripts/unbound-guard.py", 0, positive, "", False),
     )
