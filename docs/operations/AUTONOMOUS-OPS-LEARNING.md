@@ -4027,3 +4027,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Do not repeat the double-escaped YAML fixture. Revisit only after observing the exact-source CI outcome or a new bypass of the reviewed readonly step/job boundary. The separate known clean-worktree blocker remains unchanged and must not be retried on the same precondition.
+
+## 2026-10-24 — Readonly validator commands must not be shadowed by shell functions or hash pins
+
+### Outcome and observed evidence
+- Commit `87e446ea9143284aef69ef298b631517574f159a` extends the existing readonly workflow permission negative guard to reject unreviewed POSIX/Bash function declarations and the shell `hash` builtin before validator execution.
+- Source-read independent positive control: the current readonly workflow has no rejected function/hash override. Four bounded synthetic commands (`python() { :; }`, `git () { :; }`, `sha256sum() { echo forged; }`, `hash -p /bin/true python`) are rejected by the classifier (4/4). Exact-source GitHub Actions completion has not been observed; the commit's combined-status endpoint returned no statuses.
+
+### Why safe and reusable mechanism
+- Only the existing CI-bound negative harness changed. The actual workflows, canonical snapshot, Production Status, generation/objective/drill/evidence/non-resurrection registries, credential/traffic/readiness and promotion authorities remain untouched.
+- Shell text containing `python script.py`, `git diff` or `sha256sum` is not execution proof if a prior function or hash pin changes command resolution. Require fail-closed command-resolution integrity as well as the reviewed command sequence, with independent negative fixtures bound to the exact readonly authority-drift diagnostic.
+
+### Failure-class record
+- Symptom: a syntactically intact readonly shell block could shadow Python, Git or hashing commands while preserving all reviewed command text.
+- Evidence: the previous shell control regex rejected aliases, sourced files and option overrides but not `name() { ... }` function declarations or `hash -p`.
+- Verified root cause: the control matcher covered only named shell builtins and did not cover function declarations or executable hash pinning. No actual production failure is claimed.
+- Failed approach: assuming literal validator command strings imply execution of their intended executable without checking command-resolution overrides.
+- Correction: reject shell function declarations and `hash` in the existing readonly shell execution policy.
+- Recurrence guard: four bounded in-memory negative mutations, positive unmodified workflow, and exact diagnostic binding in the existing CI-reachable suite.
+- Retry condition: revisit only after an observed unhandled command-resolution bypass or reviewed workflow command architecture change. Do not retry the unchanged separate clean-worktree blocker.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, with zero registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Distinct semantically eligible environments, human-approved current recovery objective, current executable reviewed request, independent review, typed eight-domain coverage and separate human promotion remain mandatory.
+- Learning and CI outcomes never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
