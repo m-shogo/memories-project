@@ -500,6 +500,86 @@ def prove_pr_shell_fail_closed_negative(pr: str) -> None:
                 raise Fail(f"strict snapshot PR shell accepted {override}")
 
 
+def publisher_protected_shell_starts(workflow: str) -> list[int]:
+    lines = workflow.splitlines()
+    names = (
+        "Capture exact OPS-P0-007 snapshot source",
+        "Commit deterministic strict snapshot",
+        "Record privacy-safe snapshot diagnostic",
+    )
+    starts: list[int] = []
+    for name in names:
+        marker = f"      - name: {name}"
+        locations = [index for index, line in enumerate(lines) if line == marker]
+        require(len(locations) == 1, f"strict snapshot publisher shell step authority drift: {name}")
+        start = locations[0]
+        end = next((index for index in range(start + 1, len(lines))
+                    if lines[index].startswith("      - ")), len(lines))
+        runs = [index for index in range(start + 1, end) if lines[index] == "        run: |"]
+        require(len(runs) == 1, f"strict snapshot publisher shell run-step authority drift: {name}")
+        starts.append(runs[0] + 1)
+    return starts
+
+
+def require_fail_closed_publisher_shell(workflow: str) -> None:
+    lines = workflow.splitlines()
+    for start in publisher_protected_shell_starts(workflow):
+        body: list[str] = []
+        for item in lines[start:]:
+            if item.strip() and not item.startswith("          "):
+                break
+            if item.startswith("          "):
+                body.append(item[10:].strip())
+        active = [command for command in body if command and not command.startswith("#")]
+        require(
+            bool(active) and active[0] == "set -euo pipefail",
+            "strict snapshot publisher protected shell must start fail-closed",
+        )
+        require(
+            not any(re.match(r"^set(?:\s|$)", command) for command in active[1:]),
+            "strict snapshot publisher protected shell options must remain fail-closed",
+        )
+
+
+def prove_publisher_shell_fail_closed_negative(publish: str) -> None:
+    require_fail_closed_publisher_shell(publish)
+    lines = publish.splitlines(keepends=True)
+    starts = publisher_protected_shell_starts(publish)
+    require(
+        all(lines[start] == "          set -euo pipefail\n" for start in starts),
+        "strict snapshot publisher shell fixture boundary drift",
+    )
+    for start in starts:
+        for replacement in (
+            "          set -e\n",
+            "          # set -euo pipefail\n",
+            "          echo 'set -euo pipefail'\n",
+        ):
+            mutated = lines.copy()
+            mutated[start] = replacement
+            try:
+                require_fail_closed_publisher_shell("".join(mutated))
+            except Fail as exc:
+                require(
+                    str(exc) == "strict snapshot publisher protected shell must start fail-closed",
+                    f"publisher shell startup rejected outside exact guard: {exc}",
+                )
+            else:
+                raise Fail("strict snapshot publisher accepted weakened protected shell startup")
+        for override in ("set +e", "set +u", "set +o pipefail", "set -e +o pipefail"):
+            mutated = lines.copy()
+            mutated[start] += f"          {override}\n"
+            try:
+                require_fail_closed_publisher_shell("".join(mutated))
+            except Fail as exc:
+                require(
+                    str(exc) == "strict snapshot publisher protected shell options must remain fail-closed",
+                    f"publisher shell override rejected outside exact guard: {exc}",
+                )
+            else:
+                raise Fail(f"strict snapshot publisher accepted {override} in protected shell")
+
+
 def prove_comment_only_commands_rejected() -> None:
     commands = "\n".join(f"          python {validator}" for validator in FULL_ADMISSION_VALIDATORS)
     positive = "jobs:\n  validate:\n    steps:\n      - name: live\n        run: |\n" + commands + "\n"
@@ -834,6 +914,7 @@ def main() -> int:
     require("refusing stale strict snapshot" in publish, "strict snapshot publication workflow must fail closed on stale authority")
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
     prove_publisher_revalidation_call_binding(publish)
+    prove_publisher_shell_fail_closed_negative(publish)
     require_full_admission_chain(publish, "strict snapshot publication workflow")
     prove_diagnostic_comment_and_dead_code_rejected(publish)
     prove_diagnostic_unconditional_exit_rejected(publish)
