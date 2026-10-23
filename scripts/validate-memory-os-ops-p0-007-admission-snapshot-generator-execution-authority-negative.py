@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,49 @@ def load_module():
     return module
 
 
+def protected_state(path: Path) -> tuple[Any, ...]:
+    """Capture bytes plus file and parent identity; following a symlink is not enough."""
+    entry = path.lstat()
+    parent = path.parent.lstat()
+    return (
+        path.read_bytes(),
+        (entry.st_mode, entry.st_dev, entry.st_ino),
+        (parent.st_mode, parent.st_dev, parent.st_ino),
+        path.resolve(strict=True),
+    )
+
+
+def prove_symlink_identity_rejected() -> None:
+    # Only mutate a temporary authority fixture, never the canonical checkout.
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-generator-identity-") as tmp:
+        root = Path(tmp)
+        parent = root / "authority"
+        parent.mkdir()
+        path = parent / "snapshot.json"
+        path.write_text('{"productionDecision":"NO_GO"}\n', encoding="utf-8")
+        original_state = protected_state(path)
+        original = parent / "original.json"
+        path.rename(original)
+        path.symlink_to(original.name)
+        require(path.read_bytes() == original.read_bytes(), "symlink fixture content drift")
+        require(
+            protected_state(path) != original_state,
+            "symlink alias with identical bytes bypassed protected identity",
+        )
+        path.unlink()
+        original.rename(path)
+        require(protected_state(path) == original_state, "identity fixture restoration drift")
+
+        actual_parent = root / "actual"
+        parent.rename(actual_parent)
+        parent.symlink_to(actual_parent.name, target_is_directory=True)
+        require(path.read_bytes() == original_state[0], "parent symlink fixture content drift")
+        require(
+            protected_state(path) != original_state,
+            "parent symlink alias with identical bytes bypassed protected identity",
+        )
+
+
 def expect_rejected(module: Any, field: str, replacement: Any) -> None:
     expected = (
         "strict snapshot generator execution guard drift"
@@ -43,10 +87,7 @@ def expect_rejected(module: Any, field: str, replacement: Any) -> None:
         else "strict snapshot generator execution helper drift"
     )
     original = getattr(module, field)
-    snapshot_before = SNAPSHOT.read_bytes()
-    status_before = STATUS.read_bytes()
-    snapshot_mode = SNAPSHOT.stat().st_mode & 0o7777
-    status_mode = STATUS.stat().st_mode & 0o7777
+    protected_before = {path: protected_state(path) for path in (SNAPSHOT, STATUS, GENERATOR)}
     setattr(module, field, replacement)
     rejected = False
     try:
@@ -60,16 +101,14 @@ def expect_rejected(module: Any, field: str, replacement: Any) -> None:
     finally:
         setattr(module, field, original)
     require(rejected, f"strict snapshot generator accepted substituted execution authority: {field}")
-    require(SNAPSHOT.read_bytes() == snapshot_before, f"{field} rejection mutated canonical strict snapshot")
-    require(STATUS.read_bytes() == status_before, f"{field} rejection mutated canonical Production Status")
-    require(SNAPSHOT.stat().st_mode & 0o7777 == snapshot_mode, f"{field} rejection changed strict snapshot file mode")
-    require(STATUS.stat().st_mode & 0o7777 == status_mode, f"{field} rejection changed Production Status file mode")
+    for path, state in protected_before.items():
+        require(protected_state(path) == state, f"{field} rejection changed protected authority identity: {path.relative_to(ROOT)}")
 
 
 def main() -> int:
     module = load_module()
-    baseline_snapshot = SNAPSHOT.read_bytes()
-    baseline_status = STATUS.read_bytes()
+    prove_symlink_identity_rejected()
+    baseline_state = {path: protected_state(path) for path in (SNAPSHOT, STATUS, GENERATOR)}
 
     substitutions = (
         ("enforce_execution_authority", lambda: None),
@@ -90,17 +129,18 @@ def main() -> int:
         expect_rejected(module, field, replacement)
 
     module.enforce_execution_authority()
-    require(SNAPSHOT.read_bytes() == baseline_snapshot, "generator execution authority probes mutated canonical strict snapshot")
-    require(STATUS.read_bytes() == baseline_status, "generator execution authority probes mutated canonical Production Status")
-    json.loads(baseline_snapshot.decode("utf-8"))
-    json.loads(baseline_status.decode("utf-8"))
+    for path, state in baseline_state.items():
+        require(protected_state(path) == state, f"generator execution authority probes changed protected identity: {path.relative_to(ROOT)}")
+    json.loads(baseline_state[SNAPSHOT][0].decode("utf-8"))
+    json.loads(baseline_state[STATUS][0].decode("utf-8"))
 
     print("Memory OS OPS-P0-007 strict snapshot generator execution authority negative PASS")
     print(f"execution helper substitutions rejected: {len(substitutions)}")
     print("full admission validator no-op substitution accepted: false")
     print("post-write validator no-op substitution accepted: false")
     print("atomic publication helper substitution accepted: false")
-    print("rejected probes mutated canonical snapshot/status: false")
+    print("rejected probes changed canonical snapshot/status/generator identity: false")
+    print("isolated file and parent symlink identity bypass accepted: false")
     print("production evidence created: false")
     print("production ready: false")
     print("production decision: NO_GO")
