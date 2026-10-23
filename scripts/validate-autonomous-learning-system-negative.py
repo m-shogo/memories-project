@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import stat
 import json
 import shutil
 import subprocess
@@ -27,6 +29,30 @@ def seed(source_root: Path, root: Path) -> None:
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_root / rel, target)
+
+
+def fixture_state(root: Path) -> tuple[tuple[str, ...], ...]:
+    """Fingerprint canonical fixture bytes, modes, and every path component."""
+    observed: dict[str, tuple[str, ...]] = {}
+    for relative in (CONTRACT, LEARNING, VALIDATOR, NEGATIVE_VALIDATOR, CI_ENTRYPOINT):
+        path = root
+        for part in relative.parts:
+            path = path / part
+            key = path.relative_to(root).as_posix()
+            if key in observed:
+                continue
+            if path.is_symlink():
+                observed[key] = ("symlink", str(path.readlink()))
+            elif path.is_file():
+                observed[key] = (
+                    "file", hashlib.sha256(path.read_bytes()).hexdigest(),
+                    str(stat.S_IMODE(path.stat().st_mode)),
+                )
+            elif path.is_dir():
+                observed[key] = ("directory", str(stat.S_IMODE(path.stat().st_mode)))
+            else:
+                observed[key] = ("missing",)
+    return tuple(sorted((key, *value) for key, value in observed.items()))
 
 
 def run(source_root: Path, root: Path) -> subprocess.CompletedProcess[str]:
@@ -103,6 +129,8 @@ def expected_diagnostic(name: str) -> str:
         "drop CI guard timeout binding": "learning CI entrypoint lost executable guard invocation: timeout=LEARNING_GUARD_TIMEOUT_SECONDS",
         "drop CI guard timeout handling": "learning CI entrypoint lost executable guard invocation: except subprocess.TimeoutExpired:",
         "drop anti-regression lesson": "learning authority lost invariant: Repeating a known failed approach",
+        "invalid contract JSON": "invalid JSON:",
+        "non-object contract root": "root must be an object:",
         "downgrade schema version": "unsupported schemaVersion",
         "reorder closed-loop execution": "closed-loop execution order changed",
         "comment-only learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
@@ -152,7 +180,10 @@ def require_failure(source_root: Path, name: str, mutate) -> None:
     with tempfile.TemporaryDirectory(prefix="learning-negative-") as tmp:
         root = Path(tmp)
         seed(source_root, root)
+        before = fixture_state(root)
         mutate(root)
+        if fixture_state(root) == before:
+            raise RuntimeError(f"negative fixture did not mutate canonical authority: {name}")
         result = run(source_root, root)
         require_expected_rejection(name, result)
 
@@ -249,7 +280,19 @@ def main() -> int:
             print(result.stderr, file=sys.stderr)
             return 1
 
+    # A no-op mutation must be rejected before running the canonical guard;
+    # otherwise a broken positive fixture could masquerade as negative proof.
+    try:
+        require_failure(source_root, "weaken mandatory rule", lambda root: None)
+    except RuntimeError as exc:
+        if "negative fixture did not mutate canonical authority" not in str(exc):
+            raise
+    else:
+        raise RuntimeError("negative mutation fingerprint accepted a no-op")
+
     cases = [
+        ("invalid contract JSON", lambda root: (root / CONTRACT).write_text("{", encoding="utf-8")),
+        ("non-object contract root", lambda root: (root / CONTRACT).write_text("[]", encoding="utf-8")),
         ("weaken mandatory rule", lambda root: edit_contract(root, lambda d: d["rules"].__setitem__("unchangedBlockerIsNotRetried", False))),
         ("disable required CI reachability", lambda root: edit_contract(root, lambda d: d["rules"].__setitem__("ciReachabilityRequired", False))),
         ("weaken NO_GO default", lambda root: edit_contract(root, lambda d: d["protectedInvariants"].__setitem__("productionDecisionDefault", "GO"))),
