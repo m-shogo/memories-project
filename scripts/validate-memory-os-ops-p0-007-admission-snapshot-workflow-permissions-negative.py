@@ -55,6 +55,35 @@ REQUIRED_PR_ADMISSION_CONTRACTS = (
     "backup-restore-non-resurrection-admission-registry.v1.json",
 )
 
+
+# The reviewed PR compile stage is an executable command boundary, not a
+# textual occurrence of py_compile or a substitute for runtime admission.
+PR_COMPILE_FILES = (
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/memory_os_environment_generation_eligibility.py",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/register-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/request-memory-os-backup-restore-drill.py",
+    "scripts/validate-memory-os-backup-restore-drill-request.py",
+    "scripts/register-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py",
+    "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
+    "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot-generator-execution-authority-negative.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py",
+)
+
 GITHUB_PERMISSION_SCOPES = (
     "actions", "attestations", "checks", "contents", "deployments",
     "discussions", "id-token", "issues", "models", "packages", "pages",
@@ -1297,6 +1326,75 @@ def prove_publisher_shell_fail_closed_negative(publish: str) -> None:
                 raise Fail(f"strict snapshot publisher accepted {override} in protected shell")
 
 
+
+def require_pr_compile_step(pr: str) -> None:
+    """Bind the complete reviewed PR run body, including the live compile stage."""
+    lines = pr.splitlines()
+    name = "      - name: Generate and validate strict snapshot read-only"
+    starts = [index for index, line in enumerate(lines) if line == name]
+    require(len(starts) == 1, "strict snapshot PR compile step command authority drift")
+    start = starts[0]
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].startswith("      - ")), len(lines))
+    runs = [index for index in range(start + 1, end) if lines[index] == "        run: |"]
+    require(len(runs) == 1, "strict snapshot PR compile step command authority drift")
+    body = [line[10:].strip() for line in lines[runs[0] + 1:end]
+            if line.startswith("          ") and line[10:].strip()]
+    expected = [
+        "set -euo pipefail",
+        "python -m py_compile \\",
+        *(f"{path} \\" for path in PR_COMPILE_FILES[:-1]),
+        PR_COMPILE_FILES[-1],
+        *(f"python {path}" for path in PUBLISH_REVALIDATION_CHAIN),
+        "python scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py",
+    ]
+    require(body == expected, "strict snapshot PR compile step command authority drift")
+
+
+def prove_pr_compile_step_negative(pr: str) -> None:
+    require_pr_compile_step(pr)
+    name = "      - name: Generate and validate strict snapshot read-only"
+    end_name = "      - name: Reject deterministic snapshot drift"
+    require(pr.count(name) == 1 and pr.count(end_name) == 1,
+            "strict snapshot PR compile fixture step boundary drift")
+    before, remainder = pr.split(name, 1)
+    step, after = remainder.split(end_name, 1)
+    prefix = before + name
+    suffix = end_name + after
+    def check(label: str, changed: str) -> None:
+        require(changed != step, f"{label} compile fixture mutation was a no-op")
+        try:
+            require_pr_compile_step(prefix + changed + suffix)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR compile step command authority drift",
+                f"{label} compile fixture rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot PR accepted weakened compile stage: {label}")
+
+    first = f"          {PR_COMPILE_FILES[0]} \\\n"
+    second = f"          {PR_COMPILE_FILES[1]} \\\n"
+    last = f"          {PR_COMPILE_FILES[-1]}\n"
+    command = "          python -m py_compile \\\n"
+    require(step.count(first) == step.count(second) == step.count(last) == step.count(command) == 1,
+            "strict snapshot PR compile fixture argument anchor drift")
+    check("missing first argument", step.replace(first, "", 1))
+    check("comment-only first argument", step.replace(first, "          # " + first.strip() + "\n", 1))
+    check("wrong first argument", step.replace(first, "          scripts/unreviewed-compile.py \\\n", 1))
+    check("reordered arguments", step.replace(first + second, second + first, 1))
+    check("missing compile execution", step.replace(command, "          echo python -m py_compile \\\n", 1))
+    check("masked compile failure", step.replace(last, last.rstrip("\n") + " || true\n", 1))
+    check("extra compile argument", step.replace(last, "          scripts/unreviewed-compile.py \\\n" + last, 1))
+    check("comment inside continuation", step.replace(first, first + "          # hidden break in continuation\n", 1))
+    check("early exit before compile", step.replace(command, "          exit 0\n" + command, 1))
+    check("compile after validator", step.replace(
+        command, "", 1).replace(
+        "          python scripts/validate-memory-os-recovery-objectives.py\n",
+        command + "          python scripts/validate-memory-os-recovery-objectives.py\n", 1))
+    check("duplicate compile", step.replace(command, command + command, 1))
+
+
 def require_unconditional_pr_admission(workflow: str) -> None:
     """A conditional or uncalled shell function cannot establish PR admission."""
     lines = workflow.splitlines()
@@ -1993,6 +2091,7 @@ def main() -> int:
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
     prove_checkout_comment_bypass_rejected(pr, publish)
     prove_pr_source_verification_negative(pr)
+    prove_pr_compile_step_negative(pr)
     prove_pr_drift_rejection_negative(pr)
     prove_pr_job_execution_policy_negative(pr)
     prove_pr_trigger_negative(pr)
