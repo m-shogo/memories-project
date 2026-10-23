@@ -91,6 +91,42 @@ def prove_subprocess_timeout_guard() -> None:
                 raise Fail("synthetic subprocess timeout unexpectedly accepted")
 
 
+# Exact case binding prevents an unrelated canonical failure from satisfying
+# the targeted snapshot/production-decision corruption negatives.
+CASE_SPECIFIC_VALIDATOR_REJECTIONS = {
+    "snapshot unknown production authority field": "snapshot field set drift",
+    "snapshot missing production readiness field": "snapshot field set drift",
+    "snapshot boolean registered generation count": "snapshot count invalid: registeredEnvironmentGenerationCount",
+    "snapshot downstream requirement projection": "snapshot downstream requirement projection drift",
+    "snapshot next action projection": "snapshot nextAction projection drift",
+    "production decision promotion": "status production decision drift",
+}
+
+
+def require_case_specific_validator_rejection(stderr: str, expected: str, label: str) -> None:
+    diagnostic = f"OPS-P0-007 ADMISSION SNAPSHOT FAILED: {expected}"
+    if stderr.splitlines() != [diagnostic]:
+        raise Fail(f"{label}: rejected outside intended canonical snapshot diagnostic: {stderr!r}")
+
+
+def prove_case_specific_validator_classifier() -> None:
+    expected = "snapshot field set drift"
+    diagnostic = f"OPS-P0-007 ADMISSION SNAPSHOT FAILED: {expected}"
+    require_case_specific_validator_rejection(diagnostic + "\n", expected, "synthetic positive")
+    for stderr in (
+        "OPS-P0-007 ADMISSION SNAPSHOT FAILED: unrelated failure\n",
+        "OPS-P0-007 ADMISSION SNAPSHOT FAILED: unrelated failure\n" + diagnostic + "\n",
+        diagnostic + "\nOPS-P0-007 ADMISSION SNAPSHOT FAILED: unrelated failure\n",
+    ):
+        try:
+            require_case_specific_validator_rejection(stderr, expected, "synthetic wrong diagnostic")
+        except Fail as exc:
+            if "rejected outside intended canonical snapshot diagnostic" not in str(exc):
+                raise Fail(f"classifier rejected outside intended diagnostic guard: {exc}") from exc
+        else:
+            raise Fail("snapshot classifier accepted unrelated or multiline rejection")
+
+
 def run_validator(expect_success: bool, label: str) -> None:
     proc = run_bounded_python(VALIDATOR, label)
     if expect_success:
@@ -103,6 +139,9 @@ def run_validator(expect_success: bool, label: str) -> None:
         raise Fail(f"{label}: rejection did not come from canonical fail-closed boundary: {proc.stderr or proc.stdout}")
     if "Traceback (most recent call last)" in proc.stderr:
         raise Fail(f"{label}: rejection surfaced an implementation exception instead of a controlled failure")
+    expected = CASE_SPECIFIC_VALIDATOR_REJECTIONS.get(label)
+    if expected is not None:
+        require_case_specific_validator_rejection(proc.stderr, expected, label)
 
 
 def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) -> None:
@@ -411,6 +450,7 @@ def main() -> int:
     ]
 
     try:
+        prove_case_specific_validator_classifier()
         prove_subprocess_timeout_guard()
         run_validator(True, "clean baseline")
         run_generator_atomic_write_mode_preservation()
