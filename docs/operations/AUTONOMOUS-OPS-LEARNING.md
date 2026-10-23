@@ -1488,3 +1488,46 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-change re-read confirmed unchanged learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
 - This append-only learning history cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Learning authority symlinks must not be accepted as canonical files
+
+### Symptom
+- The canonical autonomous-learning validator used `read_text()` and `Path.is_file()`, which follow symlinks. A contract, learning history, bound guard or CI entrypoint symlink could therefore satisfy ordinary file checks while redirecting authority to another path.
+
+### Evidence
+- Before commit `fbd51d2399287c7559fecbaae80952cc9702d676`, the validator had no `is_symlink()` check for the five canonical learning authority paths.
+- The negative harness already seeds isolated temporary copies of all five files, allowing safe symlink substitution without touching the checked-out source.
+
+### Root cause or unknown
+- Verified path-identity gap: following a symlink is not equivalent to validating an exact canonical repository authority file. No real symlink substitution or external file access was observed.
+
+### Failed approach
+- Relying on existence and successful reads alone to establish the identity of a protected authority path.
+
+### Correction
+- Commit `fbd51d2399287c7559fecbaae80952cc9702d676` rejects symlinks for the learning contract, learning history, positive guard, negative guard and CI entrypoint before parsing or reading them.
+- Commit `26fb1a7eb0f9d52cdc845bc94d68010caeb67d61` adds five isolated symlink negative fixtures. Each alias and its target remain inside a disposable temporary fixture; canonical source bytes are not modified.
+- Commit `0fa3c2d912fc249d9000296fac5b3c8a73293b8f` raises the CI entrypoint's minimum negative-case count to 52.
+
+### Recurrence guard
+- Every run of the canonical learning validator rejects symlinked authority files, and the existing negative suite exercises all five aliases after a canonical positive control.
+- The suite remains bounded and source-isolated; a symlink test must never clobber a fixed shared scratch path or mutate the checked-out authority.
+
+### Retry condition
+- Revisit if the repository deliberately changes its canonical authority storage model or a new path substitution bypass is demonstrated. Do not accept symlinked production/learning authority merely to simplify fixtures.
+
+### Outcome
+- Exact-source `Operability Contracts` run `39939568631` completed SUCCESS on commit `0fa3c2d912fc249d9000296fac5b3c8a73293b8f`.
+
+### Success evidence
+- CI job `120367387387` logs show `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (52 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+
+### Why safe
+- The changes affect only source-identity validation and disposable negative fixtures. No production status, environment generation, recovery objective, drill request, typed evidence, credential, traffic, readiness or promotion authority was changed.
+
+### Reusable mechanism
+- Check canonical protected file paths for symlinks before `is_file()` or `read_text()`, and prove the rejection with isolated relative symlink aliases under temporary ownership. Bind the expanded suite to an exact-source CI caller.
+
+### Protected-authority check
+- Post-change re-read confirmed unchanged learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is operational history only; it cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
