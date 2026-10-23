@@ -2398,3 +2398,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; strict OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human promotion remain mandatory.
 - Learning is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Successful atomic snapshot rewrites must preserve adjacent authority and cleanup
+
+### Outcome
+- Commit `2fb6cc13c700972b3a3028b493cc5fed7605f297` extends the existing successful atomic snapshot rewrite negative proof to verify the snapshot's bytes/mode/symlink identity, Production Status bytes/mode/symlink identity, and unchanged temporary-file inventory.
+
+### Evidence
+- Previously the success-path test checked snapshot bytes and its temporary `0o640` mode but did not explicitly assert status preservation, symlink identity or absence of leftover temporary authority files. The change reuses the tested `temporary_mode` and `require_snapshot_state_unchanged` helpers.
+- Exact-source Readonly run `39975100189` (job `120487510861`) and Snapshot publisher run `39975100132` (job `120487510244`) both completed SUCCESS, logging strict snapshot negative PASS, 22 controlled validator corruptions rejected, 3 generator corruptions rejected and `production decision: NO_GO`.
+
+### Why safe
+- The test still writes the canonical snapshot's exact original content through the existing atomic writer and unconditionally restores its temporary mode. No new evidence or production authority is written, and additional assertions only tighten the proof.
+
+### Reusable mechanism
+- A successful atomic authority rewrite should preserve unrelated protected authorities, file type and mode, and leave no new temporary files. Reuse tested state guards for both rejection and success paths; do not infer cleanup from a zero exit alone.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
