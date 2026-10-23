@@ -2068,3 +2068,24 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/semantically eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; autonomous-learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate non-automatic human promotion remain mandatory.
 - Learning is append-only execution guidance and never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Objective registry corruption negatives must bind the exact rejection cause
+
+### Outcome
+- Commit `2fc45f6c67e47e084956cba824af388f88881195` binds five existing objective-registry corruption cases to the precise canonical snapshot validator rejection, rather than accepting an unrelated fail-closed error.
+- Exact-source OPS-P0-007 Admission Snapshot Readonly run `39968202155` and publisher run `39968202122` completed SUCCESS at that SHA.
+
+### Evidence
+- Readonly job `120463542490` logged `Memory OS OPS-P0-007 strict admission snapshot negative validation PASS`, 22 controlled validator corruption cases rejected, three controlled generator corruption cases rejected, and `production decision: NO_GO`.
+- Publisher job `120463541996` logged the same negative PASS and source SHA `2fc45f6c67e47e084956cba824af388f88881195`.
+- Canonical objective writer `validate_registry_for_append` supplies the exact five failures for boolean aggregate count, append-only, schema, production evidence, and production readiness; the snapshot validator wraps them as `recovery objective canonical registry authority invalid: ...`.
+
+### Why safe
+- The change is limited to the existing fail-closed negative diagnostic map, does not alter any positive validator or production authority, and exercises existing byte/mode-restored registry mutations. No new objective, generation, drill request, recovery evidence, traffic, credential, readiness or promotion was created.
+
+### Reusable mechanism
+- For registry corruption negatives, bind each mutation label to the precise writer-side failure wrapped by the canonical snapshot validator. Keep the existing positive control, exact single-line diagnostic classifier, material mutation assertion, byte/mode restoration and exact-source CI checks.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human production promotion remain mandatory.
+- Learning history is append-only operational guidance, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
