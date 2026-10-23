@@ -3457,3 +3457,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed PR admission step header changes or an observed step-level skip/error-mask bypass escapes the bounded negative guard.
 
+
+## 2026-10-24 — PR deterministic snapshot drift rejection must remain an executable fatal gate
+
+### Outcome
+- Commit d55e46c9757f0a7d73384ddfb82d7bca4e42ee16 binds the strict OPS-P0-007 PR deterministic snapshot drift rejection to its reviewed enabled, fail-closed step rather than a textual occurrence of git diff.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40007135504 completed SUCCESS at this commit.
+
+### Evidence
+- The prior PR permission negative checked for the drift command's substring but did not prove that the final drift-rejection step actually executed it and propagated failure. A comment or echo containing the command, a disabled step, or continue-on-error could leave the workflow apparently green despite a changed deterministic snapshot.
+- Eight step-scoped synthetic mutations now replace the diff with echo, remove the clean-worktree check, disable/mask the step, alter its shell, insert an early exit or broad staging, or duplicate the named step. Every mutation must produce the exact PR drift-rejection step authority-drift diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness and in-memory PR workflow fixtures changed. The PR and publisher workflows, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- A deterministic drift gate must be proven as an enabled, fatal, reviewed step with an exact command sequence. Mutate a unique named-step block rather than globally matching shell commands repeated elsewhere in the workflow.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed PR deterministic drift step changes or a newly observed step-level skip/error-mask bypass escapes this exact-step guard.
+
