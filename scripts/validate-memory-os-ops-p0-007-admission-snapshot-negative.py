@@ -42,6 +42,12 @@ def mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
 
 
+def require_material_mutation(before: dict[str, Any], after: dict[str, Any], label: str) -> None:
+    # Python equality equates False/0 and True/1; JSON preserves those types.
+    if json.dumps(before, sort_keys=True) == json.dumps(after, sort_keys=True):
+        raise Fail(f"{label}: negative fixture mutation was a no-op")
+
+
 def load_generator_module():
     spec = importlib.util.spec_from_file_location("memory_os_ops_p0_007_snapshot_negative_generator", GENERATOR)
     if spec is None or spec.loader is None:
@@ -322,6 +328,9 @@ def main() -> int:
         STATUS: STATUS.read_bytes(),
         OBJECTIVE_WRITER: OBJECTIVE_WRITER.read_bytes(),
     }
+    original_modes = {path: mode(path) for path in originals}
+    require_material_mutation({"count": 0}, {"count": False}, "boolean/zero mutation guard")
+    require_material_mutation({"count": 1}, {"count": True}, "boolean/one mutation guard")
     cases: list[tuple[str, Path, Callable[[dict[str, Any]], None]]] = [
         ("snapshot unknown production authority field", SNAPSHOT, mutate_field("productionAuthorization", True)),
         ("snapshot missing production readiness field", SNAPSHOT, remove_field("productionReady")),
@@ -384,15 +393,19 @@ def main() -> int:
         run_module_symlink_escape(originals)
         for label, path, mutate in cases:
             restore_all(originals)
-            authority = copy.deepcopy(load(path))
+            canonical = load(path)
+            authority = copy.deepcopy(canonical)
             mutate(authority)
+            require_material_mutation(canonical, authority, label)
             write(path, authority)
             run_validator(False, label)
 
         for label, mutate, expected_messages in generator_cases:
             restore_all(originals)
-            status = copy.deepcopy(load(STATUS))
+            canonical = load(STATUS)
+            status = copy.deepcopy(canonical)
             mutate(status)
+            require_material_mutation(canonical, status, label)
             write(STATUS, status)
             run_generator_rejects(label, expected_messages)
 
@@ -404,6 +417,8 @@ def main() -> int:
     for path, payload in originals.items():
         if path.read_bytes() != payload:
             raise Fail(f"negative suite mutated canonical authority: {path.relative_to(ROOT)}")
+        if mode(path) != original_modes[path]:
+            raise Fail(f"negative suite changed canonical authority file mode: {path.relative_to(ROOT)}")
 
     print("Memory OS OPS-P0-007 strict admission snapshot negative validation PASS")
     print(f"controlled validator corruption cases rejected: {len(cases)}")
