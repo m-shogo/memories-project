@@ -151,6 +151,29 @@ def validate(repo_root: Path) -> None:
         for node in entry_tree.body
     ):
         raise ValidationFailure("learning CI entrypoint main binding is shadowed by assignment")
+    # The direct main() call must resolve to the bound synchronous guard,
+    # not a later async definition or assignment with the same name.
+    guard_definitions = [
+        node for node in entry_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "validate_learning_guards"
+    ]
+    if len(guard_definitions) != 1:
+        raise ValidationFailure("learning CI entrypoint must define one synchronous learning guard")
+    if any(
+        isinstance(node, ast.AsyncFunctionDef) and node.name == "validate_learning_guards"
+        for node in entry_tree.body
+    ):
+        raise ValidationFailure("learning CI entrypoint learning guard binding is shadowed by async definition")
+    if any(
+        (isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "validate_learning_guards"
+            for target in node.targets
+        ))
+        or (isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name) and node.target.id == "validate_learning_guards")
+        for node in entry_tree.body
+    ):
+        raise ValidationFailure("learning CI entrypoint learning guard binding is shadowed by assignment")
     live_calls = [
         node for node in main_definitions[0].body
         if isinstance(node, ast.Expr)
