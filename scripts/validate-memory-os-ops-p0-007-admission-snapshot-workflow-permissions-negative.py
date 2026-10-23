@@ -245,6 +245,62 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
         ) == 1,
         "strict snapshot diagnostic non-production evidence boundary drift",
     )
+    # Preserve the complete record through serialization. Valid initial
+    # fields are insufficient if later statements rewrite value or payload.
+    payload_assignment = ast.parse(
+        "payload = (json.dumps(value, indent=2) + '\\n').encode('utf-8')"
+    ).body[0]
+    payload_writes = [
+        node for node in nodes
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "payload" for target in node.targets)
+    ]
+    require(
+        len(payload_writes) == 1
+        and ast.dump(payload_writes[0], include_attributes=False)
+        == ast.dump(payload_assignment, include_attributes=False),
+        "strict snapshot diagnostic non-production evidence boundary drift",
+    )
+    def touches_record(target: ast.AST) -> bool:
+        if isinstance(target, ast.Name):
+            return target.id in ("value", "payload")
+        if isinstance(target, (ast.Attribute, ast.Subscript)):
+            return touches_record(target.value)
+        if isinstance(target, (ast.Tuple, ast.List)):
+            return any(touches_record(item) for item in target.elts)
+        return False
+
+    for node in nodes:
+        if isinstance(node, ast.Assign):
+            if node in payload_writes or (
+                len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "value"
+                and node.value is record
+            ):
+                continue
+            require(
+                not any(touches_record(target) for target in node.targets),
+                "strict snapshot diagnostic non-production evidence boundary drift",
+            )
+        if isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            require(
+                not touches_record(node.target),
+                "strict snapshot diagnostic non-production evidence boundary drift",
+            )
+        if isinstance(node, ast.Delete):
+            require(
+                not any(touches_record(target) for target in node.targets),
+                "strict snapshot diagnostic non-production evidence boundary drift",
+            )
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "value"
+            and node.func.attr in ("update", "clear", "pop", "popitem", "setdefault", "__setitem__")
+        ):
+            raise Fail("strict snapshot diagnostic non-production evidence boundary drift")
     calls = [node for node in nodes if isinstance(node, ast.Call)]
     required = {
         "mkstemp": "tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)",
@@ -432,6 +488,16 @@ def prove_diagnostic_privacy_boundary_rejected(publish: str) -> None:
         ("diagnostic path",
          "Path('docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json')",
          "Path('docs/evidence/backup-restore/production-evidence.json')"),
+        ("record overwrite", "          path = Path(",
+         "          value['productionEvidence'] = True\n          path = Path("),
+        ("record update", "          path = Path(",
+         "          value.update({'productionReady': True})\n          path = Path("),
+        ("record deletion", "          path = Path(",
+         "          del value['containsSecrets']\n          path = Path("),
+        ("payload overwrite", "          existing_mode = path.stat()",
+         "          payload = b'forged'\n          existing_mode = path.stat()"),
+        ("payload augmentation", "          existing_mode = path.stat()",
+         "          payload += b'forged'\n          existing_mode = path.stat()"),
     )
     for label, before, after in mutations:
         require(publish.count(before) == 1, f"{label} diagnostic privacy fixture drift")
