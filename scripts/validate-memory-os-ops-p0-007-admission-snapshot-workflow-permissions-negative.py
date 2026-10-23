@@ -95,6 +95,31 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
     except SyntaxError as exc:
         raise Fail(f"strict snapshot diagnostic Python heredoc invalid: {exc}") from exc
 
+    # Evaluate only literal boolean expressions, never arbitrary Python code.
+    # A constant-true comparison is as unconditional as a literal True.
+    def static_truth(test: ast.AST) -> bool | None:
+        if isinstance(test, ast.Constant):
+            return bool(test.value)
+        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+            value = static_truth(test.operand)
+            return None if value is None else not value
+        if (
+            isinstance(test, ast.Compare)
+            and len(test.ops) == 1
+            and isinstance(test.left, ast.Constant)
+            and isinstance(test.comparators[0], ast.Constant)
+        ):
+            left, right = test.left.value, test.comparators[0].value
+            if isinstance(test.ops[0], ast.Eq):
+                return left == right
+            if isinstance(test.ops[0], ast.NotEq):
+                return left != right
+        if isinstance(test, ast.BoolOp):
+            values = [static_truth(value) for value in test.values]
+            if all(value is not None for value in values):
+                return all(values) if isinstance(test.op, ast.And) else any(values)
+        return None
+
     # AST call presence is not proof if the publication heredoc exits
     # unconditionally before reaching its atomic write. Inspect only
     # unconditionally entered statement bodies; exception handlers remain
@@ -126,9 +151,9 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
                 # finally runs even after a successful atomic replacement.
                 # A termination here can skip the required cleanup call.
                 reject_unconditional_termination(statement.finalbody)
-            if isinstance(statement, ast.If) and isinstance(statement.test, ast.Constant):
+            if isinstance(statement, ast.If) and static_truth(statement.test) is not None:
                 reject_unconditional_termination(
-                    statement.body if bool(statement.test.value) else statement.orelse
+                    statement.body if static_truth(statement.test) else statement.orelse
                 )
 
     reject_unconditional_termination(tree.body)
@@ -136,9 +161,9 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
     def live(node: ast.AST):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
             return
-        if isinstance(node, ast.If) and isinstance(node.test, ast.Constant):
+        if isinstance(node, ast.If) and static_truth(node.test) is not None:
             yield node
-            for child in (node.body if bool(node.test.value) else node.orelse):
+            for child in (node.body if static_truth(node.test) else node.orelse):
                 yield from live(child)
             return
         yield node
@@ -273,6 +298,14 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
          "              assert 0\n              os.replace(tmp_name, path)"),
         ("finally assert false", "                  os.unlink(tmp_name)",
          "                  assert False\n                  os.unlink(tmp_name)"),
+        ("comparison-true raise", "              os.replace(tmp_name, path)",
+         "              if 1 == 1: raise SystemExit(0)\n              os.replace(tmp_name, path)"),
+        ("comparison-true exit", "              os.replace(tmp_name, path)",
+         "              if 'a' != 'b': exit(0)\n              os.replace(tmp_name, path)"),
+        ("negated-false assert", "              os.replace(tmp_name, path)",
+         "              if not False: assert False\n              os.replace(tmp_name, path)"),
+        ("boolean-true raise", "              os.replace(tmp_name, path)",
+         "              if True and True: raise SystemExit(0)\n              os.replace(tmp_name, path)"),
     )
     for label, before, after in mutations:
         require(publish.count(before) == 1, f"{label}: canonical diagnostic fixture drift")
@@ -286,6 +319,13 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
             )
         else:
             raise Fail(f"strict snapshot diagnostic accepted {label}")
+    safe = publish.replace(
+        "              os.replace(tmp_name, path)",
+        "              if 1 == 2: raise SystemExit(0)\n              os.replace(tmp_name, path)",
+        1,
+    )
+    require(safe != publish, "constant-false positive fixture drift")
+    validate_atomic_diagnostic_publication(safe)
 
 
 def validate_atomic_diagnostic_publication(publish: str) -> None:
