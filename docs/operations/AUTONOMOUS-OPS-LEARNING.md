@@ -2127,3 +2127,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
 - Append-only learning is operational guidance only, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Canonical six-blocker corruption must reject for the exact list invariant
+
+### Outcome
+- Commit `3e81adab33d71fdd78c4399508a6b6b3755f5a67` binds both canonical OPS-P0-007 blocker replacement and blocker ordering negative mutations to the exact six-blocker list rejection, not an arbitrary snapshot validation failure.
+
+### Evidence
+- `memory_os_backup_restore_blockers.require_canonical_gaps` requires equality with the ordered immutable six production blockers and raises `OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers`; the snapshot validator propagates that `Fail` unchanged.
+- Exact-source Readonly run `39969072879` (job `120466612199`) and Snapshot publisher run `39969072893` (job `120466612444`) both completed SUCCESS at the code SHA, logging strict snapshot negative PASS, 22 controlled validator corruptions rejected, and `production decision: NO_GO`.
+
+### Why safe
+- Only existing negative-case diagnostic binding changed. Canonical blocker text, ordering, production status, generation/objective/request registries, recovery evidence and promotion authorities were not modified.
+
+### Reusable mechanism
+- When a shared canonical helper directly raises a specific fail-closed cause, bind negative proof to that exact cause and verify both content replacement and ordering mutation. Preserve positive control, material mutation and byte/mode rollback, and require exact-source CI.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, objectives, executable requests, recovery evidence, typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Typed eight-domain coverage, independent review and separate human promotion remain mandatory.
+- Append-only learning is operational guidance, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
