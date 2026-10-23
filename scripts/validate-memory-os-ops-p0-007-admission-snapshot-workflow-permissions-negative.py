@@ -923,6 +923,74 @@ def prove_publisher_source_capture_negative(publish: str) -> None:
         raise Fail("strict snapshot publisher accepted duplicate source capture")
 
 
+def pr_drift_rejection_expected_lines() -> list[str]:
+    return [
+        "      - name: Reject deterministic snapshot drift",
+        "        run: |",
+        "          set -euo pipefail",
+        "          git diff --exit-code -- contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+        '          test -z "$(git status --porcelain)"',
+    ]
+
+
+def require_pr_drift_rejection_step(pr: str) -> None:
+    """The deterministic snapshot drift check must execute as a fatal PR step."""
+    lines = pr.splitlines()
+    expected = pr_drift_rejection_expected_lines()
+    marker = expected[0]
+    starts = [index for index, line in enumerate(lines) if line == marker]
+    require(len(starts) == 1, "strict snapshot PR drift rejection step authority drift")
+    start = starts[0]
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].startswith("      - ")),
+        len(lines),
+    )
+    require(
+        lines[start:end] == expected,
+        "strict snapshot PR drift rejection step authority drift",
+    )
+
+
+def prove_pr_drift_rejection_negative(pr: str) -> None:
+    require_pr_drift_rejection_step(pr)
+    block = "\n".join(pr_drift_rejection_expected_lines()) + "\n"
+    require(pr.count(block) == 1, "strict snapshot PR drift rejection fixture block drift")
+    substitutions = (
+        ("git diff --exit-code -- contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+         "echo 'git diff --exit-code -- contracts/operations/ops-p0-007-admission-snapshot.v1.json'"),
+        ('test -z "$(git status --porcelain)"', '# omitted clean-worktree assertion'),
+        ("        run: |", "        if: false\n        run: |"),
+        ("        run: |", "        continue-on-error: true\n        run: |"),
+        ("        run: |", "        shell: pwsh\n        run: |"),
+        ("          git diff --exit-code", "          exit 0\n          git diff --exit-code"),
+        ("          git diff --exit-code", "          git add -A\n          git diff --exit-code"),
+    )
+    for original, replacement in substitutions:
+        require(block.count(original) == 1, "strict snapshot PR drift rejection fixture mutation anchor drift")
+        altered = block.replace(original, replacement, 1)
+        mutated = pr.replace(block, altered, 1)
+        require(mutated != pr, "strict snapshot PR drift rejection mutation was a no-op")
+        try:
+            require_pr_drift_rejection_step(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR drift rejection step authority drift",
+                f"PR drift rejection mutation rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail("strict snapshot PR accepted weakened deterministic drift gate")
+    duplicate = pr + "\n      - name: Reject deterministic snapshot drift\n        run: |\n          exit 0\n"
+    try:
+        require_pr_drift_rejection_step(duplicate)
+    except Fail as exc:
+        require(
+            str(exc) == "strict snapshot PR drift rejection step authority drift",
+            f"duplicate PR drift rejection rejected outside exact guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot PR accepted duplicate deterministic drift gate")
+
+
 def publisher_protected_shell_starts(workflow: str) -> list[int]:
     lines = workflow.splitlines()
     names = (
@@ -1704,6 +1772,7 @@ def main() -> int:
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
     prove_checkout_comment_bypass_rejected(pr, publish)
     prove_pr_source_verification_negative(pr)
+    prove_pr_drift_rejection_negative(pr)
     prove_publisher_source_capture_negative(publish)
 
     require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
