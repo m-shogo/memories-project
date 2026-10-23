@@ -3901,3 +3901,29 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed protected authority list changes or an observed missing-file integrity bypass escapes this bounded guard.
+
+## 2026-10-24 — Readonly before/after snapshots must hash actual bytes and file modes
+
+### Outcome
+- Commit `4192db1e9545860d27cf06c0c3ed0914f15694a8` binds both readonly authority-snapshot loops to the reviewed file-existence check, SHA-256 content digest, filesystem mode extraction and distinct before/after output files.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40013017011` completed SUCCESS. The separate Snapshot Readonly run is not counted as successful without its own completed result.
+
+### Evidence
+- The previous readonly guard required two `for authority` loops and `done > "$snapshot"`/`done > "$current"` but did not prove that each loop actually hashed bytes and modes. Replacing `sha256sum` or `stat` with a constant could make a drift comparison pass falsely.
+- The new guard checks exact reviewed loop command sequences: the first loop checks file existence and records content hash/mode; the second independently records the same hash/mode fields for comparison.
+- Five synthetic mutations forge content digests, forge modes, comment/mask hash commands or remove the existence check. Each must produce the exact readonly-workflow authority-drift diagnostic.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and in-memory readonly workflow fixtures changed. The real readonly/PR/publisher workflows, Production Status, strict snapshot, registries, recovery evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- A protected-file list and two output files are not enough: bind the actual hashing, mode extraction, existence check and output redirection commands before treating a diff as integrity evidence.
+- Use exact command-shape negatives rather than assuming the presence of `sha256sum` text proves execution. Preserve separation between CI integrity proof and production recovery/promotion authority.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicit human-approved current recovery objective, executable reviewed request, independent review and separate human production promotion remain mandatory.
+- Learning/CI outcomes do not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed readonly hash/mode comparison architecture changes or an observed forged integrity comparison escapes the bounded guard.
