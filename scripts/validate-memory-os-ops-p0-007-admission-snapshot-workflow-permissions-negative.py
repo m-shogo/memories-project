@@ -20,6 +20,14 @@ FULL_ADMISSION_VALIDATORS = (
     "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
 )
 
+# GitHub's write-capable token scopes are not limited to contents:write.
+# The snapshot PR job must remain read-only across every recognized scope.
+GITHUB_PERMISSION_SCOPES = (
+    "actions", "attestations", "checks", "contents", "deployments",
+    "discussions", "id-token", "issues", "models", "packages", "pages",
+    "pull-requests", "repository-projects", "security-events", "statuses",
+)
+
 
 class Fail(RuntimeError):
     pass
@@ -285,6 +293,15 @@ def require_readonly_pr_permissions(workflow: str) -> None:
         re.search(r"(?m)\bcontents[ \t]*:[ \t]*['\"]?write['\"]?(?=[ \t]*$|[ \t]*[,}])", active) is None,
         "strict snapshot PR workflow must never receive contents: write",
     )
+    scopes = "|".join(re.escape(scope) for scope in GITHUB_PERMISSION_SCOPES)
+    scope_write = (
+        rf"(?m)(?<![\\w-])['\\\"]?(?:{scopes})['\\\"]?[ \\t]*:[ \\t]*"
+        rf"['\\\"]?write['\\\"]?(?=[ \\t]*(?:[,}}]|$))"
+    )
+    require(
+        re.search(scope_write, active) is None,
+        "strict snapshot PR workflow must never receive a write-capable permission scope",
+    )
 
 
 def prove_write_all_permissions_rejected() -> None:
@@ -313,6 +330,24 @@ def prove_write_all_permissions_rejected() -> None:
             require("contents: write" in str(exc), f"compact write grant rejected outside permission guard: {exc}")
         else:
             raise Fail("strict snapshot PR workflow accepted compact or quoted contents-write permission")
+
+    # Preserve a positive read-only control even when comments mention writes.
+    require_readonly_pr_permissions("permissions:\\n  contents: read\\n# actions: write\\n")
+    for fixture in (
+        "permissions:\\n  contents: read\\njobs:\\n  check:\\n    permissions:\\n      actions: write\\n",
+        "permissions:\\n  contents: read\\njobs:\\n  check:\\n    permissions: {id-token:write}\\n",
+        'permissions:\\n  contents: read\\njobs:\\n  check:\\n    permissions: {"pull-requests": "write"}\\n',
+        "permissions:\\n  contents: read\\njobs:\\n  check:\\n    permissions:\\n      security-events: 'write'\\n",
+    ):
+        try:
+            require_readonly_pr_permissions(fixture)
+        except Fail as exc:
+            require(
+                "write-capable permission scope" in str(exc),
+                f"non-contents write grant rejected outside scope guard: {exc}",
+            )
+        else:
+            raise Fail("strict snapshot PR workflow accepted a non-contents write permission")
 
 
 
