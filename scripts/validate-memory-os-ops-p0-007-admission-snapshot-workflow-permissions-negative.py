@@ -17,6 +17,8 @@ PUBLISH_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot.yml"
 READONLY_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"
 READONLY_SOURCE_REF = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
 
+
+READONLY_HASH_LINE = "printf '%s\\t%s\\t%s\\n' \"$authority\" \"$(sha256sum \"$authority\" | cut -d' ' -f1)\" \"$(stat -c '%a' \"$authority\")\""
 READONLY_PROTECTED_AUTHORITIES = (
     "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
     "contracts/operations/operability-admission-inventory.v1.json",
@@ -2498,6 +2500,18 @@ def require_readonly_workflow_authority(readonly: str) -> None:
         == ["authorities=(", *READONLY_PROTECTED_AUTHORITIES, ")"],
         "strict snapshot readonly workflow authority drift",
     )
+    loop = 'for authority in "${authorities[@]}"; do'
+    starts = [i for i, line in enumerate(body) if line == loop]
+    require(len(starts) == 2,
+            "strict snapshot readonly workflow authority drift")
+    require(
+        body[starts[0]:starts[0] + 4] == [
+            loop, 'test -f "$authority"', READONLY_HASH_LINE, 'done > "$snapshot"',
+        ] and body[starts[1]:starts[1] + 3] == [
+            loop, READONLY_HASH_LINE, 'done > "$current"',
+        ],
+        "strict snapshot readonly workflow authority drift",
+    )
     compiled = PR_COMPILE_FILES[-6:]
     require(
         body[:5] == [
@@ -2559,6 +2573,38 @@ def prove_readonly_workflow_negative(readonly: str) -> None:
                     f"missing protected authority rejected outside exact guard ({path}): {exc}")
         else:
             raise Fail(f"readonly accepted missing protected authority: {path}")
+    # Both hash loops must actually hash bytes and modes, not merely iterate
+    # over the reviewed authority list or write two identical fake snapshots.
+    hash_command = "          " + READONLY_HASH_LINE + "\n"
+    require(readonly.count(hash_command) == 2,
+            "strict snapshot readonly hash fixture anchor drift")
+    hash_mutations = (
+        ("fake content digest", hash_command.replace("sha256sum", "echo")),
+        ("fake mode", hash_command.replace("stat -c", "echo")),
+        ("comment-only hash", "          # digest omitted\n"),
+        ("masked hash", hash_command.rstrip("\n") + " || true\n"),
+    )
+    for label, substitute in hash_mutations:
+        mutated = readonly.replace(hash_command, substitute, 1)
+        require(mutated != readonly, f"{label} readonly hash mutation was a no-op")
+        try:
+            require_readonly_workflow_authority(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly workflow authority drift",
+                    f"{label} readonly hash rejected outside exact guard: {exc}")
+        else:
+            raise Fail(f"readonly accepted {label}")
+    missing_existence = readonly.replace(
+        '            test -f "$authority"\n', "            # existence not checked\n", 1
+    )
+    require(missing_existence != readonly, "readonly existence mutation was a no-op")
+    try:
+        require_readonly_workflow_authority(missing_existence)
+    except Fail as exc:
+        require(str(exc) == "strict snapshot readonly workflow authority drift",
+                f"readonly existence rejected outside exact guard: {exc}")
+    else:
+        raise Fail("readonly accepted missing protected-file existence check")
     mutations = (
         ("write grant", readonly.replace("permissions:\n  contents: read\n",
                                          "permissions:\n  contents: write\n", 1)),
