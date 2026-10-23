@@ -18,6 +18,7 @@ class Fail(RuntimeError):
     pass
 
 EXPECTED_FAILURE: type[Exception] = Fail
+EXPECTED_DIAGNOSTICS: dict[str, str] = {}
 
 def require(condition: bool, message: str) -> None:
     if not condition:
@@ -36,9 +37,12 @@ def load_writer():
     return module
 
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
+    expected = EXPECTED_DIAGNOSTICS.get(name)
+    require(isinstance(expected, str) and bool(expected), f"negative case lacks canonical diagnostic binding: {name}")
     try:
         action()
-    except EXPECTED_FAILURE:
+    except EXPECTED_FAILURE as exc:
+        require(str(exc) == expected, f"wrong rejection diagnostic for {name}: expected {expected!r}, observed {str(exc)!r}")
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -69,7 +73,7 @@ def review_payload(*, generation: str, source_sha: str, record_id: str, review_t
     return {"schemaVersion": "memory-os-backup-restore-non-resurrection-review-evidence.v1", "generationEvidenceId": generation, "sourceCommitSha": source_sha, "typedRecordId": record_id, "reviewType": review_type, "reviewerPseudonym": reviewer, "reviewedDomainEvidenceRefs": refs, "reviewedDomainEvidenceSha256": digests, "result": result, "productionTraffic": False, "productionCredentials": False, "productionEvidence": False, "productionReady": False}
 
 def main() -> int:
-    global EXPECTED_FAILURE
+    global EXPECTED_FAILURE, EXPECTED_DIAGNOSTICS
     contract = load(CONTRACT)
     writer = load_writer()
     EXPECTED_FAILURE = writer.Fail
@@ -151,24 +155,79 @@ def main() -> int:
         writer.validate_record(valid)
         print("PASS accept: complete typed record with independently bundle-and-digest-bound reviews")
 
+
+        domain_name = contract["requiredDomains"][0]
+        second_domain = contract["requiredDomains"][1]
+        EXPECTED_DIAGNOSTICS = {
+            "unregistered generation evidence": "generationEvidenceId is not uniquely registered",
+            "source commit mismatch": "sourceCommitSha must match generation recovery evidence",
+            "missing required domain": "domain coverage drift",
+            "domain evidence path is not typed": f"domain {domain_name} evidence path is not typed",
+            "domain result contradicts typed evidence": f"domain {domain_name} evidence result binding mismatch",
+            "evidenceComplete false despite eight PASS domains": "evidenceComplete derivation drift",
+            "security and operability review reuse": "security and operability reviews must be distinct",
+            "HIGH unresolved finding": "HIGH/CRITICAL findings block admission",
+            "production traffic relabel": "productionTraffic must remain false",
+            "production credentials relabel": "productionCredentials must remain false",
+            "production evidence relabel": "productionEvidence must remain false",
+            "production ready relabel": "productionReady must remain false",
+            "mutable alias breaks reviewed domain bundle": "SECURITY review does not bind exact typed domain bundle",
+            "cross-domain evidence path prefix mismatch": f"domain {second_domain} evidence path is not typed",
+            "security review payload digest binding mismatch": "security review payload digest binding mismatch",
+            "operability review payload digest binding mismatch": "operability review payload digest binding mismatch",
+            "domain evidence generation binding mismatch": f"domain {domain_name} evidence generation binding mismatch",
+            "domain evidence source commit binding mismatch": f"domain {domain_name} evidence source commit binding mismatch",
+            "domain evidence domain binding mismatch": f"domain {domain_name} evidence domain binding mismatch",
+            "domain evidence result binding mismatch": f"domain {domain_name} evidence result binding mismatch",
+            "review generation binding mismatch": "SECURITY review generation binding mismatch",
+            "review source commit binding mismatch": "SECURITY review source commit binding mismatch",
+            "review typed record binding mismatch": "SECURITY review typed record binding mismatch",
+            "review exact domain bundle mismatch": "SECURITY review does not bind exact typed domain bundle",
+            "review domain evidence digest binding mismatch": "SECURITY review domain evidence digest binding mismatch",
+            "security and operability reviewer identity reuse": "security and operability reviewers must be independent",
+            "review result not APPROVED": "SECURITY review must be APPROVED",
+            "typed writer registeredRecordCount drift before append": "registeredRecordCount drift",
+            "typed writer boolean completeRecordCount before append": "completeRecordCount drift",
+            "typed writer candidateCoveredCount drift before append": "candidateCoveredCount drift",
+            "typed writer production evidence drift before append": "registry production boundary drift",
+            "typed writer production ready drift before append": "registry production boundary drift",
+            "typed writer post-append validation failure rollback": "synthetic typed post-append validation failure",
+            "writer evidence ref absolute path": "securityReviewRef must be a canonical repository-relative path",
+            "writer evidence ref parent traversal alias": "securityReviewRef must be a canonical repository-relative path",
+            "writer repo-local evidence symlink escaping repository": f"domains.{domain_name}.evidenceRef evidence path missing or escapes repository",
+            "typed evidence file must exist": f"domains.{domain_name}.evidenceRef evidence path missing or escapes repository",
+        }
+        for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
+            EXPECTED_DIAGNOSTICS[f"domain evidence {field} production boundary"] = f"domain {domain_name} evidence {field} must remain false"
+            EXPECTED_DIAGNOSTICS[f"review evidence {field} production boundary"] = f"SECURITY review {field} must remain false"
+
+        # A generic writer.Fail must never count as proof of the intended rejection.
+        try:
+            expect_rejected("source commit mismatch", lambda: (_ for _ in ()).throw(writer.Fail("unrelated synthetic failure")))
+        except Fail as exc:
+            require("wrong rejection diagnostic" in str(exc), "negative diagnostic classifier accepted unrelated writer.Fail")
+            print("PASS reject: unrelated writer.Fail cannot satisfy source-commit negative")
+        else:
+            raise Fail("negative diagnostic classifier accepted unrelated writer.Fail")
+
         def reject_variant(name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
             item = copy.deepcopy(valid); mutate(item); expect_rejected(name, lambda: writer.validate_record(item))
 
         reject_variant("unregistered generation evidence", lambda r: r.update(generationEvidenceId="brge_missing_generation"))
         reject_variant("source commit mismatch", lambda r: r.update(sourceCommitSha="b" * 40))
         reject_variant("missing required domain", lambda r: r["domains"].pop(contract["requiredDomains"][0]))
-        domain_name = contract["requiredDomains"][0]
         reject_variant("domain evidence path is not typed", lambda r: r["domains"][domain_name].update(evidenceRef="SECURITY.md"))
-        reject_variant("failed domain cannot claim evidenceComplete", lambda r: r["domains"][domain_name].update(result="FAIL"))
+        reject_variant("domain result contradicts typed evidence", lambda r: r["domains"][domain_name].update(result="FAIL"))
+        reject_variant("evidenceComplete false despite eight PASS domains", lambda r: r.update(evidenceComplete=False))
         reject_variant("security and operability review reuse", lambda r: r.update(operabilityReviewRef=r["securityReviewRef"]))
         reject_variant("HIGH unresolved finding", lambda r: r.update(unresolvedFindings=[{"findingId": "finding_high", "severity": "HIGH", "status": "OPEN"}]))
         reject_variant("production traffic relabel", lambda r: r.update(productionTraffic=True))
         reject_variant("production credentials relabel", lambda r: r.update(productionCredentials=True))
         reject_variant("production evidence relabel", lambda r: r.update(productionEvidence=True))
         reject_variant("production ready relabel", lambda r: r.update(productionReady=True))
-        reject_variant("mutable latest alias", lambda r: r["domains"][domain_name].update(evidenceRef=prefixes[domain_name] + "latest.json"))
+        reject_variant("mutable alias breaks reviewed domain bundle", lambda r: r["domains"][domain_name].update(evidenceRef=prefixes[domain_name] + "latest.json"))
         first, second = contract["requiredDomains"][:2]
-        reject_variant("domain evidence references must be distinct", lambda r: r["domains"][second].update(evidenceRef=r["domains"][first]["evidenceRef"]))
+        reject_variant("cross-domain evidence path prefix mismatch", lambda r: r["domains"][second].update(evidenceRef=r["domains"][first]["evidenceRef"]))
         if "securityReviewSha256" in valid:
             reject_variant("security review payload digest binding mismatch", lambda r: r.update(securityReviewSha256="0" * 64))
             reject_variant("operability review payload digest binding mismatch", lambda r: r.update(operabilityReviewSha256="0" * 64))
