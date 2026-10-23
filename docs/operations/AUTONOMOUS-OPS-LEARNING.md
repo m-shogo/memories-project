@@ -2206,3 +2206,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Typed eight-domain coverage, independent review and separate human promotion remain mandatory.
 - Append-only learning never counts as production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Rejected snapshot generator attempts must preserve file mode as well as bytes
+
+### Outcome
+- Commit `7a577eb45f4e05ef15cd63d844a0b6db27b421ab` strengthens the existing generator-rejection negative helper to assert both canonical snapshot bytes and file mode are unchanged.
+
+### Evidence
+- Previously `run_generator_rejects` checked snapshot bytes only after fail-closed generator exit; a mode-only mutation could evade that local assertion.
+- The new pure-state classifier has an unchanged positive control and separate synthetic bytes-change and mode-change rejections. Exact-source Readonly run `39970206346` (job `120470559817`) and Snapshot publisher run `39970206253` (job `120470559346`) completed SUCCESS, logging strict snapshot negative PASS, 22 validator corruptions rejected, and `production decision: NO_GO`.
+
+### Why safe
+- The guard compares a tuple of observed bytes and file mode after a rejected generator attempt. Synthetic classifier controls are in-memory; no new production or recovery authority was written. Existing canonical registry restoration and atomic replacement tests remain intact.
+
+### Reusable mechanism
+- A rejected publication must preserve not only content but permission metadata. Use a pure before/after state classifier with a synthetic mode-only negative to prevent false success, then exercise it through the existing CI-bound generator rejection cases.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Eight-domain coverage, independent review and separate human promotion remain mandatory.
+- Append-only learning never counts as production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
