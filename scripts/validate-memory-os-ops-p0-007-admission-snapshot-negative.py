@@ -144,6 +144,35 @@ def run_validator(expect_success: bool, label: str) -> None:
         require_case_specific_validator_rejection(proc.stderr, expected, label)
 
 
+def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...], label: str) -> None:
+    lines = output.splitlines()
+    prefixes = tuple(
+        prefix
+        for message in allowed
+        for prefix in (message, f"generated strict snapshot invalid: {message}")
+    )
+    if len(lines) != 1 or not lines[0].startswith(prefixes):
+        raise Fail(f"{label}: generator rejection did not use one intended authority diagnostic: {output!r}")
+
+
+def prove_generator_diagnostic_classifier() -> None:
+    expected = ("canonical OPS-P0-007 blocker authority invalid",)
+    valid = "canonical OPS-P0-007 blocker authority invalid: synthetic detail"
+    require_expected_generator_diagnostic(valid + "\n", expected, "synthetic positive")
+    for output in (
+        "unrelated failure: " + valid + "\n",
+        "unrelated failure\n" + valid + "\n",
+        valid + "\nunrelated failure\n",
+    ):
+        try:
+            require_expected_generator_diagnostic(output, expected, "synthetic unrelated diagnostic")
+        except Fail as exc:
+            if "one intended authority diagnostic" not in str(exc):
+                raise Fail(f"generator classifier rejected outside intended guard: {exc}") from exc
+        else:
+            raise Fail("generator classifier accepted unrelated or multiline rejection")
+
+
 def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) -> None:
     before = SNAPSHOT.read_bytes()
     proc = run_bounded_python(GENERATOR, label)
@@ -151,8 +180,7 @@ def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) 
         raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
     output = proc.stderr or proc.stdout
     allowed = (expected_messages,) if isinstance(expected_messages, str) else expected_messages
-    if not any(message in output for message in allowed):
-        raise Fail(f"{label}: generator rejection did not use expected authority boundary: {output}")
+    require_expected_generator_diagnostic(output, allowed, label)
     if "Traceback (most recent call last)" in output:
         raise Fail(f"{label}: generator rejection surfaced an implementation exception")
     if SNAPSHOT.read_bytes() != before:
@@ -451,6 +479,7 @@ def main() -> int:
 
     try:
         prove_case_specific_validator_classifier()
+        prove_generator_diagnostic_classifier()
         prove_subprocess_timeout_guard()
         run_validator(True, "clean baseline")
         run_generator_atomic_write_mode_preservation()
