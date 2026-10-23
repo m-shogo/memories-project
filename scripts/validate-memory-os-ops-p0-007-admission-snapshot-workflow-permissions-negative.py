@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 import tempfile
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +59,97 @@ def prove_symlink_rejected() -> None:
             raise Fail("strict snapshot workflow symlink alias unexpectedly accepted")
 
 
+
+def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list[ast.AST]]:
+    # Only the live Python heredoc in the publisher counts. Comments, strings,
+    # function definitions, and statically dead branches are not call-site proof.
+    match = re.search(r"(?ms)^[ \t]*python[ \t]+-[ \t]*<<'PY'[ \t]*\n(.*?)^[ \t]*PY[ \t]*$", publish)
+    require(match is not None, "strict snapshot diagnostic executable Python heredoc missing")
+    try:
+        tree = ast.parse(textwrap.dedent(match.group(1)))
+    except SyntaxError as exc:
+        raise Fail(f"strict snapshot diagnostic Python heredoc invalid: {exc}") from exc
+
+    def live(node: ast.AST):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            return
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Constant):
+            yield node
+            for child in (node.body if bool(node.test.value) else node.orelse):
+                yield from live(child)
+            return
+        yield node
+        for child in ast.iter_child_nodes(node):
+            yield from live(child)
+
+    nodes = list(live(tree))
+    calls = [node for node in nodes if isinstance(node, ast.Call)]
+    required = {
+        "mkstemp": "tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)",
+        "chmod": "os.fchmod(fd, existing_mode)",
+        "write": "handle.write(payload)",
+        "flush": "handle.flush()",
+        "fsync": "os.fsync(handle.fileno())",
+        "replace": "os.replace(tmp_name, path)",
+        "unlink": "os.unlink(tmp_name)",
+    }
+    found: dict[str, ast.Call] = {}
+    for label, expression in required.items():
+        expected = ast.dump(ast.parse(expression, mode="eval").body, include_attributes=False)
+        matches = [call for call in calls if ast.dump(call, include_attributes=False) == expected]
+        require(len(matches) == 1, f"strict snapshot diagnostic missing executable {label} call or duplicated call")
+        found[label] = matches[0]
+
+    mode_assignment = ast.dump(
+        ast.parse("existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None").body[0],
+        include_attributes=False,
+    )
+    require(
+        any(isinstance(node, ast.Assign) and ast.dump(node, include_attributes=False) == mode_assignment for node in nodes),
+        "strict snapshot diagnostic missing executable existing-mode preservation",
+    )
+    require(
+        found["mkstemp"].lineno < found["chmod"].lineno < found["write"].lineno
+        < found["flush"].lineno < found["fsync"].lineno < found["replace"].lineno
+        < found["unlink"].lineno,
+        "strict snapshot diagnostic executable publication call order drift",
+    )
+    def has_call(statements: list[ast.stmt], target: ast.Call) -> bool:
+        return any(node is target for stmt in statements for node in live(stmt))
+    require(
+        any(
+            isinstance(node, ast.Try)
+            and has_call(node.body, found["replace"])
+            and has_call(node.finalbody, found["unlink"])
+            for node in nodes
+        ),
+        "strict snapshot diagnostic replace/cleanup not bound to one try/finally",
+    )
+    return found, nodes
+
+
+def prove_diagnostic_comment_and_dead_code_rejected(publish: str) -> None:
+    validate_atomic_diagnostic_publication(publish)
+    mutations = (
+        ("comment-only replacement", "os.replace(tmp_name, path)", "# os.replace(tmp_name, path)"),
+        ("quoted flush", "handle.flush()", "'handle.flush()'"),
+        ("dead fsync", "os.fsync(handle.fileno())", "if False: os.fsync(handle.fileno())"),
+        ("comment-only cleanup", "os.unlink(tmp_name)", "pass  # os.unlink(tmp_name)"),
+        ("direct-write bypass", "os.replace(tmp_name, path)", "path.write_text('unsafe')  # os.replace(tmp_name, path)"),
+    )
+    for label, before, after in mutations:
+        require(publish.count(before) == 1, f"{label}: expected one canonical mutation site")
+        mutated = publish.replace(before, after, 1)
+        try:
+            validate_atomic_diagnostic_publication(mutated)
+        except Fail as exc:
+            require(
+                "strict snapshot diagnostic" in str(exc),
+                f"{label} rejected outside intended diagnostic guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot diagnostic accepted {label}")
+
 def validate_atomic_diagnostic_publication(publish: str) -> None:
     required_fragments = (
         "existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None",
@@ -74,6 +167,7 @@ def validate_atomic_diagnostic_publication(publish: str) -> None:
         "path.write_text(json.dumps(value" not in publish,
         "strict snapshot diagnostic publication regressed to direct write_text",
     )
+    executable_diagnostic_calls(publish)
 
 
 def require_full_admission_chain(workflow: str, label: str) -> None:
@@ -155,7 +249,7 @@ def main() -> int:
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
     require("revalidate_latest_snapshot" in publish, "strict snapshot publication workflow must retain bounded full revalidation")
     require_full_admission_chain(publish, "strict snapshot publication workflow")
-    validate_atomic_diagnostic_publication(publish)
+    prove_diagnostic_comment_and_dead_code_rejected(publish)
 
     print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
     print("pull request write token exposed: false")
