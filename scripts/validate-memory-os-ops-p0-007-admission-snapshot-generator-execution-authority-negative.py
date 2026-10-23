@@ -17,6 +17,20 @@ GENERATOR = ROOT / "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
 SNAPSHOT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
+# Failure-injection probes must preserve every OPS-P0-007 recovery authority,
+# not just the generated projection and its production-status input.
+PROTECTED_AUTHORITIES = (
+    SNAPSHOT,
+    STATUS,
+    GENERATOR,
+    ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    ROOT / "contracts/operations/recovery-objectives-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json",
+)
+
 
 class Fail(RuntimeError):
     pass
@@ -114,7 +128,7 @@ def expect_rejected(module: Any, field: str, replacement: Any, expected_diagnost
         else "strict snapshot generator execution helper drift"
     )
     original = getattr(module, field)
-    protected_before = {path: protected_state(path) for path in (SNAPSHOT, STATUS, GENERATOR)}
+    protected_before = {path: protected_state(path) for path in PROTECTED_AUTHORITIES}
     setattr(module, field, replacement)
     rejected = False
     output = StringIO()
@@ -139,7 +153,12 @@ def main() -> int:
     module = load_module()
     prove_rejection_stdout_classifier()
     prove_symlink_identity_rejected()
-    baseline_state = {path: protected_state(path) for path in (SNAPSHOT, STATUS, GENERATOR)}
+    # A byte-identical symlink is not a canonical protected authority.
+    for path in PROTECTED_AUTHORITIES:
+        require(path.is_file() and not path.is_symlink() and not path.parent.is_symlink()
+                and path.resolve(strict=True) == path,
+                f"generator execution protected authority path drift: {path.relative_to(ROOT)}")
+    baseline_state = {path: protected_state(path) for path in PROTECTED_AUTHORITIES}
 
     substitutions = (
         ("enforce_execution_authority", lambda: None),
@@ -196,7 +215,7 @@ def main() -> int:
     print("full admission validator no-op substitution accepted: false")
     print("post-write validator no-op substitution accepted: false")
     print("atomic publication helper substitution accepted: false")
-    print("rejected probes changed canonical snapshot/status/generator identity: false")
+    print("rejected probes changed OPS-P0-007 snapshot/status/generator/recovery-registry identity: false")
     print("isolated file and parent symlink identity bypass accepted: false")
     print("production evidence created: false")
     print("production ready: false")
