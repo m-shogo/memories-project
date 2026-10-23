@@ -877,3 +877,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Re-read after correction confirmed `productionDecision=NO_GO`, OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`, blocking=true, and unchanged strict admission snapshot. No registered/eligible generations, approved objectives, executable drill requests, generation recovery evidence, complete eight-domain typed records, or final candidates were created.
 - This learning entry is append-only history and cannot satisfy any production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion gate. Semantic eligibility from distinct environments, explicit human objective approval, current executable reviewed request, eight typed domains, independent review, and separate human promotion remain required.
+
+## 2026-10-23 — Atomic snapshot failure proof also preserves unrelated production status
+
+### Outcome
+- Extended the existing OPS-P0-007 snapshot atomic-write negative to assert the canonical production operability status is unchanged byte-for-byte and mode-for-mode after an injected snapshot replacement failure.
+
+### Evidence
+- Commit `322ce2fcb5530671fc70efc763d5ac0496cde73e` changed only `scripts/validate-memory-os-ops-p0-007-admission-snapshot-atomic-write-negative.py`.
+- Exact-source workflow run `39923333192` completed SUCCESS. Logs show the injected canonical replacement failure was observed once, the negative passed, and canonical production status bytes/mode remained unchanged. The workflow also checks canonical snapshot digest, mode, temporary residue and clean worktree.
+- Separately, exact-source OPS-P0-007 Admission Snapshot Readonly run `39923120147` completed SUCCESS on permission-correction commit `799007e31fe352d2bfdcce52346e73e2b903dea3`. Do not misattribute that run to this later atomic-negative commit.
+
+### Why safe
+- This change only adds an integrity assertion to a CI-reachable negative test. It does not alter a writer, production authority, recovery registry, traffic, credentials, readiness, or promotion.
+
+### Reusable mechanism
+- In a scoped writer-failure negative, snapshot both the target and adjacent protected authority bytes/modes before failure injection and prove neither drifted afterward. Retain the exact injected-failure sentinel and bounded target-attempt assertion to prevent unrelated failures from producing false PASS.
+
+### Protected-authority check
+- Post-change source re-read showed `productionDecision=NO_GO`, OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`, blocking=true, and unchanged canonical snapshot/status blobs. Registered generations, semantically eligible generations, approved objectives, executable reviewed requests, recovery evidence, complete typed eight-domain records, and final candidates remain zero.
+- This lesson is append-only operational history, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Independent review and separate human promotion remain non-automatic gates.
