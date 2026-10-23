@@ -2244,3 +2244,43 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Eight-domain coverage, independent review and separate human promotion remain mandatory.
 - Append-only learning never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Symlink escape resolution fails before the later path-drift branch
+
+### Symptom
+- A new exact generator symlink diagnostic classifier rejected the actual canonical generator failure and caused both strict snapshot workflows to fail.
+
+### Evidence
+- Commit `2db54036d29c08ad73a7bb7dd5f1be11c4268eb5`; Readonly run `39970804689` (job `120472644031`) and Snapshot run `39970804685` (job `120472643803`) failed on `generator objective source symlink escape`. Actual stderr was `strict snapshot authority missing or escapes repository: recovery objective registry`, not the expected `strict snapshot authority drift: recovery objective registry`.
+- A failure diagnostic fixture was temporarily committed at `529e5438d0e1ad61e32869b9fc36e273a8df2a51` and later removed by bounded success reconciliation at `3154c44b669254c6c139fadab25ebdf25ed3c025`; neither is production evidence.
+
+### Root cause or unknown
+- Verified: the symlink target resolves outside the repository. `path.resolve(strict=True).relative_to(ROOT.resolve())` raises `ValueError` inside the generator's `require_exact_repo_file` try block, which emits the earlier `missing or escapes repository` diagnostic. The later `authority drift` branch is not reached.
+
+### Failed approach
+- Predicting the exact failure from the final symlink predicate without checking which earlier path-resolution exception branch runs. This was an incorrect static diagnostic assumption.
+
+### Correction
+- Commit `8682b50fc4477786d002c891f061ab079fdf5b0b` maps both objective registry and objective writer symlink escapes to their actual canonical `missing or escapes repository` diagnostics.
+
+### Recurrence guard
+- The existing CI-bound generator negative classifier now requires exact single-line diagnostics for both symlink labels, with synthetic valid controls and unrelated-suffix, duplicate-line and wrong-prefix rejections. For exact error mapping, inspect exception order and actual CI stderr before generalizing from a later guard branch.
+
+### Retry condition
+- Revisit only if the generator's canonical path-resolution order or the isolated symlink target location changes, or a demonstrated new bypass appears. Do not retry the incorrect `authority drift` mapping unchanged.
+
+### Outcome
+- Corrected exact-source Readonly run `39970967714` (job `120473210879`) and Snapshot publisher run `39970967662` (job `120473211463`) completed SUCCESS at `8682b50fc4477786d002c891f061ab079fdf5b0b`.
+
+### Success evidence
+- Both logs contain strict snapshot negative PASS, 22 controlled validator corruption cases rejected, and `production decision: NO_GO`. The earlier failures remain failures in history.
+
+### Why safe
+- Only expected diagnostics in the existing negative harness changed. Symlink fixtures are temporary and restored, with no production or recovery authority weakened. Diagnostic fixture commits cannot satisfy readiness.
+
+### Reusable mechanism
+- Trace the actual first fail-closed branch for symlink resolution, then bind its exact observed diagnostic with positive-controlled negative fixtures and exact-source CI.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; strict snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Eight-domain coverage, independent review and separate human promotion remain mandatory.
+- Append-only learning cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
