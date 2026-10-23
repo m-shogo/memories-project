@@ -143,14 +143,26 @@ def validate(repo_root: Path) -> None:
         raise ValidationFailure("learning CI entrypoint main binding is shadowed by async definition")
     if any(
         (isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "main"
-            for target in node.targets
+            isinstance(bound, ast.Name)
+            and bound.id == "main"
+            and isinstance(bound.ctx, ast.Store)
+            for target in node.targets for bound in ast.walk(target)
         ))
         or (isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name) and node.target.id == "main")
         for node in entry_tree.body
     ):
         raise ValidationFailure("learning CI entrypoint main binding is shadowed by assignment")
+    if any(
+        isinstance(node, (ast.Import, ast.ImportFrom))
+        and any(
+            (alias.asname or (alias.name.split(".")[0] if isinstance(node, ast.Import) else alias.name))
+            == "main"
+            for alias in node.names
+        )
+        for node in entry_tree.body
+    ):
+        raise ValidationFailure("learning CI entrypoint main binding is shadowed by import")
     # The direct main() call must resolve to the bound synchronous guard,
     # not a later async definition or assignment with the same name.
     guard_definitions = [
