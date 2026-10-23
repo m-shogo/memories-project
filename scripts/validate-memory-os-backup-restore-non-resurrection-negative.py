@@ -2,6 +2,7 @@
 """Exercise fail-closed negative cases for typed restore non-resurrection evidence."""
 from __future__ import annotations
 
+import ast
 import copy
 import importlib.util
 import json
@@ -11,6 +12,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+ADMISSION = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
 CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 SHA = "a" * 40
 
@@ -92,8 +94,94 @@ def domain_payload(generation: str, source_sha: str, domain: str, result: str) -
 def review_payload(*, generation: str, source_sha: str, record_id: str, review_type: str, reviewer: str, refs: list[str], digests: dict[str, str], result: str = "APPROVED") -> dict[str, Any]:
     return {"schemaVersion": "memory-os-backup-restore-non-resurrection-review-evidence.v1", "generationEvidenceId": generation, "sourceCommitSha": source_sha, "typedRecordId": record_id, "reviewType": review_type, "reviewerPseudonym": reviewer, "reviewedDomainEvidenceRefs": refs, "reviewedDomainEvidenceSha256": digests, "result": result, "productionTraffic": False, "productionCredentials": False, "productionEvidence": False, "productionReady": False}
 
+def require_writer_authority_reachability(tree: ast.Module) -> None:
+    expected_path = ast.parse(
+        'ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-writer-authority.py"',
+        mode="eval",
+    ).body
+    bindings = [
+        node.value for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "WRITER_AUTHORITY_NEGATIVE"
+                for target in node.targets)
+    ]
+    require(len(bindings) == 1 and ast.dump(bindings[0]) == ast.dump(expected_path),
+            "typed writer CLI negative path authority drift")
+    mains = [
+        node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "main"
+    ]
+    require(len(mains) == 1 and isinstance(mains[0], ast.FunctionDef),
+            "typed writer CLI negative canonical main binding drift")
+    direct_calls = [
+        node for node in mains[0].body
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name) and node.value.func.id == "run_validator"
+        and len(node.value.args) == 2
+        and isinstance(node.value.args[0], ast.Name)
+        and node.value.args[0].id == "WRITER_AUTHORITY_NEGATIVE"
+        and isinstance(node.value.args[1], ast.Constant)
+        and node.value.args[1].value == "non-resurrection writer CLI authority negative suite"
+        and not node.value.keywords
+    ]
+    require(len(direct_calls) == 1,
+            "typed writer CLI negative not directly executed by admission main")
+
+
+def prove_writer_authority_reachability() -> None:
+    try:
+        tree = ast.parse(ADMISSION.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed writer CLI negative admission source unavailable") from exc
+    require_writer_authority_reachability(tree)
+    main_node = next(node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name == "main")
+    call_index = next(index for index, node in enumerate(main_node.body)
+                      if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                      and isinstance(node.value.func, ast.Name)
+                      and node.value.func.id == "run_validator"
+                      and node.value.args and isinstance(node.value.args[0], ast.Name)
+                      and node.value.args[0].id == "WRITER_AUTHORITY_NEGATIVE")
+    for label in ("removed", "dead-branch", "string-only", "duplicate"):
+        mutated = copy.deepcopy(tree)
+        main_copy = next(node for node in mutated.body
+                         if isinstance(node, ast.FunctionDef) and node.name == "main")
+        original = main_copy.body[call_index]
+        if label == "removed":
+            del main_copy.body[call_index]
+        elif label == "dead-branch":
+            main_copy.body[call_index] = ast.If(
+                test=ast.Constant(value=False), body=[original], orelse=[])
+        elif label == "string-only":
+            main_copy.body[call_index] = ast.Expr(
+                value=ast.Constant(value="run_validator(WRITER_AUTHORITY_NEGATIVE)"))
+        else:
+            main_copy.body.insert(call_index, copy.deepcopy(original))
+        try:
+            require_writer_authority_reachability(mutated)
+        except Fail as exc:
+            require(str(exc) == "typed writer CLI negative not directly executed by admission main",
+                    f"typed writer CLI reachability {label} rejection diagnostic drift")
+        else:
+            raise Fail(f"typed writer CLI reachability {label} bypass unexpectedly accepted")
+    mutated = copy.deepcopy(tree)
+    binding = next(node for node in mutated.body if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "WRITER_AUTHORITY_NEGATIVE"
+                           for target in node.targets))
+    binding.value = ast.Constant(value="unrelated-validator.py")
+    try:
+        require_writer_authority_reachability(mutated)
+    except Fail as exc:
+        require(str(exc) == "typed writer CLI negative path authority drift",
+                "typed writer CLI reachability binding diagnostic drift")
+    else:
+        raise Fail("typed writer CLI path substitution unexpectedly accepted")
+    print("PASS reject: typed writer CLI admission missing/dead/string/duplicate/path bypasses")
+
+
 def main() -> int:
     global EXPECTED_FAILURE, EXPECTED_DIAGNOSTICS
+    prove_writer_authority_reachability()
     contract = load(CONTRACT)
     writer = load_writer()
     EXPECTED_FAILURE = writer.Fail
