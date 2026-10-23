@@ -2671,3 +2671,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the diagnostic publisher intentionally changes its cleanup architecture or a new observed bypass survives the existing exact-source negative suite.
+
+## 2026-10-24 — Generator negative must protect source, file and parent identity
+
+### Outcome
+- Commit `ed72200dce3163bd87ce01d1a4486f975505dd98` strengthens the canonical strict snapshot generator execution-authority negative: all 11 substituted helper probes must leave snapshot, Production Status and generator source bytes, mode, device/inode, parent-directory identity and resolved path unchanged.
+
+### Evidence
+- The previous harness compared snapshot/status bytes and permission bits but could not distinguish an identical-content symlink or replaced parent directory from the original canonical authority.
+- A temporary-directory-only positive/negative identity fixture now replaces a file with an equal-content symlink and separately replaces its parent directory with a symlink. Both must change `protected_state`; the original file identity must be recoverable after the first fixture.
+- Exact-source OPS-P0-007 Admission Snapshot publisher run `39993256887` at `ed72200d` completed SUCCESS. The later exact-source Readonly run `39993384036` at `4c918753` also completed SUCCESS; its log confirms `strict snapshot generator execution authority negative PASS`, `execution helper substitutions rejected: 11`, `isolated file and parent symlink identity bypass accepted: false`, and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing CI-invoked negative harness changed. Symlink mutations are confined to an isolated temporary directory, and the canonical production status, snapshot, generator, registries, evidence, credentials, traffic, readiness and promotion authorities remain untouched.
+
+### Reusable mechanism
+- A negative test asserting canonical immutability must compare identity as well as content and mode: `lstat` of file and parent, device/inode and resolved path. Prove that equal-content file/parent symlink substitution is detectable without mutating the checkout. Do not confuse successful CI execution of these synthetic probes with production evidence.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains `PREREQUISITES_BLOCKED` and zero registered/eligible generations, approved objectives, executable drill requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human production promotion remain mandatory.
+- Append-only learning never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if a fresh observed source-path identity bypass or an intentional canonical path architecture change alters this negative's assumptions; the separately blocked validator-authority negative path retains its own unchanged retry condition.
