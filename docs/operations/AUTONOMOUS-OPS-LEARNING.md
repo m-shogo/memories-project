@@ -939,3 +939,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit re-read confirmed `productionDecision=NO_GO`, OPS-P0-007 strict snapshot `PREREQUISITES_BLOCKED`, zero registered/semantically eligible generations, zero approved recovery objectives, zero executable reviewed drill requests, zero recovery evidence, zero complete typed eight-domain records, and zero final candidates. Status and snapshot blobs remained unchanged.
 - Learning is append-only operational history, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct eligible environments, explicit human-approved current objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate human promotion remain mandatory.
+
+## 2026-10-23 — Snapshot symlink negatives must never clobber fixed shared /tmp paths
+
+### Symptom
+- The canonical OPS-P0-007 snapshot negative suite created two external symlink targets at fixed shared `/tmp` paths before testing source and executable-module symlink escape. A preexisting file or attacker-controlled symlink at either path could be overwritten by `write_bytes`.
+
+### Evidence
+- Before correction, `run_source_symlink_escape` wrote `/tmp/memory-os-ops-p0-007-objective-authority.json` and `run_module_symlink_escape` wrote `/tmp/memory-os-ops-p0-007-objective-writer.py` without unique ownership. Both functions restored canonical files using `write_bytes` after unlinking symlinks, without explicitly restoring the original file mode.
+- The canonical snapshot readonly workflow invokes this negative suite directly and checks protected authority bytes, modes, and worktree cleanliness.
+
+### Root cause or unknown
+- Verified design flaw: deterministic filenames in a shared temporary directory do not establish exclusive ownership or safe cleanup. No real collision or exploit was observed.
+
+### Failed approach
+- Using fixed shared temporary paths as external test targets and assuming they are unused.
+
+### Correction
+- Commit `17b599112566c16ab40fc90e39b5039a0668493b` replaces both fixed paths with unique `tempfile.TemporaryDirectory` contexts outside the checkout. Symlink creation is inside a `try/finally`, and each canonical file's original mode is restored explicitly after the synthetic symlink test.
+
+### Recurrence guard
+- Both tests now use per-invocation temporary directories with automatic cleanup, retain canonical validator/generator symlink rejection, and preserve canonical bytes/modes. The existing exact-source readonly workflow executes these paths and verifies all protected authority digests and modes before and after.
+
+### Retry condition
+- Revisit if a new fixed shared-path fixture is introduced, a cleanup/mode regression is demonstrated, or the source-binding policy changes. Do not restore fixed shared `/tmp` names merely to simplify fixtures.
+
+### Outcome
+- Exact-source `OPS P0 007 Admission Snapshot Readonly` run `39931399713` completed SUCCESS on `17b599112566c16ab40fc90e39b5039a0668493b`; the job log confirms strict snapshot negative PASS, source and module symlink escape rejection, canonical authority byte/mode checks, and `production decision: NO_GO`.
+- Exact-source snapshot publisher run `39931399701` also completed SUCCESS without creating a production-equivalent generation or changing production authority.
+- The concurrent `Backup Restore Admission Chain Negative` run `39931399618` failed at inventory generation with the previously recorded clean-source-worktree fixture interference. This was an existing upstream blocker, not evidence of failure in the isolated snapshot symlink negative.
+
+### Why safe
+- Only a test fixture's external scratch-target allocation and cleanup changed. No canonical writer, production authority, recovery evidence, credentials, traffic, readiness, or promotion was changed.
+
+### Reusable mechanism
+- For negative tests that deliberately symlink canonical sources to external targets, allocate unique owner-controlled scratch paths outside the checkout, wrap symlink installation in `try/finally`, and restore exact bytes and original modes. A failing unrelated aggregate CI job must not be misattributed to a passing exact-source focused guard.
+
+### Protected-authority check
+- Post-commit re-read confirmed `productionDecision=NO_GO`, strict OPS-P0-007 `PREREQUISITES_BLOCKED`, zero registered and semantically eligible generations, zero human-approved current objectives, zero executable reviewed drill requests, zero recovery evidence, zero complete typed eight-domain records, and zero final candidates. Canonical status, snapshot, and autonomous-learning contract blobs were unchanged.
+- This append-only learning entry is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct unsuperseded eligible environments, human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate non-automatic human promotion remain mandatory.
