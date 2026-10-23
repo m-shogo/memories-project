@@ -322,6 +322,41 @@ def prove_comment_only_commands_rejected() -> None:
             raise Fail(f"strict snapshot full admission validator accepted {label} references")
 
 
+def require_publisher_revalidation_calls(publish: str) -> None:
+    # A function definition or comment is not a call. Preserve the three
+    # current retry/finalization call sites in enabled run-step shell bodies.
+    commands = "\n".join(executable_run_lines(publish))
+    require(
+        re.search(r"(?m)^[ \t]*revalidate_latest_snapshot\(\)[ \t]*\{", commands) is not None,
+        "strict snapshot publisher missing bounded revalidation function definition",
+    )
+    calls = re.findall(r"(?m)^[ \t]*revalidate_latest_snapshot[ \t]*(?:#.*)?$", commands)
+    require(
+        len(calls) >= 3,
+        "strict snapshot publisher missing executable bounded revalidation call sites",
+    )
+
+
+def prove_publisher_revalidation_call_binding(publish: str) -> None:
+    require_publisher_revalidation_calls(publish)
+    call_pattern = r"(?m)^([ \t]*)revalidate_latest_snapshot[ \t]*$"
+    require(len(re.findall(call_pattern, publish)) == 3, "strict snapshot revalidation fixture call count drift")
+    for label, replacement in (
+        ("comment-only call", r"\1# revalidate_latest_snapshot"),
+        ("echo-only call", r"\1echo revalidate_latest_snapshot"),
+    ):
+        mutated = re.sub(call_pattern, replacement, publish, count=1)
+        try:
+            require_publisher_revalidation_calls(mutated)
+        except Fail as exc:
+            require(
+                "missing executable bounded revalidation call sites" in str(exc),
+                f"{label} rejected outside intended publisher call-site guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted {label}")
+
+
 def require_readonly_pr_permissions(workflow: str) -> None:
     # GitHub accepts 'permissions: write-all'; banning 'contents: write' alone
     # does not prevent a PR workflow from receiving a write-capable token.
@@ -421,7 +456,7 @@ def main() -> int:
     require("git rev-parse origin/so" in publish, "strict snapshot publication workflow must compare publication authority with origin/so")
     require("refusing stale strict snapshot" in publish, "strict snapshot publication workflow must fail closed on stale authority")
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
-    require("revalidate_latest_snapshot" in publish, "strict snapshot publication workflow must retain bounded full revalidation")
+    prove_publisher_revalidation_call_binding(publish)
     require_full_admission_chain(publish, "strict snapshot publication workflow")
     prove_diagnostic_comment_and_dead_code_rejected(publish)
 
