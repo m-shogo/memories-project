@@ -154,17 +154,17 @@ def require_positive_validator_output(stdout: str, label: str) -> None:
 
 def prove_positive_validator_classifier() -> None:
     valid = (
-        "Memory OS OPS-P0-007 strict admission snapshot validation PASS\\n"
-        "production decision: NO_GO\\n"
+        "Memory OS OPS-P0-007 strict admission snapshot validation PASS\n"
+        "production decision: NO_GO\n"
     )
     require_positive_validator_output(valid, "synthetic positive")
     for stdout in (
         "",
-        "generic success\\nproduction decision: NO_GO\\n",
-        "Memory OS OPS-P0-007 strict admission snapshot validation PASS\\nproduction decision: GO\\n",
-        valid + "Memory OS OPS-P0-007 strict admission snapshot validation PASS\\n",
-        valid + "production decision: NO_GO\\n",
-        "prefix Memory OS OPS-P0-007 strict admission snapshot validation PASS\\nproduction decision: NO_GO\\n",
+        "generic success\nproduction decision: NO_GO\n",
+        "Memory OS OPS-P0-007 strict admission snapshot validation PASS\nproduction decision: GO\n",
+        valid + "Memory OS OPS-P0-007 strict admission snapshot validation PASS\n",
+        valid + "production decision: NO_GO\n",
+        "prefix Memory OS OPS-P0-007 strict admission snapshot validation PASS\nproduction decision: NO_GO\n",
     ):
         try:
             require_positive_validator_output(stdout, "synthetic invalid positive")
