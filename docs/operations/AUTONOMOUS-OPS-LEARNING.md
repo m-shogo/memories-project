@@ -2993,3 +2993,28 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical diagnostic intentionally introduces bounded loop semantics or a newly observed deterministic loop bypass escapes this classifier.
+
+
+## 2026-10-24 — Atomic snapshot diagnostics must remain privacy-safe non-production metadata
+
+### Outcome
+- Commit d518991badc1f8c1665139faad5ec00f3d97a950 binds the strict OPS-P0-007 snapshot diagnostic publisher's executable Python payload to an exact non-production schema, current source SHA, bounded output, failure result and diagnostic-only file path.
+- Exact-source OPS P0 007 Snapshot Permission Boundary job 120584081039 in run 40003116777 completed SUCCESS.
+
+### Evidence
+- Earlier workflow negative proof required an atomic, mode-preserving diagnostic write and cleanup, but did not inspect the actual diagnostic record's production-evidence/readiness flags, source SHA binding, result, log-length bound or output path. An atomic write alone cannot prove the payload is safe or non-promotional.
+- The new AST guard requires all expected literal fields with exact types, productionEvidence=false, productionReady=false, containsSecrets=false, generation/objective/request/restore flags false, result=FAIL, the observed source and exit-code environment bindings, output limited to the last 12000 characters, and the canonical diagnostic fixture path.
+- Twelve isolated negative mutations change each protected field, replace source/exit bindings, remove the log bound, or redirect the output path to a production-evidence location. Each must fail with the exact non-production evidence-boundary diagnostic.
+
+### Why safe
+- Only the existing read-only, CI-reachable workflow negative harness and synthetic in-memory publisher mutations changed. The publisher workflow itself, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Distinguish crash-safe atomic publication from semantic publication authority. Validate the actual executable AST record and target path, including boolean types and bounded privacy-safe output; never infer non-production status merely from successful atomic write or a filename.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Append-only learning is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed diagnostic schema, privacy-redaction contract, source binding or publication path changes, or if a new observed payload bypass evades the exact AST guard.
