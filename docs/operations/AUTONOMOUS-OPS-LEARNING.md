@@ -836,3 +836,44 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit re-read confirmed `productionDecision=NO_GO`, OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`, `blocking=true`, and zero registered/semantically eligible generations, approved objectives, executable requests, recovery evidence, complete typed non-resurrection records, and final recovery candidates.
 - Learning remains append-only execution history, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct-environment semantic eligibility, explicit human-approved current objective, current executable reviewed request, all eight typed domains, independent review, and separate human promotion remain mandatory.
+
+## 2026-10-23 — Read-only workflow permission checks must reject write-all and test their own regex
+
+### Symptom
+- The first write-all permission hardening commit caused its owning permission-boundary CI workflow to fail on an otherwise valid read-only PR workflow.
+
+### Evidence
+- Commit `55ba226e80290995efc30ae397f5317d4060e3fb` added a top-level read-only permission guard and isolated write-all negative fixtures.
+- Exact-source run `39923080549` failed at `Prove strict snapshot permission boundary` with `strict snapshot PR workflow must declare top-level contents: read`.
+- Inspection of the committed Python raw regex showed doubled escapes (`\\n` and `\\t`) in the pattern, so the expected actual newline was not matched. The existing PR workflow has the intended top-level `permissions:` / `contents: read` declaration.
+
+### Root cause or unknown
+- Verified root cause: double-escaping a raw Python regular expression during code generation made the positive-control pattern match a literal backslash-n sequence rather than a newline.
+
+### Failed approach
+- Publishing a generated raw-regex guard without first proving that its literal escapes match a real positive fixture. The initial negative fixtures could not establish useful protection because the positive control failed.
+
+### Correction
+- Commit `799007e31fe352d2bfdcce52346e73e2b903dea3` replaced the malformed patterns with literal newline-aware expressions and simplified the positive fixture.
+- Exact-source permission-boundary workflow run `39923120206` completed SUCCESS, including Python compilation, canonical PR/publisher checks, isolated write-all rejection fixtures, and clean-worktree verification.
+
+### Recurrence guard
+- Every new static permission matcher must exercise both a known-valid positive fixture and representative escalation negatives before claiming a protected boundary.
+- The committed helper requires a real top-level `contents: read` declaration, rejects any `permissions: write-all` declaration (including job-level), and retains the existing `contents: write` prohibition.
+- Do not treat a matching string in a comment or a general YAML fragment as equivalent to a real top-level permission declaration.
+
+### Retry condition
+- The initial malformed-regex approach is superseded; do not restore it. Revisit only if GitHub Actions permission syntax changes, the PR workflow's actual permission structure changes, or a new bypass is demonstrated by an executable negative fixture.
+
+### Outcome
+- The existing CI-reachable snapshot workflow permission negative now rejects write-all token escalation in addition to direct contents-write escalation.
+
+### Why safe
+- Only the permission-boundary negative script changed. No workflow token permissions, production authority, recovery evidence, credentials, traffic, readiness, or promotion were modified.
+
+### Reusable mechanism
+- Bind workflow permission checks to explicit positive and negative synthetic YAML snippets and exact-source CI execution. When embedding regular expressions in generated source, check the resulting literal source escapes rather than only the generator string.
+
+### Protected-authority check
+- Re-read after correction confirmed `productionDecision=NO_GO`, OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`, blocking=true, and unchanged strict admission snapshot. No registered/eligible generations, approved objectives, executable drill requests, generation recovery evidence, complete eight-domain typed records, or final candidates were created.
+- This learning entry is append-only history and cannot satisfy any production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion gate. Semantic eligibility from distinct environments, explicit human objective approval, current executable reviewed request, eight typed domains, independent review, and separate human promotion remain required.
