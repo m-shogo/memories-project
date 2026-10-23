@@ -4189,3 +4189,20 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if required domains, canonical coverage diagnostics, the bound negative suite's executable call chain or exact-source CI behavior changes. Do not retry the unrelated unchanged clean-worktree blocker.
+
+## 2026-10-24 — OPERABILITY review failures must be independently rejected even when SECURITY passes
+
+### Outcome and observed evidence
+- Commit `4609a94d14c82a0a43cf997cfaf4215c457b55ba` adds seven independently scoped OPERABILITY-only negative probes: exact typed-domain bundle omission, typed-domain evidence digest mismatch, review result not APPROVED, and each of four prohibited production-boundary booleans.
+- Exact-source Backup Restore Non-Resurrection Admission run `40029036142` completed SUCCESS; Readonly `40029036194`, Reconcile Negative `40029036146`, and Drill Request Admission `40029036154` also completed SUCCESS. The canonical admission validator invokes this negative suite transitively with nonzero exit treated as failure; individual negative-case output is not surfaced separately in the workflow log.
+
+### Why safe and reusable guard
+- Existing shared review-failure fixtures exercised SECURITY first and could not independently prove OPERABILITY rejection. The synthetic fixture now selects a target review: SECURITY stays independently valid while only OPERABILITY is mutated, and each case requires its own exact `OPERABILITY review ...` diagnostic. A final positive validation proves state restoration after the probes.
+- The suite mutates no production evidence, registered generations, human-approved recovery objectives, executable drill requests, typed registry, production credentials, traffic, readiness or promotion. The original positive control and existing SECURITY negatives remain intact.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, with zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- The separate Operability Admission Inventory run `40029036053` failed its production inventory gate; it is not an OPERABILITY-review success or promotion evidence. Keep fail-closed inventory and human promotion authority unchanged.
+
+### Retry condition
+- Revisit the isolated review negative mechanism only if reviewed schema, canonical writer diagnostics, review validation ordering or exact-source CI invocation changes. Do not repeat the unchanged source-binding clean-worktree blocker.
