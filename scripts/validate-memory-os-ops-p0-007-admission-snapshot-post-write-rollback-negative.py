@@ -103,6 +103,41 @@ def corrupt_published_snapshot() -> None:
     SNAPSHOT.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+
+PRIMARY_ROLLBACK_DIAGNOSTIC = "generated strict snapshot invalid: snapshot field set drift"
+FAILED_ROLLBACK_DIAGNOSTIC = (
+    PRIMARY_ROLLBACK_DIAGNOSTIC
+    + "; rollback incomplete: synthetic strict snapshot rollback replace rejection"
+)
+
+
+def require_rollback_diagnostic(message: str, failed_rollback: bool) -> None:
+    expected = FAILED_ROLLBACK_DIAGNOSTIC if failed_rollback else PRIMARY_ROLLBACK_DIAGNOSTIC
+    if message != expected:
+        raise Fail(f"post-write rollback rejected outside exact canonical diagnostic: {message!r}")
+
+
+def prove_rollback_diagnostic_classifier() -> None:
+    for failed, expected in (
+        (False, PRIMARY_ROLLBACK_DIAGNOSTIC),
+        (True, FAILED_ROLLBACK_DIAGNOSTIC),
+    ):
+        require_rollback_diagnostic(expected, failed)
+        for wrong in (
+            expected + " unrelated",
+            "unrelated " + expected,
+            expected + "\nunrelated diagnostic",
+            expected.replace("snapshot field set drift", "unrelated failure"),
+        ):
+            try:
+                require_rollback_diagnostic(wrong, failed)
+            except Fail as exc:
+                if "outside exact canonical diagnostic" not in str(exc):
+                    raise Fail(f"rollback classifier rejected outside intended guard: {exc}") from exc
+            else:
+                raise Fail("rollback classifier accepted unrelated or multiline diagnostic")
+
+
 def run_successful_rollback() -> None:
     snapshot_before = SNAPSHOT.read_bytes()
     original_mode = mode(SNAPSHOT)
@@ -135,8 +170,10 @@ def run_successful_rollback() -> None:
             module.main()
         except SystemExit as exc:
             message = str(exc)
-            if "generated strict snapshot invalid" not in message:
-                raise Fail(f"post-write rejection surfaced at unexpected boundary: {message}") from exc
+            try:
+                require_rollback_diagnostic(message, False)
+            except Fail as mismatch:
+                raise Fail(f"post-write rejection surfaced at unexpected boundary: {message}") from mismatch
         else:
             raise Fail("corrupted post-write strict snapshot candidate unexpectedly validated")
         finally:
@@ -200,17 +237,7 @@ def run_failed_rollback_preserves_primary_diagnostic() -> None:
             module.main()
         except SystemExit as exc:
             message = str(exc)
-            required = (
-                "generated strict snapshot invalid",
-                "rollback incomplete",
-                "synthetic strict snapshot rollback replace rejection",
-            )
-            missing = [fragment for fragment in required if fragment not in message]
-            if missing:
-                raise Fail(
-                    "rollback failure did not preserve primary plus rollback diagnostics; "
-                    f"missing={missing}: {message}"
-                ) from exc
+            require_rollback_diagnostic(message, True)
         else:
             raise Fail("synthetic rollback replace failure unexpectedly accepted")
         finally:
@@ -240,6 +267,7 @@ def run_failed_rollback_preserves_primary_diagnostic() -> None:
 
 
 def main() -> int:
+    prove_rollback_diagnostic_classifier()
     prove_rollback_symlink_guard()
     require_canonical_rollback_sources()
     run_successful_rollback()
