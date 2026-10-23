@@ -2225,3 +2225,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Eight-domain coverage, independent review and separate human promotion remain mandatory.
 - Append-only learning never counts as production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — In-process snapshot authority substitutions must preserve mode and bytes
+
+### Outcome
+- Commit `045b78a1990faa6b8c2251be8725663e2c48d4f9` reuses the previously CI-proven before/after snapshot-state guard for post-write validator substitution, full admission helper substitution and generator authority-path substitutions.
+
+### Evidence
+- These three in-process rejection paths previously asserted snapshot byte preservation but not file-mode preservation.
+- Exact-source Readonly run `39970502410` (job `120471592143`) and Snapshot publisher run `39970502471` (job `120471591521`) completed SUCCESS at the code SHA, logging strict snapshot negative PASS, 22 validator corruption cases rejected, and `production decision: NO_GO`.
+
+### Why safe
+- The change reuses a tested pure bytes/mode comparator and does not alter any generator, positive validator, production status, registry, recovery evidence or promotion authority. Synthetic substitutions remain in-process and restore their original function references.
+
+### Reusable mechanism
+- Apply a single independently tested bytes/mode state invariant across every rejection path, including in-process authority substitution—not only subprocess generator rejection. Avoid duplicating weaker byte-only assertions.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Eight-domain coverage, independent review and separate human promotion remain mandatory.
+- Append-only learning never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
