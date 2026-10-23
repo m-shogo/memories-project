@@ -3646,3 +3646,28 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed publisher capture command sequence or compile input list changes, or an observed status/compile bypass escapes the bounded negative proof.
+
+## 2026-10-24 — PR admission must reject unreviewed Actions steps and setup drift
+
+### Outcome
+- Commit `c0b540fe02ec9e94d8fe335b0e5186a439b9c7c7` adds a five-step allowlist for the strict OPS-P0-007 PR admission workflow, with eleven synthetic step-boundary negatives.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40010930195` completed SUCCESS. A separate Snapshot Readonly run is not treated as successful without its own completed result.
+
+### Evidence
+- Existing guards verified the checkout ref, enabled validator job and individual run steps, but did not reject an additional `uses:` step or changes to the Python setup action/version before admission.
+- The new guard requires exactly the reviewed checkout@v4 with exact PR-head ref and full fetch depth, setup-python@v5 with Python 3.12, and the three named run steps in the reviewed order.
+- Eleven negative mutations add unreviewed action/run steps, alter setup or checkout inputs, disable/mask setup, duplicate or reorder steps, or rename source verification. Each requires the exact step-allowlist drift diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness and in-memory workflow fixtures changed. The actual PR/publisher workflows, Production Status, strict snapshot, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- CI reachability is hierarchical: the event and job may be valid while an extra unreviewed `uses:` action executes outside the protected run-step set. Bind the complete reviewed step inventory and action inputs as well as validator command bodies.
+- Keep step mutations in-memory and require exact guard-specific rejection; do not weaken protected workflow permissions or promote CI outcomes into production evidence.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human promotion are mandatory; this learning entry cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed PR step/action architecture changes or an observed unreviewed step bypass escapes the bounded allowlist.
