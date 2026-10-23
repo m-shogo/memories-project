@@ -8,6 +8,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -284,38 +285,44 @@ def restore_all(originals: dict[Path, bytes]) -> None:
 
 
 def run_source_symlink_escape(originals: dict[Path, bytes]) -> None:
-    external = Path("/tmp/memory-os-ops-p0-007-objective-authority.json")
-    external.write_bytes(originals[OBJECTIVES])
-    restore_all(originals)
-    OBJECTIVES.unlink()
-    OBJECTIVES.symlink_to(external)
-    try:
-        run_validator(False, "objective source symlink escape")
-        run_generator_rejects("generator objective source symlink escape", "strict snapshot authority")
-    finally:
-        if OBJECTIVES.is_symlink():
-            OBJECTIVES.unlink()
-        OBJECTIVES.write_bytes(originals[OBJECTIVES])
-        external.unlink(missing_ok=True)
+    # Never overwrite a fixed /tmp pathname: another process may own it or
+    # replace it with a symlink to an unrelated file.
+    with tempfile.TemporaryDirectory(prefix="memory-os-ops-p0-007-objective-negative-") as tmp:
+        external = Path(tmp) / "objective-authority.json"
+        external.write_bytes(originals[OBJECTIVES])
+        original_mode = mode(OBJECTIVES)
+        restore_all(originals)
+        OBJECTIVES.unlink()
+        try:
+            OBJECTIVES.symlink_to(external)
+            run_validator(False, "objective source symlink escape")
+            run_generator_rejects("generator objective source symlink escape", "strict snapshot authority")
+        finally:
+            if OBJECTIVES.is_symlink():
+                OBJECTIVES.unlink()
+            OBJECTIVES.write_bytes(originals[OBJECTIVES])
+            OBJECTIVES.chmod(original_mode)
 
 
 def run_module_symlink_escape(originals: dict[Path, bytes]) -> None:
-    external = Path("/tmp/memory-os-ops-p0-007-objective-writer.py")
-    external.write_bytes(originals[OBJECTIVE_WRITER])
-    restore_all(originals)
-    OBJECTIVE_WRITER.unlink()
-    OBJECTIVE_WRITER.symlink_to(external)
-    try:
-        run_validator(False, "objective writer module symlink escape")
-        run_generator_rejects(
-            "generator objective writer module symlink escape",
-            "strict snapshot authority",
-        )
-    finally:
-        if OBJECTIVE_WRITER.is_symlink():
-            OBJECTIVE_WRITER.unlink()
-        OBJECTIVE_WRITER.write_bytes(originals[OBJECTIVE_WRITER])
-        external.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix="memory-os-ops-p0-007-writer-negative-") as tmp:
+        external = Path(tmp) / "objective-writer.py"
+        external.write_bytes(originals[OBJECTIVE_WRITER])
+        original_mode = mode(OBJECTIVE_WRITER)
+        restore_all(originals)
+        OBJECTIVE_WRITER.unlink()
+        try:
+            OBJECTIVE_WRITER.symlink_to(external)
+            run_validator(False, "objective writer module symlink escape")
+            run_generator_rejects(
+                "generator objective writer module symlink escape",
+                "strict snapshot authority",
+            )
+        finally:
+            if OBJECTIVE_WRITER.is_symlink():
+                OBJECTIVE_WRITER.unlink()
+            OBJECTIVE_WRITER.write_bytes(originals[OBJECTIVE_WRITER])
+            OBJECTIVE_WRITER.chmod(original_mode)
 
 
 def main() -> int:
