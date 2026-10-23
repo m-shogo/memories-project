@@ -372,6 +372,13 @@ def require_publisher_revalidation_calls(publish: str) -> None:
     ends = [index for index in range(start + 1, len(lines)) if lines[index] == "}"]
     require(bool(ends), "strict snapshot publisher revalidation function closing boundary missing")
     body = "\n".join(lines[start + 1:ends[0]])
+    # A syntactically present validator after an unconditional function return
+    # or exit is not executable proof of bounded latest-source revalidation.
+    for line in body.splitlines():
+        require(
+            re.match(r"^[ \t]*(?:return|exit)(?:[ \t;]|$)", line) is None,
+            "strict snapshot publisher revalidation contains unconditional early return/exit",
+        )
     for validator in FULL_ADMISSION_VALIDATORS:
         command = rf"(?m)^  python[ \t]+{re.escape(validator)}(?=[ \t]|$)"
         require(
@@ -416,6 +423,20 @@ def prove_publisher_revalidation_call_binding(publish: str) -> None:
         )
     else:
         raise Fail("strict snapshot publisher accepted validator outside bounded revalidation")
+
+    function_start = "          revalidate_latest_snapshot() {\n"
+    require(publish.count(function_start) == 1, "strict snapshot revalidation entry fixture drift")
+    for command in ("return 0", "exit 0"):
+        mutated = publish.replace(function_start, function_start + f"            {command}\n", 1)
+        try:
+            require_publisher_revalidation_calls(mutated)
+        except Fail as exc:
+            require(
+                "revalidation contains unconditional early return/exit" in str(exc),
+                f"early {command} rejected outside intended reachability guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted validators after early {command}")
 
 
 def require_readonly_pr_permissions(workflow: str) -> None:
