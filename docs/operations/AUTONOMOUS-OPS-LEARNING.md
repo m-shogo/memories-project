@@ -1785,3 +1785,45 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - The autonomous-learning contract remained blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status remained blob `ce67e9353d6583e4eaf792470563cad25a7396b3` with `productionDecision=NO_GO`, and the strict OPS-P0-007 snapshot remained blob `dbaa36b082366737dca2461d15748103b9740ef6` with zero registered/semantically eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
 - This append-only learning entry cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Negative fixture mutations require observable state change
+
+### Symptom
+- The autonomous-learning negative harness previously seeded a temporary canonical fixture, invoked a mutation callback, and then tested for rejection without checking whether the mutation actually changed any authority file. A no-op mutation could produce misleading negative proof if a separate fixture fault caused the rejection.
+
+### Evidence
+- Before commit `aaba5672097836befe99d1ee32518f5be4c0e8a8`, `require_failure` had no before/after fixture-state comparison. The new self-test explicitly attempts a no-op callback and requires rejection before the canonical validator runs. This is a verified harness-design gap, not evidence of an actual malicious mutation or production failure.
+
+### Root cause or unknown
+- Verified: negative execution lacked an explicit mutation-reachability assertion; a canonical rejection alone cannot prove that the intended test input was changed.
+
+### Failed approach
+- Treating invocation of a mutation callback as sufficient evidence that it modified the isolated authority fixture.
+
+### Correction
+- Commit `aaba5672097836befe99d1ee32518f5be4c0e8a8` fingerprints fixture file bytes, file/directory modes, symlink targets and path components before and after each mutation, rejecting unchanged fixtures before running the canonical validator.
+- The same commit adds a no-op mutation classifier self-test plus two positive-controlled contract parser negatives (invalid JSON and non-object root).
+- Commit `fa14ba03dd09e4ac3dc64d7e058613787c1dcf54` raises the existing operability CI minimum to 69 negative cases.
+
+### Recurrence guard
+- Every learning negative now requires an observed state difference in the disposable fixture. The self-test proves no-op rejection, and the 69-case CI floor prevents silent removal of the new parser negatives. This verifies mutation occurred, while case-specific diagnostics separately verify that the intended invariant rejected it.
+
+### Retry condition
+- Revisit if a new fixture type or mutation mechanism is introduced that the fingerprint does not cover, or if the canonical authority path layout changes. Do not treat a no-op mutation as valid negative proof merely because the validator exits nonzero.
+
+### Outcome
+- Two code commits landed on `so`; exact-source Operability Contracts run `39953347781` completed SUCCESS on `fa14ba03dd09e4ac3dc64d7e058613787c1dcf54`.
+
+### Success evidence
+- CI job `120413000463` logged `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (69 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+- Compare `3ed1a543fbe24b572086638c2f780f5f849732a4...fa14ba03dd09e4ac3dc64d7e058613787c1dcf54` changed only the existing learning negative suite and operability CI entrypoint.
+
+### Why safe
+- All fingerprinting, malformed-contract tests and no-op controls run in disposable fixtures; canonical production status, OPS-P0-007 admission snapshot, recovery evidence and promotion authority were not modified.
+
+### Reusable mechanism
+- Negative proof should require both a before/after mutation fingerprint and an intended canonical rejection. Include file modes and symlinked parent components in the fingerprint when the suite tests path identity, and self-test the no-op case before accepting negative counts.
+
+### Protected-authority check
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`productionDecision=NO_GO`), and strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remained unchanged. The snapshot retains zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
+- Learning history is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
