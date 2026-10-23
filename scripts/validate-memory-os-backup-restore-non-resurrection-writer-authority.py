@@ -42,12 +42,27 @@ def expect_rejected(writer: Any, field: str, substitute: Path) -> None:
         setattr(writer, field, original)
 
 
+def require_canonical_lock_parent(parent: Path, root: Path = ROOT) -> tuple[int, int]:
+    try:
+        relative = parent.relative_to(root)
+    except ValueError as exc:
+        raise NegativeFailure("typed negative lock parent escapes fixture root") from exc
+    require(root.is_dir() and not root.is_symlink(),
+            "typed negative lock fixture root missing or symlinked")
+    cursor = root
+    for component in relative.parts:
+        cursor = cursor / component
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "typed negative lock parent missing or symlinked")
+    require(parent.resolve(strict=True) == root.resolve(strict=True) / relative,
+            "typed negative lock parent canonical resolution drift")
+    parent_stat = parent.stat()
+    return parent_stat.st_dev, parent_stat.st_ino
+
+
 def require_owned_lock_symlink(lock: Path, target: Path, leaf_identity: tuple[int, int],
-                               parent_identity: tuple[int, int]) -> None:
-    require(lock.parent.is_dir() and not lock.parent.is_symlink(),
-            "typed negative lock parent missing or symlinked")
-    parent_stat = lock.parent.stat()
-    require((parent_stat.st_dev, parent_stat.st_ino) == parent_identity,
+                               parent_identity: tuple[int, int], root: Path = ROOT) -> None:
+    require(require_canonical_lock_parent(lock.parent, root) == parent_identity,
             "typed negative lock parent identity drift")
     require(lock.is_symlink() and lock.resolve() == target.resolve(),
             "typed negative lock symlink target drift")
@@ -66,10 +81,7 @@ def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
         target = Path(temp_dir) / "outside.lock"
         target.write_bytes(b"outside-lock-target\n")
         before = target.read_bytes()
-        require(lock.parent.is_dir() and not lock.parent.is_symlink(),
-                "typed negative lock parent missing or symlinked")
-        parent_stat = lock.parent.stat()
-        parent_identity = (parent_stat.st_dev, parent_stat.st_ino)
+        parent_identity = require_canonical_lock_parent(lock.parent)
         lock.symlink_to(target)
         leaf_stat = lock.lstat()
         leaf_identity = (leaf_stat.st_dev, leaf_stat.st_ino)
@@ -88,6 +100,27 @@ def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
             require_owned_lock_symlink(lock, target, leaf_identity, parent_identity)
             lock.unlink()
 
+        # A symlinked ancestor must not redirect even a still-vacant lock leaf.
+        isolated_root = Path(temp_dir) / "isolated-root"
+        isolated_root.mkdir()
+        external_parent = Path(temp_dir) / "external-lock-parent"
+        external_parent.mkdir()
+        alias_parent = isolated_root / "alias"
+        alias_parent.symlink_to(external_parent, target_is_directory=True)
+        try:
+            try:
+                require_canonical_lock_parent(alias_parent, isolated_root)
+            except NegativeFailure as exc:
+                require(str(exc) == "typed negative lock parent missing or symlinked",
+                        "typed lock parent-alias diagnostic drift")
+                require(alias_parent.is_symlink() and alias_parent.resolve() == external_parent.resolve(),
+                        "isolated lock parent alias changed")
+                print("PASS reject: typed lock fixture symlinked parent")
+            else:
+                raise NegativeFailure("typed lock fixture symlinked parent unexpectedly accepted")
+        finally:
+            alias_parent.unlink()
+
         # A same-target replacement must not count as ownership of the original inode.
         isolated_link = Path(temp_dir) / "isolated-owned-link"
         isolated_replacement = Path(temp_dir) / "isolated-replacement-link"
@@ -99,7 +132,8 @@ def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
         isolated_replacement.replace(isolated_link)
         try:
             require_owned_lock_symlink(isolated_link, target,
-                                      (original.st_dev, original.st_ino), isolated_parent_identity)
+                                      (original.st_dev, original.st_ino), isolated_parent_identity,
+                                      root=Path(temp_dir))
         except NegativeFailure as exc:
             require(str(exc) == "typed negative lock symlink identity drift",
                     "typed lock replacement diagnostic drift")
