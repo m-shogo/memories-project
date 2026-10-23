@@ -112,6 +112,7 @@ def main() -> int:
             "reviewDigestMismatch": False,
             "reviewResult": "APPROVED",
             "reviewProductionField": None,
+            "reviewTypeOverride": None,
             "reviewTarget": "BOTH",
         }
 
@@ -147,7 +148,14 @@ def main() -> int:
                     digests = dict(expected_digests)
                     if mutate_review and state["reviewDigestMismatch"]:
                         digests[refs[0]] = "0" * 64
-                    payload = review_payload(generation=state["reviewGeneration"], source_sha=state["reviewSha"], record_id=state["reviewRecordId"], review_type=review_type, reviewer=reviewer, refs=reviewed, digests=digests, result=state["reviewResult"] if mutate_review else "APPROVED")
+                    payload = review_payload(
+                        generation=state["reviewGeneration"] if mutate_review else "brge_negative_generation",
+                        source_sha=state["reviewSha"] if mutate_review else SHA,
+                        record_id=state["reviewRecordId"] if mutate_review else "brnr_negative_base",
+                        review_type=state["reviewTypeOverride"] if mutate_review and state["reviewTypeOverride"] is not None else review_type,
+                        reviewer=reviewer, refs=reviewed, digests=digests,
+                        result=state["reviewResult"] if mutate_review else "APPROVED",
+                    )
                     if mutate_review and state["reviewProductionField"] is not None:
                         payload[state["reviewProductionField"]] = True
                     return payload
@@ -191,6 +199,10 @@ def main() -> int:
             "operability review exact domain bundle mismatch": "OPERABILITY review does not bind exact typed domain bundle",
             "operability review domain evidence digest binding mismatch": "OPERABILITY review domain evidence digest binding mismatch",
             "operability review result not APPROVED": "OPERABILITY review must be APPROVED",
+            "operability review generation binding mismatch": "OPERABILITY review generation binding mismatch",
+            "operability review source commit binding mismatch": "OPERABILITY review source commit binding mismatch",
+            "operability review typed record binding mismatch": "OPERABILITY review typed record binding mismatch",
+            "operability review type mismatch": "OPERABILITY review type mismatch",
             "typed writer registeredRecordCount drift before append": "registeredRecordCount drift",
             "typed writer boolean completeRecordCount before append": "completeRecordCount drift",
             "typed writer candidateCoveredCount drift before append": "candidateCoveredCount drift",
@@ -272,6 +284,11 @@ def main() -> int:
 
         # Target OPERABILITY alone: SECURITY remains valid so its approval cannot mask an OPERABILITY failure.
         state["reviewTarget"] = "OPERABILITY"
+        # SECURITY remains canonical while OPERABILITY alone violates each provenance binding.
+        state["reviewGeneration"] = "brge_other_generation"; expect_rejected("operability review generation binding mismatch", lambda: writer.validate_record(valid)); state["reviewGeneration"] = "brge_negative_generation"
+        state["reviewSha"] = "b" * 40; expect_rejected("operability review source commit binding mismatch", lambda: writer.validate_record(valid)); state["reviewSha"] = SHA
+        state["reviewRecordId"] = "brnr_other_record"; expect_rejected("operability review typed record binding mismatch", lambda: writer.validate_record(valid)); state["reviewRecordId"] = "brnr_negative_base"
+        state["reviewTypeOverride"] = "SECURITY"; expect_rejected("operability review type mismatch", lambda: writer.validate_record(valid)); state["reviewTypeOverride"] = None
         state["reviewRefsDropOne"] = True; expect_rejected("operability review exact domain bundle mismatch", lambda: writer.validate_record(valid)); state["reviewRefsDropOne"] = False
         state["reviewDigestMismatch"] = True; expect_rejected("operability review domain evidence digest binding mismatch", lambda: writer.validate_record(valid)); state["reviewDigestMismatch"] = False
         state["reviewResult"] = "REJECTED"; expect_rejected("operability review result not APPROVED", lambda: writer.validate_record(valid)); state["reviewResult"] = "APPROVED"
