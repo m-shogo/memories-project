@@ -2187,3 +2187,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
 - Append-only learning cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Snapshot symlink escape negatives must prove the exact path guard
+
+### Outcome
+- Commit `e6cfa860b8cce694d931408a455bc430c056f290` binds the existing objective-registry and objective-writer symlink escape negatives to the exact canonical snapshot validator path-drift rejection.
+
+### Evidence
+- The canonical validator's runtime authority loop checks both the recovery objectives registry and objective writer against their exact resolved repository paths, rejecting symlink substitution with a label-specific `strict snapshot validator ... authority path drift` diagnostic.
+- Exact-source Readonly run `39969825472` (job `120469236039`) and Snapshot publisher run `39969825489` (job `120469236121`) completed SUCCESS at this code SHA. Both logged strict snapshot negative PASS, 22 controlled validator corruptions rejected, and `production decision: NO_GO`.
+
+### Why safe
+- Only two expected diagnostic bindings were added to the existing negative suite. Its temporary symlink targets, cleanup, byte/mode restoration and canonical generator rejection checks were retained; no production, recovery or promotion authority changed.
+
+### Reusable mechanism
+- When a negative case replaces a canonical file with a symlink, require the exact authority-path drift diagnostic, not any unrelated fail-closed exit. Preserve isolated temporary targets and cleanup plus exact-source CI proof.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Typed eight-domain coverage, independent review and separate human promotion remain mandatory.
+- Append-only learning never counts as production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
