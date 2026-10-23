@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import sys
 from pathlib import Path
@@ -108,6 +109,32 @@ def validate(repo_root: Path) -> None:
     ):
         if fragment not in ci_entrypoint:
             raise ValidationFailure(f"learning CI entrypoint lost executable guard invocation: {fragment}")
+
+    # Source substrings in comments or quoted strings cannot prove that the
+    # CI entrypoint actually calls the learning guards from its live main().
+    try:
+        entry_tree = ast.parse(ci_entrypoint, filename=str(repo_root / CI_ENTRYPOINT))
+    except SyntaxError as exc:
+        raise ValidationFailure("learning CI entrypoint is not valid Python") from exc
+    main_definitions = [
+        node for node in entry_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    ]
+    if len(main_definitions) != 1:
+        raise ValidationFailure("learning CI entrypoint must define one main function")
+    live_calls = [
+        node for node in main_definitions[0].body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_learning_guards"
+        and len(node.value.args) == 1
+        and isinstance(node.value.args[0], ast.Name)
+        and node.value.args[0].id == "failures"
+        and not node.value.keywords
+    ]
+    if len(live_calls) != 1:
+        raise ValidationFailure("learning CI entrypoint main must directly invoke bound learning guards")
 
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
