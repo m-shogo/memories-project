@@ -3335,3 +3335,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Do not retry the ambiguous cbc18a67 or partially fixed 7ccfc01 fixture. Revisit only if the reviewed source-verification step changes or an observed source-binding bypass escapes the bounded exact-step guard.
 
+
+## 2026-10-24 — Publisher status capture must reject EXIT-trap status forgery
+
+### Outcome
+- Commit 7c2997e4a2a57914a155a8d4d7200710ea40adeb strengthens the existing OPS-P0-007 publisher status-capture guard to reject shell traps, sourced scripts, alias manipulation and shell-option indirection before captured status publication.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40006209895 completed SUCCESS at this commit.
+
+### Evidence
+- The reviewed publisher intentionally uses set +e and an explicit code variable, then writes exit_code=$code to GITHUB_OUTPUT. The previous guard rejected early exit and later set overrides but did not reject an EXIT trap that appends exit_code=0 after the real status, potentially causing downstream success gating to read a forged final output.
+- Six synthetic mutations now insert a forged EXIT trap, ERR trap, source, dot-source, shopt, or alias after code=0. Every mutation must trigger the exact capture early-termination/shell-override rejection; the canonical positive workflow still passes.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and in-memory publisher fixtures changed. The publisher workflow, Production Status, strict snapshot, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- A captured status gate is not safe merely because every validator line propagates failure. Forbid shell hooks or command-resolution indirection that can overwrite the published result after the validated chain completes. Exercise exact-diagnostic negative fixtures for status-forging EXIT traps.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed publisher status-capture architecture changes or a new observed status-forging shell hook escapes this bounded guard.
+
