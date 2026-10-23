@@ -978,3 +978,44 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit re-read confirmed `productionDecision=NO_GO`, strict OPS-P0-007 `PREREQUISITES_BLOCKED`, zero registered and semantically eligible generations, zero human-approved current objectives, zero executable reviewed drill requests, zero recovery evidence, zero complete typed eight-domain records, and zero final candidates. Canonical status, snapshot, and autonomous-learning contract blobs were unchanged.
 - This append-only learning entry is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct unsuperseded eligible environments, human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate non-automatic human promotion remain mandatory.
+
+## 2026-10-23 — Snapshot PR permission guard must reject compact and quoted write grants
+
+### Symptom
+- The existing read-only PR workflow guard rejected literal `contents: write` and unquoted `permissions: write-all`, but compact `contents:write`, inline `{contents:write}`, quoted `contents: "write"`, and quoted `permissions: 'write-all'` could evade the string/regex checks.
+
+### Evidence
+- Before correction, the guard used `"contents: write" not in workflow` and an unquoted `write-all` line matcher. Synthetic positive/negative regex checks confirmed the valid `contents: read` control and five representative escalation variants can be distinguished.
+- The dedicated `.github/workflows/ops-p0-007-snapshot-permission-boundary.yml` directly invokes this negative suite on changes to the script.
+
+### Root cause or unknown
+- Verified: formatting-sensitive textual matching was narrower than valid YAML permission syntax. No actual permission escalation or credential exposure was observed.
+
+### Failed approach
+- Treating one whitespace/quoting spelling of a GitHub Actions permission as exhaustive proof of a read-only token.
+
+### Correction
+- Commit `192486bd936e45945935ff41d79fddae8f72f9ec` normalizes comment tails for permission checking, rejects quoted/unquoted `write-all`, and rejects compact, quoted, and inline-mapping `contents:write`. It retains the mandatory real top-level `contents: read` positive control and the existing escalation negatives.
+
+### Recurrence guard
+- The CI-reachable negative suite now includes a quoted write-all fixture plus three compact/quoted contents-write fixtures. Each must fail at the intended permission guard, while the canonical read-only workflow must pass.
+- This is a bounded permission-syntax guard, not a full YAML parser. New YAML syntaxes or shell-generated permission authority require their own executable proof.
+
+### Retry condition
+- Revisit only if a new valid GitHub Actions permission spelling bypasses these guards or the workflow's permission structure changes; never relax read-only authority to accommodate formatting.
+
+### Outcome
+- Exact-source `OPS P0 007 Snapshot Permission Boundary` run `39931809047` completed SUCCESS on `192486bd936e45945935ff41d79fddae8f72f9ec`, including Python compilation, the full positive/negative suite, and clean-worktree verification.
+
+### Success evidence
+- The job log confirms `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS`, top-level read-only permissions, and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing CI-reachable negative guard changed. No GitHub Actions workflow permission declaration, production status, recovery authority, credential, traffic, readiness, or promotion was changed.
+
+### Reusable mechanism
+- For policy syntax checks, exercise real positive syntax and compact, quoted, inline, and nested escalation variants. Prefer syntax-aware or bounded regex matching over one literal substring, and require exact-source CI execution before reporting an installed guard as verified.
+
+### Protected-authority check
+- Post-commit re-read confirmed unchanged production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate non-automatic human promotion remain mandatory.
+- Learning is append-only operational history only, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence.
