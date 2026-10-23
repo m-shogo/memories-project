@@ -2873,3 +2873,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only when protected publisher run-step architecture changes, when the status-capture gate changes, or when a new observed shell-option bypass escapes the bounded negative proof.
+
+
+## 2026-10-24 — PR validator presence inside a conditional or uncalled function is not admission
+
+### Outcome
+- Commit 8cf02028e3d33068d0d48ed181a736e659d61b71 adds a canonical CI-bound negative guard that rejects shell conditional/loop/function wrappers around the strict snapshot PR admission step's four mandatory validators.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40002337873 completed SUCCESS at this commit.
+
+### Evidence
+- The existing executable run-line parser intentionally treats commands in unknown shell conditions as potentially executable and also scans shell function bodies. That permissive classification is appropriate for general text discovery but is insufficient to prove that a PR admission validator always runs.
+- The PR workflow's canonical admission run step is linear and executes each of four required validators as an exact top-level command. Eight new synthetic negatives wrap each validator in an unknown runtime condition or uncalled function, requiring the exact unconditional-admission rejection. A positive control permits comments and quoted text mentioning shell control flow.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness changed. The PR workflow, publisher workflow, production status, strict OPS-P0-007 snapshot, registries, real recovery evidence, credentials, traffic, readiness and promotion authorities were unchanged.
+
+### Reusable mechanism
+- Distinguish potentially reachable shell commands from mandatory unconditional admission gates. For a deliberately linear CI admission step, fail closed on control-flow wrappers rather than treating an unknown condition or uncalled function as sufficient runtime proof.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Append-only learning is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed PR admission step intentionally introduces conditional execution, or if a newly observed shell wrapper bypasses the bounded negative classifier.
