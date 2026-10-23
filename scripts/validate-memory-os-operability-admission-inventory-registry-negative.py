@@ -367,6 +367,9 @@ def main() -> int:
     generator = load_module(GENERATOR, "memory_os_inventory_registry_negative_generator")
     before = {path: path.read_bytes() for path in AUTHORITIES.values()}
     inventory_before = generator.OUTPUT.read_bytes()
+    # Negative cases temporarily mutate canonical files: verify exact mode restoration too.
+    protected_paths = (*AUTHORITIES.values(), VALIDATOR, STANDALONE_VALIDATOR, GENERATOR, generator.OUTPUT)
+    modes_before = {path: path.stat().st_mode & 0o7777 for path in protected_paths}
 
     validator.main()
     standalone.main()
@@ -456,6 +459,8 @@ def main() -> int:
     after = {path: path.read_bytes() for path in AUTHORITIES.values()}
     require(after == before, "negative suite mutated canonical append-only authority")
     require(generator.OUTPUT.read_bytes() == inventory_before, "negative suite mutated canonical inventory")
+    modes_after = {path: path.stat().st_mode & 0o7777 for path in protected_paths}
+    require(modes_after == modes_before, "negative suite changed canonical authority file modes")
     require(not ROGUE_TABLETOP.exists(), "negative suite left rogue tabletop fixture behind")
     require(not PATH_ALIAS.exists() and not PATH_ALIAS_TARGET.exists(), "negative suite left standalone path alias fixture behind")
     print("Memory OS operability inventory append-only authority negative suite PASS")
