@@ -166,14 +166,26 @@ def validate(repo_root: Path) -> None:
         raise ValidationFailure("learning CI entrypoint learning guard binding is shadowed by async definition")
     if any(
         (isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "validate_learning_guards"
-            for target in node.targets
+            isinstance(bound, ast.Name)
+            and bound.id == "validate_learning_guards"
+            and isinstance(bound.ctx, ast.Store)
+            for target in node.targets for bound in ast.walk(target)
         ))
         or (isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name) and node.target.id == "validate_learning_guards")
         for node in entry_tree.body
     ):
         raise ValidationFailure("learning CI entrypoint learning guard binding is shadowed by assignment")
+    if any(
+        isinstance(node, (ast.Import, ast.ImportFrom))
+        and any(
+            (alias.asname or (alias.name.split(".")[0] if isinstance(node, ast.Import) else alias.name))
+            == "validate_learning_guards"
+            for alias in node.names
+        )
+        for node in entry_tree.body
+    ):
+        raise ValidationFailure("learning CI entrypoint learning guard binding is shadowed by import")
     live_calls = [
         node for node in main_definitions[0].body
         if isinstance(node, ast.Expr)
