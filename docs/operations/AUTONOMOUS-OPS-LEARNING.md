@@ -3577,3 +3577,44 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed publisher job architecture changes or a newly observed job-level skip/error-mask bypass escapes this bounded guard.
 
+## 2026-10-24 — PR py_compile stage requires executable exact-file binding and indentation-aware negatives
+
+### Symptom
+- The first compile-stage hardening commit `32a12df6b3fd9da7d16e5bed3cdff1801879b1e4` failed OPS P0 007 Snapshot Permission Boundary run `40010496516`.
+
+### Evidence
+- The exact-source CI log reported `OPS-P0-007 SNAPSHOT WORKFLOW PERMISSION NEGATIVE FAILED: reordered arguments compile fixture mutation was a no-op`.
+- The reviewed PR workflow indents compile arguments by twelve spaces, while the synthetic reorder fixture used ten. Individual substring mutations matched from within the longer indentation, but concatenated adjacent-argument replacement could not match.
+- The corrected commit `572fe4d4f98cad2f24fcd6cbd41961c23b249f4a` completed exact-source Snapshot Permission Boundary run `40010578092` with SUCCESS.
+
+### Root cause or unknown
+- Verified: fixture anchors omitted the additional two YAML continuation spaces. This was a test-harness mutation-construction failure, not observed recovery evidence or a production validator failure.
+
+### Failed approach
+- Constructing adjacent argument replacement from stripped YAML indentation and assuming it would match the reviewed workflow's physical command lines.
+
+### Correction
+- Match the canonical twelve-space continuation indentation in first/second/last compile argument fixtures, and preflight the adjacent-argument replacement against the actual step body before writing.
+- Preserve the compile guard in the existing CI-reachable workflow permission negative harness; do not modify the reviewed PR workflow.
+
+### Recurrence guard
+- The existing executable negative harness now binds the complete PR admission run body: fail-closed shell startup, one exact `python -m py_compile` invocation, all 23 reviewed files in order with physical continuation syntax, and the exact subsequent validator chain.
+- Eleven isolated mutations cover omitted, comment-only, aliased, reordered, masked, extra, interrupted, moved, duplicated or early-exited compilation. Each must produce the exact compile-stage authority-drift diagnostic.
+- Fixture anchors must match actual YAML indentation and be proven to produce a non-no-op mutation before accepting the negative as proof.
+
+### Retry condition
+- Do not rerun the broken `32a12df` fixture or reuse stripped-indentation adjacent anchors. Revisit only if the reviewed compile command shape or required script list changes, or a new observed compile bypass escapes this bounded guard.
+
+### Outcome
+- Exact-source Snapshot Permission Boundary run `40010578092` passed at `572fe4d4`. The separately triggered Snapshot Readonly run is not counted as successful unless its own completed result is observed.
+
+### Why safe
+- Only the existing read-only, CI-invoked permission negative script and its in-memory PR workflow fixtures changed. No production evidence, recovery generation, objective, drill request, credential, traffic, readiness or promotion authority was created or altered.
+
+### Reusable mechanism
+- Treat compile checks as a separate live execution boundary, not as proof that validators ran. Bind exact arguments and continuation lines to a named enabled step, and independently bind runtime validator execution. Scope multi-line mutation anchors to physical YAML indentation and exact step boundaries.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain non-resurrection records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Distinct eligible environments, explicitly human-approved current recovery objective, executable reviewed request binding, independent review and separate human promotion remain mandatory.
+- This append-only lesson is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
