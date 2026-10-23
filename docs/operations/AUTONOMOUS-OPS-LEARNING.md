@@ -3042,3 +3042,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the diagnostic serialization/dataflow architecture changes or an observed aliasing mutation bypass escapes the bounded AST guard.
+
+
+## 2026-10-24 — Generator execution-authority rejection cannot emit success output
+
+### Outcome
+- Commit cd2bb4da2378d0acbfab17f297b5957deaa203be extends the existing OPS-P0-007 strict snapshot generator execution-authority negative to capture stdout during each substituted-helper rejection and require it to be empty.
+- Exact-source OPS P0 007 Admission Snapshot Readonly run 40003468551 completed SUCCESS at this commit, including the generator execution-authority negative.
+
+### Evidence
+- The previous helper substitution negative required the exact SystemExit rejection and protected snapshot/status/generator identity, but did not verify that a rejected generator had not already printed a misleading successful snapshot publication or readiness marker.
+- The new classifier first accepts empty stdout, then rejects synthetic snapshot-generated, production GO and recovery-objective PASS output. All eleven canonical helper substitutions must fail at the intended authority guard without emitting success output, and must preserve protected file and parent identity.
+
+### Why safe
+- Only the existing read-only, CI-reachable generator execution-authority negative harness changed. The canonical generator, publisher workflow, Production Status, OPS-P0-007 snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Exact failure code and diagnostic alone are insufficient for negative proof: also reject contradictory success output before failure. Capture output around the tested canonical execution boundary, retain exact cause binding, and verify protected authorities after every rejected mutation.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the canonical generator intentionally changes its pre-rejection output contract or a newly observed contradictory output bypass escapes the negative suite.
