@@ -1359,3 +1359,24 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - Production status remains `NO_GO`; OPS-P0-007 strict snapshot and its real-evidence, typed eight-domain, independent-review and separate human-promotion gates remain unchanged. This learning record is not production evidence.
+
+## 2026-10-23 — Emit only validated learning guard success markers in exact-source CI
+
+### Outcome
+- The canonical operability entrypoint now emits the two child validators' previously verified single-line PASS results, making the actual negative-suite case count visible without weakening its output classifier.
+- Exact-source `Operability Contracts` run `39938449672` completed SUCCESS on commit `457d864cf9c1c8b9b224a054c00f9fd1c066134b`.
+
+### Evidence
+- Commit `457d864cf9c1c8b9b224a054c00f9fd1c066134b` added a success-only print after `learning_guard_passed` returns true; the existing exit, stderr, exact marker, and minimum-count checks remain unchanged.
+- CI job `120363687792` logs show `autonomous-learning guard verified: Autonomous improvement/learning contract validation PASS`, `autonomous-learning guard verified: Autonomous learning negative validation PASS (32 fail-closed cases)`, and `Memory OS entrypoint document validation PASS`.
+- The same job reports `production decision: NO_GO`. An earlier failure at initial entrypoint commit `440f3635` is concretely visible in reconcile job `120361233206`, which logged three synthetic classifier positive-control failures before the corrected source passed.
+
+### Why safe
+- Only the existing CI entrypoint's post-validation diagnostic output changed. It prints no raw child failure output and does not write a production, backup/restore, recovery, credential, traffic, readiness, or promotion authority.
+
+### Reusable mechanism
+- When a parent validator captures child output for fail-closed classification, emit the controlled success marker only after exact validation. This provides direct exact-source CI auditability of suite breadth without counting arbitrary exit-zero processes as proof.
+
+### Protected-authority check
+- Source re-read confirmed unchanged production-status, autonomous-learning contract and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain required.
+- This append-only lesson is operational execution history, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
