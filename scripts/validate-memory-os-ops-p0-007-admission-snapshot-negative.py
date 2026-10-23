@@ -145,7 +145,11 @@ def prove_case_specific_validator_classifier() -> None:
             raise Fail("snapshot classifier accepted unrelated or multiline rejection")
 
 
-def require_positive_validator_output(stdout: str, label: str) -> None:
+def require_positive_validator_output(stdout: str, label: str, stderr: str = "") -> None:
+    # A zero exit with a hidden canonical error on stderr is not a clean
+    # positive control, even if stdout contains the expected PASS markers.
+    if stderr.strip():
+        raise Fail(f"{label}: canonical positive validator emitted unexpected stderr")
     lines = stdout.splitlines()
     if (
         lines.count("Memory OS OPS-P0-007 strict admission snapshot validation PASS") != 1
@@ -160,6 +164,15 @@ def prove_positive_validator_classifier() -> None:
         "production decision: NO_GO\n"
     )
     require_positive_validator_output(valid, "synthetic positive")
+    try:
+        require_positive_validator_output(
+            valid, "synthetic stderr", "OPS-P0-007 ADMISSION SNAPSHOT FAILED: unrelated\n"
+        )
+    except Fail as exc:
+        if "canonical positive validator emitted unexpected stderr" not in str(exc):
+            raise Fail(f"positive stderr classifier rejected outside intended guard: {exc}") from exc
+    else:
+        raise Fail("positive classifier accepted canonical failure diagnostic on stderr")
     for stdout in (
         "",
         "generic success\nproduction decision: NO_GO\n",
@@ -182,7 +195,7 @@ def run_validator(expect_success: bool, label: str) -> None:
     if expect_success:
         if proc.returncode != 0:
             raise Fail(f"{label}: baseline validator failed: {proc.stderr or proc.stdout}")
-        require_positive_validator_output(proc.stdout, label)
+        require_positive_validator_output(proc.stdout, label, proc.stderr)
         return
     if proc.returncode != 1:
         raise Fail(f"{label}: expected fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
