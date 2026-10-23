@@ -1619,3 +1619,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Re-read verified `contracts/operations/autonomous-learning-system.json` at blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` and `contracts/operations/production-operability-status.json` at blob `ce67e9353d6583e4eaf792470563cad25a7396b3`, with `productionDecision=NO_GO`. OPS-P0-007's semantic generation/objective gates, typed eight-domain non-resurrection, independent review and separate human promotion were not modified.
 - This append-only learning entry is operational history only; it cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Learning CI main binding must not be shadowed
+
+### Symptom
+- The canonical learning validator required one synchronous `main()` definition and a live module-level `raise SystemExit(main())`, but a later `async def main()` or `main = lambda: 0` could shadow the checked function before invocation.
+
+### Evidence
+- Source inspection found the validator's AST check counted only `ast.FunctionDef` named `main` and did not reject a top-level async redefinition or assignment.
+- Commits `7e6e2d82bd30f2d47b1346daaa91143c07e087c5`, `1de403bb889d26bb1a4d4ce046a30429ab8dd6a5`, and `cf3065d3ecbff131c04b6e25ea3cb0cd4192f967` added binding checks, two isolated shadowing negatives, and a 62-case CI floor.
+- Read-only inspection confirmed both guard diagnostics, both case mappings, and 36 explicit plus 26 generated negative cases. This is static evidence; a new exact-source CI PASS has not been observed.
+
+### Root cause or unknown
+- Verified source-level issue: AST presence of a valid function definition does not prove that its name still resolves to that function at the module invocation point. No real CI bypass or production event was observed.
+
+### Failed approach
+- Treating a single synchronous `main` declaration as proof that a later module-level binding cannot replace it.
+
+### Correction
+- Reject top-level `async def main` and top-level assignments to `main`, including annotated assignments. Add positive-controlled negative fixtures for an async redefinition and lambda assignment.
+
+### Recurrence guard
+- The canonical positive validator fails closed on both shadowing patterns. The existing negative suite binds each case to its exact intended diagnostic, and the CI caller requires at least 62 cases.
+- The guard covers the named static rebinding patterns, not arbitrary dynamic `globals()` mutation or all possible control-flow aliasing.
+
+### Retry condition
+- Claim CI success only after inspecting an exact-source push run executing all 62 cases. Revisit the binding guard if a distinct reachable shadowing mechanism is demonstrated or the canonical module structure changes legitimately.
+
+### Outcome
+- Three code commits landed on `so`, and deterministic read-only checks confirmed the intended source bindings and the unchanged protected snapshot/status.
+
+### Why safe
+- Only learning validation, disposable learning negative fixtures and the operability CI entrypoint were changed. No recovery generation, objective, request, evidence, traffic, credential, readiness or promotion authority was written.
+
+### Reusable mechanism
+- A static module entrypoint proof must bind not only a function definition and call but also the identity of the function name at the invocation boundary. Test each shadowing mechanism in an isolated positive-controlled fixture.
+
+### Protected-authority check
+- The strict OPS-P0-007 snapshot remained blob `dbaa36b082366737dca2461d15748103b9740ef6`, production status remained `ce67e9353d6583e4eaf792470563cad25a7396b3`, and the learning contract remained `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. Both snapshot and status retain `productionDecision=NO_GO`; all generation/objective/request/evidence/candidate counts remain zero.
+- Learning history is append-only operational context, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
