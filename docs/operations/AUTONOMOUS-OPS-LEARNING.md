@@ -3114,3 +3114,28 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if canonical rollback source-path architecture changes or a newly observed symlink/path alias bypasses the pre-mutation guard.
+
+
+## 2026-10-24 — Publisher initial status capture must gate every admission validator
+
+### Outcome
+- Commit d57fbbbda094042ff8d8bf324ea7021b3923c5c7 extends the existing OPS-P0-007 snapshot workflow permission negative to bind the initial publisher generation step's intentionally non-errexit shell to exact fail-closed exit-status capture and all fourteen canonical admission/snapshot validators.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40004281996 completed SUCCESS at this commit.
+
+### Evidence
+- The publisher's initial generation step deliberately uses set +e so it can capture a failing validator's code, publish a diagnostic instead of a snapshot, and gate subsequent publication on steps.snapshot.outputs.exit_code. Earlier guards proved the bounded revalidation function and protected publication steps, but did not bind all initial capture commands and their status propagation.
+- The new positive control requires set +e, log reset, code=0, compile failure capture, all fourteen validators in canonical order with an exact if-code-zero guard and failure propagation, and the final exact exit_code output binding.
+- Fourteen synthetic negatives remove the status assignment from one validator at a time; additional negatives reorder validators, forge exit_code=0, alter the initial status, or mask compile failure. Each requires its intended exact rejection diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness changed. The publisher and PR workflows, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- When a workflow intentionally disables errexit to preserve diagnostics, its explicit status-capture chain becomes the fail-closed authority. Bind every validator's execution condition, failure assignment, command order and output gate; a plain command-presence scan cannot establish this safety property.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed publisher initial status-capture architecture changes or a newly observed skipped/masked validator bypass escapes the bounded negative suite.
