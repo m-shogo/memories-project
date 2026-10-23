@@ -4206,3 +4206,25 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit the isolated review negative mechanism only if reviewed schema, canonical writer diagnostics, review validation ordering or exact-source CI invocation changes. Do not repeat the unchanged source-binding clean-worktree blocker.
+
+## 2026-10-24 — OPERABILITY provenance and review-type rejection must be isolated from SECURITY
+
+### Outcome and evidence
+- Commit `7dd1a4e834b965ab13bc6120c207a65275536082` adds four isolated OPERABILITY review negatives for generation ID, source commit, typed record ID and review type, each bound to the exact canonical `OPERABILITY review ...` diagnostic.
+- Post-write source re-read confirms all four cases and the existing final positive-control invocation. Commit comparison shows only the canonical negative suite changed (18 added, 1 removed line). The commit's combined-status endpoint returned no statuses and the commit workflow-run lookup returned no runs; **exact-source CI success is not yet observed**.
+
+### Symptom, root cause or unknown, and failed approach
+- Symptom: the existing provenance cases mutated both reviews, so SECURITY failed first and the suite could not prove that OPERABILITY independently rejects mismatched provenance. The typed contract explicitly names OPERABILITY source-commit rejection.
+- Evidence: the prior fixture used the same mutable generation/source/record state for both review payloads, and only the SECURITY diagnostic was expected for those three cases.
+- Verified root cause: the synthetic review loader applied provenance overrides unconditionally to both review types, making the OPERABILITY rejection unreachable in those probes. No production incident is asserted.
+- Failed approach: treating a SECURITY-first failure as proof that both independent reviewers enforce their own provenance bindings.
+
+### Correction, recurrence guard, and retry condition
+- Scope the synthetic review payload's generation/source/record/type overrides to the selected review target. With `reviewTarget=OPERABILITY`, SECURITY stays canonical while four OPERABILITY-only mutations each require the intended diagnostic. Restore every mutated state field and execute the existing positive control after the negative probes.
+- Reusable guard: independent reviewers must each have isolated negative proofs for provenance and review-type authority; one review failing first cannot count for the other.
+- Retry condition: if exact-source CI reports a fixture or diagnostic mismatch, inspect that run's actual output before correction. Otherwise revisit only after the reviewed schema, validator ordering or review provenance binding changes. Do not retry the unchanged source-binding clean-worktree blocker.
+
+### Why safe and protected-authority check
+- The commit changes only a CI-bound synthetic negative harness. No generation, recovery objective, drill request, typed evidence registry, production credential, traffic, readiness, snapshot or promotion authority was written.
+- The branch diff from pre-change HEAD contains only the negative harness; Production Status and strict OPS-P0-007 snapshot were not changed. `productionDecision=NO_GO` remains required, and typed eight-domain coverage, independent review and separate explicit human production promotion remain mandatory.
+- This learning record and any future CI pass are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
