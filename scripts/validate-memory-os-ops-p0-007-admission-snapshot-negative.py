@@ -143,11 +143,44 @@ def prove_case_specific_validator_classifier() -> None:
             raise Fail("snapshot classifier accepted unrelated or multiline rejection")
 
 
+def require_positive_validator_output(stdout: str, label: str) -> None:
+    lines = stdout.splitlines()
+    if (
+        lines.count("Memory OS OPS-P0-007 strict admission snapshot validation PASS") != 1
+        or lines.count("production decision: NO_GO") != 1
+    ):
+        raise Fail(f"{label}: canonical positive validator success output missing or duplicated")
+
+
+def prove_positive_validator_classifier() -> None:
+    valid = (
+        "Memory OS OPS-P0-007 strict admission snapshot validation PASS\\n"
+        "production decision: NO_GO\\n"
+    )
+    require_positive_validator_output(valid, "synthetic positive")
+    for stdout in (
+        "",
+        "generic success\\nproduction decision: NO_GO\\n",
+        "Memory OS OPS-P0-007 strict admission snapshot validation PASS\\nproduction decision: GO\\n",
+        valid + "Memory OS OPS-P0-007 strict admission snapshot validation PASS\\n",
+        valid + "production decision: NO_GO\\n",
+        "prefix Memory OS OPS-P0-007 strict admission snapshot validation PASS\\nproduction decision: NO_GO\\n",
+    ):
+        try:
+            require_positive_validator_output(stdout, "synthetic invalid positive")
+        except Fail as exc:
+            if "canonical positive validator success output missing or duplicated" not in str(exc):
+                raise Fail(f"positive classifier rejected outside intended guard: {exc}") from exc
+        else:
+            raise Fail("positive classifier accepted missing, unrelated or duplicate success output")
+
+
 def run_validator(expect_success: bool, label: str) -> None:
     proc = run_bounded_python(VALIDATOR, label)
     if expect_success:
         if proc.returncode != 0:
             raise Fail(f"{label}: baseline validator failed: {proc.stderr or proc.stdout}")
+        require_positive_validator_output(proc.stdout, label)
         return
     if proc.returncode != 1:
         raise Fail(f"{label}: expected fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
@@ -523,6 +556,7 @@ def main() -> int:
     ]
 
     try:
+        prove_positive_validator_classifier()
         prove_case_specific_validator_classifier()
         prove_generator_diagnostic_classifier()
         prove_subprocess_timeout_guard()
