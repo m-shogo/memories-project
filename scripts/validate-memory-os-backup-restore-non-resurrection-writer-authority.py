@@ -240,6 +240,124 @@ def prove_main_binding_classifier() -> None:
     print("PASS reject: ten module-level writer main binding/decorator substitutes")
 
 
+def require_parser_lock_reachability(source: str) -> None:
+    """Bind input parser and exclusive lock to reachable CLI statements, not text."""
+    require_direct_first_guard(source)
+    definition = ast.parse(source).body[0]
+    body = definition.body
+
+    def direct_call(statement: ast.stmt, namespace: str, method: str) -> bool:
+        return (isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Call)
+                and isinstance(statement.value.func, ast.Name if not namespace else ast.Attribute)
+                and ((statement.value.func.id == method) if not namespace else
+                     (statement.value.func.attr == method
+                      and isinstance(statement.value.func.value, ast.Name)
+                      and statement.value.func.value.id == namespace)))
+
+    parser = body[1] if len(body) > 1 else None
+    require(isinstance(parser, ast.Assign) and len(parser.targets) == 1
+            and isinstance(parser.targets[0], ast.Name) and parser.targets[0].id == "parser"
+            and isinstance(parser.value, ast.Call)
+            and isinstance(parser.value.func, ast.Attribute)
+            and isinstance(parser.value.func.value, ast.Name)
+            and parser.value.func.value.id == "argparse"
+            and parser.value.func.attr == "ArgumentParser"
+            and not parser.value.args and not parser.value.keywords,
+            "writer parser must be direct second statement")
+
+    validation = [index for index, statement in enumerate(body)
+                  if direct_call(statement, "", "validate_record")
+                  and len(statement.value.args) == 1
+                  and isinstance(statement.value.args[0], ast.Name)
+                  and statement.value.args[0].id == "record"
+                  and not statement.value.keywords]
+    require(len(validation) == 1, "writer direct record validation missing")
+
+    lock_tries = [(index, statement) for index, statement in enumerate(body)
+                  if isinstance(statement, ast.Try) and statement.body
+                  and isinstance(statement.body[0], ast.Assign)
+                  and len(statement.body[0].targets) == 1
+                  and isinstance(statement.body[0].targets[0], ast.Name)
+                  and statement.body[0].targets[0].id == "lock_fd"]
+    require(len(lock_tries) == 1, "writer exclusive lock must be direct top-level try")
+    lock_index, lock_try = lock_tries[0]
+    require(validation[0] < lock_index, "writer record validation must precede lock")
+    require(not any(isinstance(statement, (ast.Return, ast.Break, ast.Continue, ast.Raise))
+                    for statement in body[:lock_index]),
+            "writer main cannot exit directly before lock")
+
+    call = lock_try.body[0].value
+    expected_flags = ast.parse("os.O_WRONLY | os.O_CREAT | os.O_EXCL", mode="eval").body
+    require(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "os" and call.func.attr == "open"
+            and len(call.args) == 3 and not call.keywords
+            and isinstance(call.args[0], ast.Name) and call.args[0].id == "LOCK"
+            and ast.dump(call.args[1]) == ast.dump(expected_flags)
+            and isinstance(call.args[2], ast.Constant) and call.args[2].value == 0o600,
+            "writer lock must use canonical exclusive-create path flags and mode")
+    require(any(isinstance(handler.type, ast.Name)
+                and handler.type.id == "FileExistsError"
+                and any(isinstance(statement, ast.Raise) for statement in handler.body)
+                for handler in lock_try.handlers),
+            "writer existing lock must fail closed")
+
+
+def prove_parser_lock_classifier() -> None:
+    positive = "\n".join((
+        "def main():",
+        "    require_cli_authorities()",
+        "    parser = argparse.ArgumentParser()",
+        "    validate_record(record)",
+        "    try:",
+        "        lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)",
+        "    except FileExistsError:",
+        "        raise Fail('locked')",
+        "",
+    ))
+    require_parser_lock_reachability(positive)
+    parser_line = "    parser = argparse.ArgumentParser()"
+    lock_line = "        lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)"
+    mutations = (
+        ("parser-comment", positive.replace(parser_line, "    # " + parser_line.strip()),
+         "writer parser must be direct second statement"),
+        ("parser-string", positive.replace(parser_line, "    'parser = argparse.ArgumentParser()'"),
+         "writer parser must be direct second statement"),
+        ("parser-dead", positive.replace(parser_line, "    if False:\n" + "    " + parser_line),
+         "writer parser must be direct second statement"),
+        ("early-return", positive.replace("    validate_record(record)",
+                                           "    return 0\n    validate_record(record)"),
+         "writer main cannot exit directly before lock"),
+        ("lock-missing", positive.replace(lock_line, "        lock_fd = None"),
+         "writer lock must use canonical exclusive-create path flags and mode"),
+        ("lock-dead", positive.replace("    try:\n" + lock_line,
+                                       "    if False:\n        try:\n" + "    " + lock_line)
+         .replace("    except FileExistsError:\n        raise Fail('locked')",
+                  "        except FileExistsError:\n            raise Fail('locked')"),
+         "writer exclusive lock must be direct top-level try"),
+        ("lock-path", positive.replace("os.open(LOCK,", "os.open(ALTERNATE_LOCK,"),
+         "writer lock must use canonical exclusive-create path flags and mode"),
+        ("lock-flags", positive.replace("os.O_EXCL", "os.O_TRUNC"),
+         "writer lock must use canonical exclusive-create path flags and mode"),
+        ("lock-mode", positive.replace("0o600", "0o644"),
+         "writer lock must use canonical exclusive-create path flags and mode"),
+        ("lock-handler", positive.replace("except FileExistsError:", "except PermissionError:"),
+         "writer existing lock must fail closed"),
+        ("validation-after-lock", positive.replace("    validate_record(record)\n", "")
+         + "    validate_record(record)\n",
+         "writer record validation must precede lock"),
+    )
+    for label, mutated, expected in mutations:
+        try:
+            require_parser_lock_reachability(mutated)
+        except NegativeFailure as exc:
+            require(str(exc) == expected, f"writer parser/lock {label} diagnostic drift")
+        else:
+            raise NegativeFailure(f"writer parser/lock {label} bypass unexpectedly accepted")
+    print("PASS reject: eleven parser/lock reachability and fail-closed substitutes")
+
+
 def prove_guard_source_classifier() -> None:
     valid = "def main():\n    require_cli_authorities()\n    parser = argparse.ArgumentParser()\n"
     require_direct_first_guard(valid)
@@ -265,21 +383,14 @@ def prove_guard_source_classifier() -> None:
 def main() -> int:
     prove_guard_source_classifier()
     prove_main_binding_classifier()
+    prove_parser_lock_classifier()
     require_unique_writer_main_binding(WRITER_PATH.read_text(encoding="utf-8"))
     writer = load_writer()
     guard = getattr(writer, "require_cli_authorities", None)
     require(callable(guard), "typed non-resurrection writer CLI authority guard missing")
 
     main_source = inspect.getsource(writer.main)
-    require_direct_first_guard(main_source)
-    guard_offset = main_source.find("require_cli_authorities()")
-    parser_offset = main_source.find("argparse.ArgumentParser")
-    lock_open_offset = main_source.find("os.O_CREAT | os.O_EXCL")
-    require(guard_offset >= 0, "typed non-resurrection writer main does not invoke CLI authority guard")
-    require(parser_offset >= 0 and guard_offset < parser_offset,
-            "typed non-resurrection writer must validate CLI authority before parsing input")
-    require(lock_open_offset >= 0 and parser_offset < lock_open_offset,
-            "typed non-resurrection writer must retain exclusive-create lock semantics")
+    require_parser_lock_reachability(main_source)
 
     writer.require_cli_authorities()
     contract_before = writer.CANONICAL_CONTRACT.read_bytes()
