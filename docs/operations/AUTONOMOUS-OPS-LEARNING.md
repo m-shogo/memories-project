@@ -2600,3 +2600,25 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Append-only learning never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates. Eight-domain non-resurrection coverage, independent review and separate human production promotion remain mandatory.
+
+## 2026-10-24 — Diagnostic publisher AST must reject unconditional early termination
+
+### Outcome
+- Commit `ab174641a2a28467416433e22f5bb2868faaf5b1` extends the existing CI-bound snapshot workflow permission negative to reject unconditional `raise`, `exit()`, `quit()`, `sys.exit()` and `os._exit()` in the executable diagnostic Python heredoc, including unconditional try/with bodies and constant-true branches.
+
+### Evidence
+- Before the change, `executable_diagnostic_calls` found required AST calls anywhere in a syntactically live heredoc, even after a preceding top-level `raise SystemExit(0)`. This was a source-level reachability gap, not an observed production incident.
+- Five in-memory mutations now inject module-level or try-body termination while preserving the original atomic publication calls and require the exact `strict snapshot diagnostic unconditional early termination` rejection. Exact-source Snapshot Permission Boundary run `39987038616` completed SUCCESS at `ab174641`, logging workflow permission negative PASS.
+
+### Why safe
+- The canonical workflow and diagnostic publisher were not changed; only the existing read-only negative harness and in-memory AST fixtures changed. Legitimate conditional exception-handler cleanup is not classified as unconditional early termination.
+
+### Reusable mechanism
+- AST presence checks must also inspect reachable statement order. For crash-safe publication proof, reject unconditional terminators before accepting the presence of later `mkstemp`, `fsync`, `replace` and `unlink` calls, and require cause-specific mutation rejection.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains `PREREQUISITES_BLOCKED` and zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- This append-only learning record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates. Eight-domain typed coverage, independent review and separate human production-promotion authority remain mandatory.
+
+### Retry condition
+- Revisit only if the canonical diagnostic heredoc legitimately adds an unconditional exit path, or an observed execution-path bypass evades the bounded AST guard. Do not weaken required atomic-publication call reachability to accommodate an unrelated failure.
