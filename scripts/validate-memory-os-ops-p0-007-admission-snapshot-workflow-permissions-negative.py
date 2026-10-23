@@ -2512,6 +2512,21 @@ def require_readonly_workflow_authority(readonly: str) -> None:
         ],
         "strict snapshot readonly workflow authority drift",
     )
+    # No shell hook may replace errexit, validator commands, or the final
+    # before/after authority comparison. The single reviewed EXIT trap only
+    # cleans the two temporary digest files.
+    control = re.compile(
+        r"^(?:if|elif|else|fi|while|until|case|esac|function|eval|exec|exit|return|break|continue|alias|unalias|shopt|enable|source)\b"
+        r"|^\.\s+|^bash\s+-c\b"
+    )
+    require(
+        not any(control.match(line) for line in body)
+        and [line for line in body if re.match(r"^set(?:\s|$)", line)]
+        == ["set -euo pipefail"]
+        and [line for line in body if line.startswith("trap ")]
+        == ['trap \'rm -f "$snapshot" "$current"\' EXIT'],
+        "strict snapshot readonly workflow authority drift",
+    )
     compiled = PR_COMPILE_FILES[-6:]
     require(
         body[:5] == [
@@ -2605,6 +2620,32 @@ def prove_readonly_workflow_negative(readonly: str) -> None:
                 f"readonly existence rejected outside exact guard: {exc}")
     else:
         raise Fail("readonly accepted missing protected-file existence check")
+    # A later shell trap or alias can make an otherwise correct validator
+    # list appear successful without executing its reviewed failure boundary.
+    shell_anchor = "          python -m py_compile \\\n"
+    require(readonly.count(shell_anchor) == 1,
+            "strict snapshot readonly shell fixture anchor drift")
+    for command in (
+        "trap 'exit 0' ERR",
+        "trap 'exit 0' EXIT",
+        "source ./unreviewed-shell.sh",
+        ". ./unreviewed-shell.sh",
+        "alias python='true'",
+        "shopt -s expand_aliases",
+        "set +e",
+        "exit 0",
+        "eval 'true'",
+        "if false; then",
+    ):
+        mutated = readonly.replace(shell_anchor, f"          {command}\n" + shell_anchor, 1)
+        require(mutated != readonly, f"{command} readonly shell mutation was a no-op")
+        try:
+            require_readonly_workflow_authority(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly workflow authority drift",
+                    f"{command} readonly shell rejected outside exact guard: {exc}")
+        else:
+            raise Fail(f"readonly accepted shell override: {command}")
     mutations = (
         ("write grant", readonly.replace("permissions:\n  contents: read\n",
                                          "permissions:\n  contents: write\n", 1)),
