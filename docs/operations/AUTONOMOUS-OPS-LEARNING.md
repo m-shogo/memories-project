@@ -2694,3 +2694,42 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if a fresh observed source-path identity bypass or an intentional canonical path architecture change alters this negative's assumptions; the separately blocked validator-authority negative path retains its own unchanged retry condition.
+
+## 2026-10-24 — Shell exit reachability must distinguish function definitions from live execution
+
+### Symptom
+- Snapshot Permission Boundary exact-source CI failed after the new indented-shell-exit guard, even though the canonical publisher itself had not changed.
+
+### Evidence
+- Commit `21d7672e57f4f1274dc0021de74bc1d004d3e9f0` switched exit detection from raw indentation-sensitive `command` to `stripped` and added two negative fixtures for indented unconditional exits.
+- Exact-source Permission Boundary run `39993764642` failed: `early exit 0 rejected outside intended reachability guard: strict snapshot publisher missing executable bounded revalidation call sites`. This is a harness-classification failure, not production evidence or a production incident.
+- The existing `prove_publisher_revalidation_call_binding` deliberately injects `exit 0` inside the definition of `revalidate_latest_snapshot()`, expecting its dedicated `revalidation contains unconditional early return/exit` diagnostic. The generic run-step parser had stopped parsing at the injected function-body exit and therefore discarded later call sites.
+
+### Root cause or unknown
+- Verified: trimming indentation fixed top-level exit detection but also misclassified an exit inside an uncalled shell function definition as an immediately executed top-level exit.
+
+### Failed approach
+- Treating every indented `exit` in a run-step block as unconditional outer-shell termination without tracking whether the line belongs to the bounded function definition.
+
+### Correction
+- Commit `e2d31caaea796f8442a41ce6883719c0b8b2cdc5` tracks the exact `revalidate_latest_snapshot() {` / `}` definition boundary. Function-body exits remain visible to the dedicated function reachability guard; only unconditional outer-shell exits terminate the generic run-step command scan.
+
+### Recurrence guard
+- The existing CI-bound suite now includes both negative fixtures for indented top-level `exit 0` (including a trailing comment), plus positive controls for an unknown conditional exit and an uncalled function-body exit. The existing function-level early-exit fixture still requires its exact intended rejection.
+- Exact-source Permission Boundary run `39993853357` at `e2d31caa` completed SUCCESS, logging `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS` and `production decision: NO_GO`.
+
+### Retry condition
+- Revisit only if a new shell-function architecture, nested brace form, or observed CI failure invalidates the bounded function-definition model. Do not repeat the unscoped `stripped`-only exit classifier from `21d7672`.
+
+### Outcome
+- The corrected parser now rejects indented live shell exits without hiding later commands behind an inert function definition or losing the dedicated function-level rejection diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only negative harness and its synthetic YAML fixtures changed. The publisher workflow, production status, OPS-P0-007 snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were not changed.
+
+### Reusable mechanism
+- Distinguish command presence, command reachability and definition-time shell parsing. Track a bounded function scope separately from top-level run-step termination, and require both positive and cause-specific negative fixtures before accepting a parser hardening change.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human production promotion remain mandatory.
+- Append-only learning is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
