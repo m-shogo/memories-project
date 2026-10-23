@@ -4433,3 +4433,28 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only an existing synthetic negative harness was changed; no production writer, registry, generation, recovery objective, drill request, typed evidence, credential, traffic, readiness, snapshot or promotion authority was written.
 - The source diff contained no protected authority files. `productionDecision=NO_GO` remains required, with unsuperseded semantically eligible distinct environments, a human-approved current recovery objective, a current executable reviewed request for new evidence, typed eight-domain coverage, independent review, and separate non-automatic human promotion.
 - This learning entry and the CI results are operational history only; they cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed writer parser and exclusive lock require AST execution reachability
+
+### Outcome and observed evidence
+- Commit `8c86c511058e8133d6a08940518669b35841cade` replaces substring/offset-only checks of the typed writer's parser and lock with an AST classifier in the existing writer-authority negative harness.
+- The classifier requires a direct second-statement `argparse.ArgumentParser()`, direct `validate_record(record)` before lock, one top-level lock acquisition `try`, exact `os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)`, and a `FileExistsError` rejection handler. Direct early exit before lock is forbidden.
+- Eleven isolated in-memory mutations exercise parser comments, strings and dead branches, early return, missing/dead lock, substituted path/flags/mode, changed exception handler and record-validation ordering. Each requires the expected diagnostic.
+- Exact-source Non-Resurrection Readonly run `40038734608` completed SUCCESS after this code change. Backup and Restore Contracts and Admission Chain were in progress at the time of this entry; their success is not claimed here. The preceding module-binding change's Admission Chain run `40038583319` completed SUCCESS.
+- Post-write compare from `9dc2353d7bd2093787482e66423f8555cd232fee` to `8c86c511058e8133d6a08940518669b35841cade` changed only the existing synthetic negative harness (120 additions, 9 deletions).
+
+### Symptom, observed evidence, verified root cause or unknown, and failed approach
+- Symptom/risk: `main_source.find(...)` can accept a comment, string or unreachable branch as apparent proof that parsing precedes lock acquisition and the lock uses exclusive-create flags.
+- Evidence: the prior harness used textual offsets for `argparse.ArgumentParser` and `os.O_CREAT | os.O_EXCL` without checking executable AST statements or the `LOCK` argument and mode.
+- Verified gap cause: text location is not execution reachability. No actual production writer substitution or evidence corruption was observed.
+- Failed approach to avoid: treating substring order as a sufficient security boundary for parser and lock semantics.
+
+### Correction, recurrence guard, and retry condition
+- Require direct AST statement shape, exact canonical lock arguments, fail-closed exception handling and record-validation ordering; preserve a positive control and eleven diagnostic-bound negatives.
+- Reusable mechanism: bind critical CLI operations to both statement reachability and exact call arguments, rather than strings. Build test fixtures with explicit newline joins, and require exact diagnostics so unrelated parser errors cannot count as rejection.
+- Retry only on an observed exact-source CI regression, legitimate reviewed writer control-flow change or a demonstrated new parser/lock bypass. Do not repeat the unchanged source-binding clean-worktree or target-specific permission blockers.
+
+### Why safe and protected-authority check
+- The canonical production writer and all recovery registries, generations, objectives, drill requests, typed evidence, credentials, traffic, readiness, Production Status, snapshot and promotion authority were not written.
+- `productionDecision=NO_GO` remains mandatory. Distinct unsuperseded semantically eligible environments, explicitly human-approved current objective, current executable reviewed drill request for new evidence, complete typed eight-domain coverage, independent review and separate human promotion remain intact.
+- This operational learning and CI result cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
