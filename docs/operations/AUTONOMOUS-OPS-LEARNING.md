@@ -3433,3 +3433,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the generator's reviewed runtime path bindings change or a newly observed authority alias bypass escapes the seventeen negative probes.
 
+
+## 2026-10-24 — PR validator body cannot establish admission in a disabled or non-fatal step
+
+### Outcome
+- Commit 81654568de7a3d0bc564a82f4dc7d4f5a2a582ed binds the strict OPS-P0-007 PR admission validator chain to the reviewed enabled step header, not just the executable-looking run block.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40007020689 completed SUCCESS at this commit.
+
+### Evidence
+- The prior PR admission guard required all validators in linear order but did not inspect the enclosing step's if, continue-on-error, or shell settings. A disabled step could skip all validators; a continue-on-error step could report a successful workflow despite a failed validator.
+- Four synthetic mutations insert if: false, an expression-level false condition, continue-on-error: true or an unreviewed shell override before the run block. Each requires the exact PR admission step execution-policy drift diagnostic.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and in-memory PR workflow fixtures changed. The actual PR/publisher workflows, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- A mandatory CI gate requires both live command reachability and an enabled, failure-propagating workflow step. Validate the complete reviewed step header before treating command order as proof of admission.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed PR admission step header changes or an observed step-level skip/error-mask bypass escapes the bounded negative guard.
+
