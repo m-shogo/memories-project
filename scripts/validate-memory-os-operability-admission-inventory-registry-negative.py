@@ -8,6 +8,7 @@ import importlib.util
 import json
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
@@ -72,12 +73,23 @@ def expect_validator_rejected(
     mutate(bad)
     path.write_text(json.dumps(bad, indent=2) + "\n", encoding="utf-8")
     rejected = False
+    reads = 0
+    original_read_text = Path.read_text
+
+    def tracked_read_text(candidate: Path, *args: Any, **kwargs: Any) -> str:
+        nonlocal reads
+        if candidate == path:
+            reads += 1
+        return original_read_text(candidate, *args, **kwargs)
+
     try:
-        validator.main()
+        with patch.object(Path, "read_text", tracked_read_text):
+            validator.main()
     except validator.Fail:
         rejected = True
     finally:
         path.write_bytes(original)
+    require(reads > 0, f"source validator rejected before reading mutated authority: {name}")
     require(rejected, f"corrupt append-only authority unexpectedly accepted by validator: {name}")
     require(path.read_bytes() == original, f"validator fixture did not restore canonical authority: {name}")
     print(f"PASS validator reject: {name}")
@@ -95,8 +107,18 @@ def expect_generator_rejected(
     output_before = generator.OUTPUT.read_bytes()
     path.write_text(json.dumps(bad, indent=2) + "\n", encoding="utf-8")
     rejected = False
+    reads = 0
+    original_read_text = Path.read_text
+
+    def tracked_read_text(candidate: Path, *args: Any, **kwargs: Any) -> str:
+        nonlocal reads
+        if candidate == path:
+            reads += 1
+        return original_read_text(candidate, *args, **kwargs)
+
     try:
-        generator.main()
+        with patch.object(Path, "read_text", tracked_read_text):
+            generator.main()
     except SystemExit as exc:
         require(exc.code not in (None, 0), f"corrupt authority produced successful SystemExit: {name}")
         rejected = True
@@ -105,6 +127,7 @@ def expect_generator_rejected(
         rejected = True
     finally:
         path.write_bytes(original)
+    require(reads > 0, f"inventory generator rejected before reading mutated authority: {name}")
     require(rejected, f"corrupt append-only authority unexpectedly accepted by generator: {name}")
     require(path.read_bytes() == original, f"generator fixture did not restore canonical authority: {name}")
     require(generator.OUTPUT.read_bytes() == output_before, f"generator mutated inventory after rejecting corrupt authority: {name}")
