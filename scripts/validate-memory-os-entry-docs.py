@@ -163,6 +163,10 @@ def validate_learning_guards(failures: list[str]) -> None:
                 f"autonomous-learning guard missing verified PASS: {relative} "
                 f"(exit {completed.returncode})"
             )
+        else:
+            # Emit only a previously validated, single-line success marker.
+            # This is CI execution evidence, never production readiness.
+            print(f"autonomous-learning guard verified: {completed.stdout.strip()}")
 
 
 def main() -> int:
