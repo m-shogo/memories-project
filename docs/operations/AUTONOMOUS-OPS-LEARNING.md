@@ -3723,3 +3723,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed publisher trigger architecture or typed recovery authority path set changes, or a new observed trigger-coverage bypass escapes this bounded guard.
+
+## 2026-10-24 — PR trigger coverage must include all twenty-three compiled admission scripts
+
+### Outcome
+- Commit `94da8e6b8a06d712081fcefe594e181576542578` extends the existing strict OPS-P0-007 PR trigger/path guard to require every one of the twenty-three reviewed `py_compile` inputs.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40011380488` completed SUCCESS. The separately triggered Snapshot Readonly run is not counted as successful until completed.
+
+### Evidence
+- The prior PR trigger guard covered the four core admission validators, fourteen publisher revalidation-chain validators, typed recovery contracts and core status/negative paths, but did not require every compiled support script to trigger PR admission when changed.
+- The reviewed PR workflow includes all twenty-three compile inputs in its path filter. The extended guard reuses the exact compile-file tuple and adds one cause-specific missing-path negative for each script, requiring the canonical trigger/path drift diagnostic.
+
+### Why safe
+- Only the existing CI-reachable read-only workflow permission negative harness and in-memory path-filter fixtures changed. The actual PR/publisher workflows, Production Status, strict snapshot, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Bind CI trigger coverage to every compiled source input, not only to executable validator entrypoints; a support-script change must not bypass the PR admission gate.
+- Reuse the single reviewed compile-file tuple rather than maintaining a second divergent script list. Negative fixtures must remove exactly one path and prove exact-diagnostic rejection.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain non-resurrection records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human production promotion remain mandatory. Learning/CI records never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed compiled input set or PR path-filter architecture changes, or a new observed missing-script trigger bypass escapes the bounded negative proof.
