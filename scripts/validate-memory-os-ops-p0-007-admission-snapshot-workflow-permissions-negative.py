@@ -414,13 +414,15 @@ def executable_run_lines(workflow: str) -> list[str]:
 
 
 def require_full_admission_chain(workflow: str, label: str) -> None:
-    commands = "\n".join(executable_run_lines(workflow))
+    commands = [line.strip() for line in executable_run_lines(workflow)]
     for validator in FULL_ADMISSION_VALIDATORS:
         require(validator in workflow, f"{label} missing full admission validator: {validator}")
-        command = rf"(?m)^[ \t]*python[ \t]+{re.escape(validator)}(?=[ \t]|$)"
+        command = rf"^python[ \t]+{re.escape(validator)}(?=[ \t]|$)"
+        candidates = [line for line in commands if re.match(command, line)]
+        allowed = {f"python {validator}", f'python {validator} >> "$log" 2>&1'}
         require(
-            re.search(command, commands) is not None,
-            f"{label} does not execute full admission validator: {validator}",
+            bool(candidates) and all(line in allowed for line in candidates),
+            f"{label} does not execute full admission validator fail-closed: {validator}",
         )
 
 
@@ -428,6 +430,23 @@ def prove_comment_only_commands_rejected() -> None:
     commands = "\n".join(f"          python {validator}" for validator in FULL_ADMISSION_VALIDATORS)
     positive = "jobs:\n  validate:\n    steps:\n      - name: live\n        run: |\n" + commands + "\n"
     require_full_admission_chain(positive, "positive run-step fixture")
+    redirected = "jobs:\n  validate:\n    steps:\n      - name: logged\n        run: |\n" + "\n".join(
+        f'          python {validator} >> "$log" 2>&1' for validator in FULL_ADMISSION_VALIDATORS
+    ) + "\n"
+    require_full_admission_chain(redirected, "positive logged validator fixture")
+    for validator in FULL_ADMISSION_VALIDATORS:
+        for suffix in (" || true", " || :", "; true"):
+            masked = positive.replace(f"          python {validator}\n", f"          python {validator}{suffix}\n", 1)
+            require(masked != positive, f"{validator} masked fixture was a no-op")
+            try:
+                require_full_admission_chain(masked, "masked PR validator fixture")
+            except Fail as exc:
+                require(
+                    f"does not execute full admission validator fail-closed: {validator}" in str(exc),
+                    f"masked {validator} rejected outside exact fail-closed guard: {exc}",
+                )
+            else:
+                raise Fail(f"strict snapshot PR workflow accepted masked validator: {validator}{suffix}")
     live_else = "jobs:\n  validate:\n    steps:\n      - name: live else\n        run: |\n          if false; then\n          :\n          else\n" + commands + "\n          fi\n"
     require_full_admission_chain(live_else, "positive literal-false else fixture")
     # A conditional exit must not erase validators reachable when the
