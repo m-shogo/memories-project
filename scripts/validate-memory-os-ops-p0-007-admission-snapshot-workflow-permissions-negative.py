@@ -1373,9 +1373,9 @@ def prove_pr_compile_step_negative(pr: str) -> None:
         else:
             raise Fail(f"strict snapshot PR accepted weakened compile stage: {label}")
 
-    first = f"          {PR_COMPILE_FILES[0]} \\\n"
-    second = f"          {PR_COMPILE_FILES[1]} \\\n"
-    last = f"          {PR_COMPILE_FILES[-1]}\n"
+    first = f"            {PR_COMPILE_FILES[0]} \\\n"
+    second = f"            {PR_COMPILE_FILES[1]} \\\n"
+    last = f"            {PR_COMPILE_FILES[-1]}\n"
     command = "          python -m py_compile \\\n"
     require(step.count(first) == step.count(second) == step.count(last) == step.count(command) == 1,
             "strict snapshot PR compile fixture argument anchor drift")
