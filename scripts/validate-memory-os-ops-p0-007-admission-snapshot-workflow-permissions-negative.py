@@ -2655,17 +2655,17 @@ def prove_readonly_workflow_negative(readonly: str) -> None:
             raise Fail(f"readonly accepted shell override: {command}")
     # A trailing YAML step/job property is outside the run scalar even when
     # all required commands remain textually intact.
-    final_clean = '          test -z "$(git status --porcelain --untracked-files=all)"\\n'
-    require(readonly.endswith(final_clean.replace("\\\\n", "\\n")),
+    final_clean = '          test -z "$(git status --porcelain --untracked-files=all)"\n'
+    require(readonly.endswith(final_clean),
             "strict snapshot readonly trailing metadata fixture anchor drift")
     for label, metadata in (
-        ("nonfatal step", "        continue-on-error: true\\n"),
-        ("disabled step", "        if: false\\n"),
-        ("shell override", "        shell: bash {0}\\n"),
-        ("nonfatal job", "    continue-on-error: true\\n"),
-        ("disabled job", "    if: false\\n"),
+        ("nonfatal step", "        continue-on-error: true\n"),
+        ("disabled step", "        if: false\n"),
+        ("shell override", "        shell: bash {0}\n"),
+        ("nonfatal job", "    continue-on-error: true\n"),
+        ("disabled job", "    if: false\n"),
     ):
-        mutated = readonly + metadata.replace("\\\\n", "\\n")
+        mutated = readonly + metadata
         require(mutated != readonly, f"{label} readonly mutation was a no-op")
         try:
             require_readonly_workflow_authority(mutated)
