@@ -3066,3 +3066,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical generator intentionally changes its pre-rejection output contract or a newly observed contradictory output bypass escapes the negative suite.
+
+
+## 2026-10-24 — Atomic replacement negative must bind the entire injected failure diagnostic
+
+### Outcome
+- Commit 029420ed9f692efa26910b8d50263287c901505e strengthens the existing OPS-P0-007 strict snapshot atomic-write negative: the injected canonical os.replace failure must produce exactly the expected target-bound atomic-write error, not merely two substrings.
+- Exact-source OPS P0 007 Admission Snapshot Atomic Write Negative run 40003924228 completed SUCCESS at this commit.
+
+### Evidence
+- The prior test required the failure string to contain both cannot atomically write and injected atomic replacement failure. An unrelated target or prefixed/suffixed diagnostic containing both fragments could satisfy that predicate.
+- The new exact classifier requires the full canonical snapshot path and injected failure sentinel, and independently rejects unrelated prefix/suffix, wrong target path and sentinel-only synthetic diagnostics. The existing exactly-one canonical replacement attempt, protected bytes/mode/identity and temporary cleanup checks remain in place.
+
+### Why safe
+- Only the existing CI-bound read-only atomic-write negative harness changed. The generator, publisher workflow, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- An injected error must prove both the intended failure source and its exact protected target. Use a single canonical diagnostic with negative controls for prefix/suffix and wrong-target masquerading, alongside exact attempt count and protected-authority postconditions.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the canonical atomic writer changes its error contract or an observed failure injection bypasses exact target/diagnostic binding.
