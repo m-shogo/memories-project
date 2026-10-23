@@ -2417,3 +2417,26 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
 - Learning remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Publisher revalidation must not hide validators after an unconditional early return
+
+### Outcome
+- Commit `1d50b1c863d9b4617ae3506cf5b66779c61bab4e` extends the existing CI-bound publisher workflow permission negative guard to reject standalone `return` or `exit` before the required validators inside `revalidate_latest_snapshot()`.
+
+### Evidence
+- Prior static function-body binding required four canonical validator command lines, but did not reject an unconditional `return 0` or `exit 0` inserted at the beginning of that function, which would leave the command lines unreachable.
+- The new in-suite mutation probes both early-return and early-exit substitutions and requires the cause-specific fail-closed diagnostic. An independent six-case classifier check passed: baseline, comment-only return, and echoed return accepted; early return, early exit, and missing validator rejected.
+- At recording time, GitHub combined commit statuses and PR-scoped workflow-run lookup returned no runs for this commit. Exact-source CI success is not claimed.
+
+### Why safe
+- Only the existing negative harness was changed; the publisher workflow, source-binding logic, canonical snapshot, recovery registries, production status, and human-promotion authority were not changed. No synthetic test is production evidence.
+
+### Reusable mechanism
+- Command presence inside a called function is insufficient when an unconditional function terminator precedes it. Bind required commands to the live function body and prove an early-termination mutation fails for the intended reason, without rejecting comments or echo strings as control cases.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, generation evidence, typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Complete typed eight-domain coverage, independent review and separate human promotion remain mandatory.
+- Learning remains append-only operational guidance, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Claim exact-source CI success only after a successful observed workflow run at the code commit or its descendant; revisit the guard if the publisher's legitimate function control flow changes.
