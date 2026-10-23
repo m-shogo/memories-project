@@ -1827,3 +1827,45 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`productionDecision=NO_GO`), and strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remained unchanged. The snapshot retains zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
 - Learning history is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Main entrypoint binding also needs import and tuple guards
+
+### Symptom
+- The learning validator guarded `main()` against direct assignments and async definitions, but top-level tuple destructuring or an import alias could still replace the checked synchronous `main` binding before the `__main__` invocation.
+
+### Evidence
+- The prior `main` assignment check matched only direct `ast.Name` targets, and did not inspect `ast.Import` or `ast.ImportFrom` aliases. The two isolated mutation fixtures demonstrate the exact syntax; no malicious CI or production incident was observed.
+
+### Root cause or unknown
+- Verified static binding-coverage gap: Python module-level names can be rebound through nested `ast.Store` targets and imports, not only direct assignments.
+
+### Failed approach
+- Assuming a direct-name assignment guard completely protects a checked `main` definition from later shadowing.
+
+### Correction
+- Commit `1ce2a878cd27efd88ad2b9f9d0e60c075a74dd93` extends the canonical learning validator to reject tuple-destructured `main` assignments and import aliases.
+- Commit `caf31af8ec4ee624be508b91ba49709a7fc73654` adds two isolated positive-controlled negative cases with case-specific diagnostics.
+- Commit `f9e622623624f455ed1c14f05cb860baea5e5438` raises the existing operability CI negative floor to 71.
+
+### Recurrence guard
+- The canonical positive validator rejects both rebinding classes and the negative suite proves each after a valid fixture positive control. The existing CI caller requires at least 71 fail-closed cases.
+
+### Retry condition
+- Revisit if a new reachable `main` shadowing mechanism is demonstrated or the canonical entrypoint changes legitimately. This bounded AST guard does not claim to prevent every possible dynamic Python namespace mutation.
+
+### Outcome
+- Three code commits landed on `so`; exact-source Operability Contracts run `39953640560` completed SUCCESS on `f9e622623624f455ed1c14f05cb860baea5e5438`.
+
+### Success evidence
+- CI job `120413982571` logged `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (71 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+- Compare `3ed631690b236c533185d1cf97a417369817d217...f9e622623624f455ed1c14f05cb860baea5e5438` changed only the two learning validator scripts and existing operability entrypoint.
+
+### Why safe
+- All new negative mutations use disposable learning fixtures and no production-equivalent generation, recovery objective, drill request, recovery evidence, credential, traffic, readiness or promotion authority was created or changed.
+
+### Reusable mechanism
+- Apply consistent name-binding checks to both the executable caller and its callee; inspect nested assignment targets and import aliases, then bind the new rejection to an isolated negative and exact-source CI.
+
+### Protected-authority check
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`productionDecision=NO_GO`), and OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remained unchanged. The snapshot retains zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
+- Learning history is append-only execution guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
