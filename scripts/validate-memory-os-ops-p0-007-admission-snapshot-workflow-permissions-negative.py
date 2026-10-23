@@ -1154,7 +1154,7 @@ def require_publisher_capture_status_chain(publish: str) -> None:
     )
     require(
         not any(
-            re.match(r"^(?:exit|return|exec|set)(?:\s|$)", line)
+            re.match(r"^(?:exit|return|exec|set|trap|alias|unalias|shopt|enable|source)(?:\s|$)|^\.\s+", line)
             for line in commands[1:-1]
         ),
         "strict snapshot publisher capture unconditional early termination or shell override",
@@ -1224,6 +1224,28 @@ def prove_publisher_capture_status_negative(publish: str) -> None:
             )
         else:
             raise Fail(f"publisher capture accepted {label}")
+    # The intentional non-errexit capture step must not install an EXIT trap
+    # that appends a forged success after its real captured exit_code.
+    for indirection in (
+        'trap \'echo "exit_code=0" >> "$GITHUB_OUTPUT"\' EXIT',
+        'trap \'exit 0\' ERR',
+        'source ./unreviewed-shell.sh',
+        '. ./unreviewed-shell.sh',
+        'shopt -s expand_aliases',
+        "alias python='true'",
+    ):
+        marker = "          code=0\n"
+        require(publish.count(marker) == 1, "publisher capture indirection fixture drift")
+        mutated = publish.replace(marker, marker + f"          {indirection}\n", 1)
+        try:
+            require_publisher_capture_status_chain(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher capture unconditional early termination or shell override",
+                f"publisher capture indirection rejected outside exact guard ({indirection}): {exc}",
+            )
+        else:
+            raise Fail(f"publisher capture accepted status indirection: {indirection}")
     first, second = PUBLISH_REVALIDATION_CHAIN[:2]
     left = f'          if [[ "$code" == "0" ]]; then python {first} >> "$log" 2>&1 || code=$?; fi\n'
     right = f'          if [[ "$code" == "0" ]]; then python {second} >> "$log" 2>&1 || code=$?; fi\n'
