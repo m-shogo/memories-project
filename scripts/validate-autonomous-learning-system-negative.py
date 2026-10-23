@@ -192,6 +192,27 @@ def main() -> int:
 
     prove_failure_classifier()
 
+    # A negative must reject for its own intended invariant, not merely for
+    # an unrelated canonical failure elsewhere in the fixture.
+    wrong_reason = subprocess.CompletedProcess(
+        [], 1, "",
+        "AUTONOMOUS LEARNING VALIDATION FAILED: unrelated injected failure\\n",
+    )
+    try:
+        require_expected_rejection("weaken mandatory rule", wrong_reason)
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("negative diagnostic classifier accepted an unrelated rejection")
+    require_expected_rejection(
+        "weaken mandatory rule",
+        subprocess.CompletedProcess(
+            [], 1, "",
+            "AUTONOMOUS LEARNING VALIDATION FAILED: "
+            "mandatory learning rule must remain true: unchangedBlockerIsNotRetried\\n",
+        ),
+    )
+
     with tempfile.TemporaryDirectory(prefix="learning-positive-") as tmp:
         root = Path(tmp)
         seed(source_root, root)
