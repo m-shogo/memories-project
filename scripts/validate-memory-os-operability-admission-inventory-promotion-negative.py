@@ -256,11 +256,27 @@ def expect_status_rejected(
         write_json(inventory_path, bad_inventory)
         original_status = validator.STATUS
         original_inventory = validator.INVENTORY
+        original_read_text = Path.read_text
+        observed = {"status": 0, "inventory": 0}
+
+        def tracked_read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+            if path == status_path:
+                observed["status"] += 1
+            if path == inventory_path:
+                observed["inventory"] += 1
+            return original_read_text(path, *args, **kwargs)
+
         validator.STATUS = status_path
         validator.INVENTORY = inventory_path
         try:
-            validator.main()
-        except validator.Fail:
+            with patch.object(Path, "read_text", tracked_read_text):
+                validator.main()
+        except validator.Fail as exc:
+            required_source = "status" if mutate_status is not None else "inventory"
+            require(
+                observed[required_source] > 0,
+                f"status/inventory negative rejected before reading mutated {required_source}: {name}: {exc}",
+            )
             print(f"PASS reject: {name}")
             return
         finally:
