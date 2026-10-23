@@ -2733,3 +2733,26 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human production promotion remain mandatory.
 - Append-only learning is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Atomic replacement failure must preserve protected path identity
+
+### Outcome
+- Commit `ebaec2571dd1f99a03057e05a49dbff9aa57c51d` extends the existing OPS-P0-007 strict snapshot atomic replacement negative with source-path verification and protected file/parent identity checks for snapshot, Production Status and generator.
+
+### Evidence
+- Previously the failure-injection test proved one exact rejected `os.replace` call, unchanged snapshot/status bytes and modes, and no temporary-file residue, but did not assert that equal-content file or parent symlink replacement could not escape its postcondition.
+- The new isolated temporary-directory classifier rejects equal-content file and parent symlink aliases and confirms restoration of the original file inode. The canonical failure-injection probe now also compares `lstat` mode, device/inode, parent identity and resolved path for all three protected files.
+- Exact-source OPS-P0-007 Admission Snapshot Atomic Write Negative run `39994043466` at `ebaec257` completed its atomic proof and canonical authority check successfully. The job log confirms `strict snapshot atomic replacement negative proof: PASS`, `snapshot/status/generator source and parent identity unchanged: true`, and `isolated file/parent symlink identity bypass accepted: false`.
+
+### Why safe
+- Only the pre-existing read-only atomic-write negative harness changed. The injected `os.replace` failure remains confined to the canonical snapshot target, while symlink mutations occur only in an isolated temporary directory. No production status, recovery registry, objective, evidence, credential, traffic, readiness or promotion authority was modified.
+
+### Reusable mechanism
+- An atomic failure test must verify both failure-injection reachability and protected-authority identity, not only bytes/mode and temporary cleanup. Combine exact injected-error and attempt-count assertions with `lstat`/resolved-path checks and a separate equal-content symlink negative control.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human production promotion remain mandatory.
+- Append-only learning cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the canonical atomic writer's target/source path architecture changes or a new observed failure bypasses the identity and cleanup postconditions.
