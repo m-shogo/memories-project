@@ -811,3 +811,28 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - Before the rejected write, `productionDecision=NO_GO` and OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY` were observed. No commit or production evidence was created; the semantic-generation, distinct-environment, human recovery-objective, current reviewed-drill-request, typed eight-domain non-resurrection, independent-review and separate human-promotion gates remain mandatory.
+
+## 2026-10-23 — Strict snapshot negative proofs must establish the injected failure and preserve production status
+
+### Outcome
+- Strengthened two existing CI-reachable OPS-P0-007 snapshot negatives without changing the generator, admission rules, recovery registries, or production authorities.
+- The post-write rollback negative now requires an actually corrupted published candidate to remain after a deliberately failed rollback, until the negative harness explicitly restores the canonical snapshot. Both rollback scenarios also verify canonical production-status bytes and mode are unchanged.
+- The atomic-write negative now requires exactly one attempted replacement of the canonical snapshot and the precise injected replacement-error diagnostic, rather than accepting an unrelated atomic-write failure.
+
+### Evidence
+- Commit `e52572d1787bf59994fdcb53e72152fcfa561885` modified only `scripts/validate-memory-os-ops-p0-007-admission-snapshot-post-write-rollback-negative.py`. Exact-source workflow run `39922869836` completed SUCCESS; logs confirm the injected invalid candidate, rollback diagnostic, byte/mode cleanup, and unchanged production-status bytes/mode.
+- Commit `8791bbb84c653ff8d3c6fbb707faac46fc890ee7` modified only `scripts/validate-memory-os-ops-p0-007-admission-snapshot-atomic-write-negative.py`. Exact-source workflow run `39922917627` completed SUCCESS; logs confirm one canonical replacement attempt, the injected failure, and the workflow's clean-worktree and byte/mode checks.
+- Both owning workflows already path-trigger and execute their respective negative scripts. These successes are exact-source CI negative proofs, not production or recovery drill evidence.
+
+### Why safe
+- Changes affect negative-test assertions only. No production-equivalent generation, objective, request, restore evidence, credential, traffic, readiness, promotion, or canonical snapshot value was created or modified.
+- The tests retain the existing cleanup and fail-closed semantics, and explicitly check canonical authority integrity.
+
+### Reusable mechanism
+- A failure-injection negative must prove the intended injected transport failure actually occurred: assert the exact sentinel and bounded target-attempt count, not merely a generic failure class.
+- For failed post-write rollback, assert the invalid candidate remains observable before explicit test cleanup; otherwise a silently repaired or never-mutated candidate could yield false confidence.
+- Verify unrelated protected authority bytes and modes when exercising mutation boundaries, even when the test is scoped to a different authority.
+
+### Protected-authority check
+- Post-commit re-read confirmed `productionDecision=NO_GO`, OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`, `blocking=true`, and zero registered/semantically eligible generations, approved objectives, executable requests, recovery evidence, complete typed non-resurrection records, and final recovery candidates.
+- Learning remains append-only execution history, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct-environment semantic eligibility, explicit human-approved current objective, current executable reviewed request, all eight typed domains, independent review, and separate human promotion remain mandatory.
