@@ -2969,3 +2969,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed checkout-step YAML architecture changes or a new observed duplicate checkout representation bypasses the bounded matcher.
+
+
+## 2026-10-24 — Deterministically infinite diagnostic loops are early termination
+
+### Outcome
+- Commit b1d62aef872154d6a77be12ed117c4187bb50609 extends the strict OPS-P0-007 diagnostic Python AST negative to reject deterministic true while loops before atomic publication or cleanup.
+- Exact-source OPS P0 007 Snapshot Permission Boundary job 120583422598 in run 40002927507 completed SUCCESS.
+
+### Evidence
+- Earlier AST guards rejected explicit raise, exit, false assertions and deterministic true conditional branches but did not reject a while True: pass loop before the required os.replace or os.unlink. Required calls could still appear later in the AST while being unreachable.
+- New negative fixtures insert while True before atomic replacement and while 1 == 1 before cleanup. Both require the exact unconditional early-termination rejection. A while False branch containing a raise is the positive control and must not be treated as executable early termination.
+
+### Why safe
+- Only the existing CI-bound read-only workflow negative harness and isolated in-memory diagnostic mutations changed. Publisher workflow, Production Status, OPS-P0-007 snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- For a diagnostic that must complete an atomic write and cleanup, an unbounded deterministic loop is a fail-closed reachability violation even without an explicit exit. Use bounded literal-only truth evaluation and positive controls for dead loops, without executing mutated diagnostic code.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the canonical diagnostic intentionally introduces bounded loop semantics or a newly observed deterministic loop bypass escapes this classifier.
