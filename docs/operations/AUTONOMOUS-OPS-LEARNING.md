@@ -3817,3 +3817,30 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed readonly workflow trigger architecture or required input set changes, or an observed missing-trigger bypass escapes the bounded negative suite.
+
+## 2026-10-24 — Every snapshot corruption negative must have an exact diagnostic mapping
+
+### Outcome
+- Commit `37f81767fed1f50ab19c09c122f67ecc7d06080b` removes the fallback that allowed a new snapshot corruption case to count as successful negative proof merely because any canonical rejection occurred.
+- Exact-source OPS P0 007 Admission Snapshot Readonly run `40012220075` completed SUCCESS. Its job log reports strict snapshot negative validation PASS, twenty-two controlled validator corruption cases rejected, workflow permission negative PASS and `production decision: NO_GO`.
+
+### Evidence
+- The existing snapshot negative runner used `CASE_SPECIFIC_VALIDATOR_REJECTIONS.get(label)` and skipped exact diagnostic verification for an unmapped label. A newly added case could therefore be rejected for an unrelated canonical error and still count as a passing negative.
+- The current mapping has twenty-four unique labels: twenty-two registry/snapshot/status corruption cases and two source/module symlink escape cases. The new guard requires exact set equality and fails closed on unknown labels before treating a validator rejection as expected.
+- Two synthetic unknown-label classifier controls require the precise missing-mapping diagnostic. Existing exact-diagnostic and output/exit controls remain intact.
+
+### Why safe
+- Only the existing CI-reachable strict snapshot corruption negative suite changed. It exercises isolated/restored canonical authority mutations but does not create production evidence, recovery generations, objectives, executable drills, credentials, traffic, readiness or promotion authority.
+- Production Status, strict snapshot, typed registries and actual workflows were not changed by this commit.
+
+### Reusable mechanism
+- Negative test registration must be closed over its expected diagnostic map. Require both complete coverage and absence of stale labels; never silently fall back to generic fail-closed prefixes for new cases.
+- Keep positive baseline, exact exit status, empty contradictory stdout, no traceback, exact stderr and protected bytes/modes checks separate from the case-map completeness proof.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct eligible environments, explicitly human-approved current recovery objective, current executable reviewed request, complete typed eight-domain coverage, independent review and separate human production promotion remain mandatory.
+- This learning and CI evidence cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only when a new reviewed corruption case is added, an existing expected canonical diagnostic changes, or an observed unrelated failure escapes the strict mapping.
