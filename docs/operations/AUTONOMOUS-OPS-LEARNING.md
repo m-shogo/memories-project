@@ -4363,3 +4363,26 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe and protected-authority check
 - The modification affects only an executable synthetic negative test, not any production or recovery evidence, generation, objective, drill, registry, credential, traffic, readiness, snapshot or promotion authority.
 - `productionDecision=NO_GO` and strict OPS-P0-007 preflight/typed eight-domain/independent-review/current executable request/separate human-promotion gates remain mandatory. Learning records and CI are not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Typed writer CLI guard must be a live first AST statement
+
+### Outcome and observed evidence
+- Commit `ae07cf86d19d220c6d72d2692de2fa4ab813f386` introduces a CI-reachable AST classifier that requires the writer's synchronous `main()` to begin with a direct, argument-free `require_cli_authorities()` call. Synthetic comment, string, dead-branch, early-return and async substitutes must each fail with the intended diagnostic. This closes the earlier `inspect.getsource(...).find(...)` text-only proof gap.
+- Exact-source Readonly run `40033649503` FAILED at `writer main source syntax invalid` in the synthetic positive control. Commit `d52da15e3b23e185c0d6f7da14dff6fbb3e94885` corrected the fixture. Exact-source Readonly run `40033671563` and Backup and Restore Contracts run `40033671622` then completed SUCCESS.
+- Post-write comparison from `58df0753` to `d52da15e` changed only the existing CI-bound writer-authority negative script (42 added lines). Production Status, strict OPS-P0-007 snapshot and autonomous-learning contract blobs remained unchanged.
+
+### Symptom, evidence, root cause, and failed approach
+- Symptom: the first AST fixture emitted literal double-escaped `\\n` sequences instead of real line separators, so the synthetic positive-control Python text failed parsing before testing the intended classifier.
+- Evidence: Readonly `40033649503` reported `TYPED NON-RESURRECTION WRITER AUTHORITY NEGATIVE FAILED: writer main source syntax invalid`. Source inspection counted 18 double-escaped newline sequences inside the fixture block.
+- Verified root cause: the JavaScript edit generated Python string literals with two backslashes before `n`, a previously recorded class of fixture-escaping failure. This repeated known failure was not an authority bypass; the positive-control syntax guard correctly rejected it.
+- Failed approach: writing escaped fixture source without checking the final Python string-literal escape depth before committing.
+
+### Correction, recurrence guard, and retry condition
+- Replace double-escaped fixture newline sequences with one source-level backslash and `n`; re-read the exact committed source and assert zero double-escaped sequences in the classifier fixture block. Keep the AST positive control as an executable precondition, plus five exact-diagnostic negative controls.
+- Reusable mechanism: prefer source-level AST parse of a canonical positive control and diagnostic-specific negative mutations over substring checks; verify literal escaping **before** committing generated source, particularly across JavaScript-to-Python boundaries.
+- Retry only if exact-source CI shows a new concrete diagnostic failure, the reviewed writer entrypoint legitimately changes, or a new dead-code/comment/shadowing bypass is observed. Do not repeat the unchanged source-binding clean-worktree blocker or the known double-escaped fixture construction.
+
+### Why safe and protected-authority check
+- Only the existing synthetic CI negative changed. The production writer, typed registry, recovery generation/objective/drill/evidence authorities, credentials, traffic, readiness, strict snapshot and promotion authority were not written.
+- `productionDecision=NO_GO` remains mandatory; strict semantically eligible distinct environments, human-approved current objective, executable reviewed request for new generation evidence, complete typed eight-domain coverage, independent review and separate human promotion are unchanged.
+- Learning and CI are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
