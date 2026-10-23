@@ -101,21 +101,21 @@ def prove_comment_only_commands_rejected() -> None:
 
 
 def require_readonly_pr_permissions(workflow: str) -> None:
-    # GitHub accepts 'permissions: write-all'; merely banning 'contents: write'
+    # GitHub accepts 'permissions: write-all'; banning 'contents: write' alone
     # does not prevent a PR workflow from receiving a write-capable token.
     require(
-        re.search(r"(?m)^[ \\t]*permissions:[ \\t]*write-all(?:[ \\t]*(?:#.*)?)?$", workflow) is None,
+        re.search(r"(?m)^ *permissions: *write-all(?: *(?:#.*)?)?$", workflow) is None,
         "strict snapshot PR workflow must never use permissions: write-all",
     )
     require(
-        re.search(r"(?m)^permissions:[ \\t]*\\n[ \\t]+contents:[ \\t]*read(?:[ \\t]*(?:#.*)?)?$", workflow) is not None,
+        re.search(r"(?m)^permissions: *\n +contents: *read(?: *(?:#.*)?)?$", workflow) is not None,
         "strict snapshot PR workflow must declare top-level contents: read",
     )
     require("contents: write" not in workflow, "strict snapshot PR workflow must never receive contents: write")
 
 
 def prove_write_all_permissions_rejected() -> None:
-    require_readonly_pr_permissions("permissions:\\n  contents: read\\n".replace("\\n", "\n"))
+    require_readonly_pr_permissions("permissions:\n  contents: read\n")
     for fixture in (
         "permissions: write-all\n# contents: read\n",
         "permissions:\n  contents: read\njobs:\n  check:\n    permissions: write-all\n",
