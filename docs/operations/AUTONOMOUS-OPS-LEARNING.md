@@ -3529,3 +3529,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed PR trigger/path architecture changes or a newly observed missing-path event bypass escapes this bounded guard.
 
+
+## 2026-10-24 — PR path filters must cover every typed recovery authority contract
+
+### Outcome
+- Commit d50f7e4b8aca12aedd1291fd59f6eab94458b38f extends the strict OPS-P0-007 PR trigger guard to require thirteen reviewed environment-generation, eligibility, recovery-objective, drill-request, generation-evidence and typed non-resurrection contracts, registries and schemas.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40007628427 completed SUCCESS at this commit.
+
+### Evidence
+- The initial event/path guard protected the core snapshot/status, workflows, evidence directory and executable validator chain, but did not explicitly require each typed recovery authority contract or registry in the PR path filter. Removing a registry path could suppress the PR admission workflow for a change to that authority alone.
+- Thirteen new negative fixtures each remove one distinct required contract/registry/schema path and demand the exact PR trigger/path authority-drift rejection. The canonical path filter remains a positive control.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and in-memory path-filter fixtures changed. The actual PR/publisher workflows, Production Status, strict snapshot, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Trigger coverage must include every authority that feeds eligibility, approved objectives, reviewed requests, generation evidence and eight-domain non-resurrection review. Enumerate required inputs in a bounded constant and prove each omission is rejected individually.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed typed recovery authority set changes or a newly observed path-filter omission escapes the bounded contract negative suite.
+
