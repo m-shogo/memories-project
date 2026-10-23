@@ -36,9 +36,12 @@ def main() -> int:
     before_temps = {p.name for p in target.parent.glob(f"{temp_prefix}*.tmp")}
 
     real_replace = os.replace
+    target_replace_attempts = 0
 
     def reject_replace(src, dst):
+        nonlocal target_replace_attempts
         if Path(dst) == target:
+            target_replace_attempts += 1
             raise OSError("injected atomic replacement failure")
         return real_replace(src, dst)
 
@@ -46,11 +49,13 @@ def main() -> int:
         with mock.patch.object(module.os, "replace", side_effect=reject_replace):
             atomic_write(target, before.decode("utf-8") + "\n")
     except SystemExit as exc:
-        if "cannot atomically write" not in str(exc):
+        if "cannot atomically write" not in str(exc) or "injected atomic replacement failure" not in str(exc):
             raise SystemExit(f"unexpected atomic-write failure: {exc}") from exc
     else:
         raise SystemExit("injected atomic replacement failure was accepted")
 
+    if target_replace_attempts != 1:
+        raise SystemExit(f"expected exactly one injected canonical replacement attempt, got {target_replace_attempts}")
     if target.read_bytes() != before:
         raise SystemExit("failed atomic replacement mutated canonical snapshot bytes")
     if stat.S_IMODE(target.stat().st_mode) != before_mode:
@@ -60,6 +65,7 @@ def main() -> int:
         raise SystemExit("failed atomic replacement left temporary residue")
 
     print("OPS-P0-007 strict snapshot atomic replacement negative proof: PASS")
+    print("exact injected replacement failure and one canonical target attempt verified: true")
     return 0
 
 
