@@ -484,37 +484,61 @@ def run_generator_atomic_write_failure() -> None:
         raise Fail(f"atomic replace rejection left temporary strict snapshot authority files: {leftovers}")
 
 
+def require_authority_substitution_diagnostic(code: object, label: str) -> None:
+    expected = f"strict snapshot authority drift: {label}"
+    if not isinstance(code, str) or code != expected:
+        raise Fail(f"{label}: substitution rejected outside exact canonical authority path guard: {code!r}")
+
+
+def prove_authority_substitution_classifier() -> None:
+    label = "snapshot output"
+    expected = f"strict snapshot authority drift: {label}"
+    require_authority_substitution_diagnostic(expected, label)
+    for wrong in (
+        expected + " unrelated",
+        "unrelated " + expected,
+        "strict snapshot authority drift: recovery objective registry",
+        1,
+    ):
+        try:
+            require_authority_substitution_diagnostic(wrong, label)
+        except Fail as exc:
+            if "outside exact canonical authority path guard" not in str(exc):
+                raise Fail(f"authority substitution classifier rejected outside intended guard: {exc}") from exc
+        else:
+            raise Fail("authority substitution classifier accepted unrelated or wrong-path rejection")
+
+
 def run_generator_authority_substitution() -> None:
     before = snapshot_state()
     module = load_generator_module()
     substitutions = (
-        ("OUTPUT", module.OBJECTIVES),
-        ("ELIGIBILITY_HELPER", module.OBJECTIVE_WRITER),
-        ("BLOCKER_HELPER", module.OBJECTIVE_WRITER),
-        ("SNAPSHOT_VALIDATOR", module.OBJECTIVE_WRITER),
-        ("RECOVERY_OBJECTIVE_VALIDATOR", module.OBJECTIVE_WRITER),
-        ("DRILL_REQUEST_VALIDATOR", module.OBJECTIVE_WRITER),
-        ("GEN_EVIDENCE_VALIDATOR", module.OBJECTIVE_WRITER),
-        ("TYPED_VALIDATOR", module.OBJECTIVE_WRITER),
-        ("OBJECTIVES", module.DRILL_REQUESTS),
-        ("DRILL_REQUESTS", module.OBJECTIVES),
-        ("GEN_EVIDENCE", module.TYPED),
-        ("TYPED", module.GEN_EVIDENCE),
-        ("STATUS", module.OBJECTIVES),
-        ("OBJECTIVE_WRITER", module.DRILL_REQUEST_WRITER),
-        ("DRILL_REQUEST_WRITER", module.OBJECTIVE_WRITER),
-        ("GEN_EVIDENCE_WRITER", module.TYPED_WRITER),
-        ("TYPED_WRITER", module.GEN_EVIDENCE_WRITER),
+        ("OUTPUT", module.OBJECTIVES, "snapshot output"),
+        ("ELIGIBILITY_HELPER", module.OBJECTIVE_WRITER, "environment generation eligibility helper"),
+        ("BLOCKER_HELPER", module.OBJECTIVE_WRITER, "backup/restore blocker helper"),
+        ("SNAPSHOT_VALIDATOR", module.OBJECTIVE_WRITER, "snapshot validator"),
+        ("RECOVERY_OBJECTIVE_VALIDATOR", module.OBJECTIVE_WRITER, "recovery objective admission validator"),
+        ("DRILL_REQUEST_VALIDATOR", module.OBJECTIVE_WRITER, "reviewed drill request admission validator"),
+        ("GEN_EVIDENCE_VALIDATOR", module.OBJECTIVE_WRITER, "generation recovery evidence admission validator"),
+        ("TYPED_VALIDATOR", module.OBJECTIVE_WRITER, "typed non-resurrection admission validator"),
+        ("OBJECTIVES", module.DRILL_REQUESTS, "recovery objective registry"),
+        ("DRILL_REQUESTS", module.OBJECTIVES, "restore drill request registry"),
+        ("GEN_EVIDENCE", module.TYPED, "generation recovery evidence registry"),
+        ("TYPED", module.GEN_EVIDENCE, "typed non-resurrection registry"),
+        ("STATUS", module.OBJECTIVES, "production operability status"),
+        ("OBJECTIVE_WRITER", module.DRILL_REQUEST_WRITER, "recovery objective writer"),
+        ("DRILL_REQUEST_WRITER", module.OBJECTIVE_WRITER, "restore drill request writer"),
+        ("GEN_EVIDENCE_WRITER", module.TYPED_WRITER, "generation recovery evidence writer"),
+        ("TYPED_WRITER", module.GEN_EVIDENCE_WRITER, "typed non-resurrection writer"),
     )
-    for field, substitute in substitutions:
+    for field, substitute, label in substitutions:
         original = getattr(module, field)
         try:
             setattr(module, field, substitute)
             try:
                 module.enforce_runtime_authorities()
             except SystemExit as exc:
-                if "strict snapshot authority" not in str(exc):
-                    raise Fail(f"{field} substitution rejected outside authority boundary: {exc}") from exc
+                require_authority_substitution_diagnostic(exc.code, label)
             else:
                 raise Fail(f"strict snapshot generator accepted {field} authority substitution")
         finally:
@@ -675,6 +699,7 @@ def main() -> int:
 
     try:
         prove_snapshot_state_classifier()
+        prove_authority_substitution_classifier()
         prove_temporary_mode_cleanup()
         prove_positive_validator_classifier()
         prove_case_specific_validator_classifier()
