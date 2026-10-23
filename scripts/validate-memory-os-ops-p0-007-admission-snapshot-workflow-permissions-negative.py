@@ -580,6 +580,67 @@ def prove_publisher_shell_fail_closed_negative(publish: str) -> None:
                 raise Fail(f"strict snapshot publisher accepted {override} in protected shell")
 
 
+def require_unconditional_pr_admission(workflow: str) -> None:
+    """A conditional or uncalled shell function cannot establish PR admission."""
+    lines = workflow.splitlines()
+    name = "      - name: Generate and validate strict snapshot read-only"
+    starts = [index for index, line in enumerate(lines) if line == name]
+    require(len(starts) == 1, "strict snapshot PR admission run-step authority drift")
+    start = starts[0]
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].startswith("      - ")), len(lines))
+    runs = [index for index in range(start + 1, end) if lines[index] == "        run: |"]
+    require(len(runs) == 1, "strict snapshot PR admission executable run block missing")
+    body = [line[10:].strip() for line in lines[runs[0] + 1:end]
+            if line.startswith("          ")]
+    active = [line for line in body if line and not line.startswith("#")]
+    # This canonical PR admission step is deliberately linear. Unlike the
+    # publisher's explicitly status-capturing generation step, no validator
+    # may be moved behind an unknown conditional or into an uncalled function.
+    control = re.compile(
+        r"^(?:if|elif|else|fi|for|while|until|case|esac|function|eval)\b"
+        r"|^[A-Za-z_]\w*\(\)\s*\{"
+        r"|^bash\s+-c\b"
+    )
+    require(
+        not any(control.search(line) for line in active),
+        "strict snapshot PR admission validators must execute unconditionally",
+    )
+    for validator in FULL_ADMISSION_VALIDATORS:
+        require(
+            active.count(f"python {validator}") == 1,
+            f"strict snapshot PR admission missing unconditional validator: {validator}",
+        )
+
+
+def prove_pr_conditional_admission_rejected(pr: str) -> None:
+    require_unconditional_pr_admission(pr)
+    for validator in FULL_ADMISSION_VALIDATORS:
+        command = f"          python {validator}\n"
+        require(pr.count(command) == 1, f"strict snapshot PR conditional fixture drift: {validator}")
+        for wrapper in (
+            f"          if test \"$ALLOW\" = yes; then\n{command}          fi\n",
+            f"          unused_admission_gate() {{\n{command}          }}\n",
+        ):
+            mutated = pr.replace(command, wrapper, 1)
+            try:
+                require_unconditional_pr_admission(mutated)
+            except Fail as exc:
+                require(
+                    str(exc) == "strict snapshot PR admission validators must execute unconditionally",
+                    f"conditional {validator} rejected outside exact guard: {exc}",
+                )
+            else:
+                raise Fail(f"strict snapshot PR accepted conditional or uncalled validator: {validator}")
+    # Comments and quoted shell text are not themselves control flow.
+    comment = pr.replace(
+        "          set -euo pipefail\n",
+        "          set -euo pipefail\n          # if false; then\n          echo 'if false; then'\n",
+        1,
+    )
+    require_unconditional_pr_admission(comment)
+
+
 def prove_comment_only_commands_rejected() -> None:
     commands = "\n".join(f"          python {validator}" for validator in FULL_ADMISSION_VALIDATORS)
     positive = "jobs:\n  validate:\n    steps:\n      - name: live\n        run: |\n" + commands + "\n"
@@ -892,6 +953,7 @@ def main() -> int:
     prove_symlink_rejected()
     prove_comment_only_commands_rejected()
     prove_pr_shell_fail_closed_negative(PR_WORKFLOW.read_text(encoding="utf-8"))
+    prove_pr_conditional_admission_rejected(PR_WORKFLOW.read_text(encoding="utf-8"))
     prove_write_all_permissions_rejected()
     pr = PR_WORKFLOW.read_text(encoding="utf-8")
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
