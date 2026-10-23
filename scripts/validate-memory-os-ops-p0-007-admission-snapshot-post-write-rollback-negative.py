@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
 SNAPSHOT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
 class Fail(RuntimeError):
@@ -44,6 +45,8 @@ def corrupt_published_snapshot() -> None:
 def run_successful_rollback() -> None:
     snapshot_before = SNAPSHOT.read_bytes()
     original_mode = mode(SNAPSHOT)
+    status_before = STATUS.read_bytes()
+    status_mode = mode(STATUS)
     module = load_generator_module()
     original_replace = module.os.replace
     snapshot_replace_count = 0
@@ -97,11 +100,15 @@ def run_successful_rollback() -> None:
         raise Fail("successful rollback case mutated canonical strict snapshot bytes")
     if mode(SNAPSHOT) != original_mode:
         raise Fail("successful rollback case did not restore original canonical strict snapshot mode")
+    if STATUS.read_bytes() != status_before or mode(STATUS) != status_mode:
+        raise Fail("successful rollback case mutated canonical production status bytes/mode")
 
 
 def run_failed_rollback_preserves_primary_diagnostic() -> None:
     snapshot_before = SNAPSHOT.read_bytes()
     original_mode = mode(SNAPSHOT)
+    status_before = STATUS.read_bytes()
+    status_mode = mode(STATUS)
     module = load_generator_module()
     original_replace = module.os.replace
     snapshot_replace_count = 0
@@ -150,6 +157,9 @@ def run_failed_rollback_preserves_primary_diagnostic() -> None:
 
         if snapshot_replace_count != 2:
             raise Fail(f"expected candidate publication plus rejected rollback replace, observed {snapshot_replace_count}")
+        published = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+        if SNAPSHOT.read_bytes() == snapshot_before or published.get("productionAuthorization") is not True:
+            raise Fail("failed rollback did not retain the injected invalid published candidate")
         if mode(SNAPSHOT) != 0o640:
             raise Fail(f"failed rollback changed canonical snapshot mode before cleanup: {oct(mode(SNAPSHOT))}")
         leftovers = list(SNAPSHOT.parent.glob(f".{SNAPSHOT.name}.*.tmp"))
@@ -164,6 +174,8 @@ def run_failed_rollback_preserves_primary_diagnostic() -> None:
         raise Fail("failed rollback negative cleanup did not restore canonical strict snapshot bytes")
     if mode(SNAPSHOT) != original_mode:
         raise Fail("failed rollback negative cleanup did not restore canonical strict snapshot mode")
+    if STATUS.read_bytes() != status_before or mode(STATUS) != status_mode:
+        raise Fail("failed rollback case mutated canonical production status bytes/mode")
 
 
 def main() -> int:
@@ -176,6 +188,8 @@ def main() -> int:
     print("canonical 0640 mode preserved across candidate publication and rollback: true")
     print("rollback writer failure preserves primary validation diagnostic: true")
     print("rollback writer failure is surfaced as rollback incomplete: true")
+    print("failed rollback leaves the injected invalid candidate until explicit negative cleanup: true")
+    print("canonical production status bytes/mode remain unchanged: true")
     print("temporary snapshot authority residue after rollback attempts: false")
     print("negative cleanup restores canonical strict snapshot bytes/mode: true")
     print("production evidence/readiness/promotion created: false")
