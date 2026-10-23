@@ -278,6 +278,11 @@ def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...],
         raise Fail(f"{label}: generator rejection did not use one intended authority diagnostic: {output!r}")
 
 
+def require_negative_generator_stdout(stdout: str, label: str) -> None:
+    if stdout.strip():
+        raise Fail(f"{label}: canonical generator rejection emitted unexpected stdout")
+
+
 def prove_generator_diagnostic_classifier() -> None:
     for label, expected in EXACT_GENERATOR_REJECTIONS.items():
         require_expected_generator_diagnostic(expected + chr(10), ("strict snapshot authority",), label)
@@ -292,6 +297,17 @@ def prove_generator_diagnostic_classifier() -> None:
     expected = ("canonical OPS-P0-007 blocker authority invalid",)
     valid = "canonical OPS-P0-007 blocker authority invalid: synthetic detail"
     require_expected_generator_diagnostic(valid + "\n", expected, "synthetic positive")
+    require_negative_generator_stdout("", "synthetic clean generator rejection")
+    try:
+        require_negative_generator_stdout(
+            "Memory OS OPS-P0-007 strict admission snapshot generated\n",
+            "synthetic mixed generator output",
+        )
+    except Fail as exc:
+        if "canonical generator rejection emitted unexpected stdout" not in str(exc):
+            raise Fail(f"mixed generator output rejected outside intended guard: {exc}") from exc
+    else:
+        raise Fail("generator rejection classifier accepted a simultaneous success marker")
     nested_prefix = "typed non-resurrection canonical admission authority invalid: local Apple replay restore validator failed:"
     nested_label = "generator canonical blocker replacement"
     nested_line = NESTED_GENERATOR_REJECTIONS[nested_label]
@@ -375,6 +391,7 @@ def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) 
     proc = run_bounded_python(GENERATOR, label)
     if proc.returncode != 1:
         raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
+    require_negative_generator_stdout(proc.stdout, label)
     output = proc.stderr or proc.stdout
     allowed = (expected_messages,) if isinstance(expected_messages, str) else expected_messages
     require_expected_generator_diagnostic(output, allowed, label)
