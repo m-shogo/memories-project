@@ -165,14 +165,14 @@ def require_direct_first_guard(source: str) -> None:
 
 
 def prove_guard_source_classifier() -> None:
-    valid = "def main():\\n    require_cli_authorities()\\n    parser = argparse.ArgumentParser()\\n"
+    valid = "def main():\n    require_cli_authorities()\n    parser = argparse.ArgumentParser()\n"
     require_direct_first_guard(valid)
     negatives = (
-        ("comment", "def main():\\n    # require_cli_authorities()\\n    parser = argparse.ArgumentParser()\\n"),
-        ("string", "def main():\\n    'require_cli_authorities()'\\n    parser = argparse.ArgumentParser()\\n"),
-        ("dead", "def main():\\n    if False:\\n        require_cli_authorities()\\n    parser = argparse.ArgumentParser()\\n"),
-        ("early-return", "def main():\\n    return 0\\n    require_cli_authorities()\\n"),
-        ("async", "async def main():\\n    require_cli_authorities()\\n"),
+        ("comment", "def main():\n    # require_cli_authorities()\n    parser = argparse.ArgumentParser()\n"),
+        ("string", "def main():\n    'require_cli_authorities()'\n    parser = argparse.ArgumentParser()\n"),
+        ("dead", "def main():\n    if False:\n        require_cli_authorities()\n    parser = argparse.ArgumentParser()\n"),
+        ("early-return", "def main():\n    return 0\n    require_cli_authorities()\n"),
+        ("async", "async def main():\n    require_cli_authorities()\n"),
     )
     for label, source in negatives:
         try:
