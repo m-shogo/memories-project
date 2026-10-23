@@ -112,6 +112,7 @@ def main() -> int:
             "reviewDigestMismatch": False,
             "reviewResult": "APPROVED",
             "reviewProductionField": None,
+            "reviewTarget": "BOTH",
         }
 
         valid = base_record(contract)
@@ -140,13 +141,14 @@ def main() -> int:
                 return payload
             for review_type, prefix in review_prefixes.items():
                 if ref.startswith(prefix):
-                    reviewed = refs[:-1] if state["reviewRefsDropOne"] else refs
+                    mutate_review = state["reviewTarget"] in ("BOTH", review_type)
+                    reviewed = refs[:-1] if mutate_review and state["reviewRefsDropOne"] else refs
                     reviewer = state["securityReviewer"] if review_type == "SECURITY" else state["operabilityReviewer"]
                     digests = dict(expected_digests)
-                    if state["reviewDigestMismatch"]:
+                    if mutate_review and state["reviewDigestMismatch"]:
                         digests[refs[0]] = "0" * 64
-                    payload = review_payload(generation=state["reviewGeneration"], source_sha=state["reviewSha"], record_id=state["reviewRecordId"], review_type=review_type, reviewer=reviewer, refs=reviewed, digests=digests, result=state["reviewResult"])
-                    if state["reviewProductionField"] is not None:
+                    payload = review_payload(generation=state["reviewGeneration"], source_sha=state["reviewSha"], record_id=state["reviewRecordId"], review_type=review_type, reviewer=reviewer, refs=reviewed, digests=digests, result=state["reviewResult"] if mutate_review else "APPROVED")
+                    if mutate_review and state["reviewProductionField"] is not None:
                         payload[state["reviewProductionField"]] = True
                     return payload
             return real_load(path)
@@ -186,6 +188,9 @@ def main() -> int:
             "review domain evidence digest binding mismatch": "SECURITY review domain evidence digest binding mismatch",
             "security and operability reviewer identity reuse": "security and operability reviewers must be independent",
             "review result not APPROVED": "SECURITY review must be APPROVED",
+            "operability review exact domain bundle mismatch": "OPERABILITY review does not bind exact typed domain bundle",
+            "operability review domain evidence digest binding mismatch": "OPERABILITY review domain evidence digest binding mismatch",
+            "operability review result not APPROVED": "OPERABILITY review must be APPROVED",
             "typed writer registeredRecordCount drift before append": "registeredRecordCount drift",
             "typed writer boolean completeRecordCount before append": "completeRecordCount drift",
             "typed writer candidateCoveredCount drift before append": "candidateCoveredCount drift",
@@ -200,6 +205,7 @@ def main() -> int:
         for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
             EXPECTED_DIAGNOSTICS[f"domain evidence {field} production boundary"] = f"domain {domain_name} evidence {field} must remain false"
             EXPECTED_DIAGNOSTICS[f"review evidence {field} production boundary"] = f"SECURITY review {field} must remain false"
+            EXPECTED_DIAGNOSTICS[f"operability review evidence {field} production boundary"] = f"OPERABILITY review {field} must remain false"
 
         # A generic writer.Fail must never count as proof of the intended rejection.
         try:
@@ -255,6 +261,19 @@ def main() -> int:
             state["reviewProductionField"] = field
             expect_rejected(f"review evidence {field} production boundary", lambda: writer.validate_record(valid))
         state["reviewProductionField"] = None
+
+        # Target OPERABILITY alone: SECURITY remains valid so its approval cannot mask an OPERABILITY failure.
+        state["reviewTarget"] = "OPERABILITY"
+        state["reviewRefsDropOne"] = True; expect_rejected("operability review exact domain bundle mismatch", lambda: writer.validate_record(valid)); state["reviewRefsDropOne"] = False
+        state["reviewDigestMismatch"] = True; expect_rejected("operability review domain evidence digest binding mismatch", lambda: writer.validate_record(valid)); state["reviewDigestMismatch"] = False
+        state["reviewResult"] = "REJECTED"; expect_rejected("operability review result not APPROVED", lambda: writer.validate_record(valid)); state["reviewResult"] = "APPROVED"
+        for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
+            state["reviewProductionField"] = field
+            expect_rejected(f"operability review evidence {field} production boundary", lambda: writer.validate_record(valid))
+        state["reviewProductionField"] = None
+        state["reviewTarget"] = "BOTH"
+        writer.validate_record(valid)
+        print("PASS accept: independent OPERABILITY review negative probes restore valid review state")
 
         empty_registry = {
             "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
