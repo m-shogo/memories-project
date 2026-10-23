@@ -763,6 +763,93 @@ def prove_pr_shell_fail_closed_negative(pr: str) -> None:
                 raise Fail(f"strict snapshot PR shell accepted {override}")
 
 
+def require_pr_source_verification(workflow: str) -> None:
+    """Bind the PR's exact-source assertion to one unconditional reviewed step."""
+    lines = workflow.splitlines()
+    marker = "      - name: Verify exact pull request source"
+    starts = [index for index, line in enumerate(lines) if line == marker]
+    require(len(starts) == 1, "strict snapshot PR source verification step authority drift")
+    start = starts[0]
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].startswith("      - ")),
+        len(lines),
+    )
+    expected = [
+        marker,
+        "        run: |",
+        "          set -euo pipefail",
+        '          expected="${{ github.event.pull_request.head.sha }}"',
+        '          test -n "$expected"',
+        '          test "$(git rev-parse HEAD)" = "$expected"',
+        '          test -z "$(git status --porcelain)"',
+    ]
+    require(
+        lines[start:end] == expected,
+        "strict snapshot PR source verification step authority drift",
+    )
+
+
+def prove_pr_source_verification_negative(pr: str) -> None:
+    require_pr_source_verification(pr)
+    substitutions = (
+        (
+            '          expected="${{ github.event.pull_request.head.sha }}"\n',
+            '          expected="${{ github.sha }}"\n',
+        ),
+        (
+            '          test -n "$expected"\n',
+            '          # missing nonempty source assertion\n',
+        ),
+        (
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          # missing checked-out source assertion\n',
+        ),
+        (
+            '          test -z "$(git status --porcelain)"\n',
+            '          # missing clean-worktree assertion\n',
+        ),
+        (
+            '          test -n "$expected"\n',
+            '          exit 0\n          test -n "$expected"\n',
+        ),
+        (
+            "      - name: Verify exact pull request source\n        run: |\n",
+            "      - name: Verify exact pull request source\n        if: false\n        run: |\n",
+        ),
+        (
+            "      - name: Verify exact pull request source\n        run: |\n",
+            "      - name: Verify exact pull request source\n        continue-on-error: true\n        run: |\n",
+        ),
+        (
+            '          test -z "$(git status --porcelain)"\n',
+            '          true\n          test -z "$(git status --porcelain)"\n',
+        ),
+    )
+    for original, replacement in substitutions:
+        require(pr.count(original) == 1, "strict snapshot PR source verification fixture drift")
+        mutated = pr.replace(original, replacement, 1)
+        require(mutated != pr, "strict snapshot PR source verification mutation was a no-op")
+        try:
+            require_pr_source_verification(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR source verification step authority drift",
+                f"PR source verification rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail("strict snapshot PR accepted weakened source verification")
+    duplicate = pr + "\n      - name: Verify exact pull request source\n        run: |\n          exit 0\n"
+    try:
+        require_pr_source_verification(duplicate)
+    except Fail as exc:
+        require(
+            str(exc) == "strict snapshot PR source verification step authority drift",
+            f"duplicate PR source verification rejected outside exact guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot PR accepted duplicate source verification")
+
+
 def publisher_protected_shell_starts(workflow: str) -> list[int]:
     lines = workflow.splitlines()
     names = (
@@ -1492,6 +1579,7 @@ def main() -> int:
     pr = PR_WORKFLOW.read_text(encoding="utf-8")
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
     prove_checkout_comment_bypass_rejected(pr, publish)
+    prove_pr_source_verification_negative(pr)
 
     require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
     require_readonly_pr_permissions(pr)
