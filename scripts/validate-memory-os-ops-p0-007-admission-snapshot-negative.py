@@ -100,6 +100,11 @@ CASE_SPECIFIC_VALIDATOR_REJECTIONS = {
     "snapshot downstream requirement projection": "snapshot downstream requirement projection drift",
     "snapshot next action projection": "snapshot nextAction projection drift",
     "production decision promotion": "status production decision drift",
+    "objective boolean aggregate count": "recovery objective canonical registry authority invalid: approvedObjectiveCount must be a non-boolean integer",
+    "objective append-only boundary": "recovery objective canonical registry authority invalid: objectives registry must remain append-only",
+    "objective schema boundary": "recovery objective canonical registry authority invalid: registry schema drift",
+    "objective production evidence boundary": "recovery objective canonical registry authority invalid: objectives registry productionEvidence must remain false",
+    "objective production readiness boundary": "recovery objective canonical registry authority invalid: objectives registry productionReady must remain false",
 }
 
 
