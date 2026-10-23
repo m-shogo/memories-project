@@ -1869,3 +1869,45 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`productionDecision=NO_GO`), and OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remained unchanged. The snapshot retains zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
 - Learning history is append-only execution guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Protected learning callables must not be rebound in module control flow
+
+### Symptom
+- Direct top-level assignment and import checks did not cover module-level loop targets or imports nested under a module-level `if`. Such code could replace the checked `main` or `validate_learning_guards` binding while leaving their original definitions and AST call sites present.
+
+### Evidence
+- The previous validator inspected direct top-level `Assign`, `AnnAssign`, `Import`, `ImportFrom` and async definitions, but did not recursively inspect module control-flow statements for binding operations. The new isolated fixtures demonstrate top-level `for` targets and a nested import alias; no actual malicious CI or production incident was observed.
+
+### Root cause or unknown
+- Verified static binding gap: a module-level compound statement can rebind a name without being a direct module-body assignment/import node.
+
+### Failed approach
+- Treating only direct module-body assignment/import statements as exhaustive protection of the executable entrypoint's callable identities.
+
+### Correction
+- Commit `b867656ddacbc216f84b240d595df490315fd2b0` adds a bounded module-scope AST walker that detects stored/deleted protected names, import aliases, exception/pattern captures and nested module control-flow bindings while excluding function/class/comprehension local scopes.
+- Commit `ac14ca155dd9dbcb7fb30885049cb33e315a13e7` adds three positive-controlled negative fixtures for a `main` loop target, a learning-guard loop target and a nested import alias, each bound to the intended canonical diagnostic.
+- Commit `69d80eb6cabfb3e3ac9ddb3a2090c240831c1a6b` raises the existing operability CI negative floor to 74.
+
+### Recurrence guard
+- The canonical learning validator now checks protected callable names across module control-flow bindings, and the negative suite exercises three independent bypass classes in disposable fixtures. The existing CI caller rejects fewer than 74 fail-closed cases.
+
+### Retry condition
+- Revisit if a new executable module-binding mechanism escapes the bounded AST walker or the canonical entrypoint's architecture legitimately changes. Do not infer that static AST checks prevent arbitrary runtime namespace manipulation.
+
+### Outcome
+- Three code commits landed on `so`; exact-source Operability Contracts run `39953973857` completed SUCCESS on `69d80eb6cabfb3e3ac9ddb3a2090c240831c1a6b`.
+
+### Success evidence
+- CI job `120415075695` logged `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (74 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+- Compare `5c2314b2eeb47664556b08eecdb3f77f16227acc...69d80eb6cabfb3e3ac9ddb3a2090c240831c1a6b` changed only the two existing learning validator scripts and operability CI entrypoint.
+
+### Why safe
+- The new checks are source-only fail-closed validation; the negative mutations are temporary fixtures. No production-equivalent generation, objective, reviewed request, recovery evidence, credential, traffic, readiness or promotion authority was changed.
+
+### Reusable mechanism
+- For protected Python module callables, walk module-level compound statements for name-binding operations while excluding local scopes. Require isolated positive-controlled negatives and exact-source CI proof rather than accepting AST definition/call presence alone.
+
+### Protected-authority check
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`productionDecision=NO_GO`), and strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remained unchanged. The snapshot retains zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records, and final candidates. Typed non-resurrection still requires all eight domains and two independent bundle/digest-bound reviews; separate human promotion remains mandatory.
+- Learning history is append-only execution guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
