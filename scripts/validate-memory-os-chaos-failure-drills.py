@@ -104,6 +104,9 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
         require(item.get("integrityResult") == "NOT_RUN",
                 f"{scenario_id} integrity must remain NOT_RUN")
         require(item.get("exitCode") is None, f"{scenario_id} exitCode must be null")
+        duration = item.get("durationSeconds")
+        require(type(duration) in (int, float) and duration == 0,
+                f"{scenario_id} NOT_RUN durationSeconds must be zero")
 
     require(result.get("overallResult") == "PARTIAL_PASS",
             "two CI drills cannot claim complete chaos PASS")
