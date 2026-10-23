@@ -321,21 +321,28 @@ def prove_generator_diagnostic_classifier() -> None:
             raise Fail("generator classifier accepted unrelated or multiline rejection")
 
 
+def snapshot_state() -> tuple[bytes, int, bool]:
+    return SNAPSHOT.read_bytes(), mode(SNAPSHOT), SNAPSHOT.is_symlink()
+
+
 def require_snapshot_state_unchanged(
-    before: tuple[bytes, int], after: tuple[bytes, int], label: str
+    before: tuple[bytes, int, bool], after: tuple[bytes, int, bool], label: str
 ) -> None:
     if before[0] != after[0]:
         raise Fail(f"{label}: rejected generator attempt mutated deterministic snapshot")
     if before[1] != after[1]:
         raise Fail(f"{label}: rejected generator attempt changed deterministic snapshot mode")
+    if before[2] != after[2]:
+        raise Fail(f"{label}: rejected generator attempt changed deterministic snapshot symlink status")
 
 
 def prove_snapshot_state_classifier() -> None:
-    original = (b"canonical snapshot", 0o644)
+    original = (b"canonical snapshot", 0o644, False)
     require_snapshot_state_unchanged(original, original, "synthetic unchanged")
     for mutated, expected in (
-        ((b"changed snapshot", 0o644), "mutated deterministic snapshot"),
-        ((b"canonical snapshot", 0o600), "changed deterministic snapshot mode"),
+        ((b"changed snapshot", 0o644, False), "mutated deterministic snapshot"),
+        ((b"canonical snapshot", 0o600, False), "changed deterministic snapshot mode"),
+        ((b"canonical snapshot", 0o644, True), "changed deterministic snapshot symlink status"),
     ):
         try:
             require_snapshot_state_unchanged(original, mutated, "synthetic drift")
@@ -347,7 +354,7 @@ def prove_snapshot_state_classifier() -> None:
 
 
 def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) -> None:
-    before = (SNAPSHOT.read_bytes(), mode(SNAPSHOT))
+    before = snapshot_state()
     proc = run_bounded_python(GENERATOR, label)
     if proc.returncode != 1:
         raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
@@ -356,11 +363,11 @@ def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) 
     require_expected_generator_diagnostic(output, allowed, label)
     if "Traceback (most recent call last)" in output:
         raise Fail(f"{label}: generator rejection surfaced an implementation exception")
-    require_snapshot_state_unchanged(before, (SNAPSHOT.read_bytes(), mode(SNAPSHOT)), label)
+    require_snapshot_state_unchanged(before, snapshot_state(), label)
 
 
 def run_generator_post_write_validator_substitution_rejected() -> None:
-    before = (SNAPSHOT.read_bytes(), mode(SNAPSHOT))
+    before = snapshot_state()
     module = load_generator_module()
     original_validator = module.validate_generated_snapshot
 
@@ -379,11 +386,11 @@ def run_generator_post_write_validator_substitution_rejected() -> None:
     finally:
         module.validate_generated_snapshot = original_validator
 
-    require_snapshot_state_unchanged(before, (SNAPSHOT.read_bytes(), mode(SNAPSHOT)), "post-write validator substitution")
+    require_snapshot_state_unchanged(before, snapshot_state(), "post-write validator substitution")
 
 
 def run_generator_full_admission_chain_required() -> None:
-    before = (SNAPSHOT.read_bytes(), mode(SNAPSHOT))
+    before = snapshot_state()
     module = load_generator_module()
     original_validators = module.run_full_admission_validators
 
@@ -402,7 +409,7 @@ def run_generator_full_admission_chain_required() -> None:
     finally:
         module.run_full_admission_validators = original_validators
 
-    require_snapshot_state_unchanged(before, (SNAPSHOT.read_bytes(), mode(SNAPSHOT)), "full admission helper substitution")
+    require_snapshot_state_unchanged(before, snapshot_state(), "full admission helper substitution")
 
 
 def run_generator_atomic_write_mode_preservation() -> None:
@@ -478,7 +485,7 @@ def run_generator_atomic_write_failure() -> None:
 
 
 def run_generator_authority_substitution() -> None:
-    before = (SNAPSHOT.read_bytes(), mode(SNAPSHOT))
+    before = snapshot_state()
     module = load_generator_module()
     substitutions = (
         ("OUTPUT", module.OBJECTIVES),
@@ -513,7 +520,7 @@ def run_generator_authority_substitution() -> None:
         finally:
             setattr(module, field, original)
     module.enforce_runtime_authorities()
-    require_snapshot_state_unchanged(before, (SNAPSHOT.read_bytes(), mode(SNAPSHOT)), "generator authority substitution")
+    require_snapshot_state_unchanged(before, snapshot_state(), "generator authority substitution")
 
 
 def mutate_field(field: str, value: Any) -> Callable[[dict[str, Any]], None]:
@@ -705,6 +712,8 @@ def main() -> int:
         restore_all(originals)
 
     for path, payload in originals.items():
+        if path.is_symlink():
+            raise Fail(f"negative suite left canonical authority as symlink: {path.relative_to(ROOT)}")
         if path.read_bytes() != payload:
             raise Fail(f"negative suite mutated canonical authority: {path.relative_to(ROOT)}")
         if mode(path) != original_modes[path]:
