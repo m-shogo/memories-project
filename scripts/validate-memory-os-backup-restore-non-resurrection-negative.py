@@ -24,6 +24,10 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
 
+def require_fixture_path_vacant(path: Path) -> None:
+    # Never delete or replace an existing repository artifact to seed a negative fixture.
+    require(not path.exists() and not path.is_symlink(), f"negative fixture path already occupied: {path}")
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -385,17 +389,46 @@ def main() -> int:
         expect_rejected("writer evidence ref absolute path", lambda: writer.repo_ref(str((ROOT / "SECURITY.md").resolve()), "securityReviewRef"))
         expect_rejected("writer evidence ref parent traversal alias", lambda: writer.repo_ref("docs/../SECURITY.md", "securityReviewRef"))
 
+        # Positive/negative controls for collision protection live entirely in the temp fixture.
+        occupied = Path(tmp) / "occupied-negative-fixture.json"
+        occupied.write_bytes(b"sentinel")
+        try:
+            require_fixture_path_vacant(occupied)
+        except Fail as exc:
+            require(str(exc) == f"negative fixture path already occupied: {occupied}", "occupied-file collision diagnostic drift")
+            require(occupied.read_bytes() == b"sentinel", "occupied fixture file was changed")
+            print("PASS reject: occupied negative fixture file is preserved")
+        else:
+            raise Fail("occupied negative fixture file unexpectedly accepted")
+        dangling = Path(tmp) / "occupied-dangling-symlink"
+        dangling.symlink_to(Path(tmp) / "missing-target")
+        try:
+            try:
+                require_fixture_path_vacant(dangling)
+            except Fail as exc:
+                require(str(exc) == f"negative fixture path already occupied: {dangling}", "dangling-symlink collision diagnostic drift")
+                require(dangling.is_symlink(), "dangling symlink was changed")
+                print("PASS reject: dangling negative fixture symlink is preserved")
+            else:
+                raise Fail("dangling negative fixture symlink unexpectedly accepted")
+        finally:
+            dangling.unlink()
+
         external_evidence = Path(tmp) / "external-evidence.json"
         external_evidence.write_text("{}\n", encoding="utf-8")
         symlink_ref = prefixes[domain_name] + "negative-external-symlink.json"
         symlink_path = ROOT / symlink_ref
         symlink_path.parent.mkdir(parents=True, exist_ok=True)
+        require_fixture_path_vacant(symlink_path)
+        created_symlink = False
         try:
-            symlink_path.unlink(missing_ok=True)
             symlink_path.symlink_to(external_evidence)
+            created_symlink = True
             expect_rejected("writer repo-local evidence symlink escaping repository", lambda: writer.repo_ref(symlink_ref, f"domains.{domain_name}.evidenceRef"))
         finally:
-            symlink_path.unlink(missing_ok=True)
+            if created_symlink:
+                require(symlink_path.is_symlink() and symlink_path.resolve() == external_evidence.resolve(), "negative fixture symlink identity drift before cleanup")
+                symlink_path.unlink()
 
         missing_file = copy.deepcopy(valid); missing_file["recordId"] = "brnr_missing_evidence_file"
         expect_rejected("typed evidence file must exist", lambda: writer.validate_record(missing_file))
