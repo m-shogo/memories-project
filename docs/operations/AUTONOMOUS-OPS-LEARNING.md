@@ -4101,3 +4101,23 @@ a promotion decision, a recovery objective, or drill evidence.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates.
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct eligible environments, explicitly human-approved current recovery objective, current executable reviewed request, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory.
 - Learning/CI outcomes cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Generator rejection probes must preserve recovery registry identity
+
+### Outcome and evidence
+- Commit `bea92e9626daf1bd2b50c6594eda3596dccc1a32` extends the existing CI-bound generator execution-authority negative to protect six canonical recovery registries in addition to the strict snapshot, Production Status and generator.
+- Source-read post-write verification found nine protected paths, three uses of the shared protected set (preflight, each rejected substitution and final comparison), and unchanged canonical snapshot/Production Status blobs. Exact-source Actions runs `40018062428` (readonly) and `40018062742` (publisher) were in progress at this observation; **CI success is not claimed**.
+
+### Why safe
+- Only the existing generator negative harness changed. In-memory helper/path substitutions are restored, while byte content, file inode/mode, parent identity and resolved path are compared. No registry, actual generator, production status, snapshot, evidence, credential, traffic, readiness or promotion authority was written.
+
+### Reusable mechanism
+- A negative proof must verify non-mutation of *all* recovery authority inputs it could conceivably affect, not only its immediate output. Centralize the protected-path set and require canonical non-symlink paths before executing failure injections; compare complete identity and bytes after each rejected probe and at suite completion.
+- This is CI/test evidence only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered and semantically eligible generations remain distinct; unsuperseded eligible generations from distinct environments, explicit human-approved current objective, current executable reviewed request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate human promotion authority remain mandatory.
+
+### Retry condition
+- Revisit this guard if an observed exact-source CI failure identifies a new required path/precondition, or a newly discovered mutation escapes the expanded protected-state comparison. Do not retry the unrelated unchanged source-binding clean-worktree blocker.
