@@ -1401,3 +1401,47 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-change re-read confirmed unchanged autonomous-learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
 - This append-only learning record is execution history only; it cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Learning CI reachability requires an AST-proven live main call
+
+### Symptom
+- The canonical autonomous-learning validator checked that `validate_learning_guards(failures)` appeared as source text in the CI entrypoint. A comment, quoted literal or dead branch could retain that substring without invoking either bound guard.
+
+### Evidence
+- Before commit `7b2b88180b8786c0e9dcca257bb66287d872bb71`, the validator enforced a textual fragment list but did not parse the entrypoint's executable `main()` body.
+- The existing negative suite covered complete removal of the invocation but did not preserve its text while removing executable reachability.
+- An isolated four-case AST reproduction accepted the direct call and rejected comment-only, quoted and `if False` forms.
+
+### Root cause or unknown
+- Verified: source-substring presence was being treated as live call-site proof. No actual workflow was observed bypassing the learning guards.
+
+### Failed approach
+- Requiring a recognizable invocation fragment without binding it to a direct executable statement in the entrypoint's `main()`.
+
+### Correction
+- Commit `7b2b88180b8786c0e9dcca257bb66287d872bb71` parses the bound entrypoint with Python AST, requires one `main` definition and one direct `validate_learning_guards(failures)` expression in its body, and emits controlled validation failures on missing/invalid syntax.
+- Commit `7013639b919fedc2c1ac75a1a0828b7b5d745123` added three isolated comment-only, quoted and dead-branch invocation negatives.
+- Commit `87b74fadbeb66b4c1fa5b5ece3453065934d61de` raised the existing CI entrypoint's minimum negative suite count to 45.
+
+### Recurrence guard
+- The canonical positive validator now fails closed if a comment or non-executed expression substitutes for the direct learning guard invocation. Three dedicated negative mutations retain the textual fragment while proving AST-level rejection.
+- The existing CI caller enforces a 45-case minimum, a controlled child PASS marker, and an observed exact-source execution result. This direct-main-call proof does not claim to solve every possible Python control-flow or workflow path-filter bypass.
+
+### Retry condition
+- Revisit if the canonical entrypoint legitimately changes its invocation structure or a new reachable-code bypass is demonstrated. Do not weaken the check back to substring-only reachability.
+
+### Outcome
+- Exact-source `Operability Contracts` run `39938912571` completed SUCCESS on `87b74fadbeb66b4c1fa5b5ece3453065934d61de`.
+
+### Success evidence
+- CI job `120365222642` logs explicitly report `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (45 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+
+### Why safe
+- Changes affected only the learning positive/negative validators and their existing operability CI entrypoint. No workflow permission declaration, production status, recovery evidence, objective, credential, traffic, readiness or promotion authority was modified.
+
+### Reusable mechanism
+- For CI reachability, bind the actual direct call in the executable function body using AST rather than relying on text fragments. Prove comment/literal/dead-branch bypasses with isolated positive-controlled negative fixtures and exact-source CI execution.
+
+### Protected-authority check
+- Post-change re-read confirmed unchanged learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain required.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
