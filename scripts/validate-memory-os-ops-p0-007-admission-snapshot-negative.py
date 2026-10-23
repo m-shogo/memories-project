@@ -206,8 +206,8 @@ NESTED_GENERATOR_REJECTIONS = {
 
 
 EXACT_GENERATOR_REJECTIONS = {
-    "generator objective source symlink escape": "strict snapshot authority drift: recovery objective registry",
-    "generator objective writer module symlink escape": "strict snapshot authority drift: recovery objective writer",
+    "generator objective source symlink escape": "strict snapshot authority missing or escapes repository: recovery objective registry",
+    "generator objective writer module symlink escape": "strict snapshot authority missing or escapes repository: recovery objective writer",
 }
 
 
