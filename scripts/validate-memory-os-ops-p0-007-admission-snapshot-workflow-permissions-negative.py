@@ -13,6 +13,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PR_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-pr.yml"
 PUBLISH_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot.yml"
+
+READONLY_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"
+
+
 FULL_ADMISSION_VALIDATORS = (
     "scripts/validate-memory-os-recovery-objectives.py",
     "scripts/validate-memory-os-backup-restore-drill-request.py",
@@ -2355,6 +2359,118 @@ def prove_publisher_revalidation_call_binding(publish: str) -> None:
                 raise Fail(f"strict snapshot publisher accepted masked {validator} admission failure")
 
 
+def require_readonly_workflow_authority(readonly: str) -> None:
+    """Require the independent read-only workflow to execute immutable gates."""
+    diagnostic = "strict snapshot readonly workflow authority drift"
+    try:
+        require_readonly_pr_permissions(readonly)
+    except Fail as exc:
+        raise Fail(diagnostic) from exc
+    lines = readonly.splitlines()
+    header = ["jobs:", "  readonly:", "    runs-on: ubuntu-latest",
+              "    timeout-minutes: 10", "    steps:"]
+    starts = [i for i, line in enumerate(lines) if line == "  readonly:"]
+    require(len(starts) == 1 and starts[0] > 0 and
+            lines[starts[0] - 1:starts[0] + 4] == header, diagnostic)
+    steps: list[list[str]] = []
+    for line in lines[starts[0] + 4:]:
+        if line.startswith("      - "):
+            steps.append([line])
+        elif steps:
+            steps[-1].append(line)
+    require(len(steps) == 3, diagnostic)
+    require(
+        steps[0] == [
+            "      - uses: actions/checkout@v4",
+            "        with:",
+            "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+            "          fetch-depth: 0",
+        ] and steps[1] == [
+            "      - uses: actions/setup-python@v5",
+            "        with:",
+            '          python-version: "3.12"',
+        ] and steps[2][:2] == [
+            "      - name: Prove deterministic snapshot authority immutability",
+            "        run: |",
+        ], diagnostic,
+    )
+    body = [line[10:].strip() for line in steps[2][2:]
+            if line.startswith("          ") and line[10:].strip()]
+    compiled = PR_COMPILE_FILES[-6:]
+    require(
+        body[:5] == [
+            "set -euo pipefail",
+            'expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"',
+            'test -n "$expected"',
+            'test "$(git rev-parse HEAD)" = "$expected"',
+            'test -z "$(git status --porcelain --untracked-files=all)"',
+        ] and body.count("python -m py_compile \\") == 1
+        and body.count('for authority in "${authorities[@]}"; do') == 2
+        and body.count('done > "$snapshot"') == 1
+        and body.count('done > "$current"') == 1,
+        diagnostic,
+    )
+    compile_index = body.index("python -m py_compile \\")
+    expected_compile = [
+        "python -m py_compile \\",
+        *(f"{path} \\" for path in compiled[:-1]),
+        compiled[-1],
+        *(f"python {path}" for path in compiled),
+    ]
+    require(body[compile_index:compile_index + len(expected_compile)] == expected_compile, diagnostic)
+    require(
+        [line for line in body if line.startswith("python scripts/")]
+        == [f"python {path}" for path in compiled],
+        diagnostic,
+    )
+    require(
+        body[-4:] == [
+            'diff -u "$snapshot" "$current"',
+            "git diff --check",
+            "git diff --exit-code",
+            'test -z "$(git status --porcelain --untracked-files=all)"',
+        ] and not any(line.startswith(("exit ", "return ", "set +", "source ", "alias "))
+                      for line in body),
+        diagnostic,
+    )
+
+
+def prove_readonly_workflow_negative(readonly: str) -> None:
+    require_readonly_workflow_authority(readonly)
+    marker = "      - name: Prove deterministic snapshot authority immutability\n"
+    negative = "          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py\n"
+    diff = '          diff -u "$snapshot" "$current"\n'
+    compile_line = "          python -m py_compile \\\n"
+    require(all(readonly.count(x) == 1 for x in (marker, negative, diff, compile_line)),
+            "strict snapshot readonly fixture anchor drift")
+    mutations = (
+        ("write grant", readonly.replace("permissions:\n  contents: read\n",
+                                         "permissions:\n  contents: write\n", 1)),
+        ("disabled job", readonly.replace("    runs-on: ubuntu-latest\n",
+                                          "    if: false\n    runs-on: ubuntu-latest\n", 1)),
+        ("nonfatal job", readonly.replace("    runs-on: ubuntu-latest\n",
+                                          "    continue-on-error: true\n    runs-on: ubuntu-latest\n", 1)),
+        ("unreviewed action", readonly.replace(marker, "      - uses: unreviewed/action@v1\n" + marker, 1)),
+        ("disabled run", readonly.replace(marker, marker + "        if: false\n", 1)),
+        ("wrong setup", readonly.replace('          python-version: "3.12"\n',
+                                          '          python-version: "3.11"\n', 1)),
+        ("compile echo", readonly.replace(compile_line, "          echo python -m py_compile \\\n", 1)),
+        ("missing negative", readonly.replace(negative, "          # negative skipped\n", 1)),
+        ("missing diff", readonly.replace(diff, "          # diff skipped\n", 1)),
+        ("masked diff", readonly.replace(diff, diff.rstrip("\n") + " || true\n", 1)),
+        ("early exit", readonly.replace(compile_line, "          exit 0\n" + compile_line, 1)),
+    )
+    for label, mutated in mutations:
+        require(mutated != readonly, f"{label} readonly mutation was a no-op")
+        try:
+            require_readonly_workflow_authority(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly workflow authority drift",
+                    f"{label} readonly rejected outside exact guard: {exc}")
+        else:
+            raise Fail(f"strict snapshot readonly accepted {label}")
+
+
 def require_readonly_pr_permissions(workflow: str) -> None:
     # GitHub accepts 'permissions: write-all'; banning 'contents: write' alone
     # does not prevent a PR workflow from receiving a write-capable token.
@@ -2431,6 +2547,8 @@ def prove_write_all_permissions_rejected() -> None:
 def main() -> int:
     require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
     require_canonical_workflow(PUBLISH_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot.yml"))
+    require_canonical_workflow(READONLY_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"))
+    prove_readonly_workflow_negative(READONLY_WORKFLOW.read_text(encoding="utf-8"))
     prove_symlink_rejected()
     prove_comment_only_commands_rejected()
     prove_pr_shell_fail_closed_negative(PR_WORKFLOW.read_text(encoding="utf-8"))
