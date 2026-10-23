@@ -3383,3 +3383,28 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the protected publisher step architecture changes or a newly observed shell failure-masking hook evades the bounded guard.
 
+
+## 2026-10-24 — Publisher initial SOURCE_SHA must be captured by an exact checked-out HEAD assertion
+
+### Outcome
+- Commit 89462e400cc20d438f64d8ef405a0e93a957ce09 adds an exact-step authority guard for the publisher's initial source capture and nine cause-specific synthetic negative mutations.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40006483570 completed SUCCESS at this commit.
+
+### Evidence
+- The existing publisher guard checked exact checkout ref, protected shell startup and later stale-source comparisons, but only searched for SOURCE_SHA text and did not require the initial source capture step to execute its clean-worktree assertion, checked-out HEAD equality, and actual GITHUB_ENV publication in the reviewed order.
+- New fixtures remove or replace each source check, forge SOURCE_SHA, disable/continue-on-error the step, add early exit, reorder checks or duplicate the step. All require the exact publisher source-capture authority-drift rejection.
+- Fixtures mutate the complete unique named step block, not a shared shell command substring, avoiding the earlier PR fixture-anchor collision.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and synthetic workflow text changed. The actual publisher and PR workflows, Production Status, strict snapshot, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Exact-source publication must prove the original checkout SHA is verified and exported by a live fail-closed step, not merely that the expected variable name occurs in workflow text. Bind the named step to its complete reviewed command sequence and mutate only a unique step-scoped fixture.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed publisher source-capture architecture changes or a new observed stale/forged source-binding bypass escapes this exact-step guard.
+
