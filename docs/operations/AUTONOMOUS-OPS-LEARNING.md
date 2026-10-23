@@ -2648,3 +2648,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains blocked prerequisites and zero real recovery candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. This learning entry cannot become production or promotion evidence.
+
+## 2026-10-24 — Snapshot diagnostic finally cleanup must be executable
+
+### Outcome
+- Commit `4c918753d6041e21a6cbaf4336c0fb5cdf7ccbbf` extends the existing snapshot workflow permission negative to reject unconditional termination in an atomic diagnostic publisher's `finally` body before its required `os.unlink(tmp_name)` cleanup.
+
+### Evidence
+- The existing AST guard inspected unconditional exits in a `try` body but not its `finally` body, although its call-presence checker counted cleanup calls that could appear after `raise SystemExit(0)` or `exit(0)` in `finally`.
+- Three isolated source-text negative mutations now inject `raise SystemExit(0)`, `exit(0)`, and a constant-true raise immediately before the original cleanup call; all require the exact `strict snapshot diagnostic unconditional early termination` diagnostic.
+- Exact-source Snapshot Permission Boundary run `39993385074` at commit `4c918753` completed SUCCESS. The job log confirms `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS` and `production decision: NO_GO`.
+
+### Why safe
+- Only the pre-existing read-only negative harness changed. The publisher workflow, production status, strict snapshot, registries, credentials, traffic, recovery evidence, readiness and promotion authorities were not modified. Mutations are in-memory workflow fixtures.
+
+### Reusable mechanism
+- For AST-based atomic-publication proof, check mandatory cleanup reachability inside `finally`, not merely call presence or termination in the main `try` body. Pair each bypass with an exact-cause negative mutation and an observed exact-source CI run.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human production promotion remain mandatory.
+- This append-only lesson is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the diagnostic publisher intentionally changes its cleanup architecture or a new observed bypass survives the existing exact-source negative suite.
