@@ -2,6 +2,7 @@
 """Prove the typed non-resurrection writer CLI cannot substitute production authorities."""
 from __future__ import annotations
 
+import ast
 import importlib.util
 import inspect
 import tempfile
@@ -146,12 +147,53 @@ def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
             "typed non-resurrection lock symlink negative left canonical lock materialized")
 
 
+def require_direct_first_guard(source: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise NegativeFailure("writer main source syntax invalid") from exc
+    require(len(tree.body) == 1 and isinstance(tree.body[0], ast.FunctionDef)
+            and tree.body[0].name == "main",
+            "writer main must be one synchronous definition")
+    statements = tree.body[0].body
+    require(bool(statements) and isinstance(statements[0], ast.Expr)
+            and isinstance(statements[0].value, ast.Call)
+            and isinstance(statements[0].value.func, ast.Name)
+            and statements[0].value.func.id == "require_cli_authorities"
+            and not statements[0].value.args and not statements[0].value.keywords,
+            "writer main must begin with direct CLI authority guard")
+
+
+def prove_guard_source_classifier() -> None:
+    valid = "def main():\\n    require_cli_authorities()\\n    parser = argparse.ArgumentParser()\\n"
+    require_direct_first_guard(valid)
+    negatives = (
+        ("comment", "def main():\\n    # require_cli_authorities()\\n    parser = argparse.ArgumentParser()\\n"),
+        ("string", "def main():\\n    'require_cli_authorities()'\\n    parser = argparse.ArgumentParser()\\n"),
+        ("dead", "def main():\\n    if False:\\n        require_cli_authorities()\\n    parser = argparse.ArgumentParser()\\n"),
+        ("early-return", "def main():\\n    return 0\\n    require_cli_authorities()\\n"),
+        ("async", "async def main():\\n    require_cli_authorities()\\n"),
+    )
+    for label, source in negatives:
+        try:
+            require_direct_first_guard(source)
+        except NegativeFailure as exc:
+            expected = ("writer main must be one synchronous definition" if label == "async"
+                        else "writer main must begin with direct CLI authority guard")
+            require(str(exc) == expected, f"writer entrypoint {label} diagnostic drift")
+        else:
+            raise NegativeFailure(f"writer entrypoint {label} bypass unexpectedly accepted")
+    print("PASS reject: comment/string/dead/early-return/async CLI guard substitutes")
+
+
 def main() -> int:
+    prove_guard_source_classifier()
     writer = load_writer()
     guard = getattr(writer, "require_cli_authorities", None)
     require(callable(guard), "typed non-resurrection writer CLI authority guard missing")
 
     main_source = inspect.getsource(writer.main)
+    require_direct_first_guard(main_source)
     guard_offset = main_source.find("require_cli_authorities()")
     parser_offset = main_source.find("argparse.ArgumentParser")
     lock_open_offset = main_source.find("os.O_CREAT | os.O_EXCL")
