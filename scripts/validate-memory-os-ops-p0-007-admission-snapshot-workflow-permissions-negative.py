@@ -380,7 +380,7 @@ def executable_run_lines(workflow: str) -> list[str]:
             if False in shell_if:
                 continue
             # An exit in a conditional unknown branch is not unconditional.
-            if re.fullmatch(r"exit(?:\s+[0-9]+)?(?:\s*#.*)?", command):
+            if re.fullmatch(r"exit(?:\s+[0-9]+)?(?:\s*#.*)?", stripped):
                 if not any(value is None for value in shell_if):
                     break
                 continue
@@ -408,12 +408,22 @@ def prove_comment_only_commands_rejected() -> None:
     require_full_admission_chain(positive, "positive run-step fixture")
     live_else = "jobs:\n  validate:\n    steps:\n      - name: live else\n        run: |\n          if false; then\n          :\n          else\n" + commands + "\n          fi\n"
     require_full_admission_chain(live_else, "positive literal-false else fixture")
+    # A conditional exit must not erase validators reachable when the
+    # condition is false; an indented unconditional exit must erase them.
+    unknown_exit = (
+        "jobs:\n  validate:\n    steps:\n      - name: conditional exit\n        run: |\n"
+        "          if test \"$SOME_RUNTIME_CONDITION\" = yes; then\n"
+        "            exit 0\n          fi\n" + commands + "\n"
+    )
+    require_full_admission_chain(unknown_exit, "positive conditional exit fixture")
     fixtures = (
         ("comment-only", "\n".join(f"# python {validator}" for validator in FULL_ADMISSION_VALIDATORS)),
         ("YAML env literal", "jobs:\n  validate:\n    steps:\n      - name: inert\n        env:\n          TEXT: |\n" + commands + "\n"),
         ("disabled step", "jobs:\n  validate:\n    steps:\n      - name: disabled\n        if: false\n        run: |\n" + commands + "\n"),
         ("heredoc body", "jobs:\n  validate:\n    steps:\n      - name: quoted\n        run: |\n          cat <<'EOF'\n" + commands + "\n          EOF\n"),
         ("unreachable after exit", "jobs:\n  validate:\n    steps:\n      - name: exited\n        run: |\n          exit 0\n" + commands + "\n"),
+        ("unreachable after indented exit", "jobs:\n  validate:\n    steps:\n      - name: indented exit\n        run: |\n            exit 0\n" + commands + "\n"),
+        ("unreachable after indented exit comment", "jobs:\n  validate:\n    steps:\n      - name: indented exit\n        run: |\n            exit 0 # stop\n" + commands + "\n"),
         ("literal false shell branch", "jobs:\n  validate:\n    steps:\n      - name: dead shell\n        run: |\n          if false; then\n" + commands + "\n          fi\n"),
         ("literal true else branch", "jobs:\n  validate:\n    steps:\n      - name: dead else\n        run: |\n          if true; then\n          :\n          else\n" + commands + "\n          fi\n"),
     )
