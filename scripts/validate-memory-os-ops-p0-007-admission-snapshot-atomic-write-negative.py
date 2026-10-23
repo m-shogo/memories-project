@@ -90,6 +90,32 @@ def require_atomic_temp_source(source: str | Path, target: Path) -> None:
         raise SystemExit(f"atomic replacement used unexpected temporary source: {path}")
 
 
+def require_materialized_atomic_temp_source(source: str | Path) -> None:
+    path = Path(source)
+    if not path.is_file() or path.is_symlink():
+        raise SystemExit(f"atomic replacement temporary source not a regular file: {path}")
+
+
+def prove_materialized_atomic_temp_source_classifier() -> None:
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-atomic-source-") as tmp:
+        root = Path(tmp)
+        source = root / "source.tmp"
+        source.write_bytes(b"candidate")
+        require_materialized_atomic_temp_source(source)
+        alias = root / "alias.tmp"
+        alias.symlink_to(source.name)
+        directory = root / "directory.tmp"
+        directory.mkdir()
+        for bad in (alias, directory, root / "missing.tmp"):
+            try:
+                require_materialized_atomic_temp_source(bad)
+            except SystemExit as exc:
+                if str(exc) != f"atomic replacement temporary source not a regular file: {bad}":
+                    raise SystemExit(f"atomic materialization classifier rejected outside guard: {exc}") from exc
+            else:
+                raise SystemExit(f"atomic materialization classifier accepted non-regular source: {bad}")
+
+
 def prove_atomic_temp_source_classifier() -> None:
     target = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
     valid = target.parent / f".{target.name}.synthetic.tmp"
@@ -121,6 +147,7 @@ def main() -> int:
     prove_identity_classifier()
     prove_exact_failure_classifier()
     prove_atomic_temp_source_classifier()
+    prove_materialized_atomic_temp_source_classifier()
     if not GENERATOR.is_file() or GENERATOR.is_symlink() or GENERATOR.resolve(strict=True).relative_to(ROOT) != GENERATOR.relative_to(ROOT):
         raise SystemExit("strict snapshot atomic negative generator source path drift")
     module = load_generator()
@@ -144,6 +171,7 @@ def main() -> int:
         nonlocal target_replace_attempts
         if Path(dst) == target:
             require_atomic_temp_source(src, target)
+            require_materialized_atomic_temp_source(src)
             target_replace_attempts += 1
             raise OSError("injected atomic replacement failure")
         return real_replace(src, dst)
