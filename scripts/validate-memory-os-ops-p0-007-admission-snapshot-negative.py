@@ -11,6 +11,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
@@ -58,14 +59,40 @@ def load_generator_module():
     return module
 
 
+def run_bounded_python(path: Path, label: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=90,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise Fail(f"{label}: canonical Python validation timed out after 90s") from exc
+
+
+def prove_subprocess_timeout_guard() -> None:
+    # An injected timeout must become a controlled failure, not a hang or a
+    # generic interpreter traceback that masquerades as an admission rejection.
+    with mock.patch.object(
+        subprocess,
+        "run",
+        side_effect=subprocess.TimeoutExpired(cmd=["synthetic"], timeout=90),
+    ):
+        for path in (VALIDATOR, GENERATOR):
+            try:
+                run_bounded_python(path, "synthetic timeout")
+            except Fail as exc:
+                if str(exc) != "synthetic timeout: canonical Python validation timed out after 90s":
+                    raise Fail(f"timeout rejected outside intended bounded subprocess guard: {exc}") from exc
+            else:
+                raise Fail("synthetic subprocess timeout unexpectedly accepted")
+
+
 def run_validator(expect_success: bool, label: str) -> None:
-    proc = subprocess.run(
-        [sys.executable, str(VALIDATOR)],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    proc = run_bounded_python(VALIDATOR, label)
     if expect_success:
         if proc.returncode != 0:
             raise Fail(f"{label}: baseline validator failed: {proc.stderr or proc.stdout}")
@@ -80,13 +107,7 @@ def run_validator(expect_success: bool, label: str) -> None:
 
 def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) -> None:
     before = SNAPSHOT.read_bytes()
-    proc = subprocess.run(
-        [sys.executable, str(GENERATOR)],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    proc = run_bounded_python(GENERATOR, label)
     if proc.returncode != 1:
         raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
     output = proc.stderr or proc.stdout
@@ -390,6 +411,7 @@ def main() -> int:
     ]
 
     try:
+        prove_subprocess_timeout_guard()
         run_validator(True, "clean baseline")
         run_generator_atomic_write_mode_preservation()
         run_generator_atomic_write_failure()
