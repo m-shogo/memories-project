@@ -448,13 +448,46 @@ def prove_temporary_mode_cleanup() -> None:
             raise Fail("temporary mode cleanup did not restore isolated fixture mode/bytes")
 
 
+def require_atomic_replace_probe(calls: list[tuple[Path, Path]]) -> None:
+    if len(calls) != 1:
+        raise Fail(f"atomic replacement injection must reach exactly one replace call, got {len(calls)}")
+    source, destination = calls[0]
+    if (
+        destination != SNAPSHOT
+        or source.parent != SNAPSHOT.parent
+        or not source.name.startswith(f".{SNAPSHOT.name}.")
+        or not source.name.endswith(".tmp")
+    ):
+        raise Fail("atomic replacement injection did not reach canonical snapshot temporary-file target")
+
+
+def prove_atomic_replace_probe_classifier() -> None:
+    canonical_tmp = SNAPSHOT.parent / f".{SNAPSHOT.name}.synthetic.tmp"
+    require_atomic_replace_probe([(canonical_tmp, SNAPSHOT)])
+    for calls in (
+        [],
+        [(canonical_tmp, SNAPSHOT), (canonical_tmp, SNAPSHOT)],
+        [(canonical_tmp, STATUS)],
+        [(SNAPSHOT.parent / "unrelated.tmp", SNAPSHOT)],
+    ):
+        try:
+            require_atomic_replace_probe(calls)
+        except Fail as exc:
+            if "atomic replacement injection" not in str(exc):
+                raise Fail(f"atomic replacement probe rejected outside intended guard: {exc}") from exc
+        else:
+            raise Fail("atomic replacement probe accepted missing, duplicated or wrong-target call")
+
+
 def run_generator_atomic_write_failure() -> None:
     snapshot_before = SNAPSHOT.read_bytes()
     status_before = STATUS.read_bytes()
     module = load_generator_module()
     original_replace = module.os.replace
+    replace_calls: list[tuple[Path, Path]] = []
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
+        replace_calls.append((Path(source), Path(destination)))
         raise OSError("synthetic strict snapshot atomic replace rejection")
 
     # Restore the canonical mode on *every* exit, including an unexpected
@@ -465,13 +498,18 @@ def run_generator_atomic_write_failure() -> None:
             try:
                 module.atomic_write_text(SNAPSHOT, snapshot_before.decode("utf-8") + " ")
             except SystemExit as exc:
-                if "cannot atomically write contracts/operations/ops-p0-007-admission-snapshot.v1.json" not in str(exc):
+                expected = (
+                    "cannot atomically write contracts/operations/ops-p0-007-admission-snapshot.v1.json: "
+                    "synthetic strict snapshot atomic replace rejection"
+                )
+                if str(exc) != expected:
                     raise Fail(f"atomic strict snapshot write rejected at wrong boundary: {exc}") from exc
             else:
                 raise Fail("synthetic strict snapshot atomic replace failure unexpectedly accepted")
         finally:
             module.os.replace = original_replace
 
+        require_atomic_replace_probe(replace_calls)
         if SNAPSHOT.read_bytes() != snapshot_before:
             raise Fail("atomic replace rejection mutated canonical strict snapshot")
         if mode(SNAPSHOT) != 0o640:
@@ -701,6 +739,7 @@ def main() -> int:
         prove_snapshot_state_classifier()
         prove_authority_substitution_classifier()
         prove_temporary_mode_cleanup()
+        prove_atomic_replace_probe_classifier()
         prove_positive_validator_classifier()
         prove_case_specific_validator_classifier()
         prove_generator_diagnostic_classifier()
