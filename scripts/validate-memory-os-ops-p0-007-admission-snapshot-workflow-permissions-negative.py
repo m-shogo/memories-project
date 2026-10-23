@@ -1036,6 +1036,84 @@ def prove_pr_drift_rejection_negative(pr: str) -> None:
         raise Fail("strict snapshot PR accepted duplicate deterministic drift gate")
 
 
+
+def require_pr_step_allowlist(pr: str) -> None:
+    """No unreviewed Actions step may run before or around PR admission."""
+    lines = pr.splitlines()
+    starts = [index for index, line in enumerate(lines) if line == "    steps:"]
+    require(len(starts) == 1, "strict snapshot PR step allowlist authority drift")
+    steps: list[list[str]] = []
+    for line in lines[starts[0] + 1:]:
+        if line.startswith("      - "):
+            steps.append([line])
+        elif steps:
+            steps[-1].append(line)
+        elif line.strip():
+            raise Fail("strict snapshot PR step allowlist authority drift")
+    require(len(steps) == 5, "strict snapshot PR step allowlist authority drift")
+    require(
+        steps[0] == [
+            "      - uses: actions/checkout@v4",
+            "        with:",
+            "          ref: ${{ github.event.pull_request.head.sha }}",
+            "          fetch-depth: 0",
+        ] and steps[1] == [
+            "      - uses: actions/setup-python@v5",
+            "        with:",
+            '          python-version: "3.12"',
+        ] and [
+            step[:2] for step in steps[2:]
+        ] == [
+            ["      - name: Verify exact pull request source", "        run: |"],
+            ["      - name: Generate and validate strict snapshot read-only", "        run: |"],
+            ["      - name: Reject deterministic snapshot drift", "        run: |"],
+        ],
+        "strict snapshot PR step allowlist authority drift",
+    )
+
+
+def prove_pr_step_allowlist_negative(pr: str) -> None:
+    require_pr_step_allowlist(pr)
+    checkout = (
+        "      - uses: actions/checkout@v4\n"
+        "        with:\n"
+        "          ref: ${{ github.event.pull_request.head.sha }}\n"
+        "          fetch-depth: 0\n"
+    )
+    setup = (
+        "      - uses: actions/setup-python@v5\n"
+        "        with:\n"
+        '          python-version: "3.12"\n'
+    )
+    verify = "      - name: Verify exact pull request source\n"
+    require(pr.count(checkout + setup) == pr.count(verify) == 1,
+            "strict snapshot PR step allowlist fixture anchor drift")
+    mutations = (
+        ("extra unreviewed action", pr.replace(verify, "      - uses: unreviewed/action@v1\n" + verify, 1)),
+        ("extra unreviewed run", pr.replace(verify, "      - name: Unreviewed shell\n        run: echo bypass\n" + verify, 1)),
+        ("wrong setup action", pr.replace(setup, setup.replace("setup-python@v5", "setup-python@v4"), 1)),
+        ("wrong Python version", pr.replace(setup, setup.replace('"3.12"', '"3.11"'), 1)),
+        ("disabled setup", pr.replace(setup, setup.replace("        with:", "        if: false\n        with:"), 1)),
+        ("masked setup failure", pr.replace(setup, setup.replace("        with:", "        continue-on-error: true\n        with:"), 1)),
+        ("shallow checkout", pr.replace(checkout, checkout.replace("fetch-depth: 0", "fetch-depth: 1"), 1)),
+        ("unreviewed checkout input", pr.replace(checkout, checkout + "        persist-credentials: true\n", 1)),
+        ("duplicate setup", pr.replace(setup, setup + setup, 1)),
+        ("reordered checkout and setup", pr.replace(checkout + setup, setup + checkout, 1)),
+        ("renamed source verification", pr.replace(verify, "      - name: Unreviewed source verification\n", 1)),
+    )
+    for label, mutated in mutations:
+        require(mutated != pr, f"{label} PR step fixture mutation was a no-op")
+        try:
+            require_pr_step_allowlist(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR step allowlist authority drift",
+                f"{label} PR step fixture rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot PR accepted {label}")
+
+
 def pr_job_expected_header() -> list[str]:
     return [
         "jobs:",
@@ -2168,6 +2246,7 @@ def main() -> int:
     prove_pr_compile_step_negative(pr)
     prove_pr_drift_rejection_negative(pr)
     prove_pr_job_execution_policy_negative(pr)
+    prove_pr_step_allowlist_negative(pr)
     prove_pr_trigger_negative(pr)
     prove_publisher_source_capture_negative(publish)
     prove_publisher_job_execution_policy_negative(publish)
