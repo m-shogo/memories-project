@@ -251,28 +251,75 @@ def prove_checkout_comment_bypass_rejected(pr: str, publish: str) -> None:
             raise Fail(f"{label} accepted ambiguous duplicate checkout")
 
 
+def executable_run_lines(workflow: str) -> list[str]:
+    """Count commands only in enabled GitHub Actions run blocks, not YAML data or heredocs."""
+    lines = workflow.splitlines()
+    executable: list[str] = []
+    for index, line in enumerate(lines):
+        if line != "        run: |":
+            continue
+        step_start = index - 1
+        while step_start >= 0 and not lines[step_start].startswith("      - "):
+            step_start -= 1
+        if step_start < 0:
+            continue
+        header = lines[step_start:index]
+        if any(
+            re.fullmatch(r"""        if:\s*(?:false|'false'|"false"|\$\{\{\s*false\s*\}\})\s*""", item)
+            for item in header
+        ):
+            continue
+        heredoc: str | None = None
+        for item in lines[index + 1:]:
+            if item.strip() and not item.startswith("          "):
+                break
+            command = item[10:] if item.startswith("          ") else ""
+            if heredoc is not None:
+                if command.strip() == heredoc:
+                    heredoc = None
+                continue
+            # An unconditional shell exit makes subsequent commands unreachable.
+            if re.fullmatch(r"exit(?:\s+[0-9]+)?(?:\s*#.*)?", command):
+                break
+            executable.append(command)
+            delimiter = re.search(r"""<<-?\s*(['"]?)([A-Za-z_]\w*)\1""", command)
+            if delimiter:
+                heredoc = delimiter.group(2)
+    return executable
+
+
 def require_full_admission_chain(workflow: str, label: str) -> None:
+    commands = "\n".join(executable_run_lines(workflow))
     for validator in FULL_ADMISSION_VALIDATORS:
         require(validator in workflow, f"{label} missing full admission validator: {validator}")
-        # Require an executable shell line, not a comment or diagnostic string.
         command = rf"(?m)^[ \t]*python[ \t]+{re.escape(validator)}(?=[ \t]|$)"
         require(
-            re.search(command, workflow) is not None,
+            re.search(command, commands) is not None,
             f"{label} does not execute full admission validator: {validator}",
         )
 
 
 def prove_comment_only_commands_rejected() -> None:
-    comment_only = "\n".join(f"# python {validator}" for validator in FULL_ADMISSION_VALIDATORS)
-    try:
-        require_full_admission_chain(comment_only, "comment-only fixture")
-    except Fail as exc:
-        require(
-            "does not execute full admission validator" in str(exc),
-            f"comment-only fixture rejected outside command-reachability guard: {exc}",
-        )
-    else:
-        raise Fail("comment-only full admission validator references unexpectedly accepted")
+    commands = "\n".join(f"          python {validator}" for validator in FULL_ADMISSION_VALIDATORS)
+    positive = "jobs:\n  validate:\n    steps:\n      - name: live\n        run: |\n" + commands + "\n"
+    require_full_admission_chain(positive, "positive run-step fixture")
+    fixtures = (
+        ("comment-only", "\n".join(f"# python {validator}" for validator in FULL_ADMISSION_VALIDATORS)),
+        ("YAML env literal", "jobs:\n  validate:\n    steps:\n      - name: inert\n        env:\n          TEXT: |\n" + commands + "\n"),
+        ("disabled step", "jobs:\n  validate:\n    steps:\n      - name: disabled\n        if: false\n        run: |\n" + commands + "\n"),
+        ("heredoc body", "jobs:\n  validate:\n    steps:\n      - name: quoted\n        run: |\n          cat <<'EOF'\n" + commands + "\n          EOF\n"),
+        ("unreachable after exit", "jobs:\n  validate:\n    steps:\n      - name: exited\n        run: |\n          exit 0\n" + commands + "\n"),
+    )
+    for label, fixture in fixtures:
+        try:
+            require_full_admission_chain(fixture, f"{label} fixture")
+        except Fail as exc:
+            require(
+                "does not execute full admission validator" in str(exc),
+                f"{label} fixture rejected outside command-reachability guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot full admission validator accepted {label} references")
 
 
 def require_readonly_pr_permissions(workflow: str) -> None:
