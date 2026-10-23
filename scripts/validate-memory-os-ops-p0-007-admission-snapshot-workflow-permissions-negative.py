@@ -850,6 +850,79 @@ def prove_pr_source_verification_negative(pr: str) -> None:
         raise Fail("strict snapshot PR accepted duplicate source verification")
 
 
+def publisher_source_capture_expected_lines() -> list[str]:
+    return [
+        "      - name: Capture exact OPS-P0-007 snapshot source",
+        "        run: |",
+        "          set -euo pipefail",
+        '          EXPECTED_SOURCE_SHA="${{ github.sha }}"',
+        '          test -z "$(git status --porcelain)"',
+        '          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"',
+        '          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"',
+    ]
+
+
+def require_publisher_source_capture_step(publish: str) -> None:
+    """The initial publisher SOURCE_SHA must come from an exact checked-out HEAD."""
+    lines = publish.splitlines()
+    expected = publisher_source_capture_expected_lines()
+    marker = expected[0]
+    starts = [index for index, line in enumerate(lines) if line == marker]
+    require(len(starts) == 1, "strict snapshot publisher source capture step authority drift")
+    start = starts[0]
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].startswith("      - ")),
+        len(lines),
+    )
+    require(
+        lines[start:end] == expected,
+        "strict snapshot publisher source capture step authority drift",
+    )
+
+
+def prove_publisher_source_capture_negative(publish: str) -> None:
+    require_publisher_source_capture_step(publish)
+    expected = publisher_source_capture_expected_lines()
+    block = "\n".join(expected) + "\n"
+    require(publish.count(block) == 1, "publisher source capture fixture block drift")
+    substitutions = (
+        ('EXPECTED_SOURCE_SHA="${{ github.sha }}"', 'EXPECTED_SOURCE_SHA="${{ github.ref }}"'),
+        ('test -z "$(git status --porcelain)"', '# skipped clean source assertion'),
+        ('test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"', '# skipped HEAD source assertion'),
+        ('echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"', 'echo "SOURCE_SHA=forged" >> "$GITHUB_ENV"'),
+        ("        run: |", "        if: false\n        run: |"),
+        ("        run: |", "        continue-on-error: true\n        run: |"),
+        ('test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"',
+         'exit 0\n          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"'),
+        ('test -z "$(git status --porcelain)"\n          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"',
+         'test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"\n          test -z "$(git status --porcelain)"'),
+    )
+    for original, replacement in substitutions:
+        require(block.count(original) == 1, "publisher source capture fixture mutation anchor drift")
+        altered = block.replace(original, replacement, 1)
+        mutated = publish.replace(block, altered, 1)
+        require(mutated != publish, "publisher source capture mutation was a no-op")
+        try:
+            require_publisher_source_capture_step(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher source capture step authority drift",
+                f"publisher source capture rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail("strict snapshot publisher accepted weakened source capture")
+    duplicate = publish + "\n      - name: Capture exact OPS-P0-007 snapshot source\n        run: |\n          exit 0\n"
+    try:
+        require_publisher_source_capture_step(duplicate)
+    except Fail as exc:
+        require(
+            str(exc) == "strict snapshot publisher source capture step authority drift",
+            f"duplicate publisher source capture rejected outside exact guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot publisher accepted duplicate source capture")
+
+
 def publisher_protected_shell_starts(workflow: str) -> list[int]:
     lines = workflow.splitlines()
     names = (
@@ -1607,6 +1680,7 @@ def main() -> int:
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
     prove_checkout_comment_bypass_rejected(pr, publish)
     prove_pr_source_verification_negative(pr)
+    prove_publisher_source_capture_negative(publish)
 
     require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
     require_readonly_pr_permissions(pr)
