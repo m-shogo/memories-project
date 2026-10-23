@@ -1258,6 +1258,112 @@ def prove_pr_trigger_negative(pr: str) -> None:
             raise Fail("strict snapshot PR accepted weakened trigger or path coverage")
 
 
+
+def require_publisher_step_allowlist(publish: str) -> None:
+    """Publisher may execute only the seven reviewed Actions steps."""
+    lines = publish.splitlines()
+    starts = [index for index, line in enumerate(lines) if line == "    steps:"]
+    require(len(starts) == 1, "strict snapshot publisher step allowlist authority drift")
+    steps: list[list[str]] = []
+    for line in lines[starts[0] + 1:]:
+        if line.startswith("      - "):
+            steps.append([line])
+        elif steps:
+            steps[-1].append(line)
+        elif line.strip():
+            raise Fail("strict snapshot publisher step allowlist authority drift")
+    require(len(steps) == 7, "strict snapshot publisher step allowlist authority drift")
+    require(
+        steps[0] == [
+            "      - uses: actions/checkout@v4",
+            "        with:",
+            "          ref: ${{ github.sha }}",
+            "          fetch-depth: 0",
+        ] and steps[1] == [
+            "      - uses: actions/setup-python@v5",
+            "        with:",
+            '          python-version: "3.12"',
+        ] and steps[2][:2] == [
+            "      - name: Capture exact OPS-P0-007 snapshot source",
+            "        run: |",
+        ] and steps[3][:3] == [
+            "      - name: Generate and validate strict snapshot",
+            "        id: snapshot",
+            "        run: |",
+        ] and steps[4][:3] == [
+            "      - name: Commit deterministic strict snapshot",
+            "        if: steps.snapshot.outputs.exit_code == '0' && github.ref == 'refs/heads/so'",
+            "        run: |",
+        ] and steps[5][:5] == [
+            "      - name: Record privacy-safe snapshot diagnostic",
+            "        if: steps.snapshot.outputs.exit_code != '0' && github.ref == 'refs/heads/so'",
+            "        env:",
+            "          SNAPSHOT_EXIT_CODE: ${{ steps.snapshot.outputs.exit_code }}",
+            "        run: |",
+        ] and steps[6] == [
+            "      - name: Enforce strict snapshot",
+            '        run: test "${{ steps.snapshot.outputs.exit_code }}" = "0"',
+        ],
+        "strict snapshot publisher step allowlist authority drift",
+    )
+
+
+def prove_publisher_step_allowlist_negative(publish: str) -> None:
+    require_publisher_step_allowlist(publish)
+    checkout = (
+        "      - uses: actions/checkout@v4\n"
+        "        with:\n"
+        "          ref: ${{ github.sha }}\n"
+        "          fetch-depth: 0\n"
+    )
+    setup = (
+        "      - uses: actions/setup-python@v5\n"
+        "        with:\n"
+        '          python-version: "3.12"\n'
+    )
+    capture = "      - name: Capture exact OPS-P0-007 snapshot source\n"
+    commit = "      - name: Commit deterministic strict snapshot\n"
+    diagnostic = "      - name: Record privacy-safe snapshot diagnostic\n"
+    enforce = (
+        "      - name: Enforce strict snapshot\n"
+        '        run: test "${{ steps.snapshot.outputs.exit_code }}" = "0"\n'
+    )
+    require(
+        all(publish.count(part) == 1 for part in
+            (checkout + setup, capture, commit, diagnostic, enforce)),
+        "strict snapshot publisher step allowlist fixture anchor drift",
+    )
+    mutations = (
+        ("extra action", publish.replace(capture, "      - uses: unreviewed/action@v1\n" + capture, 1)),
+        ("extra run", publish.replace(capture, "      - name: Unreviewed shell\n        run: echo bypass\n" + capture, 1)),
+        ("wrong setup action", publish.replace(setup, setup.replace("setup-python@v5", "setup-python@v4"), 1)),
+        ("wrong Python version", publish.replace(setup, setup.replace('"3.12"', '"3.11"'), 1)),
+        ("shallow checkout", publish.replace(checkout, checkout.replace("fetch-depth: 0", "fetch-depth: 1"), 1)),
+        ("duplicate setup", publish.replace(setup, setup + setup, 1)),
+        ("reordered checkout and setup", publish.replace(checkout + setup, setup + checkout, 1)),
+        ("disabled capture", publish.replace(capture, capture + "        if: false\n", 1)),
+        ("disabled generation", publish.replace("        id: snapshot\n", "        if: false\n        id: snapshot\n", 1)),
+        ("masked commit failure", publish.replace(commit, commit + "        continue-on-error: true\n", 1)),
+        ("masked diagnostic failure", publish.replace(diagnostic, diagnostic + "        continue-on-error: true\n", 1)),
+        ("changed diagnostic condition", publish.replace(
+            "        if: steps.snapshot.outputs.exit_code != '0' && github.ref == 'refs/heads/so'\n",
+            "        if: steps.snapshot.outputs.exit_code == '0' && github.ref == 'refs/heads/so'\n", 1)),
+        ("removed final enforcement", publish.replace(enforce, "", 1)),
+        ("forged final enforcement", publish.replace(enforce, "      - name: Enforce strict snapshot\n        run: echo bypass\n", 1)),
+    )
+    for label, mutated in mutations:
+        require(mutated != publish, f"{label} publisher step fixture mutation was a no-op")
+        try:
+            require_publisher_step_allowlist(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher step allowlist authority drift",
+                f"{label} publisher step fixture rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted {label}")
+
+
 def require_publisher_job_execution_policy(publish: str) -> None:
     """A skipped or non-fatal publisher job cannot prove snapshot validation."""
     lines = publish.splitlines()
@@ -2250,6 +2356,7 @@ def main() -> int:
     prove_pr_trigger_negative(pr)
     prove_publisher_source_capture_negative(publish)
     prove_publisher_job_execution_policy_negative(publish)
+    prove_publisher_step_allowlist_negative(publish)
 
     require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
     require_readonly_pr_permissions(pr)
