@@ -270,6 +270,7 @@ def executable_run_lines(workflow: str) -> list[str]:
         ):
             continue
         heredoc: str | None = None
+        shell_if: list[bool | None] = []
         for item in lines[index + 1:]:
             if item.strip() and not item.startswith("          "):
                 break
@@ -278,9 +279,28 @@ def executable_run_lines(workflow: str) -> list[str]:
                 if command.strip() == heredoc:
                     heredoc = None
                 continue
-            # An unconditional shell exit makes subsequent commands unreachable.
+            stripped = command.strip()
+            # A literal-false shell branch is inert even inside a live run step.
+            # Track nested if/else/fi blocks so an inner fi cannot revive a
+            # dead outer branch. Unknown conditions may execute either side.
+            if re.fullmatch(r"if\b.*;\s*then", stripped):
+                literal = re.fullmatch(r"if\s+(true|false)\s*;\s*then", stripped)
+                shell_if.append(literal.group(1) == "true" if literal else None)
+                continue
+            if stripped == "else" and shell_if:
+                if shell_if[-1] is not None:
+                    shell_if[-1] = not shell_if[-1]
+                continue
+            if stripped == "fi" and shell_if:
+                shell_if.pop()
+                continue
+            if False in shell_if:
+                continue
+            # An exit in a conditional unknown branch is not unconditional.
             if re.fullmatch(r"exit(?:\s+[0-9]+)?(?:\s*#.*)?", command):
-                break
+                if not any(value is None for value in shell_if):
+                    break
+                continue
             executable.append(command)
             delimiter = re.search(r"""<<-?\s*(['"]?)([A-Za-z_]\w*)\1""", command)
             if delimiter:
@@ -303,12 +323,16 @@ def prove_comment_only_commands_rejected() -> None:
     commands = "\n".join(f"          python {validator}" for validator in FULL_ADMISSION_VALIDATORS)
     positive = "jobs:\n  validate:\n    steps:\n      - name: live\n        run: |\n" + commands + "\n"
     require_full_admission_chain(positive, "positive run-step fixture")
+    live_else = "jobs:\n  validate:\n    steps:\n      - name: live else\n        run: |\n          if false; then\n          :\n          else\n" + commands + "\n          fi\n"
+    require_full_admission_chain(live_else, "positive literal-false else fixture")
     fixtures = (
         ("comment-only", "\n".join(f"# python {validator}" for validator in FULL_ADMISSION_VALIDATORS)),
         ("YAML env literal", "jobs:\n  validate:\n    steps:\n      - name: inert\n        env:\n          TEXT: |\n" + commands + "\n"),
         ("disabled step", "jobs:\n  validate:\n    steps:\n      - name: disabled\n        if: false\n        run: |\n" + commands + "\n"),
         ("heredoc body", "jobs:\n  validate:\n    steps:\n      - name: quoted\n        run: |\n          cat <<'EOF'\n" + commands + "\n          EOF\n"),
         ("unreachable after exit", "jobs:\n  validate:\n    steps:\n      - name: exited\n        run: |\n          exit 0\n" + commands + "\n"),
+        ("literal false shell branch", "jobs:\n  validate:\n    steps:\n      - name: dead shell\n        run: |\n          if false; then\n" + commands + "\n          fi\n"),
+        ("literal true else branch", "jobs:\n  validate:\n    steps:\n      - name: dead else\n        run: |\n          if true; then\n          :\n          else\n" + commands + "\n          fi\n"),
     )
     for label, fixture in fixtures:
         try:
