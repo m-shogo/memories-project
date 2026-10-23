@@ -36,6 +36,11 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def materially_different(before: Any, after: Any) -> bool:
+    # Python considers False == 0 and True == 1; JSON preserves that type boundary.
+    return json.dumps(before, sort_keys=True) != json.dumps(after, sort_keys=True)
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path}")
@@ -134,7 +139,7 @@ def expect_inventory_rejected(
 ) -> None:
     bad = copy.deepcopy(canonical)
     mutate(bad)
-    require(bad != canonical, f"inventory negative did not mutate its fixture: {name}")
+    require(materially_different(canonical, bad), f"inventory negative did not mutate its fixture: {name}")
     with inventory_payload_fixture(validator, bad) as observed:
         try:
             run_inventory_semantic_case(validator)
@@ -251,10 +256,10 @@ def expect_status_rejected(
     bad_inventory = copy.deepcopy(canonical_inventory)
     if mutate_status is not None:
         mutate_status(bad_status)
-        require(bad_status != canonical_status, f"status negative did not mutate its fixture: {name}")
+        require(materially_different(canonical_status, bad_status), f"status negative did not mutate its fixture: {name}")
     if mutate_inventory is not None:
         mutate_inventory(bad_inventory)
-        require(bad_inventory != canonical_inventory, f"status inventory negative did not mutate its fixture: {name}")
+        require(materially_different(canonical_inventory, bad_inventory), f"status inventory negative did not mutate its fixture: {name}")
     with tempfile.TemporaryDirectory(prefix=".memory-os-status-hygiene-negative-", dir=TEMP_PARENT) as tmp:
         tmp_path = Path(tmp)
         status_path = tmp_path / "status.json"
@@ -342,6 +347,12 @@ def main() -> int:
         and BACKUP_BINDING.is_file()
         and TEMP_PARENT.is_dir(),
         "operability promotion negative foundation missing",
+    )
+    require(
+        materially_different({"count": 0}, {"count": False})
+        and materially_different({"count": 1}, {"count": True})
+        and not materially_different({"count": 0}, {"count": 0}),
+        "negative fixture mutation guard must distinguish boolean from integer and reject no-op",
     )
     canonical_inventory = load(INVENTORY)
     canonical_status = load(STATUS)
