@@ -95,6 +95,34 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
     except SyntaxError as exc:
         raise Fail(f"strict snapshot diagnostic Python heredoc invalid: {exc}") from exc
 
+    # AST call presence is not proof if the publication heredoc exits
+    # unconditionally before reaching its atomic write. Inspect only
+    # unconditionally entered statement bodies; exception handlers remain
+    # legitimate conditional failure paths.
+    def reject_unconditional_termination(statements: list[ast.stmt]) -> None:
+        for statement in statements:
+            if isinstance(statement, ast.Raise):
+                raise Fail("strict snapshot diagnostic unconditional early termination")
+            if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+                target = statement.value.func
+                is_exit = (
+                    isinstance(target, ast.Name) and target.id in ("exit", "quit")
+                ) or (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and (target.value.id, target.attr) in (("sys", "exit"), ("os", "_exit"))
+                )
+                if is_exit:
+                    raise Fail("strict snapshot diagnostic unconditional early termination")
+            if isinstance(statement, (ast.With, ast.AsyncWith, ast.Try)):
+                reject_unconditional_termination(statement.body)
+            if isinstance(statement, ast.If) and isinstance(statement.test, ast.Constant):
+                reject_unconditional_termination(
+                    statement.body if bool(statement.test.value) else statement.orelse
+                )
+
+    reject_unconditional_termination(tree.body)
+
     def live(node: ast.AST):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
             return
@@ -209,6 +237,34 @@ def prove_diagnostic_comment_and_dead_code_rejected(publish: str) -> None:
             )
         else:
             raise Fail(f"strict snapshot diagnostic accepted {label}")
+
+def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
+    validate_atomic_diagnostic_publication(publish)
+    mutations = (
+        ("module raise", "          import json, os, tempfile",
+         "          import json, os, tempfile\n          raise SystemExit(0)"),
+        ("module exit", "          import json, os, tempfile",
+         "          import json, os, tempfile\n          exit(0)"),
+        ("try raise", "              os.replace(tmp_name, path)",
+         "              raise SystemExit(0)\n              os.replace(tmp_name, path)"),
+        ("try sys exit", "              os.replace(tmp_name, path)",
+         "              sys.exit(0)\n              os.replace(tmp_name, path)"),
+        ("conditional true raise", "              os.replace(tmp_name, path)",
+         "              if True: raise SystemExit(0)\n              os.replace(tmp_name, path)"),
+    )
+    for label, before, after in mutations:
+        require(publish.count(before) == 1, f"{label}: canonical diagnostic fixture drift")
+        mutated = publish.replace(before, after, 1)
+        try:
+            validate_atomic_diagnostic_publication(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot diagnostic unconditional early termination",
+                f"{label} rejected outside exact early-termination guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot diagnostic accepted {label}")
+
 
 def validate_atomic_diagnostic_publication(publish: str) -> None:
     required_fragments = (
@@ -638,6 +694,7 @@ def main() -> int:
     prove_publisher_revalidation_call_binding(publish)
     require_full_admission_chain(publish, "strict snapshot publication workflow")
     prove_diagnostic_comment_and_dead_code_rejected(publish)
+    prove_diagnostic_unconditional_exit_rejected(publish)
 
     print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
     print("pull request write token exposed: false")
