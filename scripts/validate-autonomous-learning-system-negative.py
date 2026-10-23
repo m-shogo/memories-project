@@ -147,6 +147,32 @@ def main() -> int:
         ("drop CI guard timeout handling", lambda root: replace_in_entrypoint(root, "        except subprocess.TimeoutExpired:\n", "        except RuntimeError:\n")),
         ("drop anti-regression lesson", lambda root: (root / LEARNING).write_text((root / LEARNING).read_text(encoding="utf-8").replace("Repeating a known failed approach without changed preconditions is a regression", "known failures may be retried"), encoding="utf-8")),
     ]
+    # Exercise every mandatory contract rule independently. A positive
+    # validator check without its own mutation proof is not negative coverage.
+    for rule in (
+        "searchBeforeChange",
+        "sameFailedApproachRequiresChangedPrecondition",
+        "preferExecutableGuard",
+        "verifyProtectedAuthorityAfterChange",
+        "scopedBlockerDoesNotStopIndependentWork",
+        "historyIsAppendOnly",
+        "learningIsNeverProductionEvidence",
+        "learningCannotPromoteReadiness",
+    ):
+        cases.append((
+            f"disable mandatory {rule}",
+            lambda root, key=rule: edit_contract(
+                root, lambda data: data["rules"].__setitem__(key, False)
+            ),
+        ))
+    cases.extend((
+        ("downgrade schema version", lambda root: edit_contract(
+            root, lambda data: data.__setitem__("schemaVersion", "autonomous-learning-system.0.0")
+        )),
+        ("reorder closed-loop execution", lambda root: edit_contract(
+            root, lambda data: data["loop"].reverse()
+        )),
+    ))
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
