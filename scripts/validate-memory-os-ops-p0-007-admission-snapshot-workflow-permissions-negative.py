@@ -299,6 +299,16 @@ def validate_atomic_diagnostic_publication(publish: str) -> None:
 def require_exact_checkout_ref(workflow: str, expected: str, label: str) -> None:
     # Require the actual checkout step's with.ref, not a comment, env value,
     # or a later shell assertion mentioning the desired source SHA.
+    # An extra checkout with another action version could overwrite the exact
+    # source after the legitimate checkout and must not escape this matcher.
+    checkout_steps = re.findall(
+        r"""(?m)^[ \t]*-[ \t]*uses:[ \t]*['"]?(actions/checkout@[^\s'"#]+)""",
+        workflow,
+    )
+    require(
+        checkout_steps == ["actions/checkout@v4"],
+        f"{label} checkout must bind to exact event source SHA",
+    )
     matches = re.findall(
         r"(?m)^      - uses: actions/checkout@v4[ \t]*\n        with:[ \t]*\n          ref:[ \t]*(.+?)[ \t]*$",
         workflow,
@@ -325,13 +335,14 @@ def prove_checkout_comment_bypass_rejected(pr: str, publish: str) -> None:
             require("checkout must bind" in str(exc), f"{label} rejected outside checkout guard: {exc}")
         else:
             raise Fail(f"{label} accepted substituted checkout with comment-only source")
-        duplicate = workflow + f"\n      - uses: actions/checkout@v4\n        with:\n          ref: {expected}\n"
-        try:
-            require_exact_checkout_ref(duplicate, expected, label)
-        except Fail as exc:
-            require("checkout must bind" in str(exc), f"{label} duplicate rejected outside checkout guard: {exc}")
-        else:
-            raise Fail(f"{label} accepted ambiguous duplicate checkout")
+        for extra_ref in ("actions/checkout@v4", "actions/checkout@v3", "actions/checkout@v4.2.0", "actions/checkout@main"):
+            duplicate = workflow + f"\n      - uses: {extra_ref}\n        with:\n          ref: {expected}\n"
+            try:
+                require_exact_checkout_ref(duplicate, expected, label)
+            except Fail as exc:
+                require("checkout must bind" in str(exc), f"{label} duplicate {extra_ref} rejected outside checkout guard: {exc}")
+            else:
+                raise Fail(f"{label} accepted ambiguous duplicate checkout: {extra_ref}")
 
 
 def executable_run_lines(workflow: str) -> list[str]:
