@@ -2303,3 +2303,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered and semantically eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
 - Learning is append-only operational guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Snapshot positive control must reject hidden stderr failures
+
+### Outcome
+- Commit `69bf5d6aa40eaab1477ae1df69023725d0cd30f0` strengthens the existing strict snapshot negative suite's positive control: zero exit and the two expected stdout markers are insufficient when the canonical validator also emits a failure on stderr.
+
+### Evidence
+- Before this change, `run_validator(expect_success=True)` passed only stdout to `require_positive_validator_output`; stderr was not inspected after a zero exit. The new classifier rejects nonempty stderr and includes an in-process synthetic positive-stdout/failed-stderr control.
+- Exact-source Readonly run `39972500337` (job `120478545574`) and Snapshot publisher run `39972500121` (job `120478545519`) both completed SUCCESS. Each logged strict snapshot negative PASS, 22 controlled validator corruptions rejected, 3 generator corruptions rejected, and `production decision: NO_GO`.
+
+### Why safe
+- The change is confined to the CI-bound negative harness's clean positive-control classification. It does not relax the validator, create external evidence, or modify production, recovery, readiness or promotion authorities.
+
+### Reusable mechanism
+- A canonical positive control must require zero exit, exact success markers and no hidden error output. Include a synthetic test that combines valid stdout with a fail-closed stderr diagnostic to prove the positive classifier cannot be spoofed by mixed output.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; strict OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates. Learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
