@@ -4121,3 +4121,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit this guard if an observed exact-source CI failure identifies a new required path/precondition, or a newly discovered mutation escapes the expanded protected-state comparison. Do not retry the unrelated unchanged source-binding clean-worktree blocker.
+
+## 2026-10-24 — Atomic replacement failure must preserve all recovery registries and detect same-inode writes
+
+### Outcome and evidence
+- Commit `7ae3e6b411a984a20d2a4073fe49a339cea7a75b` extends the existing CI-bound atomic-write negative to protect the bytes, file/parent identity and resolved path of six recovery registries plus the snapshot, Production Status and generator.
+- Commit `d17c82051b03ebb06e04ebc5e3211b878d2c7fb4` corrects the synthetic byte-drift fixture's newline escaping. Exact-source Atomic Write Negative run `40018252589` completed SUCCESS; job log shows `OPS-P0-007 strict snapshot atomic replacement negative proof: PASS` and `snapshot/status/generator/recovery registries bytes and identity unchanged: true`. Prior run `40018218456` also completed SUCCESS at the pre-correction source; it does not replace the corrected-source result.
+
+### Failure: fixture newline escaping
+- **Symptom:** The first new registry-byte fixture wrote literal backslash-n instead of the intended newline-terminated JSON sample. This was detected by post-write source inspection, not a CI failure.
+- **Evidence:** Source at `7ae3e6b` contained two `\\\\n` escape sequences in Python byte literals; the first exact-source run succeeded because the test still mutated bytes, but its fixture representation was not faithful.
+- **Root cause:** JavaScript-to-Python string serialization double-escaped the newline, repeating a previously documented fixture-generation failure class.
+- **Failed approach:** Writing generated Python fixture literals without inspecting their final source representation before committing.
+- **Correction:** Replace the two doubled escapes with canonical single `\\n` Python byte-literal escapes, preserving the byte-mutation assertion.
+- **Recurrence guard:** Re-read the written source and assert that the intended two fixture lines have single escapes and no doubled escapes; require corrected-source CI success. Future generated fixtures must check serialized source before writing.
+- **Retry condition:** Do not reuse the double-escape construction. Revisit only if a source-read fixture audit or exact-source CI identifies a new serialization mismatch.
+
+### Why safe and reusable mechanism
+- Only the existing atomic-failure negative harness changed. The failure injection remains scoped to one attempted atomic replacement; the source-read and CI postconditions prove canonical snapshot, Production Status, generator and six registry identities/bytes were unchanged.
+- Compare both bytes and inode/parent/resolved-path identity: inode checks alone cannot detect an in-place rewrite. Use an isolated temporary same-inode content mutation as negative proof; do not mutate canonical registries.
+- This test evidence is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Registered and semantically preflight-eligible generations are separate. Preflight still needs distinct unsuperseded eligible environments and human-approved current objective; new generation evidence requires current executable reviewed request; final candidates still need complete typed eight-domain non-resurrection coverage and independent review; human promotion remains separate and non-automatic.
