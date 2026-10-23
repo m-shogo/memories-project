@@ -14,6 +14,15 @@ GENERATOR = ROOT / "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
 SNAPSHOT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
+PROTECTED_RECOVERY_REGISTRIES = (
+    ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    ROOT / "contracts/operations/recovery-objectives-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json",
+)
+
 
 class Fail(RuntimeError):
     pass
@@ -71,12 +80,20 @@ def prove_rollback_symlink_guard() -> None:
 
 
 def require_canonical_rollback_sources() -> None:
-    for path, relative in (
-        (SNAPSHOT, Path("contracts/operations/ops-p0-007-admission-snapshot.v1.json")),
-        (STATUS, Path("contracts/operations/production-operability-status.json")),
-        (GENERATOR, Path("scripts/generate-memory-os-ops-p0-007-admission-snapshot.py")),
-    ):
-        require_canonical_rollback_authority(path, relative)
+    for path in (SNAPSHOT, STATUS, GENERATOR, *PROTECTED_RECOVERY_REGISTRIES):
+        require_canonical_rollback_authority(path, path.relative_to(ROOT))
+
+
+def protected_state(path: Path) -> tuple[object, ...]:
+    """Protect registry bytes and source/parent inode identity across rollback."""
+    entry = path.lstat()
+    parent = path.parent.lstat()
+    return (
+        path.read_bytes(),
+        (entry.st_mode, entry.st_dev, entry.st_ino),
+        (parent.st_mode, parent.st_dev, parent.st_ino),
+        path.resolve(strict=True),
+    )
 
 
 def mode(path: Path) -> int:
@@ -143,6 +160,10 @@ def run_successful_rollback() -> None:
     original_mode = mode(SNAPSHOT)
     status_before = STATUS.read_bytes()
     status_mode = mode(STATUS)
+    protected_before = {
+        path: protected_state(path)
+        for path in (STATUS, GENERATOR, *PROTECTED_RECOVERY_REGISTRIES)
+    }
     module = load_generator_module()
     original_replace = module.os.replace
     snapshot_replace_count = 0
@@ -200,6 +221,9 @@ def run_successful_rollback() -> None:
         raise Fail("successful rollback case did not restore original canonical strict snapshot mode")
     if STATUS.read_bytes() != status_before or mode(STATUS) != status_mode:
         raise Fail("successful rollback case mutated canonical production status bytes/mode")
+    for path, state in protected_before.items():
+        if protected_state(path) != state:
+            raise Fail(f"post-write rollback changed protected recovery authority bytes/identity: {path.relative_to(ROOT)}")
 
 
 def run_failed_rollback_preserves_primary_diagnostic() -> None:
@@ -207,6 +231,10 @@ def run_failed_rollback_preserves_primary_diagnostic() -> None:
     original_mode = mode(SNAPSHOT)
     status_before = STATUS.read_bytes()
     status_mode = mode(STATUS)
+    protected_before = {
+        path: protected_state(path)
+        for path in (STATUS, GENERATOR, *PROTECTED_RECOVERY_REGISTRIES)
+    }
     module = load_generator_module()
     original_replace = module.os.replace
     snapshot_replace_count = 0
@@ -264,6 +292,9 @@ def run_failed_rollback_preserves_primary_diagnostic() -> None:
         raise Fail("failed rollback negative cleanup did not restore canonical strict snapshot mode")
     if STATUS.read_bytes() != status_before or mode(STATUS) != status_mode:
         raise Fail("failed rollback case mutated canonical production status bytes/mode")
+    for path, state in protected_before.items():
+        if protected_state(path) != state:
+            raise Fail(f"post-write rollback changed protected recovery authority bytes/identity: {path.relative_to(ROOT)}")
 
 
 def main() -> int:
@@ -282,7 +313,7 @@ def main() -> int:
     print("rollback writer failure preserves primary validation diagnostic: true")
     print("rollback writer failure is surfaced as rollback incomplete: true")
     print("failed rollback leaves the injected invalid candidate until explicit negative cleanup: true")
-    print("canonical production status bytes/mode remain unchanged: true")
+    print("canonical production status and six recovery registries bytes/identity remain unchanged: true")
     print("temporary snapshot authority residue after rollback attempts: false")
     print("negative cleanup restores canonical strict snapshot bytes/mode: true")
     print("production evidence/readiness/promotion created: false")
