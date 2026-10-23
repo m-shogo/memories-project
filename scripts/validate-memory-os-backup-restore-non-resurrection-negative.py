@@ -161,7 +161,7 @@ def main() -> int:
         EXPECTED_DIAGNOSTICS = {
             "unregistered generation evidence": "generationEvidenceId is not uniquely registered",
             "source commit mismatch": "sourceCommitSha must match generation recovery evidence",
-            "missing required domain": "domain coverage drift",
+            # Each of the eight typed domains has an independent fail-closed deletion proof.
             "domain evidence path is not typed": f"domain {domain_name} evidence path is not typed",
             "domain result contradicts typed evidence": f"domain {domain_name} evidence result binding mismatch",
             "evidenceComplete false despite eight PASS domains": "evidenceComplete derivation drift",
@@ -215,7 +215,10 @@ def main() -> int:
 
         reject_variant("unregistered generation evidence", lambda r: r.update(generationEvidenceId="brge_missing_generation"))
         reject_variant("source commit mismatch", lambda r: r.update(sourceCommitSha="b" * 40))
-        reject_variant("missing required domain", lambda r: r["domains"].pop(contract["requiredDomains"][0]))
+        for missing_domain in contract["requiredDomains"]:
+            case = f"missing required domain: {missing_domain}"
+            EXPECTED_DIAGNOSTICS[case] = "domain coverage drift"
+            reject_variant(case, lambda r, domain=missing_domain: r["domains"].pop(domain))
         reject_variant("domain evidence path is not typed", lambda r: r["domains"][domain_name].update(evidenceRef="SECURITY.md"))
         reject_variant("domain result contradicts typed evidence", lambda r: r["domains"][domain_name].update(result="FAIL"))
         reject_variant("evidenceComplete false despite eight PASS domains", lambda r: r.update(evidenceComplete=False))
