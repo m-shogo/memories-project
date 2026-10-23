@@ -1658,3 +1658,46 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - The strict OPS-P0-007 snapshot remained blob `dbaa36b082366737dca2461d15748103b9740ef6`, production status remained `ce67e9353d6583e4eaf792470563cad25a7396b3`, and the learning contract remained `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. Both snapshot and status retain `productionDecision=NO_GO`; all generation/objective/request/evidence/candidate counts remain zero.
 - Learning history is append-only operational context, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Exact-source 62-case CI proof and CI learning-guard function binding
+
+### Symptom
+- Earlier 62-case autonomous-learning negative coverage had no observed exact-source CI run in the learning history. A separate static source review found that the operability entrypoint could invoke a later shadowed `validate_learning_guards` binding instead of the checked synchronous function while still satisfying the canonical direct-call AST check.
+
+### Evidence
+- Operability Contracts run `39945311875` succeeded on exact source `cf3065d3ecbff131c04b6e25ea3cb0cd4192f967`; job `120386426833` logged both learning guards PASS and `Autonomous learning negative validation PASS (62 fail-closed cases)`.
+- The positive learning validator previously checked one `main` binding and its direct guard call, but not the module-level binding identity of `validate_learning_guards` itself. No real shadowing incident was observed.
+
+### Root cause or unknown
+- Verified static reachability gap: a call-site AST name alone does not prove that the callee name still refers to the checked synchronous implementation. The earlier CI-visibility gap was resolved by reading the branch-scoped Actions runs endpoint and exact-source job logs.
+
+### Failed approach
+- Assuming a single direct call to `validate_learning_guards(failures)` guarantees the invoked function has not been replaced; treating a PR-filtered workflow-run lookup as exhaustive evidence for push-triggered CI.
+
+### Correction
+- Commit `f7face4d3594e35668d13ff445c2516aa7484cb8` requires one synchronous module-level `validate_learning_guards` definition and rejects async redefinitions and top-level assignments of the same name.
+- Commit `48a56740495044a55b898c7239e41d28ec7f351f` adds two positive-controlled, case-specific-diagnostic negative fixtures for async and assignment shadowing.
+- Commit `d94464848dabe173d5440606fc8e75af7ee070d4` raises the existing operability entrypoint's fail-closed negative floor from 62 to 64.
+
+### Recurrence guard
+- The canonical positive validator rejects the two shadowing patterns; the isolated negative suite exercises both and binds each to its own diagnostic. The CI caller refuses a suite reporting fewer than 64 cases. This is bounded static binding coverage, not a proof against arbitrary dynamic Python namespace mutation.
+
+### Retry condition
+- Revisit only if a distinct executable binding bypass is demonstrated or the canonical entrypoint structure legitimately changes. Continue using exact-source branch-scoped Actions runs and job logs to substantiate CI outcomes, not PR-only run listings.
+
+### Outcome
+- Three code commits landed on `so`, and exact-source Operability Contracts run `39952314681` completed SUCCESS on `d94464848dabe173d5440606fc8e75af7ee070d4`.
+
+### Success evidence
+- Job `120409512376` logged `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (64 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+- Compare `4b730815ffb9cf71d3638df8ec3b73076fd10861...d94464848dabe173d5440606fc8e75af7ee070d4` changed only the two learning validator scripts and existing operability entrypoint.
+
+### Why safe
+- Only fail-closed learning CI checks and disposable negative fixtures changed. No production generation, objective, drill request, evidence, credential, traffic, readiness, or promotion authority was modified. CI PASS is guard execution evidence only.
+
+### Reusable mechanism
+- Validate both caller reachability and callee binding identity at the module invocation boundary. Exercise every newly rejected shadowing class in isolated positive-controlled fixtures, require the intended diagnostic, raise the existing CI case floor, and verify exact-source job logs.
+
+### Protected-authority check
+- Post-change reads confirmed learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` and production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` unchanged, with `productionDecision=NO_GO`. OPS-P0-007 semantic generation/objective gates, typed eight-domain non-resurrection, independent review, and separate human promotion remain mandatory.
+- This append-only learning record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion gates.
