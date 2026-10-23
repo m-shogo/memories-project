@@ -253,8 +253,33 @@ def prove_generator_diagnostic_classifier() -> None:
             raise Fail("generator classifier accepted unrelated or multiline rejection")
 
 
+def require_snapshot_state_unchanged(
+    before: tuple[bytes, int], after: tuple[bytes, int], label: str
+) -> None:
+    if before[0] != after[0]:
+        raise Fail(f"{label}: rejected generator attempt mutated deterministic snapshot")
+    if before[1] != after[1]:
+        raise Fail(f"{label}: rejected generator attempt changed deterministic snapshot mode")
+
+
+def prove_snapshot_state_classifier() -> None:
+    original = (b"canonical snapshot", 0o644)
+    require_snapshot_state_unchanged(original, original, "synthetic unchanged")
+    for mutated, expected in (
+        ((b"changed snapshot", 0o644), "mutated deterministic snapshot"),
+        ((b"canonical snapshot", 0o600), "changed deterministic snapshot mode"),
+    ):
+        try:
+            require_snapshot_state_unchanged(original, mutated, "synthetic drift")
+        except Fail as exc:
+            if expected not in str(exc):
+                raise Fail(f"snapshot state classifier rejected outside intended guard: {exc}") from exc
+        else:
+            raise Fail("snapshot state classifier accepted synthetic bytes/mode drift")
+
+
 def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) -> None:
-    before = SNAPSHOT.read_bytes()
+    before = (SNAPSHOT.read_bytes(), mode(SNAPSHOT))
     proc = run_bounded_python(GENERATOR, label)
     if proc.returncode != 1:
         raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
@@ -263,8 +288,7 @@ def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) 
     require_expected_generator_diagnostic(output, allowed, label)
     if "Traceback (most recent call last)" in output:
         raise Fail(f"{label}: generator rejection surfaced an implementation exception")
-    if SNAPSHOT.read_bytes() != before:
-        raise Fail(f"{label}: rejected generator attempt mutated deterministic snapshot")
+    require_snapshot_state_unchanged(before, (SNAPSHOT.read_bytes(), mode(SNAPSHOT)), label)
 
 
 def run_generator_post_write_validator_substitution_rejected() -> None:
@@ -558,6 +582,7 @@ def main() -> int:
     ]
 
     try:
+        prove_snapshot_state_classifier()
         prove_positive_validator_classifier()
         prove_case_specific_validator_classifier()
         prove_generator_diagnostic_classifier()
