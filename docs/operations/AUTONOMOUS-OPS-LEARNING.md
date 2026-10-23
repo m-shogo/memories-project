@@ -2284,3 +2284,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; strict snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Eight-domain coverage, independent review and separate human promotion remain mandatory.
 - Append-only learning cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Nested generator negatives require their exact two-line cause
+
+### Outcome
+- Commit `0681b8b5168c51ff92a44480ea01d14460c062d1` requires all three nested generator corruption cases to emit the exact two-line local Apple replay restore diagnostic, rather than accepting any single-line typed-admission failure with a matching generic prefix.
+
+### Evidence
+- Before the change, `require_expected_generator_diagnostic` accepted `valid_single` for nested case labels, so a generic typed-admission error could satisfy the negative without reaching the intended blocker/decision mutation. The new classifier independently rejects a single-line prefix, a suffixed first line, a wrong second line and duplicate lines for each nested case.
+- Exact-source Readonly run `39972153246` (job `120477348224`) and Snapshot publisher run `39972153486` (job `120477349705`) both completed SUCCESS on the code SHA. Both logged strict snapshot negative PASS, 22 controlled validator corruptions rejected, 3 generator corruptions rejected, and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing CI-bound negative diagnostic classifier changed. No canonical generator, registry, recovery objective, production status, typed eight-domain evidence or promotion authority was modified.
+
+### Reusable mechanism
+- A negative case that is expected to fail through a nested validator must require its complete cause-specific multiline diagnostic. Do not permit a generic single-line prefix fallback; add positive and unrelated/partial/duplicate negative controls for every bound case.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered and semantically eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Learning is append-only operational guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
