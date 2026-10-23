@@ -268,6 +268,12 @@ EXACT_GENERATOR_REJECTIONS = {
 }
 
 
+
+def require_known_generator_case(label: str) -> None:
+    if label not in EXACT_GENERATOR_REJECTIONS and label not in NESTED_GENERATOR_REJECTIONS:
+        raise Fail(f"{label}: missing exact generator corruption diagnostic binding")
+
+
 def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...], label: str) -> None:
     lines = output.strip().splitlines()
     exact = EXACT_GENERATOR_REJECTIONS.get(label)
@@ -329,6 +335,14 @@ def require_negative_generator_stdout(stdout: str, baseline: str, label: str) ->
 
 
 def prove_generator_diagnostic_classifier() -> None:
+    for label in ("synthetic unknown generator corruption", "synthetic positive"):
+        try:
+            require_known_generator_case(label)
+        except Fail as exc:
+            if str(exc) != f"{label}: missing exact generator corruption diagnostic binding":
+                raise Fail(f"generator case classifier rejected outside intended guard: {exc}") from exc
+        else:
+            raise Fail(f"unmapped generator negative unexpectedly accepted: {label}")
     for label, expected in EXACT_GENERATOR_REJECTIONS.items():
         require_expected_generator_diagnostic(expected + chr(10), ("strict snapshot authority",), label)
         for wrong in (expected + " unrelated", expected + chr(10) + expected, "unrelated: " + expected):
@@ -445,6 +459,7 @@ def prove_snapshot_state_classifier() -> None:
 
 
 def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...], preflight_stdout: str) -> None:
+    require_known_generator_case(label)
     before = snapshot_state()
     proc = run_bounded_python(GENERATOR, label)
     if proc.returncode != 1:
@@ -840,6 +855,15 @@ def main() -> int:
             ),
         ),
     ]
+
+    generator_labels = {label for label, _, _ in generator_cases} | {
+        "generator objective source symlink escape",
+        "generator objective writer module symlink escape",
+    }
+    if set(EXACT_GENERATOR_REJECTIONS) | set(NESTED_GENERATOR_REJECTIONS) != generator_labels:
+        raise Fail("strict snapshot generator diagnostic mapping drift")
+    if set(EXACT_GENERATOR_REJECTIONS) & set(NESTED_GENERATOR_REJECTIONS):
+        raise Fail("strict snapshot generator diagnostic mappings overlap")
 
     try:
         prove_snapshot_state_classifier()
