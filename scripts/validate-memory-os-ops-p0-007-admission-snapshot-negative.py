@@ -223,13 +223,14 @@ def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...],
         for message in allowed
         for prefix in (message, f"generated strict snapshot invalid: {message}")
     )
-    valid_single = len(lines) == 1 and lines[0].startswith(prefixes)
     nested = NESTED_GENERATOR_REJECTIONS.get(label)
+    # A nested case must reach its exact two-line cause. A generic single-line
+    # typed-admission failure is not proof that the intended mutation ran.
+    valid_single = nested is None and len(lines) == 1 and lines[0].startswith(prefixes)
     valid_nested = (
-        len(lines) == 2
-        and nested is not None
-        and lines[0].startswith("typed non-resurrection canonical admission authority invalid: local Apple replay restore validator failed:")
-        and lines[0].startswith(prefixes)
+        nested is not None
+        and len(lines) == 2
+        and lines[0] == "typed non-resurrection canonical admission authority invalid: local Apple replay restore validator failed:"
         and lines[1] == nested
     )
     if not (valid_single or valid_nested):
@@ -258,6 +259,28 @@ def prove_generator_diagnostic_classifier() -> None:
         ("typed non-resurrection canonical admission authority invalid",),
         nested_label,
     )
+    # Prove nested labels cannot be satisfied by an unrelated single-line
+    # typed-admission rejection, a suffixed wrapper or a wrong second line.
+    for nested_case, second_line in NESTED_GENERATOR_REJECTIONS.items():
+        good = nested_prefix + "\n" + second_line + "\n"
+        require_expected_generator_diagnostic(
+            good, ("typed non-resurrection canonical admission authority invalid",), nested_case
+        )
+        for wrong in (
+            nested_prefix + "\n",
+            nested_prefix + " unrelated\n" + second_line + "\n",
+            nested_prefix + "\n" + second_line + " unrelated\n",
+            good + second_line + "\n",
+        ):
+            try:
+                require_expected_generator_diagnostic(
+                    wrong, ("typed non-resurrection canonical admission authority invalid",), nested_case
+                )
+            except Fail as exc:
+                if "one intended authority diagnostic" not in str(exc):
+                    raise Fail(f"nested generator classifier rejected outside intended guard: {exc}") from exc
+            else:
+                raise Fail(f"{nested_case}: accepted unrelated or incomplete nested diagnostic")
     for output in (
         "unrelated failure: " + valid + "\n",
         "unrelated failure\n" + valid + "\n",
