@@ -385,6 +385,206 @@ def require_publisher_revalidation_calls(publish: str) -> None:
             re.search(command, body) is not None,
             f"strict snapshot publisher missing executable {validator} inside bounded revalidation",
         )
+        # The publisher runs under set -e. A suffix such as `|| true` or
+        # `; true` would mask a failed admission despite a present command.
+        fail_closed_command = rf'(?m)^  python[ \\t]+{re.escape(validator)}[ \\t]+>>[ \\t]+"\\$log"[ \\t]+2>&1(publish: str) -> None:
+    require_publisher_revalidation_calls(publish)
+    call_pattern = r"(?m)^([ \t]*)revalidate_latest_snapshot[ \t]*$"
+    require(len(re.findall(call_pattern, publish)) == 3, "strict snapshot revalidation fixture call count drift")
+    for label, replacement in (
+        ("comment-only call", r"\1# revalidate_latest_snapshot"),
+        ("echo-only call", r"\1echo revalidate_latest_snapshot"),
+    ):
+        mutated = re.sub(call_pattern, replacement, publish, count=1)
+        try:
+            require_publisher_revalidation_calls(mutated)
+        except Fail as exc:
+            require(
+                "missing executable bounded revalidation call sites" in str(exc),
+                f"{label} rejected outside intended publisher call-site guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted {label}")
+
+    # A decoy validator in another run step cannot replace the one inside
+    # the bounded function, even if global command search still finds it.
+    validator = FULL_ADMISSION_VALIDATORS[0]
+    original = f'            python {validator} >> "$log" 2>&1'
+    require(publish.count(original) == 1, "strict snapshot bounded validator fixture drift")
+    decoy = publish.replace(original, f"            # python {validator} moved outside", 1)
+    decoy += f"\n      - name: unbound validator decoy\n        run: |\n          python {validator}\n"
+    require_full_admission_chain(decoy, "decoy still globally reachable")
+    try:
+        require_publisher_revalidation_calls(decoy)
+    except Fail as exc:
+        require(
+            f"missing executable {validator} inside bounded revalidation" in str(exc),
+            f"unbound validator decoy rejected outside function-binding guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot publisher accepted validator outside bounded revalidation")
+
+    function_start = "          revalidate_latest_snapshot() {\n"
+    require(publish.count(function_start) == 1, "strict snapshot revalidation entry fixture drift")
+    for command in ("return 0", "exit 0"):
+        mutated = publish.replace(function_start, function_start + f"            {command}\n", 1)
+        try:
+            require_publisher_revalidation_calls(mutated)
+        except Fail as exc:
+            require(
+                "revalidation contains unconditional early return/exit" in str(exc),
+                f"early {command} rejected outside intended reachability guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted validators after early {command}")
+
+    # Retaining a validator command is not enough if its failure is swallowed.
+    for validator in FULL_ADMISSION_VALIDATORS:
+        original = f'            python {validator} >> "$log" 2>&1'
+        require(publish.count(original) == 1, f"strict snapshot {validator} command fixture drift")
+        for suffix in (" || true", " || :", "; true"):
+            mutated = publish.replace(original, original + suffix, 1)
+            try:
+                require_publisher_revalidation_calls(mutated)
+            except Fail as exc:
+                require(
+                    f"masks or redirects {validator} admission failure" in str(exc),
+                    f"masked {validator} rejected outside fail-closed guard: {exc}",
+                )
+            else:
+                raise Fail(f"strict snapshot publisher accepted masked {validator} admission failure")
+
+
+def require_readonly_pr_permissions(workflow: str) -> None:
+    # GitHub accepts 'permissions: write-all'; banning 'contents: write' alone
+    # does not prevent a PR workflow from receiving a write-capable token.
+    # Normalize only trailing YAML comments; compact/quoted permission values
+    # are still real GitHub Actions grants and must not bypass the guard.
+    active = "\n".join(line.split("#", 1)[0] for line in workflow.splitlines())
+    require(
+        re.search(r"(?m)^[ \t]*permissions[ \t]*:[ \t]*['\"]?write-all['\"]?[ \t]*$", active) is None,
+        "strict snapshot PR workflow must never use permissions: write-all",
+    )
+    require(
+        re.search(r"(?m)^permissions: *\n +contents: *read(?: *(?:#.*)?)?$", workflow) is not None,
+        "strict snapshot PR workflow must declare top-level contents: read",
+    )
+    require(
+        re.search(r"(?m)\bcontents[ \t]*:[ \t]*['\"]?write['\"]?(?=[ \t]*$|[ \t]*[,}])", active) is None,
+        "strict snapshot PR workflow must never receive contents: write",
+    )
+    scopes = "|".join(re.escape(scope) for scope in GITHUB_PERMISSION_SCOPES)
+    scope_write = rf"""(?m)(?<![\w-])['"]?(?:{scopes})['"]?[ \t]*:[ \t]*['"]?write['"]?(?=[ \t]*(?:[,}}]|$))"""
+    require(
+        re.search(scope_write, active) is None,
+        "strict snapshot PR workflow must never receive a write-capable permission scope",
+    )
+
+
+def prove_write_all_permissions_rejected() -> None:
+    require_readonly_pr_permissions("permissions:\n  contents: read\n")
+    for fixture in (
+        "permissions: write-all\n# contents: read\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions: write-all\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions: 'write-all'\n",
+    ):
+        try:
+            require_readonly_pr_permissions(fixture)
+        except Fail as exc:
+            require("permissions: write-all" in str(exc), f"write-all rejected outside permission guard: {exc}")
+        else:
+            raise Fail("strict snapshot PR workflow accepted write-all permissions")
+
+
+    for fixture in (
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions:\n      contents:write\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions: {contents:write}\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions:\n      contents: \"write\"\n",
+    ):
+        try:
+            require_readonly_pr_permissions(fixture)
+        except Fail as exc:
+            require("contents: write" in str(exc), f"compact write grant rejected outside permission guard: {exc}")
+        else:
+            raise Fail("strict snapshot PR workflow accepted compact or quoted contents-write permission")
+
+    # Preserve a positive read-only control even when comments mention writes.
+    require_readonly_pr_permissions("permissions:\n  contents: read\n# actions: write\n")
+    for fixture in (
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions:\n      actions: write\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions: {id-token:write}\n",
+        'permissions:\n  contents: read\njobs:\n  check:\n    permissions: {"pull-requests": "write"}\n',
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions:\n      security-events: 'write'\n",
+    ):
+        try:
+            require_readonly_pr_permissions(fixture)
+        except Fail as exc:
+            require(
+                "write-capable permission scope" in str(exc),
+                f"non-contents write grant rejected outside scope guard: {exc}",
+            )
+        else:
+            raise Fail("strict snapshot PR workflow accepted a non-contents write permission")
+
+
+
+def main() -> int:
+    require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
+    require_canonical_workflow(PUBLISH_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot.yml"))
+    prove_symlink_rejected()
+    prove_comment_only_commands_rejected()
+    prove_write_all_permissions_rejected()
+    pr = PR_WORKFLOW.read_text(encoding="utf-8")
+    publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    prove_checkout_comment_bypass_rejected(pr, publish)
+
+    require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
+    require_readonly_pr_permissions(pr)
+    require("pull_request_target" not in pr, "strict snapshot PR workflow must not use pull_request_target")
+    require_exact_checkout_ref(pr, "${{ github.event.pull_request.head.sha }}", "strict snapshot PR workflow")
+    require("git diff --exit-code -- contracts/operations/ops-p0-007-admission-snapshot.v1.json" in pr, "strict snapshot PR workflow must reject deterministic authority drift")
+    require("git push" not in pr, "strict snapshot PR workflow must not publish authority")
+    require_full_admission_chain(pr, "strict snapshot PR workflow")
+
+    require("contents: write" in publish, "strict snapshot publication workflow requires explicit contents: write")
+    require("pull_request:" not in publish, "strict snapshot publication workflow must not run on pull requests")
+    require("pull_request_target" not in publish, "strict snapshot publication workflow must not use pull_request_target")
+    require_exact_checkout_ref(publish, "${{ github.sha }}", "strict snapshot publication workflow")
+    require("SOURCE_SHA" in publish, "strict snapshot publication workflow must capture source authority")
+    require("git rev-parse origin/so" in publish, "strict snapshot publication workflow must compare publication authority with origin/so")
+    require("refusing stale strict snapshot" in publish, "strict snapshot publication workflow must fail closed on stale authority")
+    require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
+    prove_publisher_revalidation_call_binding(publish)
+    require_full_admission_chain(publish, "strict snapshot publication workflow")
+    prove_diagnostic_comment_and_dead_code_rejected(publish)
+
+    print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
+    print("pull request write token exposed: false")
+    print("top-level read-only permissions and write-all rejection proven: true")
+    print("pull request authority publication allowed: false")
+    print("full recovery objective admission validation required: true")
+    print("full reviewed drill request admission validation required: true")
+    print("full request-bound generation evidence validation required: true")
+    print("full typed eight-domain admission validation required: true")
+    print("exact-source publication CAS required: true")
+    print("crash-safe mode-preserving diagnostic publication required: true")
+    print("production evidence created: false")
+    print("production ready: false")
+    print("production decision: NO_GO")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (Fail, OSError) as exc:
+        print(f"OPS-P0-007 SNAPSHOT WORKFLOW PERMISSION NEGATIVE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+        require(
+            re.search(fail_closed_command, body) is not None,
+            f"strict snapshot publisher masks or redirects {validator} admission failure",
+        )
 
 
 def prove_publisher_revalidation_call_binding(publish: str) -> None:
