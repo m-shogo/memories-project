@@ -67,12 +67,24 @@ def expect_source_authority_rejected(module: Any, field: str, replacement: Any) 
 
 
 def expect_source_execution_rejected(module: Any, field: str, replacement: Any) -> None:
+    # An unrelated domain failure must not count as proof that this guard fired.
+    expected_diagnostic = (
+        "inventory source-authority execution guard drift"
+        if field == "enforce_execution_authority"
+        else "inventory source-authority require helper drift"
+        if field == "require"
+        else "inventory source-authority execution helper drift"
+    )
     original = getattr(module, field)
     setattr(module, field, replacement)
     rejected = False
     try:
         module.main()
-    except module.Fail:
+    except module.Fail as exc:
+        require(
+            str(exc) == expected_diagnostic,
+            f"source-authority {field} rejected outside the intended guard: {exc}",
+        )
         rejected = True
     finally:
         setattr(module, field, original)
