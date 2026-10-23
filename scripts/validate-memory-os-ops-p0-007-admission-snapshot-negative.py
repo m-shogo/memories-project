@@ -292,7 +292,7 @@ def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) 
 
 
 def run_generator_post_write_validator_substitution_rejected() -> None:
-    before = SNAPSHOT.read_bytes()
+    before = (SNAPSHOT.read_bytes(), mode(SNAPSHOT))
     module = load_generator_module()
     original_validator = module.validate_generated_snapshot
 
@@ -311,12 +311,11 @@ def run_generator_post_write_validator_substitution_rejected() -> None:
     finally:
         module.validate_generated_snapshot = original_validator
 
-    if SNAPSHOT.read_bytes() != before:
-        raise Fail("post-write validator substitution mutated deterministic snapshot")
+    require_snapshot_state_unchanged(before, (SNAPSHOT.read_bytes(), mode(SNAPSHOT)), "post-write validator substitution")
 
 
 def run_generator_full_admission_chain_required() -> None:
-    before = SNAPSHOT.read_bytes()
+    before = (SNAPSHOT.read_bytes(), mode(SNAPSHOT))
     module = load_generator_module()
     original_validators = module.run_full_admission_validators
 
@@ -335,8 +334,7 @@ def run_generator_full_admission_chain_required() -> None:
     finally:
         module.run_full_admission_validators = original_validators
 
-    if SNAPSHOT.read_bytes() != before:
-        raise Fail("full admission helper substitution mutated deterministic snapshot")
+    require_snapshot_state_unchanged(before, (SNAPSHOT.read_bytes(), mode(SNAPSHOT)), "full admission helper substitution")
 
 
 def run_generator_atomic_write_mode_preservation() -> None:
@@ -392,7 +390,7 @@ def run_generator_atomic_write_failure() -> None:
 
 
 def run_generator_authority_substitution() -> None:
-    before = SNAPSHOT.read_bytes()
+    before = (SNAPSHOT.read_bytes(), mode(SNAPSHOT))
     module = load_generator_module()
     substitutions = (
         ("OUTPUT", module.OBJECTIVES),
@@ -427,8 +425,7 @@ def run_generator_authority_substitution() -> None:
         finally:
             setattr(module, field, original)
     module.enforce_runtime_authorities()
-    if SNAPSHOT.read_bytes() != before:
-        raise Fail("strict snapshot authority substitution mutated deterministic snapshot")
+    require_snapshot_state_unchanged(before, (SNAPSHOT.read_bytes(), mode(SNAPSHOT)), "generator authority substitution")
 
 
 def mutate_field(field: str, value: Any) -> Callable[[dict[str, Any]], None]:
