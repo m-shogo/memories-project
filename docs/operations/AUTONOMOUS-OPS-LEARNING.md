@@ -3791,3 +3791,29 @@ a promotion decision, a recovery objective, or drill evidence.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicitly human-approved current recovery objective, executable reviewed request, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory.
 - Learning and CI guard successes are not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Independent readonly snapshot gate needs PR and so-push trigger coverage
+
+### Outcome
+- Commit `77ac84e209f323be17f3682cc76c3bc7ffa9cb55` binds the independent readonly workflow's PR, `so` push and manual-dispatch event header to its fourteen reviewed trigger paths on both automatic events.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40012059629` completed SUCCESS. The separate Snapshot Readonly run is not counted as successful without its own completed result.
+
+### Evidence
+- The prior readonly execution guard proved the job, checkout, immutable authority snapshots and validators, but did not prove that changing an input would actually trigger that workflow.
+- The new guard requires all fourteen reviewed paths in each of the PR and push filters, the exact `so` push branch selector, and the reviewed manual dispatch event.
+- Twenty-eight isolated path-removal mutations and eight event/selector mutations must emit the exact readonly trigger/path drift diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness and in-memory readonly workflow fixtures changed. The actual readonly/PR/publisher workflows, Production Status, strict snapshot, registries, recovery evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Independent CI is only meaningful when both its executable gate and its trigger coverage remain intact. Bind both PR and push path filters to the same reviewed fourteen-input set, then prove each missing path fails closed without creating a parallel production authority.
+- Trigger validation and runtime validator invocation are separate requirements; neither can substitute for the other or for real recovery evidence.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicit human-approved current recovery objective, executable reviewed request, independent review and separate human production promotion remain mandatory.
+- Learning/CI successes cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed readonly workflow trigger architecture or required input set changes, or an observed missing-trigger bypass escapes the bounded negative suite.
