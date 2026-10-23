@@ -116,6 +116,8 @@ CASE_SPECIFIC_VALIDATOR_REJECTIONS = {
     "typed production evidence boundary": "typed non-resurrection canonical registry authority invalid: registry production boundary drift",
     "canonical blocker replacement with unchanged count": "OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers",
     "canonical blocker ordering drift": "OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers",
+    "objective source symlink escape": "strict snapshot validator recovery objectives authority path drift",
+    "objective writer module symlink escape": "strict snapshot validator objective writer authority path drift",
 }
 
 
