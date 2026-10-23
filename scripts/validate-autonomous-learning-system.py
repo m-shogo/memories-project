@@ -128,6 +128,30 @@ def validate(repo_root: Path) -> None:
         entry_tree = ast.parse(ci_entrypoint, filename=str(repo_root / CI_ENTRYPOINT))
     except SyntaxError as exc:
         raise ValidationFailure("learning CI entrypoint is not valid Python") from exc
+    def module_scope_rebinds(name: str) -> bool:
+        # Inspect live module control flow, but not local function/class or
+        # comprehension scopes. A top-level loop, with-target, except alias,
+        # pattern capture, or nested import can overwrite a protected callable.
+        def binds(node: ast.AST) -> bool:
+            if isinstance(node, (
+                ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda,
+                ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
+            )):
+                return False
+            if isinstance(node, ast.Name):
+                return node.id == name and isinstance(node.ctx, (ast.Store, ast.Del))
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                return any(
+                    (alias.asname or (alias.name.split(".")[0] if isinstance(node, ast.Import) else alias.name))
+                    == name for alias in node.names
+                )
+            if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
+                if getattr(node, "name", None) == name:
+                    return True
+            return any(binds(child) for child in ast.iter_child_nodes(node))
+
+        return any(binds(node) for node in entry_tree.body)
+
     main_definitions = [
         node for node in entry_tree.body
         if isinstance(node, ast.FunctionDef) and node.name == "main"
@@ -163,6 +187,8 @@ def validate(repo_root: Path) -> None:
         for node in entry_tree.body
     ):
         raise ValidationFailure("learning CI entrypoint main binding is shadowed by import")
+    if module_scope_rebinds("main"):
+        raise ValidationFailure("learning CI entrypoint main binding is shadowed by module control flow")
     # The direct main() call must resolve to the bound synchronous guard,
     # not a later async definition or assignment with the same name.
     guard_definitions = [
@@ -198,6 +224,8 @@ def validate(repo_root: Path) -> None:
         for node in entry_tree.body
     ):
         raise ValidationFailure("learning CI entrypoint learning guard binding is shadowed by import")
+    if module_scope_rebinds("validate_learning_guards"):
+        raise ValidationFailure("learning CI entrypoint learning guard binding is shadowed by module control flow")
     live_calls = [
         node for node in main_definitions[0].body
         if isinstance(node, ast.Expr)
