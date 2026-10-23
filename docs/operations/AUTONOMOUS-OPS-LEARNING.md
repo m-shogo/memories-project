@@ -3553,3 +3553,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed typed recovery authority set changes or a newly observed path-filter omission escapes the bounded contract negative suite.
 
+
+## 2026-10-24 — Snapshot publisher job must be enabled and fatal
+
+### Outcome
+- Commit 0583431ea419cb564fe11f2beaa79a43af627d50 extends the strict OPS-P0-007 publisher workflow negative to require its reviewed enabled, failure-propagating validate job header.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40007739191 completed SUCCESS at this commit.
+
+### Evidence
+- The publisher guard previously verified the initial SOURCE_SHA capture, status propagation, bounded latest-source reconcile, diagnostic publication and protected shell steps but did not reject a job-level if: false or continue-on-error. A skipped or non-fatal job could leave all executable-looking step text intact without proving the publication checks ran.
+- Seven synthetic mutations disable the job, mask its failure, add an unreviewed needs dependency, change the runner or timeout, remove steps, or duplicate validate. Each must produce the exact publisher job execution-policy drift diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness and in-memory publisher fixtures changed. The actual publisher and PR workflows, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Verify publisher gate reachability from enabled fatal job to protected steps, executable validators, captured failure status, bounded reconcile and CAS publication. Job-level skip/masking cannot be ignored merely because the step bodies remain present.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed publisher job architecture changes or a newly observed job-level skip/error-mask bypass escapes this bounded guard.
+
