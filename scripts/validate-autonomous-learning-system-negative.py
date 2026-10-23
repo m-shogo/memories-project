@@ -192,6 +192,22 @@ def main() -> int:
                 root, lambda data: data["requiredSuccessFields"].remove(key)
             ),
         ))
+    # A textual invocation fragment in a comment, literal, or dead branch
+    # must not satisfy the live CI call-site binding.
+    cases.extend((
+        ("comment-only learning guard call", lambda root: replace_in_entrypoint(
+            root, "    validate_learning_guards(failures)\n",
+            "    # validate_learning_guards(failures)\n",
+        )),
+        ("quoted learning guard call", lambda root: replace_in_entrypoint(
+            root, "    validate_learning_guards(failures)\n",
+            '    "validate_learning_guards(failures)"\n',
+        )),
+        ("dead-branch learning guard call", lambda root: replace_in_entrypoint(
+            root, "    validate_learning_guards(failures)\n",
+            "    if False:\n        validate_learning_guards(failures)\n",
+        )),
+    ))
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
