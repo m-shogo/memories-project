@@ -134,6 +134,23 @@ def validate(repo_root: Path) -> None:
     ]
     if len(main_definitions) != 1:
         raise ValidationFailure("learning CI entrypoint must define one main function")
+    # An async redefinition or module-level assignment can replace the
+    # checked main() binding before the canonical __main__ invocation.
+    if any(
+        isinstance(node, ast.AsyncFunctionDef) and node.name == "main"
+        for node in entry_tree.body
+    ):
+        raise ValidationFailure("learning CI entrypoint main binding is shadowed by async definition")
+    if any(
+        (isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "main"
+            for target in node.targets
+        ))
+        or (isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name) and node.target.id == "main")
+        for node in entry_tree.body
+    ):
+        raise ValidationFailure("learning CI entrypoint main binding is shadowed by assignment")
     live_calls = [
         node for node in main_definitions[0].body
         if isinstance(node, ast.Expr)
