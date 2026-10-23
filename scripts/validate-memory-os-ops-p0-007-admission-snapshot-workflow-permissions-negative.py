@@ -805,8 +805,8 @@ def prove_pr_source_verification_negative(pr: str) -> None:
             '          # missing checked-out source assertion\n',
         ),
         (
-            '          test -z "$(git status --porcelain)"\n',
-            '          # missing clean-worktree assertion\n',
+            '          test "$(git rev-parse HEAD)" = "$expected"\n          test -z "$(git status --porcelain)"\n',
+            '          test "$(git rev-parse HEAD)" = "$expected"\n          # missing clean-worktree assertion\n',
         ),
         (
             '          test -n "$expected"\n',
