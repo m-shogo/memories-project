@@ -354,6 +354,7 @@ def executable_run_lines(workflow: str) -> list[str]:
             continue
         heredoc: str | None = None
         shell_if: list[bool | None] = []
+        in_bounded_function = False
         for item in lines[index + 1:]:
             if item.strip() and not item.startswith("          "):
                 break
@@ -363,6 +364,13 @@ def executable_run_lines(workflow: str) -> list[str]:
                     heredoc = None
                 continue
             stripped = command.strip()
+            # A function body is parsed at definition time, but its exit does
+            # not terminate the outer run step before the function is called.
+            # The bounded function has a separate exact early-exit guard.
+            if stripped == "revalidate_latest_snapshot() {":
+                in_bounded_function = True
+            elif stripped == "}" and in_bounded_function:
+                in_bounded_function = False
             # A literal-false shell branch is inert even inside a live run step.
             # Track nested if/else/fi blocks so an inner fi cannot revive a
             # dead outer branch. Unknown conditions may execute either side.
@@ -381,6 +389,9 @@ def executable_run_lines(workflow: str) -> list[str]:
                 continue
             # An exit in a conditional unknown branch is not unconditional.
             if re.fullmatch(r"exit(?:\s+[0-9]+)?(?:\s*#.*)?", stripped):
+                if in_bounded_function:
+                    executable.append(command)
+                    continue
                 if not any(value is None for value in shell_if):
                     break
                 continue
@@ -416,6 +427,12 @@ def prove_comment_only_commands_rejected() -> None:
         "            exit 0\n          fi\n" + commands + "\n"
     )
     require_full_admission_chain(unknown_exit, "positive conditional exit fixture")
+    function_exit = (
+        "jobs:\n  validate:\n    steps:\n      - name: inert function exit\n        run: |\n"
+        "          revalidate_latest_snapshot() {\n"
+        "            exit 0\n          }\n" + commands + "\n"
+    )
+    require_full_admission_chain(function_exit, "positive uncalled function exit fixture")
     fixtures = (
         ("comment-only", "\n".join(f"# python {validator}" for validator in FULL_ADMISSION_VALIDATORS)),
         ("YAML env literal", "jobs:\n  validate:\n    steps:\n      - name: inert\n        env:\n          TEXT: |\n" + commands + "\n"),
