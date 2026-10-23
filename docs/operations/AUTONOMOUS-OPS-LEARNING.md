@@ -1211,3 +1211,48 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit re-read confirmed unchanged production status and OPS-P0-007 strict snapshot blobs, `productionDecision=NO_GO`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
 - Learning is append-only operational history, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence.
+
+## 2026-10-23 — Learning CI entrypoint requires observed guard PASS, not only exit zero
+
+### Symptom
+- The existing operability entrypoint accepted an autonomous-learning child with exit code zero even if the child emitted no validation result, allowing a no-op or truncated negative suite to appear successful.
+- The first synthetic classifier fixture committed for this correction used a literal backslash-n instead of a newline and rejected its own valid positive control.
+
+### Evidence
+- Before commit `440f3635c91ae84a58fb643d0dcdb227e6ca93c7`, `scripts/validate-memory-os-entry-docs.py` checked only `completed.returncode != 0` and did not capture the two guard outputs.
+- The first committed classifier's five synthetic strings ended with `\\\\n` in Python source, so `.strip()` did not match the required PASS text. Several workflows on that commit failed or were cancelled; those runs are not evidence that the corrected guard passed.
+- Commit `fb21d1d491fb7e2bd60f8234c9aa665eacfc4c2f` corrected all five fixture escapes to real Python newline escapes. Source re-read confirmed the correction; independent classifier reproduction exercised ten expected accept/reject outcomes. Exact-source Operability Contracts CI was still running when this lesson was recorded.
+
+### Root cause or unknown
+- Verified original coverage gap: process exit status alone is not proof that a bound validator actually ran its required checks.
+- Verified correction failure: an extra escaping layer in generated source changed intended newline characters into literal backslash-n text. No production validator or recovery evidence failed.
+
+### Failed approach
+- Trusting a zero exit without a recognizable success result, and constructing synthetic Python string literals without checking the emitted source escape depth.
+
+### Correction
+- The existing CI-reachable entrypoint now captures child stdout/stderr, requires exact positive PASS output, and requires the negative suite's structured PASS count to be numeric and at least 22. Nonzero exit, unexpected stderr, missing output, truncated suite and unbound guard all fail closed.
+- A ten-case in-process classifier proof runs before the real bound validators. The corrected fixture strings use Python newline escapes.
+
+### Recurrence guard
+- Retain the synthetic positive controls and no-op, nonzero, stderr, truncated, nonnumeric, extra-output and unbound negatives; never treat a child process's exit zero alone as learning-guard execution proof.
+- Verify emitted source literals and a full exact-source CI run after changes to generated Python, especially when crossing JavaScript/Python escaping boundaries.
+
+### Retry condition
+- Do not restore the exit-only acceptance or double-escaped fixture strings. Revisit the minimum negative-case count or success marker only after the canonical negative suite changes legitimately and an observed new exact-source run establishes its output.
+
+### Outcome
+- Two code commits installed and corrected an executable PASS-result classifier in the existing operability CI entrypoint. The source-bound correction is observable; exact-source CI outcome is tracked separately and must not be inferred from the commit.
+
+### Success evidence
+- Independent ten-case classifier reproduction returned 10/10 expected outcomes; post-correction re-read found all five intended newline literals and no double-escaped synthetic PASS strings.
+
+### Why safe
+- The change is confined to a CI entrypoint and its synthetic classifier, not the learning contract, evidence registries, recovery validators, production status, credentials, traffic, readiness, or promotion.
+
+### Reusable mechanism
+- A transitive CI entrypoint should require a child validator's controlled success namespace and minimum expected negative coverage in addition to exit zero, with deterministic negative proof for a no-op child.
+
+### Protected-authority check
+- Post-correction re-read confirmed `productionDecision=NO_GO`, unchanged production-status and autonomous-learning contract blobs, and unchanged strict OPS-P0-007 snapshot and empty generation/objective/request/evidence/typed-coverage/promotion registries.
+- This append-only lesson is execution history only. It cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates; distinct semantically eligible unsuperseded environments, human-approved current recovery objective, current executable reviewed request, complete typed eight-domain non-resurrection evidence, independent review and separate human promotion remain mandatory.
