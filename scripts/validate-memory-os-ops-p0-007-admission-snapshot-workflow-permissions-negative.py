@@ -886,7 +886,7 @@ def require_fail_closed_publisher_shell(workflow: str) -> None:
             "strict snapshot publisher protected shell must start fail-closed",
         )
         require(
-            not any(re.match(r"^set(?:\s|$)", command) for command in active[1:]),
+            not any(re.match(r"^(?:set|trap|alias|unalias|shopt|enable|source)(?:\s|$)|^\.\s+", command) for command in active[1:]),
             "strict snapshot publisher protected shell options must remain fail-closed",
         )
 
@@ -916,7 +916,12 @@ def prove_publisher_shell_fail_closed_negative(publish: str) -> None:
                 )
             else:
                 raise Fail("strict snapshot publisher accepted weakened protected shell startup")
-        for override in ("set +e", "set +u", "set +o pipefail", "set -e +o pipefail"):
+        for override in (
+            "set +e", "set +u", "set +o pipefail", "set -e +o pipefail",
+            "trap 'exit 0' ERR", "trap 'exit 0' EXIT",
+            "source ./unreviewed-shell.sh", ". ./unreviewed-shell.sh",
+            "shopt -s expand_aliases", "alias python='true'",
+        ):
             mutated = lines.copy()
             mutated[start] += f"          {override}\n"
             try:
