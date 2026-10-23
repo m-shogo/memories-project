@@ -133,6 +133,14 @@ CASE_SPECIFIC_VALIDATOR_REJECTIONS = {
 }
 
 
+
+def require_known_validator_case(label: str) -> str:
+    try:
+        return CASE_SPECIFIC_VALIDATOR_REJECTIONS[label]
+    except KeyError as exc:
+        raise Fail(f"{label}: missing case-specific canonical rejection binding") from exc
+
+
 def require_negative_validator_stdout(stdout: str, label: str) -> None:
     if stdout.strip():
         raise Fail(f"{label}: canonical negative validator emitted unexpected stdout")
@@ -145,6 +153,14 @@ def require_case_specific_validator_rejection(stderr: str, expected: str, label:
 
 
 def prove_case_specific_validator_classifier() -> None:
+    for label in ("synthetic unmapped corruption", "clean baseline"):
+        try:
+            require_known_validator_case(label)
+        except Fail as exc:
+            if str(exc) != f"{label}: missing case-specific canonical rejection binding":
+                raise Fail(f"unmapped classifier rejected outside intended guard: {exc}") from exc
+        else:
+            raise Fail(f"unmapped validator negative unexpectedly accepted: {label}")
     expected = "snapshot field set drift"
     diagnostic = f"OPS-P0-007 ADMISSION SNAPSHOT FAILED: {expected}"
     require_case_specific_validator_rejection(diagnostic + "\n", expected, "synthetic positive")
@@ -232,9 +248,8 @@ def run_validator(expect_success: bool, label: str) -> None:
         raise Fail(f"{label}: rejection did not come from canonical fail-closed boundary: {proc.stderr or proc.stdout}")
     if "Traceback (most recent call last)" in proc.stderr:
         raise Fail(f"{label}: rejection surfaced an implementation exception instead of a controlled failure")
-    expected = CASE_SPECIFIC_VALIDATOR_REJECTIONS.get(label)
-    if expected is not None:
-        require_case_specific_validator_rejection(proc.stderr, expected, label)
+    expected = require_known_validator_case(label)
+    require_case_specific_validator_rejection(proc.stderr, expected, label)
 
 
 # Canonical typed admission can return a two-line nested local-restore
@@ -792,6 +807,13 @@ def main() -> int:
         ("canonical blocker ordering drift", STATUS, mutate_ops7_missing(True)),
         ("production decision promotion", STATUS, mutate_field("productionDecision", "GO")),
     ]
+    required_case_labels = {label for label, _, _ in cases} | {
+        "objective source symlink escape",
+        "objective writer module symlink escape",
+    }
+    if set(CASE_SPECIFIC_VALIDATOR_REJECTIONS) != required_case_labels:
+        raise Fail("strict snapshot case-specific diagnostic mapping drift")
+
     generator_cases: list[tuple[str, Callable[[dict[str, Any]], None], str | tuple[str, ...]]] = [
         (
             "generator canonical blocker replacement",
