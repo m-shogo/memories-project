@@ -105,8 +105,8 @@ def prove_rejection_stdout_classifier() -> None:
             raise Fail("generator execution rejection accepted mixed success output")
 
 
-def expect_rejected(module: Any, field: str, replacement: Any) -> None:
-    expected = (
+def expect_rejected(module: Any, field: str, replacement: Any, expected_diagnostic: str | None = None) -> None:
+    expected = expected_diagnostic or (
         "strict snapshot generator execution guard drift"
         if field == "enforce_execution_authority"
         else "strict snapshot generator runtime authority guard drift"
@@ -159,6 +159,31 @@ def main() -> int:
     for field, replacement in substitutions:
         expect_rejected(module, field, replacement)
 
+    # Runtime path constants must be bound to their canonical repository files.
+    # A same-type existing but wrong file is not a valid authority alias.
+    path_substitutions = (
+        ("OUTPUT", module.STATUS, "snapshot output"),
+        ("STATUS", module.OBJECTIVES, "production operability status"),
+        ("ELIGIBILITY_HELPER", module.BLOCKER_HELPER, "environment generation eligibility helper"),
+        ("BLOCKER_HELPER", module.ELIGIBILITY_HELPER, "backup/restore blocker helper"),
+        ("SNAPSHOT_VALIDATOR", module.RECOVERY_OBJECTIVE_VALIDATOR, "snapshot validator"),
+        ("RECOVERY_OBJECTIVE_VALIDATOR", module.SNAPSHOT_VALIDATOR, "recovery objective admission validator"),
+        ("DRILL_REQUEST_VALIDATOR", module.GEN_EVIDENCE_VALIDATOR, "reviewed drill request admission validator"),
+        ("GEN_EVIDENCE_VALIDATOR", module.TYPED_VALIDATOR, "generation recovery evidence admission validator"),
+        ("TYPED_VALIDATOR", module.GEN_EVIDENCE_VALIDATOR, "typed non-resurrection admission validator"),
+        ("OBJECTIVES", module.DRILL_REQUESTS, "recovery objective registry"),
+        ("DRILL_REQUESTS", module.OBJECTIVES, "restore drill request registry"),
+        ("GEN_EVIDENCE", module.TYPED, "generation recovery evidence registry"),
+        ("TYPED", module.GEN_EVIDENCE, "typed non-resurrection registry"),
+        ("OBJECTIVE_WRITER", module.DRILL_REQUEST_WRITER, "recovery objective writer"),
+        ("DRILL_REQUEST_WRITER", module.OBJECTIVE_WRITER, "restore drill request writer"),
+        ("GEN_EVIDENCE_WRITER", module.TYPED_WRITER, "generation recovery evidence writer"),
+        ("TYPED_WRITER", module.GEN_EVIDENCE_WRITER, "typed non-resurrection writer"),
+    )
+    for field, replacement, label in path_substitutions:
+        require(getattr(module, field) != replacement, f"generator path mutation was a no-op: {field}")
+        expect_rejected(module, field, replacement, f"strict snapshot authority drift: {label}")
+
     module.enforce_execution_authority()
     for path, state in baseline_state.items():
         require(protected_state(path) == state, f"generator execution authority probes changed protected identity: {path.relative_to(ROOT)}")
@@ -167,6 +192,7 @@ def main() -> int:
 
     print("Memory OS OPS-P0-007 strict snapshot generator execution authority negative PASS")
     print(f"execution helper substitutions rejected: {len(substitutions)}")
+    print(f"canonical runtime path substitutions rejected: {len(path_substitutions)}")
     print("full admission validator no-op substitution accepted: false")
     print("post-write validator no-op substitution accepted: false")
     print("atomic publication helper substitution accepted: false")
