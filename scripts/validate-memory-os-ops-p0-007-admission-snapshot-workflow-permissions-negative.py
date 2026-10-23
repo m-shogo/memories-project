@@ -1280,6 +1280,7 @@ def require_pr_trigger_authority(pr: str) -> None:
         "docs/evidence/backup-restore/**",
         "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py",
         *PUBLISH_REVALIDATION_CHAIN,
+        *PR_COMPILE_FILES,
     }
     required.update(f"contracts/operations/{name}" for name in REQUIRED_PR_ADMISSION_CONTRACTS)
     require(
@@ -1318,6 +1319,21 @@ def prove_pr_trigger_negative(pr: str) -> None:
             )
         else:
             raise Fail(f"strict snapshot PR accepted missing contract path: {name}")
+    # A change to any compiled admission input must trigger the PR gate,
+    # even when that script is not one of the runtime validator entrypoints.
+    for path in PR_COMPILE_FILES:
+        original = f'      - "{path}"\n'
+        require(pr.count(original) == 1, f"PR compiled-script path fixture drift: {path}")
+        mutated = pr.replace(original, "      # compiled admission input removed\n", 1)
+        try:
+            require_pr_trigger_authority(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR trigger/path authority drift",
+                f"missing compiled-script path rejected outside exact guard ({path}): {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot PR accepted missing compiled-script path: {path}")
     for original, replacement in mutations:
         require(pr.count(original) == 1, "strict snapshot PR trigger mutation anchor drift")
         mutated = pr.replace(original, replacement, 1)
