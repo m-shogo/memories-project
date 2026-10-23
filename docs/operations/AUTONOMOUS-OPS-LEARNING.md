@@ -1531,3 +1531,46 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-change re-read confirmed unchanged learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
 - This append-only learning record is operational history only; it cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Canonical learning path identity includes parent directories
+
+### Symptom
+- Leaf-file `is_symlink()` checks did not reject an ordinary file reached through a symlinked parent directory. A bound learning authority could therefore resolve to a different repository-relative path even though the final leaf was not a symlink.
+
+### Evidence
+- Before commit `63017df39cb9e1e90cf5f3667189364d9f0b05d0`, the validator rejected symlinked contract/learning/guard/entrypoint leaves but did not compare each strict resolved path to its declared repository-relative authority.
+- Isolated negative fixtures can safely rename and alias `scripts`, `contracts/operations`, or `docs/operations` entirely inside disposable temporary roots.
+
+### Root cause or unknown
+- Verified: leaf identity alone is insufficient for exact-source path binding when a parent directory can be substituted. No actual malicious parent symlink or production evidence access was observed.
+
+### Failed approach
+- Treating `not path.is_symlink()` as proof that every component of the canonical path is unchanged.
+
+### Correction
+- Commit `63017df39cb9e1e90cf5f3667189364d9f0b05d0` requires each of the five learning authorities to resolve strictly to its exact declared path under the canonical repository root and rejects missing, escaping or parent-substituted paths.
+- Commit `059566dd6aef5c9e03a704494f0afda3a5faece6` adds three isolated parent-directory symlink negatives, with no shared `/tmp` target or checkout mutation.
+- Commit `1c79363a47e8fdb6ce676bbac729ff4288e669b8` raises the existing operability CI entrypoint's minimum negative-case count to 55.
+
+### Recurrence guard
+- The canonical learning validator now checks both leaf symlink rejection and strict resolved repository-relative path equality. The negative suite proves scripts, contract and learning-document parent substitution is rejected after a canonical positive control.
+- Exact-source CI continues to require a controlled positive PASS and at least 55 negative cases.
+
+### Retry condition
+- Revisit only if the canonical repository layout changes legitimately or a new path substitution bypass is observed. Never allow a parent alias merely because the leaf appears to be a regular file.
+
+### Outcome
+- Exact-source `Operability Contracts` run `39939809179` completed SUCCESS on commit `1c79363a47e8fdb6ce676bbac729ff4288e669b8`.
+
+### Success evidence
+- CI job `120368171103` logs show `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (55 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+
+### Why safe
+- Only learning source-path validation and isolated negative fixtures changed. No production status, generation, objective, reviewed request, recovery evidence, typed non-resurrection, credential, traffic, readiness or promotion authority was modified.
+
+### Reusable mechanism
+- For canonical source authorities, compare the strictly resolved path relative to the repository root with the declared relative path; do not stop at leaf `is_symlink()`. Exercise parent-directory aliases inside owned temporary fixtures.
+
+### Protected-authority check
+- Post-change re-read confirmed unchanged autonomous-learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
+- This append-only learning record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
