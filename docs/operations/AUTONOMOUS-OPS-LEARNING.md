@@ -4341,3 +4341,25 @@ a promotion decision, a recovery objective, or drill evidence.
 - These changes only extend existing CI-bound validators and their synthetic lock fixture. No actual recovery generation, objective, drill request, typed evidence registry, production credentials, traffic, readiness, snapshot or promotion authority was written.
 - The new canonical invocation provides executable regression coverage, while the Readonly wildcard trigger reaches changes to the writer-authority script. This does not turn a synthetic test into production recovery evidence.
 - `productionDecision=NO_GO`, unsuperseded semantically eligible generations from distinct environments, explicit human-approved current recovery objective, executable reviewed request for new generation evidence, eight-domain typed coverage, independent review and separate human promotion remain required. Learning/CI are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Reject ancestor symlink aliases in typed lock negative fixtures
+
+### Outcome and observed evidence
+- Commit `4edc5419ef61770e82a50e0ff7c3787c2060937a` extends the CI-reachable typed writer CLI authority negative with a canonical-ancestor guard for the materialized lock fixture. It rejects missing or symlinked components between the approved fixture root and lock parent, verifies exact canonical resolution and retains parent/leaf inode ownership checks before cleanup.
+- An isolated temporary-directory negative creates a symlinked parent alias and requires its exact rejection diagnostic while preserving the alias; the pre-existing same-target replacement control now explicitly passes its isolated root. Exact-source Readonly run `40033544834` and Backup and Restore Contracts run `40033544777` completed SUCCESS.
+- Post-write comparison from `8fcaedae` to `4edc5419` changed only the existing negative validator (44 additions, 10 deletions). Production Status, strict OPS-P0-007 snapshot and learning contract blobs were unchanged.
+
+### Symptom, observed evidence, verified root cause, and failed approach
+- Symptom: the prior helper checked only `lock.parent.is_symlink()`, which cannot detect a non-symlink leaf directory reached through a symlinked ancestor. No actual malicious substitution or production corruption is asserted.
+- Evidence: the prior helper used `lock.parent.stat()` and `lock.parent.is_symlink()` but did not walk ancestor components or compare canonical parent resolution.
+- Verified root cause: leaf-parent identity does not prove canonical ancestor-chain identity.
+- Failed approach: relying on a final directory's `is_symlink()` to exclude all symlink aliases above it.
+
+### Correction, recurrence guard, and retry condition
+- Walk each component from the selected fixture root to the lock parent; reject missing, symlinked or non-directory components and resolution drift. Bind the isolated negative to its own root so a different precondition cannot mask the intended parent-alias rejection.
+- Reusable mechanism: the same canonical ancestor-chain proof now protects both typed evidence symlink fixtures and the writer's materialized lock fixture, with exact negative diagnostics.
+- Retry only after a concrete exact-source failure, reviewed authority path changes or a newly observed ancestor-chain bypass. Do not retry the unchanged source-binding clean-worktree blocker.
+
+### Why safe and protected-authority check
+- The modification affects only an executable synthetic negative test, not any production or recovery evidence, generation, objective, drill, registry, credential, traffic, readiness, snapshot or promotion authority.
+- `productionDecision=NO_GO` and strict OPS-P0-007 preflight/typed eight-domain/independent-review/current executable request/separate human-promotion gates remain mandatory. Learning records and CI are not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
