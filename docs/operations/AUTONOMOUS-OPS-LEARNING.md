@@ -1174,3 +1174,40 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit re-read confirmed unchanged production status and OPS-P0-007 strict snapshot blobs, `productionDecision=NO_GO`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
 - Learning remains append-only operational history and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion gates.
+
+## 2026-10-23 — Snapshot diagnostic publication cannot hide required calls in never-run loops
+
+### Symptom
+- The AST publication guard rejected conditional `if` branches but could still count required calls inside `while False` or `for _ in []` loops, even though those bodies never execute.
+
+### Evidence
+- Before correction, the required-call ancestor check classified only `ast.If` as conditional. An `ast.While` or `ast.For` ancestor therefore did not invalidate an otherwise exact fsync call.
+
+### Root cause or unknown
+- Verified static coverage gap: a call node under a loop does not establish that the loop executes. No actual workflow bypass was observed.
+
+### Failed approach
+- Treating all non-`if` AST call ancestors as unconditional publication paths.
+
+### Correction
+- Commit `54084547fa834648bbc3fd595e6b47d63040ff6b` extends the ancestor guard to while/for/async-for/match/except-handler control flow and retains the single canonical existing-mode `if` exception for chmod.
+- Isolated mutations hide fsync under a constant-false while loop or an empty for loop. Both must be rejected.
+
+### Recurrence guard
+- The existing CI-reachable snapshot permission negative proves exact call expressions, order, try/finally cleanup, and the absence of conditional/loop-hidden publication calls.
+
+### Retry condition
+- Revisit if the canonical writer legitimately introduces conditional or loop-based publication, or a new unreachable-control-flow bypass is demonstrated. Never infer runtime execution from AST call presence alone.
+
+### Outcome
+- Exact-source `OPS P0 007 Snapshot Permission Boundary` run `39933076546` completed SUCCESS on `54084547fa834648bbc3fd595e6b47d63040ff6b`, including Python compilation, canonical positive control, loop-dead negatives, and clean-worktree verification.
+
+### Why safe
+- Only the existing negative suite changed. The publisher workflow, canonical status, recovery registries, credentials, traffic, readiness, and promotion were untouched.
+
+### Reusable mechanism
+- Inspect all relevant control-flow ancestors of required AST calls and prove unreachable loop substitutions with deterministic in-memory negatives. This is static executable-site assurance, not observed execution of a failure-only publication step.
+
+### Protected-authority check
+- Post-commit re-read confirmed unchanged production status and OPS-P0-007 strict snapshot blobs, `productionDecision=NO_GO`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
+- Learning is append-only operational history, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence.
