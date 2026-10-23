@@ -3273,3 +3273,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if diagnostic condition syntax expands beyond the bounded literal evaluator or a newly observed deterministic branch bypass escapes the AST negative.
+
+## 2026-10-24 — PR admission must reject shell traps and command indirection
+
+### Outcome
+- Commit 213624c1fc43f7b3c6dafbe62ce1ba752e456ab7 extends the CI-bound strict OPS-P0-007 PR admission negative to reject executable trap, alias, unalias, shopt, enable, source, and dot-source commands in the deliberately linear validator step.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40005770113 completed SUCCESS at that commit.
+
+### Evidence
+- The prior linear admission classifier rejected conditional wrappers, shell functions, early exit, and reordered validators but did not reject shell traps or source/alias commands inserted before a validator. A trap on ERR could turn a validator failure into exit 0; shell sourcing or enabled aliases could alter command resolution or errexit while leaving all required validator lines present.
+- Eight synthetic mutations now insert those shell commands before the first required validator and require the exact unconditional-admission rejection diagnostic. Existing comment/quoted-shell positive controls remain accepted.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness and isolated in-memory PR workflow mutations changed. The PR and publisher workflows, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness, and promotion authorities were untouched.
+
+### Reusable mechanism
+- For a linear fail-closed CI admission step, prove not just required validator presence and order but also absence of shell constructs that can redefine commands or intercept failure. Keep exact-diagnostic negative fixtures and positive controls to avoid accepting unrelated failures.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records, and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed linear PR shell architecture changes or a new observed shell-command indirection bypasses the bounded negative guard.
+
