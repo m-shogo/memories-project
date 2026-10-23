@@ -3697,3 +3697,29 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed publisher step inventory, action inputs, conditional publication branches or final enforcement change, or a new observed bypass escapes the bounded allowlist.
+
+## 2026-10-24 — Publisher push trigger must cover every reviewed recovery authority path
+
+### Outcome
+- Commit `b7f360ae50d6f94799c51653959b0045362a1159` adds a publisher event/path authority guard with forty required path-removal negatives and eight event/selector mutation negatives.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40011230172` completed SUCCESS. The separate Snapshot Readonly run is not counted as successful until completed.
+
+### Evidence
+- The previous publisher guard rejected pull-request events textually but did not prove that the actual `on.push.branches` selected `so` or that every typed generation/objective/request/evidence contract, registry, schema and executable validator path triggered publication.
+- The reviewed publisher has one `so` push event with forty required paths and an explicit manual dispatch event. The new guard binds the complete header through the reviewed `contents: write` scope, preserving the existing publication authority.
+- Forty synthetic fixtures remove one required path each; eight additional fixtures weaken the push event, branch/path selectors, manual dispatch or introduce an unreviewed schedule/duplicate path. Every fixture requires the exact publisher trigger/path drift diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only permission negative harness and in-memory publisher trigger fixtures changed. The actual publisher/PR workflows, Production Status, strict snapshot, registries, recovery evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Trigger reachability is distinct from command execution: a perfectly guarded validator cannot publish a deterministic projection when its workflow never runs for a relevant changed authority.
+- Reuse the reviewed typed recovery contract set and shared compile-script list to bind path filters, and require each omission to fail closed. The workflow itself retains its existing write scope; negative checks never grant production readiness.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicit human-approved current recovery objective, executable reviewed request, independent review and separate human promotion remain mandatory.
+- Learning and CI guard successes do not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed publisher trigger architecture or typed recovery authority path set changes, or a new observed trigger-coverage bypass escapes this bounded guard.
