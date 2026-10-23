@@ -80,6 +80,34 @@ def prove_exact_failure_classifier() -> None:
             raise SystemExit("atomic failure classifier accepted unrelated replacement diagnostic")
 
 
+def require_atomic_temp_source(source: str | Path, target: Path) -> None:
+    path = Path(source)
+    if (
+        path.parent != target.parent
+        or not path.name.startswith(f".{target.name}.")
+        or not path.name.endswith(".tmp")
+    ):
+        raise SystemExit(f"atomic replacement used unexpected temporary source: {path}")
+
+
+def prove_atomic_temp_source_classifier() -> None:
+    target = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+    valid = target.parent / f".{target.name}.synthetic.tmp"
+    require_atomic_temp_source(valid, target)
+    for bad in (
+        target.parent / "unrelated.tmp",
+        target.parent / f".{target.name}.synthetic.other",
+        ROOT / f".{target.name}.synthetic.tmp",
+    ):
+        try:
+            require_atomic_temp_source(bad, target)
+        except SystemExit as exc:
+            if str(exc) != f"atomic replacement used unexpected temporary source: {bad}":
+                raise SystemExit(f"atomic source classifier rejected outside exact guard: {exc}") from exc
+        else:
+            raise SystemExit(f"atomic source classifier accepted unrelated source: {bad}")
+
+
 def load_generator():
     spec = importlib.util.spec_from_file_location("ops_p0_007_snapshot_atomic_negative", GENERATOR)
     if spec is None or spec.loader is None:
@@ -92,6 +120,7 @@ def load_generator():
 def main() -> int:
     prove_identity_classifier()
     prove_exact_failure_classifier()
+    prove_atomic_temp_source_classifier()
     if not GENERATOR.is_file() or GENERATOR.is_symlink() or GENERATOR.resolve(strict=True).relative_to(ROOT) != GENERATOR.relative_to(ROOT):
         raise SystemExit("strict snapshot atomic negative generator source path drift")
     module = load_generator()
@@ -114,6 +143,7 @@ def main() -> int:
     def reject_replace(src, dst):
         nonlocal target_replace_attempts
         if Path(dst) == target:
+            require_atomic_temp_source(src, target)
             target_replace_attempts += 1
             raise OSError("injected atomic replacement failure")
         return real_replace(src, dst)
