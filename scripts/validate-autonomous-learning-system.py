@@ -56,6 +56,11 @@ def exact_string_set(value: Any, expected: set[str], field: str) -> None:
 
 
 def validate(repo_root: Path) -> None:
+    # All five bound learning authorities must be actual repository files.
+    # Path.is_file() and read_text() follow symlinks, so reject aliases first.
+    for relative in (CONTRACT, LEARNING, VALIDATOR, NEGATIVE_VALIDATOR, CI_ENTRYPOINT):
+        if (repo_root / relative).is_symlink():
+            raise ValidationFailure(f"symlinked learning authority forbidden: {relative}")
     contract = load_object(repo_root / CONTRACT)
     if contract.get("schemaVersion") != "autonomous-learning-system.0.1":
         raise ValidationFailure("unsupported schemaVersion")
