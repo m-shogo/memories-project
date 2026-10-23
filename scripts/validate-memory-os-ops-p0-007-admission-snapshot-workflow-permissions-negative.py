@@ -128,6 +128,10 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
         for statement in statements:
             if isinstance(statement, ast.Raise):
                 raise Fail("strict snapshot diagnostic unconditional early termination")
+            if isinstance(statement, ast.While) and static_truth(statement.test) is True:
+                # An unconditional loop can prevent replacement/cleanup even
+                # without a syntactically explicit raise or exit.
+                raise Fail("strict snapshot diagnostic unconditional early termination")
             if (
                 isinstance(statement, ast.Assert)
                 and isinstance(statement.test, ast.Constant)
@@ -306,6 +310,10 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
          "              if not False: assert False\n              os.replace(tmp_name, path)"),
         ("boolean-true raise", "              os.replace(tmp_name, path)",
          "              if True and True: raise SystemExit(0)\n              os.replace(tmp_name, path)"),
+        ("unbounded while true", "              os.replace(tmp_name, path)",
+         "              while True: pass\n              os.replace(tmp_name, path)"),
+        ("comparison-true while cleanup", "                  os.unlink(tmp_name)",
+         "                  while 1 == 1: pass\n                  os.unlink(tmp_name)"),
     )
     for label, before, after in mutations:
         require(publish.count(before) == 1, f"{label}: canonical diagnostic fixture drift")
@@ -326,6 +334,13 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
     )
     require(safe != publish, "constant-false positive fixture drift")
     validate_atomic_diagnostic_publication(safe)
+    inert_loop = publish.replace(
+        "              os.replace(tmp_name, path)",
+        "              while False: raise SystemExit(0)\n              os.replace(tmp_name, path)",
+        1,
+    )
+    require(inert_loop != publish, "constant-false while positive fixture drift")
+    validate_atomic_diagnostic_publication(inert_loop)
 
 
 def validate_atomic_diagnostic_publication(publish: str) -> None:
