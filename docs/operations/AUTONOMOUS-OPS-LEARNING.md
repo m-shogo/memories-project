@@ -4273,3 +4273,25 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only the existing CI-bound synthetic negative harness changed. No production-equivalent generations, human-approved objectives, drill requests, typed evidence/registries, credentials, traffic, readiness, snapshots or promotion authority were created or changed.
 - The code commit diff contains no protected authority. `productionDecision=NO_GO`, distinct semantically eligible environments, current human-approved objective, executable reviewed drill request for new evidence, complete eight-domain coverage, independent review and separate human promotion remain required.
 - Neither this learning record nor any CI outcome can satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — A negative symlink fixture must never unlink an occupied evidence path
+
+### Outcome and observed evidence
+- Commit `3068db9e1696de08e212d078e0cb65e4388a12de` adds a fail-closed vacant-path precondition to the existing typed non-resurrection symlink escape negative. It removes the previous unconditional `unlink(missing_ok=True)` before fixture creation and permits cleanup only after this invocation actually created the symlink and its target identity remains unchanged.
+- Two temporary-directory controls require exact rejection and byte preservation for an occupied regular file and exact rejection/preservation for a dangling symlink. Source re-read confirms the precondition, created-only cleanup and both controls; commit comparison shows only the existing negative harness changed (35 added, 2 deleted lines). The commit's combined status returned no statuses; exact-source CI success is not observed.
+
+### Symptom, verified root cause and failed approach
+- Symptom: the earlier negative suite unconditionally deleted a canonical repository-relative evidence path before creating its synthetic symlink, and unconditionally deleted the path again in `finally`. If the fixture name became occupied, the suite could destroy an unrelated real artifact.
+- Evidence: the prior code called `symlink_path.unlink(missing_ok=True)` both before `symlink_to` and in unconditional cleanup, with no vacancy assertion.
+- Verified root cause: fixture setup assumed exclusive ownership of a hard-coded evidence filename without proving it. No actual deletion of a real evidence file is claimed.
+- Failed approach: using destructive cleanup as an implicit collision-resolution mechanism in a negative proof.
+
+### Correction, recurrence guard and retry condition
+- Require that the canonical fixture target neither exists nor is a dangling symlink. Create it only after the precondition passes; delete it only if this invocation created it and it still points at the expected isolated temporary artifact. Keep occupied-file and dangling-symlink negative controls outside the repository authority tree.
+- Reusable mechanism: test fixtures must fail closed on name collisions, never overwrite/delete unknown artifacts, and bind cleanup to ownership and identity rather than pathname alone.
+- Retry only if an observed exact-source CI failure reveals an incompatible fixture prerequisite, or a new source-path/parent identity bypass is demonstrated. Do not retry the unchanged source-binding clean-worktree blocker.
+
+### Why safe and protected-authority check
+- Only the synthetic CI-bound negative harness changed. Neither the typed registry, generation/objective/drill authority, Production Status, strict snapshot, credentials, traffic, readiness nor promotion was written. The post-write code diff contains no protected authority.
+- `productionDecision=NO_GO` remains mandatory; semantically eligible unsuperseded generations from distinct environments, current human-approved objective, current executable reviewed drill request, complete typed eight-domain non-resurrection coverage, independent review and separate human promotion are unchanged.
+- This learning history and CI/test results cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
