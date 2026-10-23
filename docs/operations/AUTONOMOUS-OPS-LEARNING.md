@@ -4295,3 +4295,26 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only the synthetic CI-bound negative harness changed. Neither the typed registry, generation/objective/drill authority, Production Status, strict snapshot, credentials, traffic, readiness nor promotion was written. The post-write code diff contains no protected authority.
 - `productionDecision=NO_GO` remains mandatory; semantically eligible unsuperseded generations from distinct environments, current human-approved objective, current executable reviewed drill request, complete typed eight-domain non-resurrection coverage, independent review and separate human promotion are unchanged.
 - This learning history and CI/test results cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed negative evidence fixture parents must be canonical and identity-stable
+
+### Outcome and observed evidence
+- Commit `a05de8023e9f4200426da6d046041f01fe22f741` extends the existing CI-bound typed non-resurrection negative harness. It requires a real, non-symlinked canonical parent before creating a synthetic evidence symlink; refuses to create missing repository directories; and binds cleanup to the original parent device/inode plus the created symlink's own device/inode and expected external target.
+- Three isolated temporary-directory controls reject a missing parent, a parent outside the test root and a symlinked parent; an isolated canonical parent remains accepted. Exact-source Admission run `40033049310`, Readonly run `40033049248`, and Reconcile Negative run `40033049278` completed SUCCESS. The Admission job's negative admission suite reported PASS and `production decision: NO_GO`.
+- The code commit comparison from `b7fe0b7` to `a05de802` changed only the synthetic negative harness (59 additions, 1 deletion). Production Status, strict OPS-P0-007 snapshot and autonomous-learning contract blob identities remained unchanged. A separate automated inventory-diagnostic commit `e7785a64` followed; it is not evidence of production readiness.
+
+### Symptom, evidence, root cause, and failed approach
+- Symptom: the negative fixture previously called `parent.mkdir(parents=True, exist_ok=True)` and checked only that its leaf was vacant, then cleaned up by matching symlink target path. A symlinked parent could redirect creation/cleanup to a different directory; same-target replacement of the leaf was not inode-detected.
+- Evidence: the prior source had no parent canonicality or parent/leaf inode check around the symlink negative. This is a discovered fixture authority gap, **not** observed production corruption or a demonstrated exploit.
+- Verified root cause: leaf vacancy and target resolution do not establish parent-path authority or ownership of the created symlink inode.
+- Failed approach: implicitly creating parent directories and assuming an equal-target symlink is necessarily the fixture-created object.
+
+### Correction, recurrence guard, and retry condition
+- Require each parent component to be an existing directory without symlink aliases, bind the resolved parent to the canonical root, snapshot parent device/inode before creation, and require identical parent and created-leaf device/inode before deletion. Keep missing/outside/symlinked-parent negative controls entirely inside an isolated temporary root.
+- Reusable mechanism: a destructive test fixture must prove **both** canonical parent authority and created-leaf ownership, not merely a vacant filename or equal target.
+- Retry only after an observed exact-source Admission CI failure with a concrete diagnostic, a changed reviewed fixture parent layout, or a newly demonstrated identity bypass. Do not retry the unchanged source-binding clean-worktree blocker.
+
+### Why safe and protected-authority check
+- Only the existing synthetic CI negative harness changed. No actual evidence, recovery generation, objective, drill, registry, credentials, traffic, readiness, promotion, snapshot or Production Status authority was written.
+- `productionDecision=NO_GO` remains mandatory. Distinct unsuperseded semantically eligible environments, explicitly human-approved current objective, current executable reviewed request for new generation evidence, complete typed eight-domain coverage, independent review and separate human production-promotion authority remain unchanged.
+- Learning and CI outcomes are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
