@@ -1058,3 +1058,43 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit source re-read confirmed `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Protected status/snapshot and learning contract blobs were unchanged.
 - This append-only learning history is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct unsuperseded eligible environments, explicitly human-approved current objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate human production promotion remain mandatory.
+
+## 2026-10-23 — Learning negative proof must distinguish controlled rejection from unexpected validator failure
+
+### Symptom
+- The autonomous-learning negative suite accepted any nonzero validator exit with a substring containing `AUTONOMOUS LEARNING VALIDATION FAILED`. The canonical validator also emits `AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR` with exit 2, so an implementation exception could be mistaken for a successful fail-closed negative.
+
+### Evidence
+- Before correction, `require_failure` checked only `result.returncode == 0` and the broad diagnostic substring. The `run` helper also had no subprocess timeout.
+- The earlier 2026-09-21 write blocker for this target had a changed precondition: GitHub history shows subsequent target-file commits on 2026-09-22 and 2026-09-23, including `c98b0cf`; the current target blob before this change was `06b675b82fbed17701b41e277cef5e9c72caad68`.
+
+### Root cause or unknown
+- Verified: substring-only failure classification conflated expected validator rejection with unexpected exceptions. The missing subprocess deadline was an independent bounded-execution gap. No actual unexpected-error false PASS was observed in CI.
+
+### Failed approach
+- Counting arbitrary nonzero exits and a shared error-message prefix as sufficient proof of a canonical guard.
+
+### Correction
+- Commit `98ca5fdec516a2df3b5d3710bccf1551dc77820b` requires exact exit 1, an anchored `AUTONOMOUS LEARNING VALIDATION FAILED: ` diagnostic, and absence of an interpreter traceback. It also adds a 90-second timeout and controlled timeout failure.
+- A self-test rejects four synthetic noncanonical outcomes (exit 0, exit 2 unexpected error, exit 1 unexpected-error prefix, and traceback) and accepts one synthetic canonical exit-1 rejection.
+
+### Recurrence guard
+- The existing negative suite executes the classifier self-test before its canonical fixture positive control and 22 fail-closed mutation cases. A generic exception cannot satisfy the intended rejection.
+- The `Operability Contracts` workflow statically invokes the shared learning guard entrypoint transitively; its current path filters do not include the learning negative script itself. A new exact-source CI run for this commit has **not** been observed, so this is committed executable coverage plus an isolated 5/5 classifier reproduction, not CI-verified coverage.
+
+### Retry condition
+- Do not reintroduce broad substring/nonzero acceptance. Verify the complete suite when an existing workflow runs at an exact source containing this commit or a legitimate path-triggered invocation is available. Do not change protected learning contract or fabricate a trigger solely to claim CI success.
+
+### Outcome
+- The target-specific previously blocked path accepted the normal contents update after its recorded blob precondition changed. Isolated Python classifier reproduction returned 5/5 expected outcomes; post-commit source re-read confirmed the timeout, exact-exit, and anchored diagnostic checks.
+- No new GitHub Actions run was associated with this commit at the time of observation.
+
+### Why safe
+- Only the existing autonomous-learning negative harness changed. Its canonical positive validator, learning contract, production status, recovery authorities, credentials, traffic, readiness, and promotion remained untouched.
+
+### Reusable mechanism
+- Require a controlled rejection's exact exit code and diagnostic namespace, reject unexpected errors and tracebacks, prove the classifier with synthetic positive and negative outcomes, and bound child execution. Keep committed guard, isolated reproduction, static CI reachability, and observed exact-source CI success as separate proof levels.
+
+### Protected-authority check
+- Post-commit re-read confirmed `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Canonical status/snapshot and learning contract blobs remained unchanged.
+- This append-only learning history is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct eligible environments, explicitly human-approved current objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate human promotion remain mandatory.
