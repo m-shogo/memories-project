@@ -4145,3 +4145,24 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Registered and semantically preflight-eligible generations are separate. Preflight still needs distinct unsuperseded eligible environments and human-approved current objective; new generation evidence requires current executable reviewed request; final candidates still need complete typed eight-domain non-resurrection coverage and independent review; human promotion remains separate and non-automatic.
+
+## 2026-10-24 — Post-write rollback must not mutate recovery registry authority
+
+### Outcome and observed evidence
+- Commit `bc4db77243bc16f999e382c0a1fba41c1271186c` extends the existing post-write rollback negative to require canonical non-symlink paths and compare bytes, file/parent inode/mode and resolved path for six recovery registries, the generator and Production Status after both successful and deliberately failed rollback.
+- Exact-source Snapshot Post Write Rollback Negative run `40018393318` completed SUCCESS. Its job log confirms `Memory OS OPS-P0-007 strict snapshot post-write rollback negative PASS`, `canonical production status and six recovery registries bytes/identity remain unchanged: true`, `negative cleanup restores canonical strict snapshot bytes/mode: true` and `production evidence/readiness/promotion created: false`.
+- Previously pending generator change `bea92e9` also reached exact-source Readonly run `40018062428` SUCCESS and Snapshot Publisher run `40018062742` SUCCESS. Readonly job log explicitly reports generator execution authority negative PASS and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing CI-bound rollback negative changed. The synthetic invalid snapshot candidate and explicit cleanup remain the only intentional canonical-file mutation, confined to the Actions checkout. Recovery registries, production status, generator, credentials, traffic, readiness and promotion authorities were not modified.
+- The tested generator and snapshot validators still enforce real registered-versus-semantically-eligible generation separation, explicit human-approved current objective, current executable reviewed request for new recovery evidence, typed eight-domain non-resurrection coverage, independent review and separate human promotion.
+
+### Reusable mechanism
+- A rollback test must prove both restoration of the intentionally mutated output and non-mutation of *all* independent recovery authority inputs across success and failure paths. Snapshot bytes/mode alone are insufficient; compare registry bytes and file/parent identity in each branch and require canonical path identity before and after.
+- CI guard success is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+
+### Retry condition
+- Revisit only if a changed rollback implementation, a new protected recovery authority or an observed exact-source failure reveals an unguarded mutation. The unrelated source-binding clean-worktree blocker remains scoped and is not retried.
