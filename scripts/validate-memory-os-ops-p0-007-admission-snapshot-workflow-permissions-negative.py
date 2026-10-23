@@ -100,17 +100,45 @@ def prove_comment_only_commands_rejected() -> None:
         raise Fail("comment-only full admission validator references unexpectedly accepted")
 
 
+def require_readonly_pr_permissions(workflow: str) -> None:
+    # GitHub accepts 'permissions: write-all'; merely banning 'contents: write'
+    # does not prevent a PR workflow from receiving a write-capable token.
+    require(
+        re.search(r"(?m)^[ \\t]*permissions:[ \\t]*write-all(?:[ \\t]*(?:#.*)?)?$", workflow) is None,
+        "strict snapshot PR workflow must never use permissions: write-all",
+    )
+    require(
+        re.search(r"(?m)^permissions:[ \\t]*\\n[ \\t]+contents:[ \\t]*read(?:[ \\t]*(?:#.*)?)?$", workflow) is not None,
+        "strict snapshot PR workflow must declare top-level contents: read",
+    )
+    require("contents: write" not in workflow, "strict snapshot PR workflow must never receive contents: write")
+
+
+def prove_write_all_permissions_rejected() -> None:
+    require_readonly_pr_permissions("permissions:\\n  contents: read\\n".replace("\\n", "\n"))
+    for fixture in (
+        "permissions: write-all\n# contents: read\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions: write-all\n",
+    ):
+        try:
+            require_readonly_pr_permissions(fixture)
+        except Fail as exc:
+            require("permissions: write-all" in str(exc), f"write-all rejected outside permission guard: {exc}")
+        else:
+            raise Fail("strict snapshot PR workflow accepted write-all permissions")
+
+
 def main() -> int:
     require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
     require_canonical_workflow(PUBLISH_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot.yml"))
     prove_symlink_rejected()
     prove_comment_only_commands_rejected()
+    prove_write_all_permissions_rejected()
     pr = PR_WORKFLOW.read_text(encoding="utf-8")
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
     require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
-    require("contents: read" in pr, "strict snapshot PR workflow must use contents: read")
-    require("contents: write" not in pr, "strict snapshot PR workflow must never receive contents: write")
+    require_readonly_pr_permissions(pr)
     require("pull_request_target" not in pr, "strict snapshot PR workflow must not use pull_request_target")
     require("github.event.pull_request.head.sha" in pr, "strict snapshot PR workflow must bind checkout to exact PR head")
     require("git diff --exit-code -- contracts/operations/ops-p0-007-admission-snapshot.v1.json" in pr, "strict snapshot PR workflow must reject deterministic authority drift")
@@ -131,6 +159,7 @@ def main() -> int:
 
     print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
     print("pull request write token exposed: false")
+    print("top-level read-only permissions and write-all rejection proven: true")
     print("pull request authority publication allowed: false")
     print("full recovery objective admission validation required: true")
     print("full reviewed drill request admission validation required: true")
