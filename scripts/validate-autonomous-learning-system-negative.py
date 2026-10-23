@@ -112,6 +112,8 @@ def expected_diagnostic(name: str) -> str:
         "unreachable learning guard after raise": "learning CI entrypoint guard call follows unconditional return or raise",
         "async learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by async definition",
         "assigned learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by assignment",
+        "destructured learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by assignment",
+        "imported learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by import",
         "async main shadow": "learning CI entrypoint main binding is shadowed by async definition",
         "assigned main shadow": "learning CI entrypoint main binding is shadowed by assignment",
         "dead module main guard": "learning CI entrypoint must execute main from its live module guard",
@@ -327,6 +329,14 @@ def main() -> int:
         ("async learning guard shadow", lambda root: replace_in_entrypoint(
             root, "def main() -> int:\n",
             "async def validate_learning_guards(failures):\n    return None\n\ndef main() -> int:\n",
+        )),
+        ("destructured learning guard shadow", lambda root: replace_in_entrypoint(
+            root, "def main() -> int:\n",
+            "validate_learning_guards, = (lambda failures: None,)\n\ndef main() -> int:\n",
+        )),
+        ("imported learning guard shadow", lambda root: replace_in_entrypoint(
+            root, "def main() -> int:\n",
+            "from unittest.mock import Mock as validate_learning_guards\n\ndef main() -> int:\n",
         )),
         ("assigned learning guard shadow", lambda root: replace_in_entrypoint(
             root, "def main() -> int:\n",
