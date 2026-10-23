@@ -2561,3 +2561,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - This append-only lesson is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence; independent review and separate human promotion remain mandatory.
+
+## 2026-10-24 — Latest-source publisher retry must execute the full ordered admission chain
+
+### Symptom
+- The workflow permission negative previously bound only four core validators inside `revalidate_latest_snapshot()`. A publisher retry could omit or reorder other review/snapshot guards after resetting to latest `so`, while their presence in the earlier initial validation step could conceal that omission.
+- The first new negative fixture implementation at commit `06f5539` failed on its own `missing reset` case.
+
+### Evidence
+- Canonical publisher source contains a five-command source-refresh prefix followed by 14 ordered review, generator, snapshot and negative-suite commands inside the bounded function.
+- Exact-source Snapshot Permission Boundary run `39986587121` at `06f5539` failed with `missing reset: bounded source fixture drift`; the test mistakenly required every refresh command to immediately follow the function declaration, even though only `git fetch` is adjacent.
+
+### Root cause or unknown
+- Verified guard gap: the prior function-body checker enforced only the four `FULL_ADMISSION_VALIDATORS` and did not bind the other ten commands or their order to the latest-source retry.
+- Verified fixture defect: the mutation target concatenated the function declaration and each refresh command, so it could never locate later refresh lines.
+
+### Failed approach
+- Treating four present core commands as sufficient proof of the complete publisher retry chain; generating negative mutations with an incorrect adjacency assumption.
+
+### Correction
+- Commits `06f5539e618aa69ba098431c9c07144011d6da42` and `4daf8318fdb83301d29831449b018f2e31f75cf0` bind the exact five-step fetch/reset/SHA/export/log-refresh prefix and all 14 existing review/snapshot commands, once each, in their current fail-closed order. The fixture correction replaces each target only inside the actual function suffix and restores the intended whitespace regex.
+
+### Recurrence guard
+- The existing CI-bound permission negative mutates missing/stale refresh commands, reorders two review commands, and masks all 14 validators with `|| true`, `|| :` and `; true`. It rejects unbound decoy commands, early returns and commented call sites as before.
+
+### Retry condition
+- Revisit if the publisher intentionally changes its bounded source-refresh or review-chain architecture, or a new exact-source negative exposes an unguarded bypass. Do not retry the broken function-adjacent fixture.
+
+### Outcome
+- Exact-source Snapshot Permission Boundary run `39986658090` at `4daf8318` completed SUCCESS, logging `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS` and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing read-only workflow negative harness changed. The publisher workflow itself, production status, strict snapshot, registries, evidence and promotion authorities were not written.
+
+### Reusable mechanism
+- For bounded reconcile/retry workflows, validate the complete ordered source-refresh prefix and exact downstream fail-closed command sequence in the invoked function. Mutate only the intended function body, not an ambiguous earlier workflow step.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Append-only learning never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates. Eight-domain non-resurrection coverage, independent review and separate human production promotion remain mandatory.
