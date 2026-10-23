@@ -1320,3 +1320,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-correction source re-read confirmed `productionDecision=NO_GO`, unchanged canonical status and OPS-P0-007 strict snapshot blobs, `PREREQUISITES_BLOCKED`, and zero generation/objective/request/evidence/typed-coverage/final-candidate authority. Typed eight-domain evidence, independent review and separate human promotion remain mandatory.
 - This append-only operational lesson cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Every mandatory autonomous-learning rule needs independent negative proof
+
+### Outcome
+- Extended the canonical autonomous-learning negative suite from 22 to 32 fail-closed mutations and raised the existing CI entrypoint's minimum accepted negative-case count to 32.
+- Exact-source `Operability Contracts` run `39938219783` completed SUCCESS on commit `1477039bd1b7caa3832d24e5a506ae3a573faf39`.
+
+### Evidence
+- Commit `a465a6204eea0f6ed432c86ad83a54cd7bff3475` added eight independent false-rule mutations plus schema-version downgrade and closed-loop-order mutation, using the existing isolated positive control and canonical harness.
+- Commit `1477039bd1b7caa3832d24e5a506ae3a573faf39` raised `MIN_LEARNING_NEGATIVE_CASES` to 32 and made the entrypoint's synthetic count fixtures derive from that constant instead of hard-coded 22/23/21 strings.
+- Read-only contract-to-suite inspection found all 10 mandatory rule names represented, with explicit schema and loop mutations. Independent classifier reproduction returned 10/10 expected outcomes at the 32-case floor.
+- Exact-source CI job `120362923214` completed SUCCESS; its `Validate current entrypoint documents` step passed and the log shows `Memory OS entrypoint document validation PASS`, `autonomous-learning guards: 2`, and `production decision: NO_GO`. Child stdout is captured by the entrypoint, so the 32-case count is verified through its enforced output parser rather than separately echoed in the CI log.
+
+### Why safe
+- Only the isolated learning negative harness and its existing operability entrypoint changed. No learning contract, recovery registry, production evidence, status, credential, traffic, readiness, or promotion authority was modified.
+
+### Reusable mechanism
+- Enumerate all mandatory Boolean rules against the canonical contract and mutate each independently after a fixture positive control. Add schema/loop drift cases, then enforce a monotonic minimum negative-suite count at the existing CI caller. Derive synthetic boundary fixtures from the same minimum to prevent count drift.
+
+### Protected-authority check
+- Post-change re-read confirmed unchanged autonomous-learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved recovery objectives, executable reviewed drill requests, generation recovery evidence, typed eight-domain records and final candidates. Independent review and separate human promotion remain required.
+- Learning history is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — All-scope snapshot PR guard also passed the full readonly snapshot workflow
+
+### Outcome
+- The independently triggered exact-source `OPS P0 007 Admission Snapshot Readonly` run `39938026883` completed SUCCESS on the corrected permission guard commit `5a3944ab9392f312522200e3f92081e259dec819`.
+
+### Evidence
+- This run is separate from the focused permission-boundary success `39938026887`. Both ran on the same corrected source commit; neither is production recovery evidence.
+
+### Why safe
+- Both are read-only CI validation of existing snapshot and permission authorities, with no new generation, objective, drill, recovery, typed-coverage, credential, traffic, readiness or promotion authority.
+
+### Reusable mechanism
+- Confirm a focused negative guard in its owning workflow and in an independent aggregate readonly workflow; preserve exact commit attribution for both results.
+
+### Protected-authority check
+- Production status remains `NO_GO`; OPS-P0-007 strict snapshot and its real-evidence, typed eight-domain, independent-review and separate human-promotion gates remain unchanged. This learning record is not production evidence.
