@@ -35,21 +35,35 @@ def load_module():
 
 
 def expect_rejected(module: Any, field: str, replacement: Any) -> None:
+    expected = (
+        "strict snapshot generator execution guard drift"
+        if field == "enforce_execution_authority"
+        else "strict snapshot generator runtime authority guard drift"
+        if field == "enforce_runtime_authorities"
+        else "strict snapshot generator execution helper drift"
+    )
     original = getattr(module, field)
     snapshot_before = SNAPSHOT.read_bytes()
     status_before = STATUS.read_bytes()
+    snapshot_mode = SNAPSHOT.stat().st_mode & 0o7777
+    status_mode = STATUS.stat().st_mode & 0o7777
     setattr(module, field, replacement)
     rejected = False
     try:
         module.main()
     except SystemExit as exc:
-        require(exc.code not in (None, 0), f"{field} substitution produced successful SystemExit")
+        require(
+            isinstance(exc.code, str) and exc.code == expected,
+            f"{field} rejected outside intended strict snapshot guard: {exc}",
+        )
         rejected = True
     finally:
         setattr(module, field, original)
     require(rejected, f"strict snapshot generator accepted substituted execution authority: {field}")
     require(SNAPSHOT.read_bytes() == snapshot_before, f"{field} rejection mutated canonical strict snapshot")
     require(STATUS.read_bytes() == status_before, f"{field} rejection mutated canonical Production Status")
+    require(SNAPSHOT.stat().st_mode & 0o7777 == snapshot_mode, f"{field} rejection changed strict snapshot file mode")
+    require(STATUS.stat().st_mode & 0o7777 == status_mode, f"{field} rejection changed Production Status file mode")
 
 
 def main() -> int:
@@ -70,6 +84,8 @@ def main() -> int:
         ("validate_generated_snapshot", lambda: None),
         ("load_helper", lambda: object()),
     )
+    # Canonical guard must pass before any substitution can count as a rejection.
+    module.enforce_execution_authority()
     for field, replacement in substitutions:
         expect_rejected(module, field, replacement)
 
