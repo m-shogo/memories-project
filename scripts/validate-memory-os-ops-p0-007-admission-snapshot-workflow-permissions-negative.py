@@ -1179,6 +1179,81 @@ def prove_pr_job_execution_policy_negative(pr: str) -> None:
         raise Fail("strict snapshot PR accepted duplicate validate job")
 
 
+
+def publisher_trigger_paths() -> tuple[str, ...]:
+    return (
+        ".github/workflows/ops-p0-007-admission-snapshot.yml",
+        ".github/workflows/ops-p0-007-admission-snapshot-pr.yml",
+        "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+        *(f"contracts/operations/{name}" for name in REQUIRED_PR_ADMISSION_CONTRACTS),
+        "contracts/operations/production-operability-status.json",
+        "docs/evidence/backup-restore/**",
+        *PR_COMPILE_FILES[:-1],
+    )
+
+
+def require_publisher_trigger_authority(publish: str) -> None:
+    """Only the reviewed so push and manual dispatch may publish snapshots."""
+    expected = [
+        "name: OPS P0 007 Admission Snapshot",
+        "",
+        "on:",
+        "  push:",
+        "    branches:",
+        "      - so",
+        "    paths:",
+        *(f'      - "{path}"' for path in publisher_trigger_paths()),
+        "  workflow_dispatch:",
+        "",
+        "permissions:",
+        "  contents: write",
+    ]
+    require(
+        publish.splitlines()[:len(expected)] == expected,
+        "strict snapshot publisher trigger/path authority drift",
+    )
+
+
+def prove_publisher_trigger_negative(publish: str) -> None:
+    require_publisher_trigger_authority(publish)
+    marker = "permissions:\n"
+    require(publish.count(marker) == 1,
+            "strict snapshot publisher trigger fixture boundary drift")
+    header, remainder = publish.split(marker, 1)
+    suffix = marker + remainder
+    def check(label: str, changed: str) -> None:
+        require(changed != header, f"{label} publisher trigger mutation was a no-op")
+        try:
+            require_publisher_trigger_authority(changed + suffix)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher trigger/path authority drift",
+                f"{label} publisher trigger rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted {label}")
+
+    for path in publisher_trigger_paths():
+        line = f'      - "{path}"\n'
+        require(header.count(line) == 1, f"publisher trigger path fixture drift: {path}")
+        check(f"missing {path}", header.replace(line, "      # required trigger path removed\n", 1))
+    mutations = (
+        ("missing push", header.replace("  push:\n", "  workflow_dispatch:\n", 1)),
+        ("wrong branch", header.replace("      - so\n", "      - main\n", 1)),
+        ("missing branch selector", header.replace("    branches:\n", "    # branches removed\n", 1)),
+        ("missing path selector", header.replace("    paths:\n", "    # paths removed\n", 1)),
+        ("wrong event", header.replace("  push:\n", "  pull_request_target:\n", 1)),
+        ("extra schedule", header.replace("  workflow_dispatch:\n", "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)),
+        ("missing manual dispatch", header.replace("  workflow_dispatch:\n", "  # manual dispatch removed\n", 1)),
+        ("duplicate protected path", header.replace(
+            '      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"\n',
+            '      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"\n'
+            '      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"\n', 1)),
+    )
+    for label, mutated in mutations:
+        check(label, mutated)
+
+
 def require_pr_trigger_authority(pr: str) -> None:
     """Require a real pull_request trigger covering all reviewed admission inputs."""
     lines = pr.splitlines()
@@ -2354,6 +2429,7 @@ def main() -> int:
     prove_pr_job_execution_policy_negative(pr)
     prove_pr_step_allowlist_negative(pr)
     prove_pr_trigger_negative(pr)
+    prove_publisher_trigger_negative(publish)
     prove_publisher_source_capture_negative(publish)
     prove_publisher_job_execution_policy_negative(publish)
     prove_publisher_step_allowlist_negative(publish)
