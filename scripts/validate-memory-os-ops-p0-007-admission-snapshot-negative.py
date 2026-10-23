@@ -108,6 +108,12 @@ CASE_SPECIFIC_VALIDATOR_REJECTIONS = {
     "drill boolean aggregate count": "restore drill request canonical registry authority invalid: registeredRequestCount must be a non-boolean integer",
     "drill append-only boundary": "restore drill request canonical registry authority invalid: request registry must remain append-only",
     "drill production evidence boundary": "restore drill request canonical registry authority invalid: request registry productionEvidence must remain false",
+    "generation boolean aggregate count": "generation recovery evidence canonical registry authority invalid: registeredEvidenceCount drift",
+    "generation append-only boundary": "generation recovery evidence canonical registry authority invalid: registry must remain append-only",
+    "generation production readiness boundary": "generation recovery evidence canonical registry authority invalid: registry production boundary drift",
+    "typed boolean aggregate count": "typed non-resurrection canonical registry authority invalid: completeRecordCount drift",
+    "typed append-only boundary": "typed non-resurrection canonical registry authority invalid: registry must remain append-only",
+    "typed production evidence boundary": "typed non-resurrection canonical registry authority invalid: registry production boundary drift",
 }
 
 
