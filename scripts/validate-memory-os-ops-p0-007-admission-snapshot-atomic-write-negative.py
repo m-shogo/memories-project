@@ -52,6 +52,34 @@ def prove_identity_classifier() -> None:
             raise SystemExit("atomic identity classifier accepted equal-content parent symlink")
 
 
+EXPECTED_ATOMIC_FAILURE = (
+    "cannot atomically write contracts/operations/ops-p0-007-admission-snapshot.v1.json: "
+    "injected atomic replacement failure"
+)
+
+
+def require_exact_atomic_failure(observed: str) -> None:
+    if observed != EXPECTED_ATOMIC_FAILURE:
+        raise SystemExit(f"unexpected atomic-write failure: {observed}")
+
+
+def prove_exact_failure_classifier() -> None:
+    require_exact_atomic_failure(EXPECTED_ATOMIC_FAILURE)
+    for observed in (
+        "unrelated failure: " + EXPECTED_ATOMIC_FAILURE,
+        EXPECTED_ATOMIC_FAILURE + " unrelated failure",
+        "cannot atomically write another-authority.json: injected atomic replacement failure",
+        "injected atomic replacement failure",
+    ):
+        try:
+            require_exact_atomic_failure(observed)
+        except SystemExit as exc:
+            if str(exc) != f"unexpected atomic-write failure: {observed}":
+                raise SystemExit(f"atomic failure classifier rejected outside intended guard: {exc}") from exc
+        else:
+            raise SystemExit("atomic failure classifier accepted unrelated replacement diagnostic")
+
+
 def load_generator():
     spec = importlib.util.spec_from_file_location("ops_p0_007_snapshot_atomic_negative", GENERATOR)
     if spec is None or spec.loader is None:
@@ -63,6 +91,7 @@ def load_generator():
 
 def main() -> int:
     prove_identity_classifier()
+    prove_exact_failure_classifier()
     if not GENERATOR.is_file() or GENERATOR.is_symlink() or GENERATOR.resolve(strict=True).relative_to(ROOT) != GENERATOR.relative_to(ROOT):
         raise SystemExit("strict snapshot atomic negative generator source path drift")
     module = load_generator()
@@ -93,8 +122,7 @@ def main() -> int:
         with mock.patch.object(module.os, "replace", side_effect=reject_replace):
             atomic_write(target, before.decode("utf-8") + "\n")
     except SystemExit as exc:
-        if "cannot atomically write" not in str(exc) or "injected atomic replacement failure" not in str(exc):
-            raise SystemExit(f"unexpected atomic-write failure: {exc}") from exc
+        require_exact_atomic_failure(str(exc))
     else:
         raise SystemExit("injected atomic replacement failure was accepted")
 
