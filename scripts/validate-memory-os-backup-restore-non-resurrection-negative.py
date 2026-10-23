@@ -101,6 +101,7 @@ def main() -> int:
             "generation": "brge_negative_generation",
             "sha": SHA,
             "domain": None,
+            "domainTarget": None,
             "domainResult": "PASS",
             "domainProductionField": None,
             "securityReviewer": "reviewer_security",
@@ -136,8 +137,14 @@ def main() -> int:
                 return real_load(path)
             matched = next((name for name, prefix in prefixes.items() if ref.startswith(prefix)), None)
             if matched:
-                payload = domain_payload(state["generation"], state["sha"], state["domain"] or matched, state["domainResult"])
-                if state["domainProductionField"] is not None:
+                mutate_domain = state["domainTarget"] is None or state["domainTarget"] == matched
+                payload = domain_payload(
+                    state["generation"] if mutate_domain else "brge_negative_generation",
+                    state["sha"] if mutate_domain else SHA,
+                    (state["domain"] or matched) if mutate_domain else matched,
+                    state["domainResult"] if mutate_domain else "PASS",
+                )
+                if mutate_domain and state["domainProductionField"] is not None:
                     payload[state["domainProductionField"]] = True
                 return payload
             for review_type, prefix in review_prefixes.items():
@@ -265,6 +272,26 @@ def main() -> int:
         state["sha"] = "b" * 40; expect_rejected("domain evidence source commit binding mismatch", lambda: writer.validate_record(valid)); state["sha"] = SHA
         state["domain"] = "wrongDomain"; expect_rejected("domain evidence domain binding mismatch", lambda: writer.validate_record(valid)); state["domain"] = None
         state["domainResult"] = "FAIL"; expect_rejected("domain evidence result binding mismatch", lambda: writer.validate_record(valid)); state["domainResult"] = "PASS"
+        # Each remaining typed domain independently rejects all four evidence provenance drifts.
+        # The first domain is already exercised by the four cases immediately above.
+        for domain in contract["requiredDomains"][1:]:
+            state["domainTarget"] = domain
+            for label, field, bad, good, diagnostic in (
+                ("generation", "generation", "brge_other_generation", "brge_negative_generation", "generation binding mismatch"),
+                ("source commit", "sha", "b" * 40, SHA, "source commit binding mismatch"),
+                ("domain", "domain", "wrongDomain", None, "domain binding mismatch"),
+                ("result", "domainResult", "FAIL", "PASS", "result binding mismatch"),
+            ):
+                case = f"domain evidence {label} binding mismatch: {domain}"
+                EXPECTED_DIAGNOSTICS[case] = f"domain {domain} evidence {diagnostic}"
+                state[field] = bad
+                try:
+                    expect_rejected(case, lambda: writer.validate_record(valid))
+                finally:
+                    state[field] = good
+        state["domainTarget"] = None
+        writer.validate_record(valid)
+        print("PASS accept: all eight typed domains independently enforce four provenance bindings")
         for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
             state["domainProductionField"] = field
             expect_rejected(f"domain evidence {field} production boundary", lambda: writer.validate_record(valid))
