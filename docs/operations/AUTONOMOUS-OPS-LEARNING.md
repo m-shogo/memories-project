@@ -1137,3 +1137,40 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit re-read confirmed unchanged canonical production status and OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
 - This append-only lesson cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion gates.
+
+## 2026-10-23 — AST call presence is insufficient when required publication calls are conditional
+
+### Symptom
+- The snapshot diagnostic AST guard already excluded literal `if False` and unexecuted function definitions, but it could still count a required call placed under a comparison-dead branch such as `if 1 == 2`.
+
+### Evidence
+- The initial AST helper walked executable-looking call nodes and skipped only `ast.If` nodes whose test was an `ast.Constant`. A comparison expression is an `ast.Compare`, so the guard could observe a syntactically present but never-executed fsync or chmod call.
+
+### Root cause or unknown
+- Verified: AST node presence does not establish unconditional call reachability through surrounding control-flow ancestors. No actual workflow was observed using such a bypass.
+
+### Failed approach
+- Treating an AST call expression as sufficient executable proof without checking whether it is enclosed by a conditional branch.
+
+### Correction
+- Commit `3c905a0682849d964c2625c05012ec94b4008785` adds parent-ancestry checks: mkstemp, write, flush, fsync, replace, and unlink may not be nested under a conditional; fchmod must be enclosed by exactly the canonical `existing_mode is not None` guard.
+- Two new isolated negative mutations move fsync or chmod under comparison-dead branches while preserving their source text. Both must fail at the intended diagnostic guard.
+
+### Recurrence guard
+- The CI-reachable snapshot permission negative now checks required call-site ancestors in addition to exact AST expressions, call ordering, try/finally cleanup, comment-only, quoted, and constant-false substitutions.
+
+### Retry condition
+- Revisit if the canonical diagnostic writer legitimately introduces a conditional around a publication call or a new unreachable-control-flow bypass is demonstrated. Do not silently count conditional call presence as a completed atomic publication mechanism.
+
+### Outcome
+- Exact-source `OPS P0 007 Snapshot Permission Boundary` run `39932851635` completed SUCCESS on `3c905a0682849d964c2625c05012ec94b4008785`, including Python compilation, the expanded canonical/negative suite, and read-only execution checks.
+
+### Why safe
+- Only the existing negative test changed. The publisher workflow, diagnostic output, production authority, recovery evidence, credentials, traffic, readiness, and promotion were not modified.
+
+### Reusable mechanism
+- For embedded-language static checks, require both exact AST call expressions and valid control-flow ancestry. Prove dead-code resistance with comparison-false mutations, not just `if False`, and retain exact-source CI evidence separate from actual conditional publisher execution.
+
+### Protected-authority check
+- Post-commit re-read confirmed unchanged production status and OPS-P0-007 strict snapshot blobs, `productionDecision=NO_GO`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only operational history and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion gates.
