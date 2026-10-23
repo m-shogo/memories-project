@@ -1151,6 +1151,67 @@ def prove_pr_trigger_negative(pr: str) -> None:
             raise Fail("strict snapshot PR accepted weakened trigger or path coverage")
 
 
+def require_publisher_job_execution_policy(publish: str) -> None:
+    """A skipped or non-fatal publisher job cannot prove snapshot validation."""
+    lines = publish.splitlines()
+    expected = [
+        "jobs:",
+        "  validate:",
+        "    runs-on: ubuntu-latest",
+        "    timeout-minutes: 8",
+        "    steps:",
+    ]
+    starts = [index for index, line in enumerate(lines) if line == "  validate:"]
+    require(len(starts) == 1, "strict snapshot publisher job execution policy drift")
+    start = starts[0]
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].startswith("      - ")),
+        len(lines),
+    )
+    require(
+        start > 0 and lines[start - 1] == "jobs:"
+        and lines[start - 1:end] == expected,
+        "strict snapshot publisher job execution policy drift",
+    )
+
+
+def prove_publisher_job_execution_policy_negative(publish: str) -> None:
+    require_publisher_job_execution_policy(publish)
+    block = "jobs:\n  validate:\n    runs-on: ubuntu-latest\n    timeout-minutes: 8\n    steps:\n"
+    require(publish.count(block) == 1, "publisher job policy fixture block drift")
+    substitutions = (
+        ("    runs-on: ubuntu-latest", "    if: false\n    runs-on: ubuntu-latest"),
+        ("    runs-on: ubuntu-latest", "    continue-on-error: true\n    runs-on: ubuntu-latest"),
+        ("    runs-on: ubuntu-latest", "    needs: unreviewed-job\n    runs-on: ubuntu-latest"),
+        ("    runs-on: ubuntu-latest", "    runs-on: windows-latest"),
+        ("    timeout-minutes: 8", "    timeout-minutes: 0"),
+        ("    steps:", "    # steps disabled"),
+    )
+    for original, replacement in substitutions:
+        require(block.count(original) == 1, "publisher job policy mutation anchor drift")
+        mutated = publish.replace(block, block.replace(original, replacement, 1), 1)
+        require(mutated != publish, "publisher job policy mutation was a no-op")
+        try:
+            require_publisher_job_execution_policy(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher job execution policy drift",
+                f"publisher job execution policy rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail("strict snapshot publisher accepted weakened job-level validation")
+    duplicate = publish + "\n  validate:\n    runs-on: ubuntu-latest\n    steps:\n"
+    try:
+        require_publisher_job_execution_policy(duplicate)
+    except Fail as exc:
+        require(
+            str(exc) == "strict snapshot publisher job execution policy drift",
+            f"duplicate publisher job rejected outside exact guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot publisher accepted duplicate validate job")
+
+
 def publisher_protected_shell_starts(workflow: str) -> list[int]:
     lines = workflow.splitlines()
     names = (
@@ -1936,6 +1997,7 @@ def main() -> int:
     prove_pr_job_execution_policy_negative(pr)
     prove_pr_trigger_negative(pr)
     prove_publisher_source_capture_negative(publish)
+    prove_publisher_job_execution_policy_negative(publish)
 
     require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
     require_readonly_pr_permissions(pr)
