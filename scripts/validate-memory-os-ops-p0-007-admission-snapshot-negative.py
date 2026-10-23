@@ -105,6 +105,9 @@ CASE_SPECIFIC_VALIDATOR_REJECTIONS = {
     "objective schema boundary": "recovery objective canonical registry authority invalid: registry schema drift",
     "objective production evidence boundary": "recovery objective canonical registry authority invalid: objectives registry productionEvidence must remain false",
     "objective production readiness boundary": "recovery objective canonical registry authority invalid: objectives registry productionReady must remain false",
+    "drill boolean aggregate count": "restore drill request canonical registry authority invalid: registeredRequestCount must be a non-boolean integer",
+    "drill append-only boundary": "restore drill request canonical registry authority invalid: request registry must remain append-only",
+    "drill production evidence boundary": "restore drill request canonical registry authority invalid: request registry productionEvidence must remain false",
 }
 
 
