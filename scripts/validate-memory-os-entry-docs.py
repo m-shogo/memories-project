@@ -83,6 +83,49 @@ LEARNING_GUARDS = (
     "scripts/validate-autonomous-learning-system-negative.py",
 )
 LEARNING_GUARD_TIMEOUT_SECONDS = 120
+MIN_LEARNING_NEGATIVE_CASES = 22
+
+
+def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[str]) -> bool:
+    """An exit-zero child without its actual PASS proof is not an executed guard."""
+    if completed.returncode != 0 or completed.stderr:
+        return False
+    output = completed.stdout.strip()
+    if relative == LEARNING_GUARDS[0]:
+        return output == "Autonomous improvement/learning contract validation PASS"
+    if relative == LEARNING_GUARDS[1]:
+        prefix = "Autonomous learning negative validation PASS ("
+        suffix = " fail-closed cases)"
+        if not output.startswith(prefix) or not output.endswith(suffix):
+            return False
+        count = output[len(prefix):-len(suffix)]
+        return count.isascii() and count.isdecimal() and int(count) >= MIN_LEARNING_NEGATIVE_CASES
+    return False
+
+
+def prove_learning_guard_classifier(failures: list[str]) -> None:
+    """Prove that a no-op, truncated suite or spurious success cannot pass."""
+    positive = "Autonomous improvement/learning contract validation PASS\\n"
+    negative = "Autonomous learning negative validation PASS (22 fail-closed cases)\\n"
+    cases = (
+        ("positive", LEARNING_GUARDS[0], 0, positive, "", True),
+        ("negative", LEARNING_GUARDS[1], 0, negative, "", True),
+        ("expanded negative", LEARNING_GUARDS[1], 0,
+         "Autonomous learning negative validation PASS (23 fail-closed cases)\\n", "", True),
+        ("missing output", LEARNING_GUARDS[0], 0, "", "", False),
+        ("nonzero with success text", LEARNING_GUARDS[0], 1, positive, "", False),
+        ("stderr with success text", LEARNING_GUARDS[0], 0, positive, "injected", False),
+        ("truncated negative", LEARNING_GUARDS[1], 0,
+         "Autonomous learning negative validation PASS (21 fail-closed cases)\\n", "", False),
+        ("nonnumeric count", LEARNING_GUARDS[1], 0,
+         "Autonomous learning negative validation PASS (False fail-closed cases)\\n", "", False),
+        ("extra output", LEARNING_GUARDS[1], 0, negative + "ignored", "", False),
+        ("unbound guard", "scripts/unbound-guard.py", 0, positive, "", False),
+    )
+    for name, relative, code, stdout, stderr, expected in cases:
+        completed = subprocess.CompletedProcess([], code, stdout, stderr)
+        if learning_guard_passed(relative, completed) is not expected:
+            failures.append(f"learning guard success classifier misclassified: {name}")
 
 
 def validate_learning_guards(failures: list[str]) -> None:
@@ -92,6 +135,9 @@ def validate_learning_guards(failures: list[str]) -> None:
         return
     if not 1 <= LEARNING_GUARD_TIMEOUT_SECONDS <= 300:
         failures.append("autonomous-learning guard timeout must remain bounded to 1..300 seconds")
+        return
+    prove_learning_guard_classifier(failures)
+    if failures:
         return
     for relative in LEARNING_GUARDS:
         path = REPO_ROOT / relative
@@ -103,6 +149,8 @@ def validate_learning_guards(failures: list[str]) -> None:
                 [sys.executable, str(path), "--repo-root", str(REPO_ROOT)],
                 cwd=REPO_ROOT,
                 check=False,
+                text=True,
+                capture_output=True,
                 timeout=LEARNING_GUARD_TIMEOUT_SECONDS,
             )
         except subprocess.TimeoutExpired:
@@ -110,9 +158,10 @@ def validate_learning_guards(failures: list[str]) -> None:
                 f"autonomous-learning guard timed out after {LEARNING_GUARD_TIMEOUT_SECONDS}s: {relative}"
             )
             continue
-        if completed.returncode != 0:
+        if not learning_guard_passed(relative, completed):
             failures.append(
-                f"autonomous-learning guard failed: {relative} (exit {completed.returncode})"
+                f"autonomous-learning guard missing verified PASS: {relative} "
+                f"(exit {completed.returncode})"
             )
 
 
