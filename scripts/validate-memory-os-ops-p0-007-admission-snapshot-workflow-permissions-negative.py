@@ -638,7 +638,7 @@ def require_unconditional_pr_admission(workflow: str) -> None:
     # publisher's explicitly status-capturing generation step, no validator
     # may be moved behind an unknown conditional or into an uncalled function.
     control = re.compile(
-        r"^(?:if|elif|else|fi|for|while|until|case|esac|function|eval)\b"
+        r"^(?:if|elif|else|fi|for|while|until|case|esac|function|eval|exit|return|break|continue|exec)\b"
         r"|^[A-Za-z_]\w*\(\)\s*\{"
         r"|^bash\s+-c\b"
     )
@@ -651,6 +651,15 @@ def require_unconditional_pr_admission(workflow: str) -> None:
             active.count(f"python {validator}") == 1,
             f"strict snapshot PR admission missing unconditional validator: {validator}",
         )
+    expected_chain = [f"python {validator}" for validator in PUBLISH_REVALIDATION_CHAIN]
+    expected_chain.append(
+        "python scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py"
+    )
+    actual_chain = [line for line in active if re.match(r"^python[ \t]+scripts/", line)]
+    require(
+        actual_chain == expected_chain,
+        "strict snapshot PR admission validator execution order drift",
+    )
 
 
 def prove_pr_conditional_admission_rejected(pr: str) -> None:
@@ -679,6 +688,46 @@ def prove_pr_conditional_admission_rejected(pr: str) -> None:
         1,
     )
     require_unconditional_pr_admission(comment)
+    # All canonical validators, not only the first four recovery gates, must
+    # execute in order without an intervening successful early exit.
+    first, second = PUBLISH_REVALIDATION_CHAIN[:2]
+    left, right = f"          python {first}\n", f"          python {second}\n"
+    require(left + right in pr, "strict snapshot PR ordering fixture drift")
+    swapped = pr.replace(left + right, right + left, 1)
+    missing = pr.replace(
+        "          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py\n",
+        "          # snapshot negative skipped\n",
+        1,
+    )
+    extra = pr.replace(
+        right,
+        right + "          python scripts/unreviewed-admission-validator.py\n",
+        1,
+    )
+    for label, mutated in (("reordered", swapped), ("missing negative", missing), ("extra validator", extra)):
+        require(mutated != pr, f"{label} PR admission mutation was a no-op")
+        try:
+            require_unconditional_pr_admission(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR admission validator execution order drift",
+                f"{label} PR admission rejected outside exact ordering guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot PR accepted {label} admission chain")
+    for validator in (first, PUBLISH_REVALIDATION_CHAIN[-1]):
+        target = f"          python {validator}\n"
+        require(target in pr, f"strict snapshot PR early-exit fixture drift: {validator}")
+        mutated = pr.replace(target, "          exit 0\n" + target, 1)
+        try:
+            require_unconditional_pr_admission(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR admission validators must execute unconditionally",
+                f"early exit before {validator} rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot PR accepted early exit before {validator}")
 
 
 def prove_comment_only_commands_rejected() -> None:
