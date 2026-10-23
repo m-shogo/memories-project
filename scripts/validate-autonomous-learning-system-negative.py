@@ -77,13 +77,72 @@ def prove_failure_classifier() -> None:
     )
 
 
+def expected_diagnostic(name: str) -> str:
+    """Bind each negative to the invariant it intended to violate."""
+    fixed = {
+        "weaken mandatory rule": "mandatory learning rule must remain true: unchangedBlockerIsNotRetried",
+        "disable required CI reachability": "mandatory learning rule must remain true: ciReachabilityRequired",
+        "weaken NO_GO default": "learning must not weaken the NO_GO default",
+        "allow non-real OPS-P0-007 evidence": "OPS-P0-007 real-evidence boundary must remain true",
+        "merge human promotion review into automation": "human promotion review must remain separate",
+        "break executable guard binding": "executable learning guard binding changed",
+        "break negative guard binding": "negative learning guard binding changed",
+        "break CI entrypoint binding": "learning CI entrypoint binding changed",
+        "break learning authority binding": "learning authority path changed",
+        "duplicate required failure field": "requiredFailureFields contains duplicates",
+        "duplicate required success field": "requiredSuccessFields contains duplicates",
+        "remove learning authority": "learning authority path missing or escapes root: docs/operations/AUTONOMOUS-OPS-LEARNING.md",
+        "remove executable guard": "learning authority path missing or escapes root: scripts/validate-autonomous-learning-system.py",
+        "remove negative guard": "learning authority path missing or escapes root: scripts/validate-autonomous-learning-system-negative.py",
+        "remove CI entrypoint": "learning authority path missing or escapes root: scripts/validate-memory-os-entry-docs.py",
+        "disconnect positive guard from CI entrypoint": "learning CI entrypoint does not invoke bound guard: scripts/validate-autonomous-learning-system.py",
+        "disconnect negative guard from CI entrypoint": "learning CI entrypoint does not invoke bound guard: scripts/validate-autonomous-learning-system-negative.py",
+        "remove CI guard execution call": "learning CI entrypoint lost executable guard invocation: validate_learning_guards(failures)",
+        "drop CI repo-root guard interface": "learning CI entrypoint lost executable guard invocation: [sys.executable",
+        "drop CI guard timeout authority": "learning CI entrypoint lost executable guard invocation: LEARNING_GUARD_TIMEOUT_SECONDS = 120",
+        "drop CI guard timeout binding": "learning CI entrypoint lost executable guard invocation: timeout=LEARNING_GUARD_TIMEOUT_SECONDS",
+        "drop CI guard timeout handling": "learning CI entrypoint lost executable guard invocation: except subprocess.TimeoutExpired:",
+        "drop anti-regression lesson": "learning authority lost invariant: Repeating a known failed approach",
+        "downgrade schema version": "unsupported schemaVersion",
+        "reorder closed-loop execution": "closed-loop execution order changed",
+        "comment-only learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
+        "quoted learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
+        "dead-branch learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
+        "dead module main guard": "learning CI entrypoint must execute main from its live module guard",
+        "comment-only module main invocation": "learning CI entrypoint must execute main from its live module guard",
+    }
+    if name in fixed:
+        return fixed[name]
+    if name.startswith("disable mandatory "):
+        return "mandatory learning rule must remain true: " + name.removeprefix("disable mandatory ")
+    if name.startswith("drop required failure "):
+        return "requiredFailureFields changed:"
+    if name.startswith("drop required success "):
+        return "requiredSuccessFields changed:"
+    if name.startswith("symlinked ") and name.endswith(" parent directory"):
+        return "learning authority path substituted through parent:"
+    if name.startswith("symlinked ") and name.endswith(" authority"):
+        return "symlinked learning authority forbidden:"
+    raise RuntimeError(f"negative case lacks an expected canonical diagnostic: {name}")
+
+
+def require_expected_rejection(name: str, result: subprocess.CompletedProcess[str]) -> None:
+    require_canonical_rejection(name, result)
+    expected = "AUTONOMOUS LEARNING VALIDATION FAILED: " + expected_diagnostic(name)
+    if expected not in result.stderr:
+        raise RuntimeError(
+            f"negative case rejected for the wrong reason: {name}: "
+            f"expected {expected!r}; observed {result.stderr!r}"
+        )
+
+
 def require_failure(source_root: Path, name: str, mutate) -> None:
     with tempfile.TemporaryDirectory(prefix="learning-negative-") as tmp:
         root = Path(tmp)
         seed(source_root, root)
         mutate(root)
         result = run(source_root, root)
-        require_canonical_rejection(name, result)
+        require_expected_rejection(name, result)
 
 
 def edit_contract(root: Path, edit) -> None:
@@ -152,6 +211,9 @@ def main() -> int:
         ("break executable guard binding", lambda root: edit_contract(root, lambda d: d.__setitem__("validator", "scripts/other.py"))),
         ("break negative guard binding", lambda root: edit_contract(root, lambda d: d.__setitem__("negativeValidator", "scripts/other-negative.py"))),
         ("break CI entrypoint binding", lambda root: edit_contract(root, lambda d: d.__setitem__("ciEntrypoint", "scripts/other-entrypoint.py"))),
+        ("break learning authority binding", lambda root: edit_contract(root, lambda d: d.__setitem__("authority", "docs/operations/other-learning.md"))),
+        ("duplicate required failure field", lambda root: edit_contract(root, lambda d: d["requiredFailureFields"].append("symptom"))),
+        ("duplicate required success field", lambda root: edit_contract(root, lambda d: d["requiredSuccessFields"].append("outcome"))),
         ("remove learning authority", lambda root: (root / LEARNING).unlink()),
         ("remove executable guard", lambda root: (root / VALIDATOR).unlink()),
         ("remove negative guard", lambda root: (root / NEGATIVE_VALIDATOR).unlink()),
