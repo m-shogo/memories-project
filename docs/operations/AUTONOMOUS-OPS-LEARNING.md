@@ -1990,3 +1990,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` still has zero registered/semantically eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human production promotion remain mandatory.
 - Learning is append-only operational guidance, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Nested canonical rejection is not an arbitrary multiline failure
+
+### Symptom
+- New generator corruption diagnostic guard initially rejected a legitimate fail-closed nested validator diagnostic, causing exact-source snapshot readonly CI to fail.
+
+### Evidence
+- Commit `d7726f870bea44cfd10a002097489b426026f230`, `OPS P0 007 Admission Snapshot Readonly` run `39961118870`, job `120439058803`: `generator canonical blocker replacement: generator rejection did not use one intended authority diagnostic`. Observed stderr contained the canonical typed admission prefix followed by `LOCAL APPLE REPLAY RESTORE VALIDATION FAILED: OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers`.
+
+### Root cause or unknown
+- Verified: the new classifier assumed every valid generator rejection was one line. The canonical typed non-resurrection admission validator legitimately preserves a two-line nested local Apple restore diagnostic with an exact cause.
+
+### Failed approach
+- Requiring `len(stderr.splitlines()) == 1` for every generator corruption negative, without first inspecting the composed validator's real output contract.
+
+### Correction
+- Commit `0337f4f6d3e85435583dca2f9688768d2775619c` accepts either a one-line expected authority prefix or an exact two-line typed/local-restore diagnostic with the second line bound to the specific blocker/decision mutation. Unrelated, wrong-prefix, wrong-cause and extra-line outputs remain rejected by synthetic classifier controls.
+
+### Recurrence guard
+- The existing snapshot negative suite self-tests both accepted diagnostic shapes and rejects unrelated/multiline impostors. Exact-source `OPS P0 007 Admission Snapshot Readonly` run `39961336278` (job `120439791485`) and `OPS P0 007 Admission Snapshot` run `39961336289` (job `120439792152`) completed SUCCESS and logged strict snapshot negative PASS with `production decision: NO_GO`.
+
+### Retry condition
+- Revisit only if the canonical typed/local-restore validator changes its diagnostic shape or a new nested diagnostic is observed. Do not retry the rejected one-line-only classifier unchanged; preserve strict cause-binding rather than accepting arbitrary stderr.
+
+### Outcome
+- The fail-closed classifier now distinguishes intended nested authority rejection from unrelated failure without weakening production/recovery gates. One failing code commit was corrected by a second code commit, both retained in history.
+
+### Success evidence
+- Exact-source runs `39961336278` and `39961336289` succeeded at `0337f4f6d3e85435583dca2f9688768d2775619c`. The independent `Backup Restore Admission Chain Negative` run `39961336244` still failed at the pre-existing Source-binding Clean Worktree blocker; that known scoped blocker was not changed or retried manually.
+
+### Why safe
+- Only negative diagnostic classification and its synthetic controls changed. The canonical typed validator, eight-domain requirements, independent review, source authority, registries and human promotion were not weakened. Publisher diagnostic-file churn was not treated as readiness or production evidence.
+
+### Reusable mechanism
+- Before enforcing exact stderr shape across composed validators, inspect observed nested failure evidence. Whitelist only specific nested causes and test rejection of unrelated prefixes, wrong second lines and extra diagnostics.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/semantically eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates; autonomous-learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent reviews and separate human promotion remain mandatory.
+- Learning is append-only execution guidance, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
