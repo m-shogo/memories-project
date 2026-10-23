@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,66 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 class Fail(RuntimeError):
     pass
+
+
+def require_canonical_rollback_authority(
+    path: Path, expected_relative: Path, root: Path = ROOT
+) -> None:
+    try:
+        lexical = path.relative_to(root)
+        resolved = path.resolve(strict=True).relative_to(root.resolve(strict=True))
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"strict snapshot rollback canonical authority path drift: {expected_relative}") from exc
+    if (
+        lexical != expected_relative or resolved != expected_relative
+        or not path.is_file() or path.is_symlink() or path.parent.is_symlink()
+    ):
+        raise Fail(f"strict snapshot rollback canonical authority path drift: {expected_relative}")
+
+
+def prove_rollback_symlink_guard() -> None:
+    # All alias mutations stay outside the checked-out canonical authority.
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-rollback-path-negative-") as tmp:
+        root = Path(tmp)
+        parent = root / "authority"
+        parent.mkdir()
+        path = parent / "snapshot.json"
+        path.write_text('{"productionDecision":"NO_GO"}\n', encoding="utf-8")
+        relative = Path("authority/snapshot.json")
+        require_canonical_rollback_authority(path, relative, root)
+        original = parent / "original.json"
+        path.rename(original)
+        path.symlink_to(original.name)
+        for label in ("file symlink",):
+            try:
+                require_canonical_rollback_authority(path, relative, root)
+            except Fail as exc:
+                if str(exc) != f"strict snapshot rollback canonical authority path drift: {relative}":
+                    raise Fail(f"{label} rejected outside exact path guard: {exc}") from exc
+            else:
+                raise Fail(f"strict snapshot rollback accepted {label}")
+        path.unlink()
+        original.rename(path)
+        require_canonical_rollback_authority(path, relative, root)
+        moved = root / "actual"
+        parent.rename(moved)
+        parent.symlink_to(moved.name, target_is_directory=True)
+        try:
+            require_canonical_rollback_authority(path, relative, root)
+        except Fail as exc:
+            if str(exc) != f"strict snapshot rollback canonical authority path drift: {relative}":
+                raise Fail(f"parent symlink rejected outside exact path guard: {exc}") from exc
+        else:
+            raise Fail("strict snapshot rollback accepted parent symlink")
+
+
+def require_canonical_rollback_sources() -> None:
+    for path, relative in (
+        (SNAPSHOT, Path("contracts/operations/ops-p0-007-admission-snapshot.v1.json")),
+        (STATUS, Path("contracts/operations/production-operability-status.json")),
+        (GENERATOR, Path("scripts/generate-memory-os-ops-p0-007-admission-snapshot.py")),
+    ):
+        require_canonical_rollback_authority(path, relative)
 
 
 def mode(path: Path) -> int:
@@ -179,8 +240,12 @@ def run_failed_rollback_preserves_primary_diagnostic() -> None:
 
 
 def main() -> int:
+    prove_rollback_symlink_guard()
+    require_canonical_rollback_sources()
     run_successful_rollback()
+    require_canonical_rollback_sources()
     run_failed_rollback_preserves_primary_diagnostic()
+    require_canonical_rollback_sources()
 
     print("Memory OS OPS-P0-007 strict snapshot post-write rollback negative PASS")
     print("canonical post-write validator rejection exercised after candidate publication: true")
