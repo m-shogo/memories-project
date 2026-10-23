@@ -1445,3 +1445,46 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-change re-read confirmed unchanged learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain required.
 - This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — A live learning main call also needs a live module entrypoint
+
+### Symptom
+- The new AST guard verified that `main()` directly calls `validate_learning_guards(failures)`, but a module with `if False: raise SystemExit(main())` or a comment-only main invocation could still retain the entire live `main` function while never executing it.
+
+### Evidence
+- Before commit `f6e858ec9cac3a134869319ecca74d6177cb04b4`, the canonical positive validator checked the `main` function body but did not require the module-level `if __name__ == "__main__": raise SystemExit(main())` entrypoint.
+- The actual canonical CI entrypoint has exactly this module guard; the existing 45-case negative suite did not mutate it.
+
+### Root cause or unknown
+- Verified reachability gap: an executable call inside a function is not proof that the module invokes that function. No real CI bypass was observed.
+
+### Failed approach
+- Treating a direct function-body call as sufficient end-to-end execution authority without binding the top-level module entrypoint.
+
+### Correction
+- Commit `f6e858ec9cac3a134869319ecca74d6177cb04b4` adds AST equality for exactly one canonical module-level `__main__` guard that raises `SystemExit(main())`.
+- Commit `097cbe2cbcd74a940f47945f85604efbd3babea5` adds isolated dead-module-guard and comment-only-main-invocation negatives.
+- Commit `79039e83e5ed11fed7e765d186ec5e5c87c64943` raises the existing CI entrypoint's minimum negative-case count to 47.
+
+### Recurrence guard
+- The canonical positive validator now requires both the direct learning guard call in `main()` and a live module-level `__main__` entrypoint. The negative suite must reject both synthetic bypasses while the unchanged positive control passes.
+- This is AST structural reachability proof, not a claim to solve arbitrary dynamic Python execution or GitHub workflow trigger-policy gaps.
+
+### Retry condition
+- Revisit only if the canonical entrypoint legitimately changes its module invocation structure or a new bypass is demonstrated. Do not revert to substring-only or function-body-only proof.
+
+### Outcome
+- Exact-source `Operability Contracts` run `39939165018` completed SUCCESS on commit `79039e83e5ed11fed7e765d186ec5e5c87c64943`.
+
+### Success evidence
+- CI job `120366055059` logs show `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (47 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+
+### Why safe
+- Only the canonical learning validators and existing operability CI entrypoint were hardened. No production status, recovery objective, generation, drill request, typed evidence, credentials, traffic, readiness or promotion authority changed.
+
+### Reusable mechanism
+- Trace executable reachability from module entrypoint to `main()` to the bound validator call, using AST and isolated dead/comment-only mutations. Enforce the expanded negative-case floor at the exact-source CI caller.
+
+### Protected-authority check
+- Post-change re-read confirmed unchanged learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
+- This append-only learning history cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
