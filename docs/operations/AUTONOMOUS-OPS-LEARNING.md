@@ -3481,3 +3481,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed PR deterministic drift step changes or a newly observed step-level skip/error-mask bypass escapes this exact-step guard.
 
+
+## 2026-10-24 — PR admission cannot rely on a disabled or non-fatal validation job
+
+### Outcome
+- Commit 2255e4d37e8f57cbe30d10b1053df1205703d422 binds the strict OPS-P0-007 PR validation to its reviewed enabled job header and rejects job-level skip, failure-masking or runner drift.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40007333281 completed SUCCESS at this commit.
+
+### Evidence
+- Earlier guards required a live source-verification step, validator step and deterministic drift-rejection step, but did not require the enclosing validate job to remain enabled and fatal. A job-level if: false or continue-on-error could defeat all three step-local guards without changing their text.
+- Seven synthetic mutations now insert job-level if: false, continue-on-error, unreviewed needs, runner change, invalid timeout, removed steps or duplicate validate job. Each must produce the exact PR job execution-policy drift diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness and in-memory workflow fixtures changed. The PR and publisher workflows, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- CI gate reachability is hierarchical: validate the job-level execution/failure policy in addition to each required step and command. A correctly written validator is not authoritative when its enclosing job is skipped or non-fatal.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed PR job execution architecture changes or a newly observed job-level skip/failure-mask bypass escapes the bounded guard.
+
