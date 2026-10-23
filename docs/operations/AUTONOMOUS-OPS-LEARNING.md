@@ -2029,3 +2029,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/semantically eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates; autonomous-learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent reviews and separate human promotion remain mandatory.
 - Learning is append-only execution guidance, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Publisher revalidation must be invoked, not merely defined
+
+### Symptom
+- The strict snapshot publisher permission negative accepted the presence of `revalidate_latest_snapshot` as a source substring. A retained shell function definition with its retry/finalization invocations removed could satisfy that check while weakening publication-time revalidation. This is a source-level guard gap, not an observed production incident.
+
+### Evidence
+- Prior to `32a95540242dec24edad9aa1252adb9bada41837`, the workflow guard used `"revalidate_latest_snapshot" in publish`. The canonical publisher contains one definition and three distinct shell call sites; the new negative fixtures replace one real call with a comment or echo while retaining the definition.
+
+### Root cause or unknown
+- Verified: string presence does not establish invocation reachability; a definition, comment or echo can preserve the marker without running the revalidation function.
+
+### Failed approach
+- Using an unscoped workflow-text substring as proof of bounded source revalidation before publication.
+
+### Correction
+- Commit `32a95540242dec24edad9aa1252adb9bada41837` binds the function definition and at least three existing call sites to enabled workflow `run: |` shell bodies. Positive control uses the canonical publisher, and two mutated negative fixtures prove comment-only and echo-only calls cannot satisfy the guard.
+
+### Recurrence guard
+- The pre-existing CI-bound workflow permission negative now enforces the call-site check. Exact-source `OPS P0 007 Snapshot Permission Boundary` run `39961657212` (job `120440891848`) and `OPS P0 007 Admission Snapshot Readonly` run `39961657127` (job `120440892139`) completed SUCCESS, logging workflow permission negative PASS and `production decision: NO_GO`.
+
+### Retry condition
+- Revisit if the canonical publisher legitimately changes its bounded revalidation architecture or a demonstrated unreachable shell branch evades this bounded static check. Do not restore substring-only proof.
+
+### Outcome
+- A fourth executable guard commit landed on `so` with two exact-source CI successes. No environment generation, approved objective, executable reviewed drill request, recovery evidence, credentials, traffic, readiness or promotion was created.
+
+### Success evidence
+- Both exact-source workflows completed successfully at `32a95540242dec24edad9aa1252adb9bada41837`. The readonly workflow also logged strict admission snapshot negative PASS and unchanged `NO_GO`.
+
+### Why safe
+- Only an existing read-only workflow negative validator changed; tests mutate in-memory workflow strings. The canonical publisher, production status, snapshot, registries, typed eight-domain gate, independent reviews and human promotion were not modified.
+
+### Reusable mechanism
+- For shell workflow authority, distinguish function definitions from executable invocation sites and prove that replacing a real call with inert text fails a positive-controlled negative suite.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/semantically eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; autonomous-learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate non-automatic human promotion remain mandatory.
+- Learning is append-only execution guidance and never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
