@@ -2945,3 +2945,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed PR validation chain intentionally changes, or an observed command-order or early-termination bypass escapes the bounded negative suite.
+
+
+## 2026-10-24 — Named duplicate checkout steps must not evade exact-source binding
+
+### Outcome
+- Commit 532c2beb391584c88f6a66fa40252ffb6508ec6f extends the existing OPS-P0-007 snapshot workflow permission negative so a second checkout step declared with name first and uses on the following YAML line cannot evade the single-checkout source binding.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40002756551 completed SUCCESS at this commit.
+
+### Evidence
+- The prior matcher enumerated only step list items beginning with - uses: actions/checkout@v4. GitHub Actions also permits a step to begin with - name: followed by uses: actions/checkout@..., so a later named checkout could change source authority while escaping the duplicate count.
+- Both PR and publisher fixture suites now inject named second checkout steps using v4, v3, v4.2.0 and main. All eight new mutations must receive the exact checkout source-binding rejection; the canonical single-checkout positive controls remain required.
+
+### Why safe
+- Only the existing read-only, CI-reachable workflow negative harness and isolated YAML text fixtures changed. Neither workflow, Production Status, strict snapshot, recovery registries, evidence, credentials, traffic, readiness nor promotion authority was modified.
+
+### Reusable mechanism
+- For GitHub Actions source-binding checks, count executable uses declarations in both legal step-key orders. A regex that recognizes only - uses on the list-item line is insufficient to establish checkout uniqueness. Retain version-agnostic duplicate detection and exact source-SHA binding as separate assertions.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed checkout-step YAML architecture changes or a new observed duplicate checkout representation bypasses the bounded matcher.
