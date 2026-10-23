@@ -106,12 +106,12 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
         for child in ast.iter_child_nodes(parent)
     }
 
-    def enclosing_conditions(call: ast.Call) -> list[ast.If]:
-        conditions: list[ast.If] = []
+    def enclosing_conditions(call: ast.Call) -> list[ast.AST]:
+        conditions: list[ast.AST] = []
         node: ast.AST = call
         while node in parents:
             node = parents[node]
-            if isinstance(node, ast.If):
+            if isinstance(node, (ast.If, ast.While, ast.For, ast.AsyncFor, ast.Match, ast.ExceptHandler)):
                 conditions.append(node)
         return conditions
 
@@ -127,6 +127,7 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
     chmod_conditions = enclosing_conditions(found["chmod"])
     require(
         len(chmod_conditions) == 1
+        and isinstance(chmod_conditions[0], ast.If)
         and ast.dump(chmod_conditions[0].test, include_attributes=False) == mode_guard,
         "strict snapshot diagnostic chmod not bound to existing-mode guard",
     )
@@ -165,6 +166,8 @@ def prove_diagnostic_comment_and_dead_code_rejected(publish: str) -> None:
         ("quoted flush", "handle.flush()", "'handle.flush()'"),
         ("dead fsync", "os.fsync(handle.fileno())", "if False: os.fsync(handle.fileno())"),
         ("comparison-dead fsync", "os.fsync(handle.fileno())", "if 1 == 2: os.fsync(handle.fileno())"),
+        ("while-dead fsync", "os.fsync(handle.fileno())", "while False: os.fsync(handle.fileno())"),
+        ("empty-for fsync", "os.fsync(handle.fileno())", "for _ in []: os.fsync(handle.fileno())"),
         ("comparison-dead chmod", "os.fchmod(fd, existing_mode)", "if 1 == 2: os.fchmod(fd, existing_mode)"),
         ("comment-only cleanup", "os.unlink(tmp_name)", "pass  # os.unlink(tmp_name)"),
         ("direct-write bypass", "os.replace(tmp_name, path)", "path.write_text('unsafe')  # os.replace(tmp_name, path)"),
