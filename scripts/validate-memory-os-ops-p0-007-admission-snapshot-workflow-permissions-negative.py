@@ -1019,6 +1019,10 @@ def require_unconditional_pr_admission(workflow: str) -> None:
                 if lines[index].startswith("      - ")), len(lines))
     runs = [index for index in range(start + 1, end) if lines[index] == "        run: |"]
     require(len(runs) == 1, "strict snapshot PR admission executable run block missing")
+    require(
+        lines[start:runs[0]] == [name],
+        "strict snapshot PR admission step execution policy drift",
+    )
     body = [line[10:].strip() for line in lines[runs[0] + 1:end]
             if line.startswith("          ")]
     active = [line for line in body if line and not line.startswith("#")]
@@ -1053,6 +1057,26 @@ def require_unconditional_pr_admission(workflow: str) -> None:
 
 def prove_pr_conditional_admission_rejected(pr: str) -> None:
     require_unconditional_pr_admission(pr)
+    # A correct validator body in a skipped or continue-on-error step is not
+    # a mandatory PR admission gate. Bind the reviewed step header as well.
+    step = "      - name: Generate and validate strict snapshot read-only\n        run: |\n"
+    require(pr.count(step) == 1, "strict snapshot PR admission header fixture drift")
+    for injected in (
+        "if: false",
+        "if: ${{ false }}",
+        "continue-on-error: true",
+        "shell: pwsh",
+    ):
+        mutated = pr.replace(step, step.replace("        run: |", f"        {injected}\n        run: |"), 1)
+        try:
+            require_unconditional_pr_admission(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR admission step execution policy drift",
+                f"disabled or weakened PR admission step rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot PR accepted weakened admission step header: {injected}")
     for validator in FULL_ADMISSION_VALIDATORS:
         command = f"          python {validator}\n"
         require(pr.count(command) == 1, f"strict snapshot PR conditional fixture drift: {validator}")
