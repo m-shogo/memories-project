@@ -2478,3 +2478,26 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human production-promotion authority remain mandatory.
 - Append-only learning is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Snapshot corruption rejection must not simultaneously report success
+
+### Outcome
+- Commit `eca18bf85b97b728cea9d55a2fb815d717cb9b91` extends the canonical strict snapshot corruption negative suite to reject nonempty stdout whenever the canonical validator is expected to exit 1 with its case-specific failure diagnostic.
+
+### Evidence
+- Previously `run_validator(False, label)` checked exit 1 and cause-specific stderr but ignored stdout; a child reporting a positive PASS on stdout alongside a matching negative stderr could be misclassified as a clean negative proof.
+- The positive canonical validator emits PASS lines only after all checks complete. The new synthetic in-suite control injects a positive marker into negative stdout and requires a cause-specific rejection.
+- An independent five-case pure-classifier check accepted empty/whitespace stdout and rejected positive, unrelated, and copied-error stdout. GitHub commit status lookup returned no completed status entries at recording time; exact-source CI success is not claimed.
+
+### Why safe
+- Only the existing CI-reachable negative harness changed. No production status, strict snapshot, generator, registries, recovery evidence, credentials, traffic, readiness or promotion authority was modified.
+
+### Reusable mechanism
+- Pair exact negative stderr and exit-code assertions with a clean stdout requirement; use a mixed positive/negative synthetic control so a contradictory child result cannot masquerade as expected failure. Keep isolated classifier tests distinct from exact-source canonical CI proof.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains `PREREQUISITES_BLOCKED` and zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Eight-domain coverage, independent review and separate human promotion remain mandatory.
+- Append-only learning never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Claim full suite success only after observed exact-source Readonly/Publisher workflow execution; revisit if the canonical validator intentionally adds documented diagnostic stdout on controlled failure.
