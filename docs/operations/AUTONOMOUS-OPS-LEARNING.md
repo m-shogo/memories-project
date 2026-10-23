@@ -2089,3 +2089,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human production promotion remain mandatory.
 - Learning history is append-only operational guidance, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Reviewed drill-request corruption negatives require exact writer diagnostics
+
+### Outcome
+- Commit `9767fb9484b5ff99accf452b9c7dd7a8cacf3414` extends the existing strict snapshot negative classifier with three exact reviewed drill-request registry rejection causes (boolean count, append-only, and productionEvidence).
+
+### Evidence
+- The canonical request writer validates `registeredRequestCount` as a non-boolean integer, `appendOnly is True`, and `productionEvidence is False`; the snapshot validator wraps the writer's failure under `restore drill request canonical registry authority invalid: ...`.
+- Exact-source Readonly run `39968494722` (job `120464578224`) and Snapshot publisher run `39968494732` (job `120464577887`) both completed SUCCESS on that code SHA. Both logged strict snapshot negative PASS, 22 controlled validator corruptions rejected, and `production decision: NO_GO`.
+
+### Why safe
+- Only the pre-existing negative diagnostic map changed. Registry mutations remain positive-controlled, material, and restored byte-for-byte/mode-for-mode. No reviewed request, recovery objective, generation, recovery evidence, credential, traffic, readiness or promotion was created.
+
+### Reusable mechanism
+- Derive an exact case-specific rejection from the canonical writer's validation order and the composing snapshot validator's wrapper, then require successful exact-source CI of the existing negative suite. Do not treat a generic canonical failure as proof of the intended mutation.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` still records zero registered/eligible generations, objectives, executable reviewed requests, generation evidence, typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Append-only learning history is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
