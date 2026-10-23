@@ -7,6 +7,8 @@ import importlib.util
 import json
 import sys
 import tempfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +80,31 @@ def prove_symlink_identity_rejected() -> None:
         )
 
 
+def require_clean_rejection_stdout(output: str, label: str) -> None:
+    require(
+        not output.strip(),
+        f"{label} rejection emitted unexpected success stdout",
+    )
+
+
+def prove_rejection_stdout_classifier() -> None:
+    require_clean_rejection_stdout("", "synthetic clean")
+    for output in (
+        "Memory OS OPS-P0-007 strict admission snapshot generated\n",
+        "production decision: GO\n",
+        "Memory OS recovery objectives validation PASS\n",
+    ):
+        try:
+            require_clean_rejection_stdout(output, "synthetic mixed")
+        except Fail as exc:
+            require(
+                str(exc) == "synthetic mixed rejection emitted unexpected success stdout",
+                f"mixed generator output rejected outside intended classifier: {exc}",
+            )
+        else:
+            raise Fail("generator execution rejection accepted mixed success output")
+
+
 def expect_rejected(module: Any, field: str, replacement: Any) -> None:
     expected = (
         "strict snapshot generator execution guard drift"
@@ -90,8 +117,10 @@ def expect_rejected(module: Any, field: str, replacement: Any) -> None:
     protected_before = {path: protected_state(path) for path in (SNAPSHOT, STATUS, GENERATOR)}
     setattr(module, field, replacement)
     rejected = False
+    output = StringIO()
     try:
-        module.main()
+        with redirect_stdout(output):
+            module.main()
     except SystemExit as exc:
         require(
             isinstance(exc.code, str) and exc.code == expected,
@@ -101,12 +130,14 @@ def expect_rejected(module: Any, field: str, replacement: Any) -> None:
     finally:
         setattr(module, field, original)
     require(rejected, f"strict snapshot generator accepted substituted execution authority: {field}")
+    require_clean_rejection_stdout(output.getvalue(), field)
     for path, state in protected_before.items():
         require(protected_state(path) == state, f"{field} rejection changed protected authority identity: {path.relative_to(ROOT)}")
 
 
 def main() -> int:
     module = load_module()
+    prove_rejection_stdout_classifier()
     prove_symlink_identity_rejected()
     baseline_state = {path: protected_state(path) for path in (SNAPSHOT, STATUS, GENERATOR)}
 
