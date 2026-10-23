@@ -1574,3 +1574,48 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-change re-read confirmed unchanged autonomous-learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
 - This append-only learning record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Learning negative proof must reject for the intended invariant and prove reachable execution
+
+### Symptom
+- The 55-case autonomous-learning negative suite accepted any canonical exit-1 diagnostic prefix, even when the fixture failed for an unrelated invariant. The positive validator also accepted a direct AST call in `main()` even if an unconditional top-level `return` or `raise` made that call unreachable.
+- These were verified source-level false-positive risks; no observed production incident or actual CI bypass is claimed.
+
+### Evidence
+- Prior `require_failure` delegated only to `require_canonical_rejection`, which checked exit code, prefix and absence of a traceback, not the case-specific diagnostic.
+- Prior `validate-autonomous-learning-system.py` counted a direct `validate_learning_guards(failures)` statement without checking earlier top-level termination.
+- Commits `d4f21cf2dbddc1cc2f70779b98b0ae3dc9844dfd`, `4e2a989cf1c30a1f40801636961da84339f0183b`, `4979869261e7397e8c111d7c911d5b3d04d20db7`, `04fc818c0fac6ea36d062a4bfc6ed44e3db46075`, `7ed26afdd1cc31ddac6b4a62b5f1bfa647c73a23`, `7abd3c77f322532fd59b8b4842dd4c4e55fd34ae`, and `0d7c4e64376c6d56b0b6d6ee5cfd2c911f8128fa` committed the changes.
+- Read-only source inspection confirmed 34 explicit plus 26 generated cases (60 total), expected-diagnostic binding, a synthetic wrong-reason classifier proof, two unreachable-call mutations, a 60-case CI floor, and unchanged learning-contract/production-status blobs.
+
+### Root cause or unknown
+- Verified: generic rejection classification conflated a guard's intended failure with unrelated validation failures. AST direct-child presence alone did not prove execution before an unconditional terminator.
+- Exact-source GitHub Actions outcome remains **unobserved**, not PASS: the available commit-workflow-run connector only returns pull-request-triggered runs, and the combined commit-status endpoint returned no statuses for this push.
+
+### Failed approach
+- Treating a canonical rejection prefix alone as proof of a particular negative invariant, and treating a direct AST statement after an unconditional return/raise as live reachability.
+
+### Correction
+- Require each negative to match its intended canonical diagnostic; reject unknown negative names and prove an unrelated canonical failure is not accepted.
+- Add missing authority-binding and duplicate-field negative fixtures, and reject direct learning guard calls after a top-level return/raise in `main()` with two dedicated negatives.
+- Raise the existing CI caller's minimum negative-suite count from 55 to 60.
+
+### Recurrence guard
+- Canonical negative execution now requires both exit-1/prefix and a case-specific diagnostic. The validator rejects calls placed after a direct unconditional terminator. The CI caller rejects suites reporting fewer than 60 cases.
+- This is bounded AST/static hardening, not a general proof of all possible Python control-flow paths.
+
+### Retry condition
+- Obtain an exact-source push-workflow run ID/log or a CI connector that can list push runs before claiming the new 60-case suite passed CI. If CI reveals a specific failure, diagnose it and correct only the verified cause; do not claim the static 60-case inspection is an executed test.
+- Revisit reachability if a new executable bypass is demonstrated or the canonical entrypoint structure legitimately changes.
+
+### Outcome
+- Seven code commits were created on `so`; deterministic read-only source checks confirmed all targeted guard bindings and the 60-case floor. No new CI PASS was observed during this entry.
+
+### Why safe
+- Changes are limited to existing learning validators, isolated negative fixtures, and the existing CI entrypoint. No generation, recovery objective, reviewed drill request, production evidence, credential, traffic, readiness or promotion state was created.
+
+### Reusable mechanism
+- Bind negative outcomes to the specific guard reason they are intended to exercise, add a synthetic wrong-reason classifier control, and distinguish direct AST call presence from reachable placement before unconditional termination. Keep exact-source CI outcome separate from static inspection.
+
+### Protected-authority check
+- Re-read verified `contracts/operations/autonomous-learning-system.json` at blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` and `contracts/operations/production-operability-status.json` at blob `ce67e9353d6583e4eaf792470563cad25a7396b3`, with `productionDecision=NO_GO`. OPS-P0-007's semantic generation/objective gates, typed eight-domain non-resurrection, independent review and separate human promotion were not modified.
+- This append-only learning entry is operational history only; it cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
