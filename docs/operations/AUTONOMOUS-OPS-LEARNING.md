@@ -2849,3 +2849,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the legitimate PR workflow run-step architecture changes or a newly observed executable shell-option bypass evades the exact negative suite.
+
+
+## 2026-10-24 — Publisher source refresh and diagnostic steps must retain fail-closed shell options
+
+### Outcome
+- Commit 3fe0cebcc1757fc90022b53d4349b9ffb3d9fe3d added a CI-bound executable guard requiring the three protected publisher steps (exact-source capture, bounded revalidation/publication, and privacy-safe failure diagnostic) to start with set -euo pipefail and never override shell options later in the step.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40002199216 completed SUCCESS at this commit. The existing generator step deliberately uses set +e to capture and propagate validator exit codes through the separate output-gated publication path and was not reclassified as a protected fail-closed step.
+
+### Evidence
+- Previously the negative harness proved source-refresh and fourteen-validator ordering inside the bounded revalidation function but did not verify the enclosing publisher shell's error-propagation options. A validator failure could otherwise be ignored if errexit were disabled.
+- The new canonical positive control and 21 synthetic negative mutations across three protected run steps require exact startup and override rejection diagnostics. Startup replacement by comments or echo statements does not count as execution.
+
+### Why safe
+- Only the existing read-only permission-boundary negative harness changed; the publisher workflow, PR workflow, production status, OPS-P0-007 snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Bind source refresh and all publication gates to the enclosing shell failure-propagation mode, not only to command text. Scope fail-closed requirements to the protected steps; preserve a separate explicit status-capture contract for steps that intentionally disable errexit.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Append-only learning never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only when protected publisher run-step architecture changes, when the status-capture gate changes, or when a new observed shell-option bypass escapes the bounded negative proof.
