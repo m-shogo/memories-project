@@ -175,6 +175,76 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
             yield from live(child)
 
     nodes = list(live(tree))
+    # Diagnostic records are explicitly non-production metadata. A valid
+    # atomic write cannot authorize fabricated evidence or unbounded logs.
+    values = [
+        node.value for node in nodes
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "value"
+    ]
+    require(
+        len(values) == 1 and isinstance(values[0], ast.Dict),
+        "strict snapshot diagnostic non-production evidence boundary drift",
+    )
+    record = values[0]
+    require(
+        all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in record.keys),
+        "strict snapshot diagnostic non-production evidence boundary drift",
+    )
+    fields = {key.value: value for key, value in zip(record.keys, record.values)}
+    require(
+        len(fields) == len(record.keys),
+        "strict snapshot diagnostic non-production evidence boundary drift",
+    )
+    literals = {
+        "schemaVersion": "memory-os-validator-diagnostic.v1",
+        "workflow": "ops-p0-007-admission-snapshot",
+        "result": "FAIL",
+        "containsSecrets": False,
+        "generationCreated": False,
+        "objectiveCreated": False,
+        "requestCreated": False,
+        "restoreExecuted": False,
+        "productionEvidence": False,
+        "productionReady": False,
+    }
+    require(
+        set(fields) == set(literals) | {"sourceCommitSha", "exitCode", "output"}
+        and all(
+            isinstance(fields[key], ast.Constant)
+            and type(fields[key].value) is type(expected)
+            and fields[key].value == expected
+            for key, expected in literals.items()
+        ),
+        "strict snapshot diagnostic non-production evidence boundary drift",
+    )
+    expressions = {
+        "sourceCommitSha": "os.environ['SOURCE_SHA']",
+        "exitCode": "int(os.environ['SNAPSHOT_EXIT_CODE'])",
+        "output": "text[-12000:]",
+    }
+    require(
+        all(
+            ast.dump(fields[key], include_attributes=False)
+            == ast.dump(ast.parse(expression, mode="eval").body, include_attributes=False)
+            for key, expression in expressions.items()
+        ),
+        "strict snapshot diagnostic non-production evidence boundary drift",
+    )
+    path_expression = ast.parse(
+        "path = Path('docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json')"
+    ).body[0]
+    require(
+        sum(
+            isinstance(node, ast.Assign)
+            and ast.dump(node, include_attributes=False)
+            == ast.dump(path_expression, include_attributes=False)
+            for node in nodes
+        ) == 1,
+        "strict snapshot diagnostic non-production evidence boundary drift",
+    )
     calls = [node for node in nodes if isinstance(node, ast.Call)]
     required = {
         "mkstemp": "tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)",
@@ -341,6 +411,40 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
     )
     require(inert_loop != publish, "constant-false while positive fixture drift")
     validate_atomic_diagnostic_publication(inert_loop)
+
+
+def prove_diagnostic_privacy_boundary_rejected(publish: str) -> None:
+    validate_atomic_diagnostic_publication(publish)
+    mutations = (
+        ("result", "'result': 'FAIL'", "'result': 'SUCCESS'"),
+        ("secrets", "'containsSecrets': False", "'containsSecrets': True"),
+        ("generation", "'generationCreated': False", "'generationCreated': True"),
+        ("objective", "'objectiveCreated': False", "'objectiveCreated': True"),
+        ("request", "'requestCreated': False", "'requestCreated': True"),
+        ("restore", "'restoreExecuted': False", "'restoreExecuted': True"),
+        ("evidence", "'productionEvidence': False", "'productionEvidence': True"),
+        ("readiness", "'productionReady': False", "'productionReady': True"),
+        ("source", "'sourceCommitSha': os.environ['SOURCE_SHA']",
+         "'sourceCommitSha': 'unbound'"),
+        ("exit code", "'exitCode': int(os.environ['SNAPSHOT_EXIT_CODE'])",
+         "'exitCode': 0"),
+        ("log bound", "'output': text[-12000:]", "'output': text"),
+        ("diagnostic path",
+         "Path('docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json')",
+         "Path('docs/evidence/backup-restore/production-evidence.json')"),
+    )
+    for label, before, after in mutations:
+        require(publish.count(before) == 1, f"{label} diagnostic privacy fixture drift")
+        mutated = publish.replace(before, after, 1)
+        try:
+            validate_atomic_diagnostic_publication(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot diagnostic non-production evidence boundary drift",
+                f"{label} diagnostic rejected outside exact privacy guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot diagnostic accepted {label} authority drift")
 
 
 def validate_atomic_diagnostic_publication(publish: str) -> None:
@@ -1103,6 +1207,7 @@ def main() -> int:
     require_full_admission_chain(publish, "strict snapshot publication workflow")
     prove_diagnostic_comment_and_dead_code_rejected(publish)
     prove_diagnostic_unconditional_exit_rejected(publish)
+    prove_diagnostic_privacy_boundary_rejected(publish)
 
     print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
     print("pull request write token exposed: false")
