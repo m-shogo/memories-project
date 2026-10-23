@@ -1090,6 +1090,15 @@ def require_pr_step_allowlist(pr: str) -> None:
         "strict snapshot PR step allowlist authority drift",
     )
 
+    # Keys dedented after a run scalar are executable Actions step metadata,
+    # not shell lines. They must not disable or mask the admission gate.
+    require(
+        all(not line.strip() or line.startswith("          ")
+            for step in steps[2:]
+            for line in step[step.index("        run: |") + 1:]),
+        "strict snapshot PR step allowlist authority drift",
+    )
+
 
 def prove_pr_step_allowlist_negative(pr: str) -> None:
     require_pr_step_allowlist(pr)
@@ -1107,6 +1116,23 @@ def prove_pr_step_allowlist_negative(pr: str) -> None:
     verify = "      - name: Verify exact pull request source\n"
     require(pr.count(checkout + setup) == pr.count(verify) == 1,
             "strict snapshot PR step allowlist fixture anchor drift")
+    for label, mutated in (
+        ("nonfatal admission after run", pr.replace(
+            "      - name: Reject deterministic snapshot drift\n",
+            "        continue-on-error: true\n      - name: Reject deterministic snapshot drift\n", 1)),
+        ("disabled admission after run", pr.replace(
+            "      - name: Reject deterministic snapshot drift\n",
+            "        if: false\n      - name: Reject deterministic snapshot drift\n", 1)),
+        ("nonfatal final drift step", pr + "        continue-on-error: true\n"),
+    ):
+        require(mutated != pr, f"{label} PR trailing metadata fixture was a no-op")
+        try:
+            require_pr_step_allowlist(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot PR step allowlist authority drift",
+                    f"{label} PR trailing metadata rejected outside exact guard: {exc}")
+        else:
+            raise Fail(f"strict snapshot PR accepted trailing step metadata: {label}")
     mutations = (
         ("extra unreviewed action", pr.replace(verify, "      - uses: unreviewed/action@v1\n" + verify, 1)),
         ("extra unreviewed run", pr.replace(verify, "      - name: Unreviewed shell\n        run: echo bypass\n" + verify, 1)),
@@ -1417,6 +1443,13 @@ def require_publisher_step_allowlist(publish: str) -> None:
         "strict snapshot publisher step allowlist authority drift",
     )
 
+    require(
+        all(not line.strip() or line.startswith("          ")
+            for step in steps[2:6]
+            for line in step[step.index("        run: |") + 1:]),
+        "strict snapshot publisher step allowlist authority drift",
+    )
+
 
 def prove_publisher_step_allowlist_negative(publish: str) -> None:
     require_publisher_step_allowlist(publish)
@@ -1443,6 +1476,25 @@ def prove_publisher_step_allowlist_negative(publish: str) -> None:
             (checkout + setup, capture, commit, diagnostic, enforce)),
         "strict snapshot publisher step allowlist fixture anchor drift",
     )
+    for label, mutated in (
+        ("disabled source capture after run", publish.replace(
+            "      - name: Generate and validate strict snapshot\n",
+            "        if: false\n      - name: Generate and validate strict snapshot\n", 1)),
+        ("nonfatal generator after run", publish.replace(
+            "      - name: Commit deterministic strict snapshot\n",
+            "        continue-on-error: true\n      - name: Commit deterministic strict snapshot\n", 1)),
+        ("shell override after diagnostic run", publish.replace(
+            "      - name: Enforce strict snapshot\n",
+            "        shell: bash {0}\n      - name: Enforce strict snapshot\n", 1)),
+    ):
+        require(mutated != publish, f"{label} publisher trailing metadata fixture was a no-op")
+        try:
+            require_publisher_step_allowlist(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot publisher step allowlist authority drift",
+                    f"{label} publisher trailing metadata rejected outside exact guard: {exc}")
+        else:
+            raise Fail(f"strict snapshot publisher accepted trailing step metadata: {label}")
     mutations = (
         ("extra action", publish.replace(capture, "      - uses: unreviewed/action@v1\n" + capture, 1)),
         ("extra run", publish.replace(capture, "      - name: Unreviewed shell\n        run: echo bypass\n" + capture, 1)),
