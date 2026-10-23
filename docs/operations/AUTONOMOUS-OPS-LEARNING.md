@@ -1098,3 +1098,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit re-read confirmed `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Canonical status/snapshot and learning contract blobs remained unchanged.
 - This append-only learning history is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct eligible environments, explicitly human-approved current objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate human promotion remain mandatory.
+
+## 2026-10-23 — Snapshot checkout must bind the actual checkout step, not merely mention the SHA
+
+### Symptom
+- The strict snapshot PR workflow guard accepted the presence of `github.event.pull_request.head.sha` anywhere in the workflow, while the publisher guard searched for a `ref: github.sha` text fragment. Either could be satisfied by a comment or unrelated shell assertion after the actual checkout source was changed.
+
+### Evidence
+- The canonical PR workflow mentions its expected head SHA both in checkout `with.ref` and a later source-identity assertion. A mutated checkout could therefore use `github.sha` while the loose PR guard still saw the required head-SHA substring.
+- The publisher's original `ref: ${{ github.sha }}` text check did not structurally bind that fragment to the actual checkout step.
+
+### Root cause or unknown
+- Verified static guard coverage gap: textual presence was treated as proof of the actual checkout source. No real incorrect checkout or malicious workflow change was observed.
+
+### Failed approach
+- Relying on an arbitrary SHA string or unanchored `ref:` fragment instead of the `actions/checkout@v4` step's executable `with.ref`.
+
+### Correction
+- Commit `a9aeb77b8648804b4019b4144c709c2c41637fa4` adds an anchored checkout-step matcher requiring exactly one checkout and the exact expected event source: PR head SHA for read-only PR validation and event SHA for the publisher.
+- Isolated mutations substitute the wrong checkout ref while retaining the correct expression in a comment, and introduce an ambiguous duplicate checkout; all must fail at the intended checkout-source guard.
+
+### Recurrence guard
+- The existing CI-reachable permission-boundary negative suite first proves both canonical workflows satisfy exact checkout binding, then rejects comment-only source proof and duplicate checkout steps for each workflow.
+- The matcher is intentionally fail-closed for the current checkout-step YAML structure; any legitimate workflow structural change requires an explicit guarded update and new exact-source CI evidence.
+
+### Retry condition
+- Revisit if the checkout action version or YAML structure legitimately changes, or a new non-executable source-binding bypass is demonstrated. Do not restore unanchored source-string checks.
+
+### Outcome
+- Exact-source `OPS P0 007 Snapshot Permission Boundary` run `39932644650` completed SUCCESS on `a9aeb77b8648804b4019b4144c709c2c41637fa4`. Logs confirm the negative suite PASS and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing read-only workflow negative test changed. No checkout workflow, token grant, production authority, recovery registry, credentials, traffic, readiness, or promotion was changed.
+
+### Reusable mechanism
+- Validate source identity at the actual executable checkout call site, reject ambiguous duplicate steps, and prove comments or later assertions cannot substitute for that binding. Distinguish static exact-step proof from a production deployment or recovery execution.
+
+### Protected-authority check
+- Post-commit re-read confirmed unchanged canonical production status and OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
+- This append-only lesson cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion gates.
