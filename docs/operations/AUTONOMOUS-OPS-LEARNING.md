@@ -3997,3 +3997,33 @@ a promotion decision, a recovery objective, or drill evidence.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicitly human-approved current recovery objective, executable reviewed request, complete typed eight-domain non-resurrection coverage, independent review and separate human production promotion remain mandatory.
 - Learning/CI evidence does not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Readonly step and job trailing YAML metadata must not bypass integrity gate
+
+### Symptom and evidence
+- The readonly workflow authority checker previously extracted only indented shell lines after the reviewed `run: |` header. It ignored later YAML step/job keys, so `continue-on-error: true` or `if: false` placed after the run scalar could make the workflow appear successful without a fatal integrity check.
+- Initial commit `e88d54f7844e5dcbc66fd0a21e1383c7ecf2c023` added the structural guard but emitted doubled newline escapes in the synthetic YAML fixtures. The fixture did not model real newline-separated YAML metadata. Correction `d72cf5807b5367e842bbd8833cb61d3c26e182d9` replaced these with actual Python newline escapes.
+- Independent, source-read structural control after correction: legitimate readonly shell body accepted (1/1); five trailing step/job metadata mutations rejected (5/5). The GitHub combined-status endpoint returned no statuses for `d72cf580`; exact-source GitHub Actions success has **not** been observed and is not claimed.
+
+### Verified root cause or unknown
+- Verified: the previous checker discarded non-shell YAML lines after the final run step, leaving an unguarded step/job metadata override. The first test fixture used an incorrect double-escaped newline representation. Canonical GitHub Actions execution of the correction remains unverified.
+
+### Failed approach
+- Treating shell-command presence alone as proof of fatal step/job execution; generating YAML mutation text with doubly escaped newlines instead of checking the resulting Python string and YAML line boundaries.
+
+### Correction and recurrence guard
+- The existing CI-reachable readonly workflow permission negative checker now rejects any nonblank line after the reviewed run header that is not within the ten-space shell block indentation.
+- Five bounded negative fixtures append valid trailing YAML keys: step-level `continue-on-error`, `if`, `shell`, and job-level `continue-on-error`, `if`. Each must fail with the exact readonly authority-drift diagnostic; the unmodified workflow remains the positive control.
+- Preserve canonical runtime checks and distinct negative proof. Do not treat independent structural tests as completed exact-source CI.
+
+### Outcome, why safe and reusable mechanism
+- Commits `e88d54f` and `d72cf58` modify only the existing CI-bound negative harness, not the actual workflow, snapshot, Production Status, registries, evidence or promotion authority.
+- Reusable rule: after extracting a YAML block scalar, reject any trailing unreviewed step/job metadata; executable shell text alone does not guarantee a non-skipped, fatal CI gate. Use valid newline-separated mutation fixtures and exact diagnostic binding.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked, with no registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain non-resurrection records or final candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Human-approved current recovery objective, unsuperseded semantically eligible generations from distinct environments, current executable reviewed request, complete typed eight-domain coverage, independent review and separate non-automatic human promotion remain mandatory.
+- Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Do not repeat the double-escaped YAML fixture. Revisit only after observing the exact-source CI outcome or a new bypass of the reviewed readonly step/job boundary. The separate known clean-worktree blocker remains unchanged and must not be retried on the same precondition.
