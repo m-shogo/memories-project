@@ -134,6 +134,7 @@ def expect_inventory_rejected(
 ) -> None:
     bad = copy.deepcopy(canonical)
     mutate(bad)
+    require(bad != canonical, f"inventory negative did not mutate its fixture: {name}")
     with inventory_payload_fixture(validator, bad) as observed:
         try:
             run_inventory_semantic_case(validator)
@@ -242,12 +243,18 @@ def expect_status_rejected(
     mutate_status: Callable[[dict[str, Any]], None] | None = None,
     mutate_inventory: Callable[[dict[str, Any]], None] | None = None,
 ) -> None:
+    require(
+        mutate_status is not None or mutate_inventory is not None,
+        f"status/inventory negative has no mutation: {name}",
+    )
     bad_status = copy.deepcopy(canonical_status)
     bad_inventory = copy.deepcopy(canonical_inventory)
     if mutate_status is not None:
         mutate_status(bad_status)
+        require(bad_status != canonical_status, f"status negative did not mutate its fixture: {name}")
     if mutate_inventory is not None:
         mutate_inventory(bad_inventory)
+        require(bad_inventory != canonical_inventory, f"status inventory negative did not mutate its fixture: {name}")
     with tempfile.TemporaryDirectory(prefix=".memory-os-status-hygiene-negative-", dir=TEMP_PARENT) as tmp:
         tmp_path = Path(tmp)
         status_path = tmp_path / "status.json"
@@ -272,11 +279,12 @@ def expect_status_rejected(
             with patch.object(Path, "read_text", tracked_read_text):
                 validator.main()
         except validator.Fail as exc:
-            required_source = "status" if mutate_status is not None else "inventory"
-            require(
-                observed[required_source] > 0,
-                f"status/inventory negative rejected before reading mutated {required_source}: {name}: {exc}",
-            )
+            for source, mutation in (("status", mutate_status), ("inventory", mutate_inventory)):
+                if mutation is not None:
+                    require(
+                        observed[source] > 0,
+                        f"status/inventory negative rejected before reading mutated {source}: {name}: {exc}",
+                    )
             print(f"PASS reject: {name}")
             return
         finally:
