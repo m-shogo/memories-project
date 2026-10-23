@@ -107,6 +107,15 @@ def replace_in_entrypoint(root: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+def symlink_authority(root: Path, relative: Path) -> None:
+    # The alias and target stay inside this disposable fixture; canonical
+    # checked-out authorities are never modified by the negative.
+    path = root / relative
+    target = path.with_name(path.name + ".fixture-target")
+    path.rename(target)
+    path.symlink_to(target.name)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -218,6 +227,17 @@ def main() -> int:
             'if __name__ == "__main__":\n    pass  # raise SystemExit(main())\n',
         )),
     ))
+    for label, relative in (
+        ("contract", CONTRACT),
+        ("learning history", LEARNING),
+        ("positive guard", VALIDATOR),
+        ("negative guard", NEGATIVE_VALIDATOR),
+        ("CI entrypoint", CI_ENTRYPOINT),
+    ):
+        cases.append((
+            f"symlinked {label} authority",
+            lambda root, path=relative: symlink_authority(root, path),
+        ))
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
