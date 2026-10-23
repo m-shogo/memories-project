@@ -1018,6 +1018,13 @@ def require_publisher_capture_status_chain(publish: str) -> None:
                          ': > "$log"', "code=0"],
         "strict snapshot publisher capture startup authority drift",
     )
+    require(
+        not any(
+            re.match(r"^(?:exit|return|exec|set)(?:\s|$)", line)
+            for line in commands[1:-1]
+        ),
+        "strict snapshot publisher capture unconditional early termination or shell override",
+    )
     expected = [
         f'if [[ "$code" == "0" ]]; then python {validator} >> "$log" 2>&1 || code=$?; fi'
         for validator in PUBLISH_REVALIDATION_CHAIN
@@ -1054,6 +1061,35 @@ def prove_publisher_capture_status_negative(publish: str) -> None:
             )
         else:
             raise Fail(f"publisher capture accepted unpropagated failure: {validator}")
+    # The intentional final exit 0 is allowed only after publishing the
+    # captured status. An earlier exit or option override is not a gate.
+    for label, anchor_line, injected in (
+        ("early exit before first validator",
+         f'          if [[ "$code" == "0" ]]; then python {PUBLISH_REVALIDATION_CHAIN[0]}',
+         "          exit 0\n"),
+        ("early exit before last validator",
+         f'          if [[ "$code" == "0" ]]; then python {PUBLISH_REVALIDATION_CHAIN[-1]}',
+         "          exit 0\n"),
+        ("shell override",
+         "          code=0\n",
+         "          set -euo pipefail\n"),
+    ):
+        if label == "shell override":
+            require(publish.count(anchor_line) == 1, f"{label} capture fixture drift")
+            mutated = publish.replace(anchor_line, anchor_line + injected, 1)
+        else:
+            matches = [line for line in publish.splitlines(keepends=True) if line.startswith(anchor_line)]
+            require(len(matches) == 1, f"{label} capture fixture drift")
+            mutated = publish.replace(matches[0], injected + matches[0], 1)
+        try:
+            require_publisher_capture_status_chain(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher capture unconditional early termination or shell override",
+                f"{label} rejected outside exact capture reachability guard: {exc}",
+            )
+        else:
+            raise Fail(f"publisher capture accepted {label}")
     first, second = PUBLISH_REVALIDATION_CHAIN[:2]
     left = f'          if [[ "$code" == "0" ]]; then python {first} >> "$log" 2>&1 || code=$?; fi\n'
     right = f'          if [[ "$code" == "0" ]]; then python {second} >> "$log" 2>&1 || code=$?; fi\n'
