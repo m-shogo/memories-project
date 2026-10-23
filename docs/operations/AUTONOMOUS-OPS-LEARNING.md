@@ -4228,3 +4228,26 @@ a promotion decision, a recovery objective, or drill evidence.
 - The commit changes only a CI-bound synthetic negative harness. No generation, recovery objective, drill request, typed evidence registry, production credential, traffic, readiness, snapshot or promotion authority was written.
 - The branch diff from pre-change HEAD contains only the negative harness; Production Status and strict OPS-P0-007 snapshot were not changed. `productionDecision=NO_GO` remains required, and typed eight-domain coverage, independent review and separate explicit human production promotion remain mandatory.
 - This learning record and any future CI pass are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Typed domain provenance must be independently rejected for all eight domains
+
+### Outcome and observed evidence
+- Commit `9aa667c58757dfd4ac86ce9f662edf721d89c77c` extends the existing CI-bound typed non-resurrection negative suite with 28 new isolated cases: generation, source commit, domain name and result drift for each of the seven previously unproven domains. The first domain retains its four original cases, for 32 total provenance-binding probes.
+- Source re-read confirms the eight-domain contract remains unchanged, the fixture scopes each mutation to one named domain, restores the altered field in `finally`, and executes a positive control after the loop. Post-write commit comparison shows only the existing negative harness changed (29 additions, 2 deletions).
+- GitHub combined status returned no statuses for this commit. The structural checks above are not canonical validator execution or exact-source CI success.
+
+### Symptom, verified root cause, and failed approach
+- Symptom: all eight domains had missing-domain, path-type and result-path negatives, but generation/source/domain/result evidence-payload provenance rejection was only exercised for the first domain.
+- Evidence: the earlier synthetic loader applied provenance overrides to every domain payload, so an error in the first domain masked whether any later domain independently enforced its provenance.
+- Verified root cause: the test harness lacked per-domain targeting for the four payload-provenance overrides. No actual production recovery or non-resurrection failure is asserted.
+- Failed approach: using one representative domain's rejection as executable proof for every independently required typed domain.
+
+### Correction, recurrence guard, and retry condition
+- Introduce a fixture-only `domainTarget` selector: all non-target domain evidence remains canonical while exactly one domain is mutated. For every remaining required domain, require its exact writer diagnostic for generation, source commit, domain name and result mismatch. Restore state and revalidate the complete positive fixture.
+- Reusable mechanism: derive independently scoped negative cases from the contract's reviewed `requiredDomains`, and bind each rejection to the domain-specific canonical diagnostic. Do not allow an earlier domain to satisfy a later domain's negative proof.
+- Retry only if exact-source CI identifies a concrete failing diagnostic/fixture or if domain schema, required set, writer validation order or CI invocation changes. The separate known source-binding clean-worktree blocker has no changed precondition.
+
+### Why safe and protected-authority check
+- Only the existing synthetic negative validator changed; neither the typed contract/registry nor any production, generation, objective, drill, credential, traffic, readiness, snapshot or promotion authority was written. The post-write diff contains only the negative harness.
+- `productionDecision=NO_GO` and strict OPS-P0-007 gates remain mandatory: unsuperseded eligible generations from distinct environments, current human-approved objective, current executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate explicit human promotion.
+- Learning records, static checks and CI results cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
