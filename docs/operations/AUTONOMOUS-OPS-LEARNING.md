@@ -4458,3 +4458,28 @@ a promotion decision, a recovery objective, or drill evidence.
 - The canonical production writer and all recovery registries, generations, objectives, drill requests, typed evidence, credentials, traffic, readiness, Production Status, snapshot and promotion authority were not written.
 - `productionDecision=NO_GO` remains mandatory. Distinct unsuperseded semantically eligible environments, explicitly human-approved current objective, current executable reviewed drill request for new evidence, complete typed eight-domain coverage, independent review and separate human promotion remain intact.
 - This operational learning and CI result cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed writer CLI dispatch and Fail exit must be AST-reachable
+
+### Outcome and observed evidence
+- Commit `32fba9088a27e704639f451450226e3093e5181a` adds an executable AST guard to the existing typed writer authority negative harness for the module's final `if __name__ == "__main__"` dispatch.
+- The guard requires exactly one final canonical dispatch block, a direct `try: raise SystemExit(main())`, a single `except Fail` handler, and a nonzero `SystemExit` on that failure path.
+- Ten synthetic mutations independently test missing/renamed/duplicate guards, call-only dispatch, hard-coded successful exit, string/dead-branch substitutes, wrong exception type, swallowed exception, and zero exit. Each requires its exact expected diagnostic.
+- Exact-source Non-Resurrection Readonly run `40038850946` and Backup and Restore Contracts run `40038850990` completed SUCCESS. Admission Chain `40038850979` was pending at the time of this record and is not claimed successful.
+- Post-write comparison from `8caef09d6e9260d64fa401e181dcae31b27f1e4f` to `32fba9088a27e704639f451450226e3093e5181a` modified only the existing synthetic negative harness (101 additions, 1 deletion).
+
+### Symptom, observed evidence, verified root cause or unknown, and failed approach
+- Symptom/risk: a module can contain a correctly guarded `main` function while its `__main__` dispatch is disabled, string-substituted or changed to return success after `Fail`.
+- Evidence: previous checks inspected the `writer.main` function and module-level binding but did not validate the script's actual CLI dispatch and exception-to-exit mapping.
+- Verified gap cause: callable identity and function-body reachability do not prove the `python script.py` entrypoint executes the callable or propagates failure. No actual malicious bypass or production incident was observed.
+- Failed approach to avoid: treating a guarded function as sufficient proof of CLI execution without inspecting its module dispatch.
+
+### Correction, recurrence guard, and retry condition
+- Require AST reachability for the final canonical dispatch and nonzero Fail handling, alongside the existing first-guard, module-binding, parser and lock checks. Prove each rejection with a canonical positive control and diagnostic-bound synthetic mutation.
+- Reusable mechanism: audit the entire CLI authority chain separately—module binding, guarded function body, parser/lock operations, and script dispatch. Neither source presence nor function importability alone proves CLI enforcement.
+- Retry only on a concrete exact-source CI failure, a reviewed change to the writer's CLI dispatch structure, or a demonstrated dispatch bypass. Do not repeat unchanged clean-worktree or permission blockers.
+
+### Why safe and protected-authority check
+- Only the CI-bound synthetic negative harness was changed; no actual production writer, environment generation, recovery objective, drill request, typed evidence, registry, credential, traffic, readiness or promotion authority was written.
+- Canonical Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Distinct unsuperseded semantically eligible environments, explicitly human-approved current objective, executable reviewed request for new evidence, complete eight-domain typed coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
