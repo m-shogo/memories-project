@@ -861,7 +861,8 @@ def require_unconditional_pr_admission(workflow: str) -> None:
     # publisher's explicitly status-capturing generation step, no validator
     # may be moved behind an unknown conditional or into an uncalled function.
     control = re.compile(
-        r"^(?:if|elif|else|fi|for|while|until|case|esac|function|eval|exit|return|break|continue|exec)\b"
+        r"^(?:if|elif|else|fi|for|while|until|case|esac|function|eval|exit|return|break|continue|exec|trap|alias|unalias|shopt|enable|source)\b"
+        r"|^\.\s+"
         r"|^[A-Za-z_]\w*\(\)\s*\{"
         r"|^bash\s+-c\b"
     )
@@ -904,6 +905,33 @@ def prove_pr_conditional_admission_rejected(pr: str) -> None:
                 )
             else:
                 raise Fail(f"strict snapshot PR accepted conditional or uncalled validator: {validator}")
+    # A shell trap can convert validator failure into exit 0; sourcing a file
+    # or enabling aliases can replace the command or alter errexit at runtime.
+    # The reviewed PR admission is deliberately linear and self-contained.
+    validator = FULL_ADMISSION_VALIDATORS[0]
+    command = f"          python {validator}\n"
+    require(pr.count(command) == 1, "strict snapshot PR shell-indirection fixture drift")
+    for indirection in (
+        "trap 'exit 0' ERR",
+        "trap 'exit 0' EXIT",
+        "shopt -s expand_aliases",
+        "alias python='true'",
+        "unalias python",
+        "source ./unreviewed-shell.sh",
+        ". ./unreviewed-shell.sh",
+        "enable -n command",
+    ):
+        mutated = pr.replace(command, f"          {indirection}\n" + command, 1)
+        require(mutated != pr, f"PR shell-indirection mutation was a no-op: {indirection}")
+        try:
+            require_unconditional_pr_admission(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR admission validators must execute unconditionally",
+                f"PR shell indirection rejected outside exact guard ({indirection}): {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot PR accepted shell indirection: {indirection}")
     # Comments and quoted shell text are not themselves control flow.
     comment = pr.replace(
         "          set -euo pipefail\n",
