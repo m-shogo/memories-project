@@ -110,6 +110,7 @@ def expected_diagnostic(name: str) -> str:
         "dead-branch learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
         "unreachable learning guard after return": "learning CI entrypoint guard call follows unconditional return or raise",
         "unreachable learning guard after raise": "learning CI entrypoint guard call follows unconditional return or raise",
+        "async-only learning guard": "learning CI entrypoint must define one synchronous learning guard",
         "async learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by async definition",
         "assigned learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by assignment",
         "destructured learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by assignment",
@@ -137,7 +138,10 @@ def expected_diagnostic(name: str) -> str:
 def require_expected_rejection(name: str, result: subprocess.CompletedProcess[str]) -> None:
     require_canonical_rejection(name, result)
     expected = "AUTONOMOUS LEARNING VALIDATION FAILED: " + expected_diagnostic(name)
-    if expected not in result.stderr:
+    # A case's diagnostic must be the single canonical failure line, not
+    # an expected substring hidden after an unrelated error or traceback.
+    observed = result.stderr.removesuffix("\n")
+    if "\n" in observed or "\r" in observed or not observed.startswith(expected):
         raise RuntimeError(
             f"negative case rejected for the wrong reason: {name}: "
             f"expected {expected!r}; observed {result.stderr!r}"
@@ -212,6 +216,22 @@ def main() -> int:
         pass
     else:
         raise RuntimeError("negative diagnostic classifier accepted an unrelated rejection")
+    # The intended diagnostic on a second line (or accompanied by a second
+    # error) must not be mistaken for a case-specific rejection.
+    intended = "AUTONOMOUS LEARNING VALIDATION FAILED: " + expected_diagnostic("weaken mandatory rule")
+    for index, stderr in enumerate((
+        "AUTONOMOUS LEARNING VALIDATION FAILED: unrelated failure\n" + intended + "\n",
+        intended + "\nunrelated additional failure\n",
+    )):
+        try:
+            require_expected_rejection(
+                "weaken mandatory rule", subprocess.CompletedProcess([], 1, "", stderr)
+            )
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError(f"negative diagnostic classifier accepted multiple errors: {index}")
+
     require_expected_rejection(
         "weaken mandatory rule",
         subprocess.CompletedProcess(
@@ -326,6 +346,10 @@ def main() -> int:
         )),
     ))
     cases.extend((
+        ("async-only learning guard", lambda root: replace_in_entrypoint(
+            root, "def validate_learning_guards(failures: list[str]) -> None:",
+            "async def validate_learning_guards(failures: list[str]) -> None:",
+        )),
         ("async learning guard shadow", lambda root: replace_in_entrypoint(
             root, "def main() -> int:\n",
             "async def validate_learning_guards(failures):\n    return None\n\ndef main() -> int:\n",
