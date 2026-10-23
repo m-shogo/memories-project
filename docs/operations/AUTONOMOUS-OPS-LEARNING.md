@@ -1019,3 +1019,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-commit re-read confirmed unchanged production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate non-automatic human promotion remain mandatory.
 - Learning is append-only operational history only, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence.
+
+## 2026-10-23 — Snapshot negative subprocesses require bounded timeout and exact failure proof
+
+### Symptom
+- The canonical OPS-P0-007 snapshot negative suite invoked its validator and generator through `subprocess.run` without a timeout. A hung child could consume the CI job's entire time budget and leave the negative case without a controlled diagnostic.
+
+### Evidence
+- Prior to correction, both `run_validator` and `run_generator_rejects` used `subprocess.run(..., check=False)` without a `timeout` argument. The dedicated snapshot readonly workflow invokes the negative suite with a 10-minute job limit.
+
+### Root cause or unknown
+- Verified coverage gap: the negative harness lacked its own subprocess deadline. No real hung validator or generator was observed.
+
+### Failed approach
+- Relying solely on the outer CI job timeout for individual subprocess calls.
+
+### Correction
+- Commit `2336b5d12326c9ec2a3ceb316cb7ba3401d89acc` routes both call sites through `run_bounded_python` with a 90-second per-child timeout, converting `subprocess.TimeoutExpired` into a controlled, labeled `Fail`.
+- A self-contained injected timeout negative monkeypatches `subprocess.run` for both canonical validator and generator paths and requires the exact timeout diagnostic before the unmodified baseline runs.
+
+### Recurrence guard
+- The CI-reachable negative suite executes the synthetic timeout proof on every run and fails if a timeout is accepted, misclassified, or not converted to a controlled error. The canonical positive/negative checks remain in the same workflow.
+
+### Retry condition
+- Revisit only if legitimate exact-source validator execution exceeds the 90-second per-call bound, or a subprocess descendant cleanup gap is observed. Do not silently remove the timeout or count generic failure as the intended rejection.
+
+### Outcome
+- Exact-source `OPS P0 007 Admission Snapshot Readonly` run `39931982089` completed SUCCESS on `2336b5d12326c9ec2a3ceb316cb7ba3401d89acc`, including Python compilation, injected timeout proof, canonical negative cases, and protected-authority digest/mode checks.
+- `OPS P0 007 Admission Snapshot` run `39931981960` also completed SUCCESS on the same source.
+- `Backup Restore Admission Chain Negative` run `39931981912` failed at the previously documented Source-binding Clean Worktree interference. This independent existing blocker was not retried or changed.
+
+### Why safe
+- Only a test harness subprocess wrapper and isolated injected timeout proof changed; canonical validators, generator, production status, snapshot, registries, traffic, credentials, readiness, and promotion remained untouched.
+
+### Reusable mechanism
+- Wrap child validators in bounded subprocess calls, convert timeout to an exact typed failure, and prove the timeout branch with a synthetic injected exception before running the real baseline. Keep CI job-level timeout separate from each child's fail-closed deadline.
+
+### Protected-authority check
+- Post-commit source re-read confirmed `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, recovery evidence, complete typed eight-domain records, and final candidates. Protected status/snapshot and learning contract blobs were unchanged.
+- This append-only learning history is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct unsuperseded eligible environments, explicitly human-approved current objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate human production promotion remain mandatory.
