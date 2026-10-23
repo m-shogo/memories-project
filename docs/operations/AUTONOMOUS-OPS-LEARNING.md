@@ -4166,3 +4166,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if a changed rollback implementation, a new protected recovery authority or an observed exact-source failure reveals an unguarded mutation. The unrelated source-binding clean-worktree blocker remains scoped and is not retried.
+
+## 2026-10-24 — Every typed non-resurrection domain needs its own missing-domain negative proof
+
+### Outcome
+- Commit `40b9f38ecd735677c7301b9689ca3fabe41fe594` extends the existing contract-bound, CI-transitively-invoked non-resurrection negative suite from a single missing-domain deletion probe to one isolated probe per required domain.
+- Exact-source Backup Restore Non-Resurrection Admission run `40028749299` completed SUCCESS on that commit. The admission validator's canonical `run_validator(NEGATIVE, ...)` invokes the suite with fatal nonzero-exit handling; the workflow log does not separately print the individual negative-case outputs.
+
+### Evidence
+- The eight unique `requiredDomains` values are read from the unchanged typed admission contract. For each, the harness deletes only that domain from a deep-copied valid record and requires the exact `domain coverage drift` writer diagnostic; an unrelated writer exception cannot satisfy the case.
+- Exact-source Readonly run `40028749333` and Reconcile Negative run `40028749302` also completed SUCCESS. Operability Admission Inventory run `40028749270` failed its separate production inventory gate and wrote a diagnostic; that failure is not a typed-evidence success or a reason to weaken the gate.
+
+### Why safe
+- Only the existing negative harness changed. Each fixture is synthetic and restores its state; no production-equivalent generation, objective, executable drill, typed evidence, credentials, traffic, readiness or promotion authority was created or altered.
+
+### Reusable mechanism
+- For a mandatory typed set, prove omission of *each* independently named member rather than only one representative. Derive negative labels from the reviewed contract and bind every rejection to the exact canonical diagnostic; preserve the positive control and fatal CI invocation.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates; human review and promotion remain separate.
+
+### Retry condition
+- Revisit only if required domains, canonical coverage diagnostics, the bound negative suite's executable call chain or exact-source CI behavior changes. Do not retry the unrelated unchanged clean-worktree blocker.
