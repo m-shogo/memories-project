@@ -3139,3 +3139,41 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed publisher initial status-capture architecture changes or a newly observed skipped/masked validator bypass escapes the bounded negative suite.
+
+
+## 2026-10-24 — Snapshot publisher staging allowlist and overlapping command fixtures
+
+### Symptom
+- Initial commit da808f6e2ca7f435babdf4cc3c005259a62af373 caused exact-source Snapshot Permission Boundary run 40004477561 to FAIL during its new force-push negative fixture, before proving the staging allowlist.
+
+### Evidence
+- CI job 120588765126 reported OPS-P0-007 SNAPSHOT WORKFLOW PERMISSION NEGATIVE FAILED: force push publisher staging fixture drift, exit 1.
+- The source contained two valid lines beginning with if git push origin HEAD:so; then: one normal multiline if and one inline if with exit 0. The fixture incorrectly required the shared prefix to occur once.
+
+### Root cause or unknown
+- Verified: the negative mutation anchor was a non-unique substring of two legitimate publisher push commands. The production publisher behavior itself was not the cause.
+
+### Failed approach
+- Using substring count on an overlapping shell command prefix as a uniqueness proof for one negative mutation.
+
+### Correction
+- Commit 6b027ac20b9cf796f2d17d1f2223c9156ffbab03 anchors the force-push mutation to the complete, indentation-preserving command line including its newline. The corrected exact-source Snapshot Permission Boundary run 40004506159 completed SUCCESS.
+
+### Recurrence guard
+- For negative fixtures against commands with shared prefixes, require a unique full-line mutation anchor, not a shared prefix. The canonical positive staging/push allowlist now also rejects broad git add -A, Production Status staging, forced push, commit-all, diagnostic redirection and extra staging, with cause-specific rejection.
+
+### Retry condition
+- Do not rerun the known-broken da808f6 fixture. Revisit only if the publisher staging architecture changes or a new observed staging/push bypass evades the exact allowlist.
+
+### Outcome
+- The CI-bound negative now restricts snapshot publisher git add/rm/commit/push commands to the eight observed safe command forms, preserving only the strict snapshot and non-production diagnostic publication paths.
+
+### Why safe
+- Only the existing read-only workflow permission negative harness and synthetic publisher text fixtures changed. Neither publisher workflow nor Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness or promotion authorities were modified.
+
+### Reusable mechanism
+- Exact-source and exact-stage allowlists prevent a write-capable workflow from widening its commit scope to protected production authorities. Couple allowlisted staging/push forms with exact full-line negative fixtures and a successful canonical positive control.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
