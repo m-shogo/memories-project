@@ -412,7 +412,7 @@ def require_publisher_revalidation_calls(publish: str) -> None:
     )
     expected_chain = [f'python {validator} >> "$log" 2>&1' for validator in PUBLISH_REVALIDATION_CHAIN]
     for validator, expected in zip(PUBLISH_REVALIDATION_CHAIN, expected_chain):
-        command = rf"(?m)^  python[ \\t]+{re.escape(validator)}(?=[ \\t]|$)"
+        command = rf"(?m)^  python[ \t]+{re.escape(validator)}(?=[ \t]|$)"
         require(
             re.search(command, body) is not None,
             f"strict snapshot publisher missing executable {validator} inside bounded revalidation",
@@ -486,10 +486,11 @@ def prove_publisher_revalidation_call_binding(publish: str) -> None:
         ("missing export", "export SOURCE_SHA", ": # export SOURCE_SHA"),
         ("missing log reset", ': > "$log"', ': # > "$log"'),
     ):
-        original = function_start + "            " + before_line
-        replacement = function_start + "            " + after_line
-        require(original in publish, f"{label}: bounded source fixture drift")
-        mutated = publish.replace(original, replacement, 1)
+        before_function, function_suffix = publish.split(function_start, 1)
+        original = "            " + before_line + "\n"
+        replacement = "            " + after_line + "\n"
+        require(original in function_suffix, f"{label}: bounded source fixture drift")
+        mutated = before_function + function_start + function_suffix.replace(original, replacement, 1)
         try:
             require_publisher_revalidation_calls(mutated)
         except Fail as exc:
