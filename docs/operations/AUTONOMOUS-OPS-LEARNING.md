@@ -3953,3 +3953,47 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed readonly shell execution architecture changes or an observed failure-masking shell hook escapes this bounded guard.
+
+## 2026-10-24 — Post-write rollback rejection must bind the exact observed atomic-write diagnostic
+
+### Symptom
+- Initial exact-diagnostic hardening commit `48271b98d467113cbf6384f21c1b408afb679220` failed exact-source Snapshot Post Write Rollback Negative run `40013364654`.
+
+### Evidence
+- The job log reported `post-write rollback rejected outside exact canonical diagnostic` with the actual complete message:
+  `generated strict snapshot invalid: snapshot field set drift; rollback incomplete: cannot atomically write contracts/operations/ops-p0-007-admission-snapshot.v1.json: synthetic strict snapshot rollback replace rejection`.
+- The first guard expected the primary validation message and injected rollback exception but omitted the generator's canonical `cannot atomically write <relative path>:` wrapper.
+- Correction commit `5d15181cfa476c3e0faa0f0206525429d0e3227e` completed exact-source Snapshot Post Write Rollback Negative run `40013510857` with SUCCESS.
+
+### Root cause or unknown
+- Verified: the negative fixture assumed the raw injected `OSError` text would be the rollback diagnostic. The generator's atomic-write helper wraps the error with the canonical destination path before the outer rollback-incomplete message is constructed.
+
+### Failed approach
+- Inferring the final rollback diagnostic from the outer exception formatter without observing the inner atomic-write helper's exception wrapper.
+
+### Correction
+- Bind the failed-rollback expectation to the exact full diagnostic observed in run `40013364654`, including the canonical snapshot path and `cannot atomically write` wrapper.
+- Preserve the successful-rollback primary diagnostic `generated strict snapshot invalid: snapshot field set drift` as a separate exact expectation.
+
+### Recurrence guard
+- The existing CI-reachable post-write rollback negative now requires exact primary and failed-rollback diagnostics, rather than accepting three unrelated substrings anywhere in the exception.
+- Synthetic classifier controls reject unrelated prefixes/suffixes, incorrect primary causes and multiline impostors for both cases.
+- The existing two atomic-replace scenarios, invalid published candidate proof, canonical bytes/modes restoration, temporary-file cleanup and Production Status immutability remain enforced.
+
+### Retry condition
+- Do not reuse the raw-OSError-only expectation. Revisit only if the reviewed generator's atomic-write diagnostic changes or a newly observed unrelated rollback failure escapes the exact classifier.
+
+### Outcome
+- Exact-source Snapshot Post Write Rollback Negative run `40013510857` completed SUCCESS at `5d15181c`. The negative's real post-write failure/rollback scenarios executed; this is CI guard evidence, not a production restore drill.
+
+### Why safe
+- Only the existing CI-bound post-write rollback negative script and its controlled in-memory/temporary failure injections changed. The actual generator, Production Status, strict snapshot, recovery registries, credentials, traffic, readiness and promotion authorities were not committed or promoted.
+
+### Reusable mechanism
+- For layered error handling, capture the final observed canonical diagnostic at the exact-source CI boundary. An injected inner exception may be wrapped by atomic-write, validator or rollback layers before reaching the caller.
+- Bind full messages only after observation; keep primary validation failure and rollback failure separately visible and require exact output shape.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicitly human-approved current recovery objective, executable reviewed request, complete typed eight-domain non-resurrection coverage, independent review and separate human production promotion remain mandatory.
+- Learning/CI evidence does not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
