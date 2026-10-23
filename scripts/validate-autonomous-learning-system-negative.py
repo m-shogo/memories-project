@@ -147,6 +147,9 @@ def expected_diagnostic(name: str) -> str:
         "assigned main shadow": "learning CI entrypoint main binding is shadowed by assignment",
         "destructured main shadow": "learning CI entrypoint main binding is shadowed by assignment",
         "imported main shadow": "learning CI entrypoint main binding is shadowed by import",
+        "loop main shadow": "learning CI entrypoint main binding is shadowed by module control flow",
+        "loop learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by module control flow",
+        "nested imported learning guard shadow": "learning CI entrypoint learning guard binding is shadowed by module control flow",
         "dead module main guard": "learning CI entrypoint must execute main from its live module guard",
         "comment-only module main invocation": "learning CI entrypoint must execute main from its live module guard",
     }
@@ -414,6 +417,18 @@ def main() -> int:
         ("async main shadow", lambda root: replace_in_entrypoint(
             root, 'if __name__ == "__main__":\n    raise SystemExit(main())\n',
             'async def main():\n    return 0\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n',
+        )),
+        ("loop main shadow", lambda root: replace_in_entrypoint(
+            root, 'if __name__ == "__main__":\n    raise SystemExit(main())\n',
+            'for main in (lambda: 0,):\n    pass\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n',
+        )),
+        ("loop learning guard shadow", lambda root: replace_in_entrypoint(
+            root, "def main() -> int:\n",
+            "for validate_learning_guards in (lambda failures: None,):\n    pass\n\ndef main() -> int:\n",
+        )),
+        ("nested imported learning guard shadow", lambda root: replace_in_entrypoint(
+            root, "def main() -> int:\n",
+            "if True:\n    from unittest.mock import Mock as validate_learning_guards\n\ndef main() -> int:\n",
         )),
         ("destructured main shadow", lambda root: replace_in_entrypoint(
             root, 'if __name__ == "__main__":\n    raise SystemExit(main())\n',
