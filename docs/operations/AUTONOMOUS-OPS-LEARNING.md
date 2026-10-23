@@ -3927,3 +3927,29 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed readonly hash/mode comparison architecture changes or an observed forged integrity comparison escapes the bounded guard.
+
+## 2026-10-24 — Readonly integrity gate must reject shell hooks and error masking
+
+### Outcome
+- Commit `334f776f4b0d2393b66cb596e82252ef2361e4da` strengthens the existing readonly workflow authority guard to reject shell traps, aliases, sourced scripts, option overrides and unconditional/conditional control-flow substitutions before validator execution.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40013158519` completed SUCCESS. The separate Snapshot Readonly run is not counted as successful without its own completed result.
+
+### Evidence
+- A readonly workflow can contain the correct compile, validator, digest and diff commands while an added ERR/EXIT trap, alias or sourced script changes their actual failure semantics. A `set -euo pipefail` prefix alone does not prove uninterrupted fail-closed execution.
+- The new guard permits only the reviewed initial shell option line and the exact EXIT trap that removes the two temporary digest files; it rejects unreviewed command-resolution hooks and control-flow overrides.
+- Ten isolated in-memory shell mutations, including forged-success traps, `source`, dot-source, Python alias, `shopt`, `set +e`, early exit, `eval` and a dead conditional, require the exact readonly authority-drift diagnostic.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness and synthetic readonly workflow text changed. The actual readonly/PR/publisher workflows, Production Status, strict snapshot, registries, recovery evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Treat fail-closed shell behavior as a whole-step property. Require exact startup options and only explicitly reviewed cleanup traps, then prove that later shell hooks and conditional wrappers cannot silently replace validator execution or failure propagation.
+- CI integrity checks are not production recovery evidence or promotion approval.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct eligible environments, explicit human-approved current recovery objective, executable reviewed request, independent review and separate human production promotion remain mandatory.
+- Learning/CI successes never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed readonly shell execution architecture changes or an observed failure-masking shell hook escapes this bounded guard.
