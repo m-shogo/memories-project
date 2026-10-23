@@ -35,20 +35,51 @@ def load_module():
 
 
 def expect_rejected(module: Any, field: str, replacement: Any) -> None:
+    # A failure at an unrelated validator must not count as the intended rejection.
+    expected = {
+        "enforce_runtime_authority": "strict snapshot validator execution guard drift",
+        "require": "strict snapshot validator require helper drift",
+        "valid_count": "strict snapshot validator execution helper drift",
+        "load": "strict snapshot validator execution helper drift",
+        "load_module": "strict snapshot validator execution helper drift",
+        "validate_registry": "strict snapshot validator execution helper drift",
+        "load_helper": "strict snapshot validator execution helper drift",
+        "SNAPSHOT": "strict snapshot validator snapshot authority drift",
+        "ELIGIBILITY_HELPER": "strict snapshot validator eligibility helper authority drift",
+        "BLOCKER_HELPER": "strict snapshot validator blocker helper authority drift",
+        "OBJECTIVES": "strict snapshot validator recovery objectives authority drift",
+        "DRILL_REQUESTS": "strict snapshot validator drill requests authority drift",
+        "GEN_EVIDENCE": "strict snapshot validator generation evidence authority drift",
+        "TYPED": "strict snapshot validator typed non-resurrection authority drift",
+        "STATUS": "strict snapshot validator production status authority drift",
+        "OBJECTIVE_WRITER": "strict snapshot validator objective writer authority drift",
+        "DRILL_REQUEST_WRITER": "strict snapshot validator drill request writer authority drift",
+        "GEN_EVIDENCE_WRITER": "strict snapshot validator generation evidence writer authority drift",
+        "TYPED_WRITER": "strict snapshot validator typed writer authority drift",
+        "SNAPSHOT_FIELDS": "strict snapshot validator field authority drift",
+        "DOWNSTREAM_REQUIREMENTS": "strict snapshot validator downstream requirement authority drift",
+        "NEXT_ACTIONS": "strict snapshot validator next-action authority drift",
+    }
+    require(field in expected, f"unmapped strict snapshot authority negative: {field}")
     original = getattr(module, field)
     snapshot_before = SNAPSHOT.read_bytes()
     status_before = STATUS.read_bytes()
+    snapshot_mode = SNAPSHOT.stat().st_mode & 0o7777
+    status_mode = STATUS.stat().st_mode & 0o7777
     setattr(module, field, replacement)
     rejected = False
     try:
         module.main()
-    except module.Fail:
+    except module.Fail as exc:
+        require(str(exc) == expected[field], f"{field} rejected outside intended strict snapshot guard: {exc}")
         rejected = True
     finally:
         setattr(module, field, original)
     require(rejected, f"strict snapshot validator accepted substituted runtime authority: {field}")
     require(SNAPSHOT.read_bytes() == snapshot_before, f"{field} rejection mutated canonical strict snapshot")
     require(STATUS.read_bytes() == status_before, f"{field} rejection mutated canonical Production Status")
+    require(SNAPSHOT.stat().st_mode & 0o7777 == snapshot_mode, f"{field} rejection changed strict snapshot file mode")
+    require(STATUS.stat().st_mode & 0o7777 == status_mode, f"{field} rejection changed Production Status file mode")
 
 
 def main() -> int:
@@ -80,6 +111,7 @@ def main() -> int:
         ("DOWNSTREAM_REQUIREMENTS", []),
         ("NEXT_ACTIONS", {}),
     )
+    module.enforce_runtime_authority()
     for field, replacement in substitutions:
         expect_rejected(module, field, replacement)
 
