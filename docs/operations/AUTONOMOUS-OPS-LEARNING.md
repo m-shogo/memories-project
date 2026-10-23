@@ -2921,3 +2921,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if diagnostic source changes the supported expression grammar or an observed deterministic termination form bypasses this bounded classifier.
+
+
+## 2026-10-24 — Snapshot PR must execute the complete canonical admission chain in order
+
+### Outcome
+- Commit 6226052c76dc42b49eeeca724f2a3d80a56fdc7a strengthens the existing CI-bound workflow negative guard: the strict OPS-P0-007 PR validation step must run the full ordered canonical admission and snapshot chain, including its own workflow-permission negative, without an early exit or shell control-flow wrapper.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40002608279 completed SUCCESS at this commit.
+
+### Evidence
+- Prior checks proved four mandatory recovery gates and fail-closed shell options, but a successful exit after those four gates could still skip downstream snapshot generation, snapshot negative validation or authority-negative checks without violating the four-gate presence predicate.
+- The new classifier requires the exact observed fifteen-command PR chain (fourteen bounded publisher revalidation commands plus the workflow permission negative). Isolated negatives reorder adjacent commands, remove the snapshot negative, insert an unreviewed extra validator, and inject early exits before both an early and a late gate. Each must produce its cause-specific diagnostic.
+
+### Why safe
+- Only the existing read-only CI-reachable negative harness and synthetic source-text mutations changed. Neither workflow nor Production Status, OPS-P0-007 snapshot, registries, real evidence, credentials, traffic, readiness or promotion authority was modified.
+
+### Reusable mechanism
+- Four critical admission gates are necessary but not sufficient for complete CI execution proof. Bind the entire ordered validator chain, its negative suites and its final permission boundary to the same unconditional run step. A successful exit before a later gate is a failure, not a successful admission.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed PR validation chain intentionally changes, or an observed command-order or early-termination bypass escapes the bounded negative suite.
