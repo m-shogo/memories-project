@@ -2360,6 +2360,87 @@ def prove_publisher_revalidation_call_binding(publish: str) -> None:
                 raise Fail(f"strict snapshot publisher accepted masked {validator} admission failure")
 
 
+
+def readonly_trigger_paths() -> tuple[str, ...]:
+    return (
+        ".github/workflows/ops-p0-007-admission-snapshot-readonly.yml",
+        ".github/workflows/ops-p0-007-admission-snapshot-pr.yml",
+        *PR_COMPILE_FILES[-6:],
+        "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+        "contracts/operations/operability-admission-inventory.v1.json",
+        "contracts/operations/production-operability-status.json",
+        "contracts/operations/production-equivalent-environment-*.json",
+        "contracts/operations/recovery-objectives-*.json",
+        "contracts/operations/backup-restore-*.json",
+    )
+
+
+def require_readonly_trigger_authority(readonly: str) -> None:
+    """Both PR and so push must reach the independent readonly gate."""
+    paths = [f'      - "{path}"' for path in readonly_trigger_paths()]
+    expected = [
+        "name: OPS P0 007 Admission Snapshot Readonly",
+        "",
+        "on:",
+        "  pull_request:",
+        "    paths:",
+        *paths,
+        "  push:",
+        "    branches: [so]",
+        "    paths:",
+        *paths,
+        "  workflow_dispatch:",
+        "",
+        "permissions:",
+        "  contents: read",
+    ]
+    require(
+        readonly.splitlines()[:len(expected)] == expected,
+        "strict snapshot readonly trigger/path authority drift",
+    )
+
+
+def prove_readonly_trigger_negative(readonly: str) -> None:
+    require_readonly_trigger_authority(readonly)
+    marker = "permissions:\n"
+    require(readonly.count(marker) == 1,
+            "strict snapshot readonly trigger fixture boundary drift")
+    header, tail = readonly.split(marker, 1)
+    suffix = marker + tail
+    def check(label: str, changed: str) -> None:
+        require(changed != header, f"{label} readonly trigger mutation was a no-op")
+        try:
+            require_readonly_trigger_authority(changed + suffix)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly trigger/path authority drift",
+                    f"{label} readonly trigger rejected outside exact guard: {exc}")
+        else:
+            raise Fail(f"strict snapshot readonly accepted {label}")
+    require(header.count("  push:\n") == 1, "readonly push trigger fixture drift")
+    before_push, after_push = header.split("  push:\n", 1)
+    for path in readonly_trigger_paths():
+        line = f'      - "{path}"\n'
+        require(before_push.count(line) == after_push.count(line) == 1,
+                f"readonly trigger path fixture drift: {path}")
+        check(f"missing PR path {path}", before_push.replace(line, "", 1) + "  push:\n" + after_push)
+        check(f"missing push path {path}", before_push + "  push:\n" + after_push.replace(line, "", 1))
+    mutations = (
+        ("missing PR event", header.replace("  pull_request:\n", "  # PR event removed\n", 1)),
+        ("wrong PR event", header.replace("  pull_request:\n", "  pull_request_target:\n", 1)),
+        ("missing push event", header.replace("  push:\n", "  # push event removed\n", 1)),
+        ("wrong push branch", header.replace("    branches: [so]\n", "    branches: [main]\n", 1)),
+        ("missing manual dispatch", header.replace("  workflow_dispatch:\n", "  # manual dispatch removed\n", 1)),
+        ("extra schedule", header.replace("  workflow_dispatch:\n",
+            "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)),
+        ("missing PR paths", header.replace("  pull_request:\n    paths:\n",
+            "  pull_request:\n    # paths disabled\n", 1)),
+        ("missing push paths", header.replace("    branches: [so]\n    paths:\n",
+            "    branches: [so]\n    # paths disabled\n", 1)),
+    )
+    for label, mutated in mutations:
+        check(label, mutated)
+
+
 def require_readonly_workflow_authority(readonly: str) -> None:
     """Require the independent read-only workflow to execute immutable gates."""
     diagnostic = "strict snapshot readonly workflow authority drift"
@@ -2550,6 +2631,7 @@ def main() -> int:
     require_canonical_workflow(PUBLISH_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot.yml"))
     require_canonical_workflow(READONLY_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"))
     prove_readonly_workflow_negative(READONLY_WORKFLOW.read_text(encoding="utf-8"))
+    prove_readonly_trigger_negative(READONLY_WORKFLOW.read_text(encoding="utf-8"))
     prove_symlink_rejected()
     prove_comment_only_commands_rejected()
     prove_pr_shell_fail_closed_negative(PR_WORKFLOW.read_text(encoding="utf-8"))
