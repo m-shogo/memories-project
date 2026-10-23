@@ -227,6 +227,14 @@ def main() -> int:
             reject_variant(case, lambda r, domain=missing_domain: r["domains"].pop(domain))
         reject_variant("domain evidence path is not typed", lambda r: r["domains"][domain_name].update(evidenceRef="SECURITY.md"))
         reject_variant("domain result contradicts typed evidence", lambda r: r["domains"][domain_name].update(result="FAIL"))
+        # Probe every other typed domain independently, not only the first-domain representative.
+        for domain in contract["requiredDomains"][1:]:
+            path_case = f"domain evidence path is not typed: {domain}"
+            EXPECTED_DIAGNOSTICS[path_case] = f"domain {domain} evidence path is not typed"
+            reject_variant(path_case, lambda r, name=domain: r["domains"][name].update(evidenceRef="SECURITY.md"))
+            result_case = f"domain result contradicts typed evidence: {domain}"
+            EXPECTED_DIAGNOSTICS[result_case] = f"domain {domain} evidence result binding mismatch"
+            reject_variant(result_case, lambda r, name=domain: r["domains"][name].update(result="FAIL"))
         reject_variant("evidenceComplete false despite eight PASS domains", lambda r: r.update(evidenceComplete=False))
         reject_variant("security and operability review reuse", lambda r: r.update(operabilityReviewRef=r["securityReviewRef"]))
         reject_variant("HIGH unresolved finding", lambda r: r.update(unresolvedFindings=[{"findingId": "finding_high", "severity": "HIGH", "status": "OPEN"}]))
