@@ -132,6 +132,11 @@ CASE_SPECIFIC_VALIDATOR_REJECTIONS = {
 }
 
 
+def require_negative_validator_stdout(stdout: str, label: str) -> None:
+    if stdout.strip():
+        raise Fail(f"{label}: canonical negative validator emitted unexpected stdout")
+
+
 def require_case_specific_validator_rejection(stderr: str, expected: str, label: str) -> None:
     diagnostic = f"OPS-P0-007 ADMISSION SNAPSHOT FAILED: {expected}"
     if stderr.splitlines() != [diagnostic]:
@@ -142,6 +147,17 @@ def prove_case_specific_validator_classifier() -> None:
     expected = "snapshot field set drift"
     diagnostic = f"OPS-P0-007 ADMISSION SNAPSHOT FAILED: {expected}"
     require_case_specific_validator_rejection(diagnostic + "\n", expected, "synthetic positive")
+    require_negative_validator_stdout("", "synthetic clean negative")
+    try:
+        require_negative_validator_stdout(
+            "Memory OS OPS-P0-007 strict admission snapshot validation PASS\n",
+            "synthetic mixed positive/negative output",
+        )
+    except Fail as exc:
+        if "canonical negative validator emitted unexpected stdout" not in str(exc):
+            raise Fail(f"mixed-output classifier rejected outside intended guard: {exc}") from exc
+    else:
+        raise Fail("negative classifier accepted a simultaneous success marker")
     for stderr in (
         "OPS-P0-007 ADMISSION SNAPSHOT FAILED: unrelated failure\n",
         "OPS-P0-007 ADMISSION SNAPSHOT FAILED: unrelated failure\n" + diagnostic + "\n",
@@ -210,6 +226,7 @@ def run_validator(expect_success: bool, label: str) -> None:
         return
     if proc.returncode != 1:
         raise Fail(f"{label}: expected fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
+    require_negative_validator_stdout(proc.stdout, label)
     if "OPS-P0-007 ADMISSION SNAPSHOT FAILED:" not in proc.stderr:
         raise Fail(f"{label}: rejection did not come from canonical fail-closed boundary: {proc.stderr or proc.stdout}")
     if "Traceback (most recent call last)" in proc.stderr:
