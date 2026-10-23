@@ -2524,3 +2524,40 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical generator intentionally changes its controlled-failure stdout contract or a new mixed-output bypass is observed. Claim CI success only from observed exact-source runs.
+
+## 2026-10-24 — Generator rejection stdout must distinguish upstream preflight PASS from publication success
+
+### Symptom
+- The strict snapshot negative suite rejected a legitimate generator failure at the `generator canonical blocker replacement` mutation, breaking the Readonly and Backup Restore admission workflows after commit `9868cc6`.
+
+### Evidence
+- Exact-source Readonly run `39977288828` and Backup Restore Admission Chain run `39977288872` failed with `generator canonical blocker replacement: canonical generator rejection emitted unexpected stdout`. The snapshot publisher run `39977288720` also failed; its diagnostic publication was separately refused after source HEAD advanced (exit 75).
+- Source inspection verified that `generate-memory-os-ops-p0-007-admission-snapshot.py` calls four canonical admission validators before constructing/publishing the snapshot. Those validators legitimately print PASS diagnostics to stdout; a later typed non-resurrection admission failure can therefore coexist with upstream PASS output without generator publication success.
+
+### Root cause or unknown
+- Verified: the prior negative classifier required completely empty generator stdout, conflating valid upstream preflight diagnostics with the generator's own final publication-success marker.
+
+### Failed approach
+- Rejecting every non-whitespace stdout byte for any generator exit 1, without accounting for the canonical validator call chain.
+
+### Correction
+- Commit `f9f5323c71745981e66e0e6ab77f4649349211c9` captures the complete positive stdout of the four canonical preflight validators before mutating authorities. Rejected generator output may only be a complete-line prefix of that observed baseline. Unrelated output, reordered lines, incomplete lines, and the generator's final success marker remain forbidden.
+
+### Recurrence guard
+- The existing CI-bound negative suite exercises synthetic clean, partial, complete, unrelated, reordered, unterminated and mixed-success stdout controls, then runs the actual corruption cases. It continues to require exit 1, the case-specific stderr diagnostic, no traceback and an unchanged deterministic snapshot.
+
+### Retry condition
+- Revisit only if the canonical preflight validators intentionally change their output or ordering, or an exact-source CI run exposes a new mismatch. Do not reintroduce a blanket empty-stdout rule without changed preconditions.
+
+### Outcome
+- Exact-source Readonly workflow run `39986110192` at `f9f5323` completed SUCCESS; its job log records `Memory OS OPS-P0-007 strict admission snapshot negative validation PASS` and three controlled generator corruption cases rejected.
+
+### Why safe
+- Only the negative harness changed. The observed upstream stdout is not accepted as generator publication success, and no production evidence, registry entry, objective, drill, credential, traffic, readiness or promotion authority was created.
+
+### Reusable mechanism
+- For a composite executable with earlier read-only validators, bind failure stdout to an observed positive-control preflight prefix rather than requiring empty stdout or accepting arbitrary PASS text. Keep the failing stage's exact stderr and protected-output invariance as independent checks.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- This append-only lesson is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence; independent review and separate human promotion remain mandatory.
