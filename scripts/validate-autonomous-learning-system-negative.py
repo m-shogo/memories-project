@@ -34,11 +34,46 @@ def run(source_root: Path, root: Path) -> subprocess.CompletedProcess[str]:
     # against the isolated fixture. This lets a negative case remove the
     # fixture's bound validator and still prove that the canonical guard rejects
     # the missing executable authority, rather than failing in Python startup.
-    return subprocess.run(
-        [sys.executable, str(source_root / VALIDATOR), "--repo-root", str(root)],
-        text=True,
-        capture_output=True,
-        check=False,
+    try:
+        return subprocess.run(
+            [sys.executable, str(source_root / VALIDATOR), "--repo-root", str(root)],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=90,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("autonomous learning canonical negative harness timed out after 90s") from exc
+
+
+def require_canonical_rejection(name: str, result: subprocess.CompletedProcess[str]) -> None:
+    if result.returncode != 1:
+        raise RuntimeError(f"negative case did not return canonical exit 1: {name}: {result.returncode}")
+    if not result.stderr.startswith("AUTONOMOUS LEARNING VALIDATION FAILED: "):
+        raise RuntimeError(f"negative case did not fail through canonical guard: {name}: {result.stderr}")
+    if "Traceback (most recent call last)" in result.stderr:
+        raise RuntimeError(f"negative case leaked implementation traceback: {name}")
+
+
+def prove_failure_classifier() -> None:
+    # A validator startup/implementation failure must not count as a
+    # successful negative admission rejection.
+    invalid = (
+        subprocess.CompletedProcess([], 0, "", "AUTONOMOUS LEARNING VALIDATION FAILED: fake"),
+        subprocess.CompletedProcess([], 2, "", "AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: injected"),
+        subprocess.CompletedProcess([], 1, "", "AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: injected"),
+        subprocess.CompletedProcess([], 1, "", "Traceback (most recent call last): injected"),
+    )
+    for index, result in enumerate(invalid):
+        try:
+            require_canonical_rejection(f"synthetic classifier {index}", result)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError(f"negative failure classifier accepted unrelated result: {index}")
+    require_canonical_rejection(
+        "synthetic canonical rejection",
+        subprocess.CompletedProcess([], 1, "", "AUTONOMOUS LEARNING VALIDATION FAILED: injected canonical guard\n"),
     )
 
 
@@ -48,10 +83,7 @@ def require_failure(source_root: Path, name: str, mutate) -> None:
         seed(source_root, root)
         mutate(root)
         result = run(source_root, root)
-        if result.returncode == 0:
-            raise RuntimeError(f"negative case unexpectedly passed: {name}")
-        if "AUTONOMOUS LEARNING VALIDATION FAILED" not in result.stderr:
-            raise RuntimeError(f"negative case did not fail through canonical guard: {name}: {result.stderr}")
+        require_canonical_rejection(name, result)
 
 
 def edit_contract(root: Path, edit) -> None:
@@ -80,6 +112,8 @@ def main() -> int:
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
     args = parser.parse_args()
     source_root = args.repo_root.resolve()
+
+    prove_failure_classifier()
 
     with tempfile.TemporaryDirectory(prefix="learning-positive-") as tmp:
         root = Path(tmp)
