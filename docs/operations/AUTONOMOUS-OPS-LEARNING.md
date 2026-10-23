@@ -3844,3 +3844,34 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only when a new reviewed corruption case is added, an existing expected canonical diagnostic changes, or an observed unrelated failure escapes the strict mapping.
+
+## 2026-10-24 — Generator corruption cases require complete exact diagnostic bindings
+
+### Outcome
+- Commit `114819dbd33140669445993ad03d67a56eeefbc8` requires every real generator corruption negative to have an explicit exact or nested canonical diagnostic mapping.
+- Exact-source OPS P0 007 Admission Snapshot publisher run `40012416362` completed SUCCESS; its job log reports strict snapshot negative validation PASS, three controlled generator corruption cases rejected and `production decision: NO_GO`.
+- The separate Snapshot Readonly run was not yet complete at this entry and is not counted as successful without a completed result.
+
+### Evidence
+- The existing generator rejection classifier intentionally supports exact one-line source/module path diagnostics and exact two-line typed-admission nested diagnostics, but `run_generator_rejects` previously allowed a new unknown label to use generic allowed-prefix matching.
+- The new guard closes that fallback for actual generator negative execution: the three nested corruption labels and two exact symlink labels must form the complete disjoint five-label set.
+- Two synthetic unknown-label controls demand the precise missing-binding rejection. Existing baseline, output, timeout, unchanged-snapshot and canonical diagnostic classifiers remain intact.
+
+### Why safe
+- Only the existing CI-invoked snapshot corruption negative harness changed. It does not modify production evidence, recovery generations, objectives, executable drill requests, credentials, traffic, readiness or promotion authority.
+- The real publisher workflow, Production Status, strict snapshot, registries and typed eight-domain review requirements were not changed.
+
+### Reusable mechanism
+- Treat diagnostic classification as a closed registry for actual negative execution: no new generator case may silently fall back to generic prefix matching. Keep separate exact and nested maps disjoint, and assert the set equals the reviewed cases plus explicit symlink tests.
+- Synthetic classifier probes may exercise generic parser behavior, but actual corruption tests must always bind to a known exact diagnostic label.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain non-resurrection records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicitly human-approved current recovery objective, current executable reviewed request, independent review and separate human production promotion remain mandatory.
+- Learning and CI success never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Existing scoped blocker observed
+- Backup Restore Admission Chain Negative run `40012416291` failed with the already-recorded `source-binding negative requires clean canonical source worktree` diagnostic. The retry condition has not changed; do not repeat the same blocked fix. Independent snapshot guard work remains safe.
+
+### Retry condition
+- Revisit generator diagnostic bindings only when a reviewed corruption case or canonical exact/nested diagnostic changes, or an observed unrelated failure escapes the mapping. Revisit the separate clean-worktree blocker only after its recorded precondition changes.
