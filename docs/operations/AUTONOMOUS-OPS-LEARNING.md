@@ -1256,3 +1256,67 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-correction re-read confirmed `productionDecision=NO_GO`, unchanged production-status and autonomous-learning contract blobs, and unchanged strict OPS-P0-007 snapshot and empty generation/objective/request/evidence/typed-coverage/promotion registries.
 - This append-only lesson is execution history only. It cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates; distinct semantically eligible unsuperseded environments, human-approved current recovery objective, current executable reviewed request, complete typed eight-domain non-resurrection evidence, independent review and separate human promotion remain mandatory.
+
+## 2026-10-23 — Exact-source learning guard output proof completed in Operability Contracts
+
+### Outcome
+- The existing operability CI entrypoint's exit-zero-plus-success-marker guard and ten-case classifier proof executed successfully at corrected source commit `fb21d1d491fb7e2bd60f8234c9aa665eacfc4c2f`.
+
+### Evidence
+- Exact-source `Operability Contracts` run `39937745962` completed SUCCESS. Its `Validate current entrypoint documents` step completed successfully; job logs show `Memory OS entrypoint document validation PASS`, `autonomous-learning guards: 2`, and `production decision: NO_GO` in the same job.
+- The entrypoint captures the positive and negative guard outputs and rejects a missing marker, unexpected stderr, nonzero exit, or fewer than 22 negative cases. The child output is captured rather than emitted to the job log, so the observed evidence is the exact-source parent step's PASS, not separately displayed child stdout.
+
+### Why safe
+- The observed result is an execution guard only. No production evidence, recovery objective, registered environment generation, credential, traffic, readiness or promotion authority was written.
+
+### Reusable mechanism
+- Trigger an existing owning workflow through a meaningful entrypoint hardening change; require the transitive guard's controlled PASS namespace, run its synthetic negative classifier, and distinguish exact-source parent CI success from direct child log output.
+
+### Protected-authority check
+- Source re-read confirmed unchanged production-status and OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, typed eight-domain records and final candidates. Human approval and promotion remain separate.
+- This learning history is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Read-only snapshot PR permission must reject every write-capable token scope
+
+### Symptom
+- The strict OPS-P0-007 snapshot PR permission guard rejected `contents:write` and `permissions:write-all`, but allowed a token with `actions:write`, `id-token:write`, `pull-requests:write`, or another recognized write scope while `contents:read` remained present.
+- The first synthetic test fixture for the extension was incorrectly double-escaped and failed the existing top-level read-only positive check.
+
+### Evidence
+- Before commit `159998b57bd89086b5c070645a1a6412755773f7`, `require_readonly_pr_permissions` had no generic write-scope rejection; the canonical PR workflow itself declared only `contents: read`.
+- Exact-source permission-boundary run `39937992118` failed with `strict snapshot PR workflow must declare top-level contents: read` while exercising the double-escaped fixture, not because the canonical PR workflow had gained write authority.
+- Commit `5a3944ab9392f312522200e3f92081e259dec819` corrected 25 escaped newline sequences and the Python raw regex string. Exact-source `OPS P0 007 Snapshot Permission Boundary` run `39938026887` then completed SUCCESS, including compilation, positive/negative scope fixtures, exact checkout and clean-worktree checks.
+
+### Root cause or unknown
+- Verified original guard gap: it matched only contents-write and write-all, rather than all GitHub Actions write-capable permission scopes.
+- Verified first-patch failure: generated fixture strings contained literal backslash-n sequences, so a valid synthetic `permissions:\n  contents: read` mapping was not present in the parsed fixture.
+
+### Failed approach
+- Assuming a read-only contents scope alone implies a read-only workflow token, and emitting synthetic Python/YAML fixtures without verifying escape depth.
+
+### Correction
+- The existing CI-reachable snapshot permission negative now recognizes all 15 supported GitHub Actions token scopes and rejects `write` for any of them, including compact, quoted and inline mapping spellings. It preserves the required real top-level `contents: read` check and existing write-all/contents-write guards.
+- Four new negative fixtures exercise actions, id-token, pull-requests and security-events write grants. A comment-only write mention remains a positive read-only control.
+
+### Recurrence guard
+- The owning snapshot permission workflow directly executes the strengthened negative script and checks clean source. Its exact-source SUCCESS proves both the canonical read-only control and the new write-scope mutation cases.
+- Recheck emitted Python string literals and run exact-source CI before claiming new fixture coverage. Do not use regex text presence alone as proof of a live workflow permission declaration.
+
+### Retry condition
+- Do not restore contents-only token checks or double-escaped synthetic fixtures. Revisit if GitHub adds a token permission scope, changes permission YAML semantics, or a new valid write-grant spelling bypasses the executable negatives.
+
+### Outcome
+- Two commits installed and corrected the all-scope read-only PR token guard; the final exact-source permission-boundary workflow completed SUCCESS.
+
+### Success evidence
+- Isolated Python matcher reproduction distinguished eight valid/invalid permission fixtures (8/8), and exact-source workflow run `39938026887` passed after the correction.
+
+### Why safe
+- Only the existing read-only negative test was changed. The PR/publisher workflow permission declarations, snapshot generator, registries, production status, credentials, traffic, readiness and promotion were not modified.
+
+### Reusable mechanism
+- For read-only GitHub Actions policy, test the full recognized token-scope vocabulary and syntax variants rather than only `contents`; pair real positive controls with injected write grants, then require an observed exact-source CI PASS.
+
+### Protected-authority check
+- Post-correction source re-read confirmed `productionDecision=NO_GO`, unchanged canonical status and OPS-P0-007 strict snapshot blobs, `PREREQUISITES_BLOCKED`, and zero generation/objective/request/evidence/typed-coverage/final-candidate authority. Typed eight-domain evidence, independent review and separate human promotion remain mandatory.
+- This append-only operational lesson cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
