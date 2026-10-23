@@ -1380,3 +1380,24 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Source re-read confirmed unchanged production-status, autonomous-learning contract and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain required.
 - This append-only lesson is operational execution history, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Required learning failure/success fields now have complete missing-field negative coverage
+
+### Outcome
+- Extended the canonical learning negative suite from 32 to 42 fail-closed cases, independently removing each of the seven mandatory failure fields and five mandatory success fields.
+- Exact-source `Operability Contracts` run `39938660322` completed SUCCESS on commit `900cb34a2107664b2e8e7d6f07076ebd1afe8a2e`.
+
+### Evidence
+- Commit `ee7e752dddc2695671d04ba135dbf7d18b3bb7ee` added six failure-field and four success-field missing-field cases to the existing two representative cases, using isolated fixtures and the unchanged canonical positive validator.
+- Commit `900cb34a2107664b2e8e7d6f07076ebd1afe8a2e` raised the CI entrypoint's minimum negative-case count to 42 without altering its dynamic positive/negative classifier fixtures.
+- Read-only contract-to-suite inspection found all seven failure and five success field names represented. Exact-source job `120364390078` logs explicitly show `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (42 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+
+### Why safe
+- Changes were limited to isolated learning negative fixtures and the existing CI entrypoint's minimum accepted test count. No production evidence, backup/restore registry, approved objective, drill, credential, traffic, readiness or promotion authority was changed.
+
+### Reusable mechanism
+- Prove every mandatory schema field's fail-closed behavior with an isolated missing-field mutation, retain a canonical positive control, and enforce the resulting minimum test count at a source-bound CI entrypoint that emits only verified PASS markers.
+
+### Protected-authority check
+- Post-change re-read confirmed unchanged autonomous-learning contract, production-status and strict OPS-P0-007 snapshot blobs, `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`, and zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, generation evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is execution history only; it cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
