@@ -103,6 +103,12 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
         for statement in statements:
             if isinstance(statement, ast.Raise):
                 raise Fail("strict snapshot diagnostic unconditional early termination")
+            if (
+                isinstance(statement, ast.Assert)
+                and isinstance(statement.test, ast.Constant)
+                and not bool(statement.test.value)
+            ):
+                raise Fail("strict snapshot diagnostic unconditional early termination")
             if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
                 target = statement.value.func
                 is_exit = (
@@ -261,6 +267,12 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
          "                  exit(0)\n                  os.unlink(tmp_name)"),
         ("finally constant-true exit", "                  os.unlink(tmp_name)",
          "                  if True: raise SystemExit(0)\n                  os.unlink(tmp_name)"),
+        ("module assert false", "          import json, os, tempfile",
+         "          import json, os, tempfile\n          assert False"),
+        ("try assert zero", "              os.replace(tmp_name, path)",
+         "              assert 0\n              os.replace(tmp_name, path)"),
+        ("finally assert false", "                  os.unlink(tmp_name)",
+         "                  assert False\n                  os.unlink(tmp_name)"),
     )
     for label, before, after in mutations:
         require(publish.count(before) == 1, f"{label}: canonical diagnostic fixture drift")
