@@ -3408,3 +3408,28 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed publisher source-capture architecture changes or a new observed stale/forged source-binding bypass escapes this exact-step guard.
 
+
+## 2026-10-24 — Generator runtime authority paths must reject same-type aliases
+
+### Outcome
+- Commit 34ead77d026ed698e757d4d841d5dcd4779b5378 extends the strict OPS-P0-007 snapshot generator execution negative to test seventeen runtime path constant substitutions against existing but incorrect canonical files.
+- Exact-source OPS P0 007 Admission Snapshot Readonly run 40006679895 and OPS P0 007 Admission Snapshot run 40006679736 both completed SUCCESS at this commit.
+
+### Evidence
+- The existing generator negative tested callable helper substitutions and protected path identity but did not directly exercise whether the generator rejected in-memory substitution of OUTPUT, STATUS, registry, helper, validator or writer paths with other real repository files.
+- Both exact-source CI logs reported Memory OS OPS-P0-007 strict snapshot generator execution authority negative PASS and canonical runtime path substitutions rejected: 17, while retaining production decision: NO_GO.
+- Each synthetic substitution now requires the exact strict snapshot authority drift diagnostic naming its expected path role. A same-type but wrong path must not be accepted as a valid authority.
+
+### Why safe
+- Only the existing CI-bound read-only generator execution negative changed. The generator itself, snapshot, Production Status, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched. In-memory path substitutions are restored after each rejection, and protected snapshot/status/generator bytes and file/parent identity are checked.
+
+### Reusable mechanism
+- A generator's helper identity guard and canonical file existence checks need a paired negative that swaps authority path bindings to other real files. Exact role-specific diagnostics prevent unrelated failures from being mistaken for the intended path-drift rejection.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the generator's reviewed runtime path bindings change or a newly observed authority alias bypass escapes the seventeen negative probes.
+
