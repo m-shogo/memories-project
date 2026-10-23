@@ -110,6 +110,8 @@ def expected_diagnostic(name: str) -> str:
         "dead-branch learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
         "unreachable learning guard after return": "learning CI entrypoint guard call follows unconditional return or raise",
         "unreachable learning guard after raise": "learning CI entrypoint guard call follows unconditional return or raise",
+        "async main shadow": "learning CI entrypoint main binding is shadowed by async definition",
+        "assigned main shadow": "learning CI entrypoint main binding is shadowed by assignment",
         "dead module main guard": "learning CI entrypoint must execute main from its live module guard",
         "comment-only module main invocation": "learning CI entrypoint must execute main from its live module guard",
     }
@@ -320,6 +322,14 @@ def main() -> int:
         )),
     ))
     cases.extend((
+        ("async main shadow", lambda root: replace_in_entrypoint(
+            root, 'if __name__ == "__main__":\n    raise SystemExit(main())\n',
+            'async def main():\n    return 0\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n',
+        )),
+        ("assigned main shadow", lambda root: replace_in_entrypoint(
+            root, 'if __name__ == "__main__":\n    raise SystemExit(main())\n',
+            'main = lambda: 0\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n',
+        )),
         ("dead module main guard", lambda root: replace_in_entrypoint(
             root, 'if __name__ == "__main__":\n    raise SystemExit(main())\n',
             "if False:\n    raise SystemExit(main())\n",
