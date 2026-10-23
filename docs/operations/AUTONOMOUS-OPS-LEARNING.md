@@ -3177,3 +3177,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
 - Learning remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+
+## 2026-10-24 — Publisher captured status cannot be bypassed by an early exit
+
+### Outcome
+- Commit f105f7eceedbe357184d24c61b0110562105561e extends the existing OPS-P0-007 publisher initial status-capture guard to reject an early exit, return, exec or later shell-option override before the final status publication.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40004640714 completed SUCCESS at this commit.
+
+### Evidence
+- The prior initial status-capture guard required all fourteen validator lines and exact exit_code output at the end, but a successful exit before those lines could leave them present yet unexecuted. It also did not explicitly reject later set overrides inside the intentionally non-errexit step.
+- Three synthetic negatives insert exit 0 before the first or last validator and set -euo pipefail after the initial code=0; each must produce the exact unconditional early-termination or shell-override rejection. The canonical final exit 0 remains allowed only after the captured status is written.
+
+### Why safe
+- Only the CI-bound read-only workflow permission negative harness and synthetic publisher text fixtures changed. The publisher workflow, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- A status-capture step must execute all intended checks before its intentional final success exit. Verify not just command presence and output binding but also absence of earlier shell termination or option reconfiguration that would bypass the status gate.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the publisher capture step's reviewed shell-control architecture changes or a newly observed early-termination bypass escapes the bounded guard.
