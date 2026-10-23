@@ -3201,3 +3201,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the publisher capture step's reviewed shell-control architecture changes or a newly observed early-termination bypass escapes the bounded guard.
+
+
+## 2026-10-24 — Atomic failure injection must originate from canonical sibling temporary file
+
+### Outcome
+- Commit 40dc893ac6e75eeb5bf18bb592afc047b7e0068f strengthens the existing strict OPS-P0-007 snapshot atomic-write negative by requiring the intercepted os.replace source to be a canonical sibling temporary file of the snapshot target.
+- Exact-source OPS P0 007 Admission Snapshot Atomic Write Negative run 40004775994 completed SUCCESS at this commit.
+
+### Evidence
+- The prior atomic negative proved exactly one intercepted canonical destination, the exact injected error and protected rollback state, but did not validate the source path of the attempted replacement. An unexpected source could still satisfy destination-only injection.
+- The new classifier requires the source parent to equal the canonical snapshot parent, the filename to begin with the target-specific hidden temporary prefix and end in .tmp. Synthetic negatives reject unrelated names, wrong suffixes and wrong parent paths before the canonical failure injection runs.
+
+### Why safe
+- Only the existing read-only atomic-write negative harness and isolated synthetic source-path classifier changed. The canonical generator, publisher workflow, Production Status, snapshot, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Atomic failure-injection proof should bind the source and destination of the attempted replace, not just the destination and error message. Verify canonical sibling temporary naming alongside exact injected diagnostic, attempt count, cleanup and protected-authority identity.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the canonical atomic writer's temporary-file naming or directory architecture changes, or an observed source alias bypasses the bounded source/destination guard.
