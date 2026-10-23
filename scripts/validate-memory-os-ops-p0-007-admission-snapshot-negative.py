@@ -144,14 +144,33 @@ def run_validator(expect_success: bool, label: str) -> None:
         require_case_specific_validator_rejection(proc.stderr, expected, label)
 
 
+# Canonical typed admission can return a two-line nested local-restore
+# diagnostic. Bind its second line to the exact mutation rather than accepting
+# arbitrary multiline errors or requiring an incorrect one-line format.
+NESTED_GENERATOR_REJECTIONS = {
+    "generator canonical blocker replacement": "LOCAL APPLE REPLAY RESTORE VALIDATION FAILED: OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers",
+    "generator canonical blocker ordering drift": "LOCAL APPLE REPLAY RESTORE VALIDATION FAILED: OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers",
+    "generator production decision promotion": "LOCAL APPLE REPLAY RESTORE VALIDATION FAILED: local replay restore cannot change production decision",
+}
+
+
 def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...], label: str) -> None:
-    lines = output.splitlines()
+    lines = output.strip().splitlines()
     prefixes = tuple(
         prefix
         for message in allowed
         for prefix in (message, f"generated strict snapshot invalid: {message}")
     )
-    if len(lines) != 1 or not lines[0].startswith(prefixes):
+    valid_single = len(lines) == 1 and lines[0].startswith(prefixes)
+    nested = NESTED_GENERATOR_REJECTIONS.get(label)
+    valid_nested = (
+        len(lines) == 2
+        and nested is not None
+        and lines[0].startswith("typed non-resurrection canonical admission authority invalid: local Apple replay restore validator failed:")
+        and lines[0].startswith(prefixes)
+        and lines[1] == nested
+    )
+    if not (valid_single or valid_nested):
         raise Fail(f"{label}: generator rejection did not use one intended authority diagnostic: {output!r}")
 
 
@@ -159,10 +178,20 @@ def prove_generator_diagnostic_classifier() -> None:
     expected = ("canonical OPS-P0-007 blocker authority invalid",)
     valid = "canonical OPS-P0-007 blocker authority invalid: synthetic detail"
     require_expected_generator_diagnostic(valid + "\n", expected, "synthetic positive")
+    nested_prefix = "typed non-resurrection canonical admission authority invalid: local Apple replay restore validator failed:"
+    nested_label = "generator canonical blocker replacement"
+    nested_line = NESTED_GENERATOR_REJECTIONS[nested_label]
+    require_expected_generator_diagnostic(
+        nested_prefix + "\n" + nested_line + "\n",
+        ("typed non-resurrection canonical admission authority invalid",),
+        nested_label,
+    )
     for output in (
         "unrelated failure: " + valid + "\n",
         "unrelated failure\n" + valid + "\n",
         valid + "\nunrelated failure\n",
+        nested_prefix + "\nunrelated failure\n",
+        nested_prefix + "\n" + nested_line + "\nunrelated failure\n",
     ):
         try:
             require_expected_generator_diagnostic(output, expected, "synthetic unrelated diagnostic")
