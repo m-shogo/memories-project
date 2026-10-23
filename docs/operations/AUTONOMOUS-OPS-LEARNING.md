@@ -2341,3 +2341,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
 - Learning is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Rejected snapshot generators must preserve symlink identity
+
+### Outcome
+- Commit `810bc721a8c0e360f5981a425fb2e86a5bf0a5aa` extends the existing strict snapshot rejection-state guard from bytes/mode to bytes/mode/symlink identity and requires every canonical authority in the final negative-suite check to be a regular non-symlink file.
+
+### Evidence
+- Previously the state comparator read snapshot bytes and `stat` mode, both of which follow symlinks. Replacing a snapshot with a symlink to matching bytes/mode could escape those two assertions. The new pure-state classifier includes a synthetic symlink-status-only mutation and applies the same three-part comparator to all eight existing rejected-generator before/after call sites.
+- Exact-source Readonly run `39973259217` (job `120481178591`) and Snapshot publisher run `39973259273` (job `120481180594`) completed SUCCESS. Both logged strict snapshot negative PASS, 22 controlled validator corruptions rejected, 3 generator corruptions rejected and `production decision: NO_GO`.
+
+### Why safe
+- Only the CI-bound negative suite changed; the synthetic symlink mutation is an in-memory tuple and creates no filesystem alias. Existing symlink escape fixtures remain temporary and restore canonical bytes/modes. No production, recovery or promotion authority was changed.
+
+### Reusable mechanism
+- For protected filesystem authorities, comparing bytes and permissions alone is insufficient: also assert path identity/type and absence of symlink substitution. Reuse the same tested state comparator across all rejected publication paths and add a symlink-only negative control.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Learning is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
