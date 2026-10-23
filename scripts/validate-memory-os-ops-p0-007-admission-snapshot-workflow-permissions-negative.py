@@ -991,6 +991,71 @@ def prove_pr_drift_rejection_negative(pr: str) -> None:
         raise Fail("strict snapshot PR accepted duplicate deterministic drift gate")
 
 
+def pr_job_expected_header() -> list[str]:
+    return [
+        "jobs:",
+        "  validate:",
+        "    runs-on: ubuntu-latest",
+        "    timeout-minutes: 8",
+        "    steps:",
+    ]
+
+
+def require_pr_job_execution_policy(pr: str) -> None:
+    """A disabled or non-fatal job cannot establish a mandatory PR admission."""
+    lines = pr.splitlines()
+    expected = pr_job_expected_header()
+    starts = [index for index, line in enumerate(lines) if line == "  validate:"]
+    require(len(starts) == 1, "strict snapshot PR job execution policy drift")
+    start = starts[0]
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].startswith("      - ")),
+        len(lines),
+    )
+    require(
+        start > 0 and lines[start - 1] == "jobs:"
+        and lines[start - 1:end] == expected,
+        "strict snapshot PR job execution policy drift",
+    )
+
+
+def prove_pr_job_execution_policy_negative(pr: str) -> None:
+    require_pr_job_execution_policy(pr)
+    block = "\n".join(pr_job_expected_header()) + "\n"
+    require(pr.count(block) == 1, "strict snapshot PR job policy fixture block drift")
+    substitutions = (
+        ("    runs-on: ubuntu-latest", "    if: false\n    runs-on: ubuntu-latest"),
+        ("    runs-on: ubuntu-latest", "    continue-on-error: true\n    runs-on: ubuntu-latest"),
+        ("    runs-on: ubuntu-latest", "    needs: unreviewed-prerequisite\n    runs-on: ubuntu-latest"),
+        ("    runs-on: ubuntu-latest", "    runs-on: windows-latest"),
+        ("    timeout-minutes: 8", "    timeout-minutes: 0"),
+        ("    steps:", "    # steps:"),
+    )
+    for original, replacement in substitutions:
+        require(block.count(original) == 1, "strict snapshot PR job policy mutation anchor drift")
+        mutated = pr.replace(block, block.replace(original, replacement, 1), 1)
+        require(mutated != pr, "strict snapshot PR job policy mutation was a no-op")
+        try:
+            require_pr_job_execution_policy(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR job execution policy drift",
+                f"PR job execution policy rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail("strict snapshot PR accepted weakened job-level admission policy")
+    duplicate = pr + "\n  validate:\n    runs-on: ubuntu-latest\n    steps:\n"
+    try:
+        require_pr_job_execution_policy(duplicate)
+    except Fail as exc:
+        require(
+            str(exc) == "strict snapshot PR job execution policy drift",
+            f"duplicate PR job rejected outside exact guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot PR accepted duplicate validate job")
+
+
 def publisher_protected_shell_starts(workflow: str) -> list[int]:
     lines = workflow.splitlines()
     names = (
@@ -1773,6 +1838,7 @@ def main() -> int:
     prove_checkout_comment_bypass_rejected(pr, publish)
     prove_pr_source_verification_negative(pr)
     prove_pr_drift_rejection_negative(pr)
+    prove_pr_job_execution_policy_negative(pr)
     prove_publisher_source_capture_negative(publish)
 
     require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
