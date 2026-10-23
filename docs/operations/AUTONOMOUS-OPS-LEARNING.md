@@ -4483,3 +4483,27 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only the CI-bound synthetic negative harness was changed; no actual production writer, environment generation, recovery objective, drill request, typed evidence, registry, credential, traffic, readiness or promotion authority was written.
 - Canonical Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Distinct unsuperseded semantically eligible environments, explicitly human-approved current objective, executable reviewed request for new evidence, complete eight-domain typed coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Pre-dispatch module exits cannot masquerade as live writer CLI authority
+
+### Outcome and observed evidence
+- Commit `cdec3337f0cd192b43647ea62654370d69150090` extends the existing CI-reachable typed writer authority negative harness with a module-scope AST guard against explicit termination before the final canonical CLI dispatch.
+- Nine synthetic negative cases reject module-level `raise SystemExit`, `sys.exit`, `os._exit`, `exit`, `quit`, nested branch/try termination, and dynamic `exec`/`eval` calls. The canonical positive control is required before any mutation.
+- Exact-source Non-Resurrection Readonly run `40039026581` completed SUCCESS. Contracts and Admission Chain were still running when this entry was written and are not claimed successful.
+- Compare from `e80cd46e922bc7be350d2d5d430fa89fd6d2df6a` to `cdec3337f0cd192b43647ea62654370d69150090` changed only the existing negative harness (63 additions, zero deletions).
+
+### Symptom, observed evidence, verified root cause or unknown, and failed approach
+- Symptom/risk: even an AST-verified final `if __name__ == "__main__"` dispatch may never execute if earlier module-scope code explicitly terminates the interpreter.
+- Evidence: the preceding dispatch guard proved the shape of the final block but did not inspect preceding module-scope statements for direct early exits. No actual malicious early exit or production incident was observed.
+- Verified gap cause: existence of a final dispatch is not the same as reachability through preceding module initialization.
+- Failed approach to avoid: assuming a valid final dispatch statement is sufficient proof of execution while ignoring earlier unconditional or branch-contained interpreter exits.
+
+### Correction, recurrence guard, and retry condition
+- Traverse module-scope AST before the final dispatch, excluding deferred function/class/lambda bodies, and reject explicit early-exit calls or raises. Require nine exact-diagnostic negatives and a positive control; preserve the previously added module-binding, function-guard, parser/lock and dispatch checks.
+- Reusable mechanism: for CLI entrypoint assurance, prove not only that the target call exists, but also that obvious module-scope termination cannot prevent reaching it. Static checks do not establish absence of all dynamic import-time side effects.
+- Retry only after a concrete exact-source failure, a reviewed change in writer module initialization, or a demonstrated new pre-dispatch bypass. Do not repeat unchanged source-binding clean-worktree or target-specific write blockers.
+
+### Why safe and protected-authority check
+- The production writer, recovery generation/objective/request/evidence registries, typed coverage, credentials, traffic, readiness, Production Status, snapshot and promotion authority were not written.
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Distinct unsuperseded semantically eligible environments, explicit human-approved current recovery objective, current executable reviewed request for new evidence, typed eight-domain non-resurrection coverage, independent review and separate human production promotion remain mandatory. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
