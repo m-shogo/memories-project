@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,35 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_canonical_workflow(path: Path, relative: Path, root: Path = ROOT) -> None:
+    try:
+        lexical = path.relative_to(root)
+        resolved = path.resolve(strict=True).relative_to(root.resolve(strict=True))
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"strict snapshot workflow missing or escapes canonical root: {relative}") from exc
+    require(
+        lexical == relative and resolved == relative and path.is_file() and not path.is_symlink(),
+        f"strict snapshot workflow path drift: {relative}",
+    )
+
+
+def prove_symlink_rejected() -> None:
+    # Isolated outside the checkout: this proof cannot dirty source-bound CI.
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-workflow-path-negative-") as tmp:
+        root = Path(tmp)
+        target = root / "target.yml"
+        alias = root / "alias.yml"
+        target.write_text("permissions: contents: read\n", encoding="utf-8")
+        alias.symlink_to(target.name)
+        require_canonical_workflow(target, Path("target.yml"), root)
+        try:
+            require_canonical_workflow(alias, Path("alias.yml"), root)
+        except Fail as exc:
+            require("workflow path drift" in str(exc), f"symlink rejected outside intended path guard: {exc}")
+        else:
+            raise Fail("strict snapshot workflow symlink alias unexpectedly accepted")
 
 
 def validate_atomic_diagnostic_publication(publish: str) -> None:
@@ -55,6 +85,9 @@ def require_full_admission_chain(workflow: str, label: str) -> None:
 
 
 def main() -> int:
+    require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
+    require_canonical_workflow(PUBLISH_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot.yml"))
+    prove_symlink_rejected()
     pr = PR_WORKFLOW.read_text(encoding="utf-8")
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
