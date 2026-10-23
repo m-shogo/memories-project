@@ -3875,3 +3875,29 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit generator diagnostic bindings only when a reviewed corruption case or canonical exact/nested diagnostic changes, or an observed unrelated failure escapes the mapping. Revisit the separate clean-worktree blocker only after its recorded precondition changes.
+
+## 2026-10-24 — Readonly authority digest coverage must include all nine protected files
+
+### Outcome
+- Commit `5d99460e6dc3f74899fa000869151f383baa41c9` binds the independent OPS-P0-007 readonly workflow's before/after byte-digest and mode snapshot to the exact nine reviewed protected authority files.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40012850471` completed SUCCESS. The separately triggered Snapshot Readonly run is not counted as successful without its own completed result.
+
+### Evidence
+- The prior readonly workflow guard verified two authority-snapshot loops and final diff checks but did not validate the contents of the `authorities=(...)` list. Removing Production Status, the typed non-resurrection registry or the human promotion-review registry could silently narrow the immutable-authority proof while leaving both loops intact.
+- The new guard requires exactly the reviewed nine-file list, including snapshot, admission inventory, Production Status, generation/objective/drill/evidence/non-resurrection registries and the separate promotion-review registry.
+- Nine isolated missing-authority mutations each require the exact readonly-workflow authority-drift diagnostic.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and in-memory readonly workflow fixtures changed. The actual readonly workflow, Production Status, strict snapshot, registries, recovery evidence, credentials, traffic, readiness and promotion authority were untouched.
+
+### Reusable mechanism
+- A before/after digest-and-mode comparison is only as strong as its protected input list. Bind the complete list to reviewed authority paths and reject each omission independently, especially the separate human promotion authority.
+- Keep authority integrity evidence distinct from production recovery or promotion evidence; a clean CI digest comparison never satisfies recovery gates.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicit human-approved current recovery objective, executable reviewed request, independent review and separate human production promotion remain mandatory.
+- Learning and CI success cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed protected authority list changes or an observed missing-file integrity bypass escapes this bounded guard.
