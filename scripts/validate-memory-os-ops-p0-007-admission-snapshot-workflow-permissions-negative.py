@@ -100,6 +100,36 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
         require(len(matches) == 1, f"strict snapshot diagnostic missing executable {label} call or duplicated call")
         found[label] = matches[0]
 
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+
+    def enclosing_conditions(call: ast.Call) -> list[ast.If]:
+        conditions: list[ast.If] = []
+        node: ast.AST = call
+        while node in parents:
+            node = parents[node]
+            if isinstance(node, ast.If):
+                conditions.append(node)
+        return conditions
+
+    # Publication calls other than conditional chmod must be unconditionally
+    # reached in their enclosing try/with flow. AST walking alone would count
+    # a syntactically valid but never-run comparison-dead call.
+    for label in ("mkstemp", "write", "flush", "fsync", "replace", "unlink"):
+        require(
+            not enclosing_conditions(found[label]),
+            f"strict snapshot diagnostic executable {label} call hidden in conditional branch",
+        )
+    mode_guard = ast.dump(ast.parse("existing_mode is not None", mode="eval").body, include_attributes=False)
+    chmod_conditions = enclosing_conditions(found["chmod"])
+    require(
+        len(chmod_conditions) == 1
+        and ast.dump(chmod_conditions[0].test, include_attributes=False) == mode_guard,
+        "strict snapshot diagnostic chmod not bound to existing-mode guard",
+    )
     mode_assignment = ast.dump(
         ast.parse("existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None").body[0],
         include_attributes=False,
@@ -134,6 +164,8 @@ def prove_diagnostic_comment_and_dead_code_rejected(publish: str) -> None:
         ("comment-only replacement", "os.replace(tmp_name, path)", "# os.replace(tmp_name, path)"),
         ("quoted flush", "handle.flush()", "'handle.flush()'"),
         ("dead fsync", "os.fsync(handle.fileno())", "if False: os.fsync(handle.fileno())"),
+        ("comparison-dead fsync", "os.fsync(handle.fileno())", "if 1 == 2: os.fsync(handle.fileno())"),
+        ("comparison-dead chmod", "os.fchmod(fd, existing_mode)", "if 1 == 2: os.fchmod(fd, existing_mode)"),
         ("comment-only cleanup", "os.unlink(tmp_name)", "pass  # os.unlink(tmp_name)"),
         ("direct-write bypass", "os.replace(tmp_name, path)", "path.write_text('unsafe')  # os.replace(tmp_name, path)"),
     )
