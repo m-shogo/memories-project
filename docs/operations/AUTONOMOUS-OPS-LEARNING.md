@@ -3018,3 +3018,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed diagnostic schema, privacy-redaction contract, source binding or publication path changes, or if a new observed payload bypass evades the exact AST guard.
+
+
+## 2026-10-24 — Diagnostic payload safety must survive post-initialization mutations
+
+### Outcome
+- Commit 6f6f8552e42a766593d26b03e405a67da9b3fba6 extends the existing OPS-P0-007 snapshot diagnostic AST negative so its safe initial record cannot be overwritten, mutated or replaced with forged serialized bytes before atomic publication.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40003271633 completed SUCCESS at this commit.
+
+### Evidence
+- A diagnostic record could initially satisfy the exact non-production schema and source binding but then be changed by value item assignment, update, deletion or by reassigning/augmenting the serialized payload before handle.write(payload). The prior initial-field check did not prove that the emitted bytes retained those fields.
+- The new guard binds the single executable payload assignment to the exact canonical JSON serialization expression and rejects subsequent writes, deletions, augmentations and known mutating record methods. Five synthetic negatives mutate productionEvidence, productionReady, containsSecrets or payload after safe initialization, requiring the exact non-production evidence-boundary diagnostic.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and in-memory diagnostic fixtures changed. Publisher workflow, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were not changed.
+
+### Reusable mechanism
+- Validate the complete dataflow from authorized literal record to serialized bytes and atomic write, not only the record's initial assignment. Fail closed on mutable aliases or reassignment that can invalidate a previously verified safety invariant.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the diagnostic serialization/dataflow architecture changes or an observed aliasing mutation bypass escapes the bounded AST guard.
