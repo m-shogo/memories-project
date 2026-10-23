@@ -2108,3 +2108,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` still records zero registered/eligible generations, objectives, executable reviewed requests, generation evidence, typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
 - Append-only learning history is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Generation and typed registry corruption negatives need cause-specific proof
+
+### Outcome
+- Commit `0d73d57d50b7bca93f1f68e8bdb2ad1ef36dac6d` binds six existing generation-recovery-evidence and typed non-resurrection registry negative mutations to their exact canonical rejection diagnostics, preserving the eight-domain independent-review gate.
+
+### Evidence
+- Canonical generation writer validates the non-boolean `registeredEvidenceCount`, append-only flag and production boundary. Canonical typed writer validates `completeRecordCount`, append-only flag and production boundary; the snapshot validator wraps each writer failure with the corresponding canonical registry label.
+- Exact-source OPS-P0-007 Admission Snapshot Readonly run `39968796678` (job `120465635539`) and Snapshot publisher run `39968796659` (job `120465635636`) completed SUCCESS. Both logged strict snapshot negative PASS, 22 controlled validator corruption cases rejected, and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing negative classifier's expected diagnostic map changed. Existing registry mutation, positive-control and byte/mode restoration mechanisms were retained. No production-equivalent generation, recovery objective, reviewed request, generation evidence, typed record, credential, traffic, readiness or promotion was created.
+
+### Reusable mechanism
+- Map generation and typed registry negatives to writer-side fail-closed diagnostics wrapped by the canonical validator; require exact-source CI and keep typed eight-domain coverage plus independent reviews as separate candidate prerequisites.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable reviewed requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Append-only learning is operational guidance only, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
