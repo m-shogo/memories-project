@@ -4318,3 +4318,26 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only the existing synthetic CI negative harness changed. No actual evidence, recovery generation, objective, drill, registry, credentials, traffic, readiness, promotion, snapshot or Production Status authority was written.
 - `productionDecision=NO_GO` remains mandatory. Distinct unsuperseded semantically eligible environments, explicitly human-approved current objective, current executable reviewed request for new generation evidence, complete typed eight-domain coverage, independent review and separate human production-promotion authority remain unchanged.
 - Learning and CI outcomes are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Execute typed writer CLI authority negatives from canonical admission and bind lock cleanup to inode ownership
+
+### Outcome and observed evidence
+- Commit `d16aa227293f9a284ca8fe0483b619199004b594` wires the pre-existing typed writer CLI authority negative script into the canonical typed non-resurrection admission validator. Exact-source Admission run `40033293331` completed SUCCESS; the existing Readonly workflow has a wildcard trigger for `scripts/validate-memory-os-backup-restore-non-resurrection-*.py` and executes that canonical admission validator.
+- Commit `cadb8f2740575f9c98bf3264899364771723f6fc` replaces unconditional canonical lock fixture unlink with a parent/leaf device-and-inode ownership guard, plus an isolated same-target replacement test. Exact-source Readonly run `40033403750` FAILED with `TYPED NON-RESURRECTION WRITER AUTHORITY NEGATIVE FAILED: typed lock replacement diagnostic drift`.
+- Commit `ec9cc4be377e503b0311d4641e88e6731a6c271c` corrects the isolated test's parent identity. Exact-source Readonly run `40033431139` completed SUCCESS. Protected Production Status, strict OPS-P0-007 snapshot and autonomous-learning contract blobs remained unchanged; only validator/test code and a separately generated non-production inventory diagnostic changed.
+
+### Symptom, observed evidence, verified root cause, and failed approach
+- Symptom: the isolated same-target symlink replacement negative unexpectedly reported the wrong diagnostic in `40033403750`.
+- Evidence: the test passed the **repository lock parent** identity to the helper while checking a symlink in a **temporary-directory parent**. Thus the helper rejected the parent first, masking the intended replaced-leaf inode rejection.
+- Verified root cause: a copied parent-identity variable crossed fixture-root boundaries. No production evidence corruption or production decision change occurred.
+- Failed approach: assuming the canonical lock's parent identity also describes an isolated temporary test parent.
+
+### Correction, recurrence guard, and retry condition
+- Record the isolated link's own parent `st_dev/st_ino` and pass that identity to the isolated replacement probe. Require the exact `typed negative lock symlink identity drift` diagnostic so an unrelated parent rejection cannot count as proof. Retain the canonical lock fixture's independent parent/leaf inode checks before cleanup.
+- Reusable mechanism: every synthetic identity test must derive its expected parent identity from the **same fixture root**; exact diagnostics must prevent an earlier, unrelated rejection from satisfying a negative.
+- Retry only if exact-source CI reveals another concrete failure, a reviewed lock/validator invocation changes, or an observed parent/leaf identity bypass is demonstrated. Do not retry the unchanged source-binding clean-worktree blocker.
+
+### Why safe and protected-authority check
+- These changes only extend existing CI-bound validators and their synthetic lock fixture. No actual recovery generation, objective, drill request, typed evidence registry, production credentials, traffic, readiness, snapshot or promotion authority was written.
+- The new canonical invocation provides executable regression coverage, while the Readonly wildcard trigger reaches changes to the writer-authority script. This does not turn a synthetic test into production recovery evidence.
+- `productionDecision=NO_GO`, unsuperseded semantically eligible generations from distinct environments, explicit human-approved current recovery objective, executable reviewed request for new generation evidence, eight-domain typed coverage, independent review and separate human promotion remain required. Learning/CI are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
