@@ -2379,3 +2379,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
 - Learning is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Atomic replacement negatives must prove the injected call reached the target
+
+### Outcome
+- Commit `d78d03b6f1fb4abbf66b61915629090298531244` requires the strict snapshot atomic-replace negative to observe exactly one injected `os.replace` call against the canonical snapshot, with the expected sibling temporary-file prefix/suffix and the exact injected failure diagnostic.
+
+### Evidence
+- Previously a matching broad `cannot atomically write` message could satisfy the test even if the injected replacement callback was never reached. The new pure classifier accepts one correctly targeted call and rejects missing, duplicate, wrong-destination and wrong-temporary-source calls.
+- Exact-source Readonly run `39974686556` (job `120486083386`) and Snapshot publisher run `39974686580` (job `120486083549`) completed SUCCESS. Both logged strict snapshot negative PASS, 22 controlled validator corruptions rejected, 3 generator corruptions rejected and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing negative test's call accounting and rejection classification changed. The actual atomic writer, snapshot content, Production Status, registry and promotion authorities remain unchanged; the injected replacement still fails closed and cleanup is verified.
+
+### Reusable mechanism
+- Failure injection is not proof of coverage unless the intended hook actually runs against the intended resource. Record invocation count and exact target, bind the failure to the injected diagnostic, and use synthetic controls for missing, duplicate and wrong-target calls.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; strict OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
