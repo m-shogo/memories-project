@@ -205,8 +205,19 @@ NESTED_GENERATOR_REJECTIONS = {
 }
 
 
+EXACT_GENERATOR_REJECTIONS = {
+    "generator objective source symlink escape": "strict snapshot authority drift: recovery objective registry",
+    "generator objective writer module symlink escape": "strict snapshot authority drift: recovery objective writer",
+}
+
+
 def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...], label: str) -> None:
     lines = output.strip().splitlines()
+    exact = EXACT_GENERATOR_REJECTIONS.get(label)
+    if exact is not None:
+        if lines != [exact]:
+            raise Fail(f"{label}: generator rejection did not use one intended authority diagnostic: {output!r}")
+        return
     prefixes = tuple(
         prefix
         for message in allowed
@@ -226,6 +237,16 @@ def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...],
 
 
 def prove_generator_diagnostic_classifier() -> None:
+    for label, expected in EXACT_GENERATOR_REJECTIONS.items():
+        require_expected_generator_diagnostic(expected + chr(10), ("strict snapshot authority",), label)
+        for wrong in (expected + " unrelated", expected + chr(10) + expected, "unrelated: " + expected):
+            try:
+                require_expected_generator_diagnostic(wrong, ("strict snapshot authority",), label)
+            except Fail as exc:
+                if "one intended authority diagnostic" not in str(exc):
+                    raise Fail(f"exact generator classifier rejected outside intended guard: {exc}") from exc
+            else:
+                raise Fail("exact generator classifier accepted unrelated or duplicate diagnostic")
     expected = ("canonical OPS-P0-007 blocker authority invalid",)
     valid = "canonical OPS-P0-007 blocker authority invalid: synthetic detail"
     require_expected_generator_diagnostic(valid + "\n", expected, "synthetic positive")
