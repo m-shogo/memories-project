@@ -4077,3 +4077,27 @@ a promotion decision, a recovery objective, or drill evidence.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`. OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates.
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Distinct eligible environments, human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate human promotion remain mandatory.
 - Learning/CI outcomes never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Publisher command-resolution guard must allow only the reviewed helper function
+
+### Outcome and evidence
+- Commit `94437c446b14009cffe4851df01bbb1214c2a464` extends the existing publisher protected-shell guard to reject `hash` executable pinning and shadow functions named `python`, `git`, `sha256sum` or `stat`.
+- Independent source-read positive control accepted the reviewed `revalidate_latest_snapshot() {` helper and canonical publisher shell (PASS); four injected command-resolution overrides were rejected (4/4). The commit's GitHub combined-status endpoint returned no statuses, so no exact-source CI success is claimed.
+
+### Failure-class record
+- Symptom: a shell step may retain the exact reviewed validator/atomic-publish command text while invoking a shadow function or hash-pinned executable.
+- Evidence: the previous publisher shell override guard covered `set`, `trap`, aliases and sourced scripts, but did not reject shadow function declarations or `hash -p`.
+- Verified root cause: incomplete command-resolution policy for the protected publisher shell; no actual production incident is asserted.
+- Failed approach: checking literal command lines without constraining the executable resolution that Bash applies to them.
+- Correction: reject shadow declarations for the four protected executable names and the hash builtin, while explicitly retaining the existing reviewed revalidation helper.
+- Recurrence guard: four bounded in-memory negative fixtures with exact publisher protected-shell diagnostic binding, plus the canonical positive control.
+- Retry condition: revisit only if the reviewed publisher helper architecture changes or an observed command-resolution bypass escapes this bounded matcher. Do not retry the unchanged clean-worktree blocker.
+
+### Why safe and reusable mechanism
+- Only the existing CI-bound workflow permission negative harness changed. Actual publisher workflow, canonical snapshot, Production Status, recovery registries, evidence and separate human promotion authority were not modified.
+- Reusable rule: when a reviewed shell function is necessary, prohibit shadowing of protected executables by name instead of banning all shell functions indiscriminately.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct eligible environments, explicitly human-approved current recovery objective, current executable reviewed request, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory.
+- Learning/CI outcomes cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
