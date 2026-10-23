@@ -59,8 +59,15 @@ def validate(repo_root: Path) -> None:
     # All five bound learning authorities must be actual repository files.
     # Path.is_file() and read_text() follow symlinks, so reject aliases first.
     for relative in (CONTRACT, LEARNING, VALIDATOR, NEGATIVE_VALIDATOR, CI_ENTRYPOINT):
-        if (repo_root / relative).is_symlink():
+        path = repo_root / relative
+        if path.is_symlink():
             raise ValidationFailure(f"symlinked learning authority forbidden: {relative}")
+        try:
+            resolved = path.resolve(strict=True).relative_to(repo_root.resolve(strict=True))
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise ValidationFailure(f"learning authority path missing or escapes root: {relative}") from exc
+        if resolved != relative:
+            raise ValidationFailure(f"learning authority path substituted through parent: {relative}")
     contract = load_object(repo_root / CONTRACT)
     if contract.get("schemaVersion") != "autonomous-learning-system.0.1":
         raise ValidationFailure("unsupported schemaVersion")
