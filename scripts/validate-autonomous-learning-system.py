@@ -135,6 +135,16 @@ def validate(repo_root: Path) -> None:
     ]
     if len(live_calls) != 1:
         raise ValidationFailure("learning CI entrypoint main must directly invoke bound learning guards")
+    expected_entry_guard = ast.dump(
+        ast.parse('if __name__ == "__main__":\n    raise SystemExit(main())').body[0],
+        include_attributes=False,
+    )
+    entry_guard_count = sum(
+        ast.dump(node, include_attributes=False) == expected_entry_guard
+        for node in entry_tree.body
+    )
+    if entry_guard_count != 1:
+        raise ValidationFailure("learning CI entrypoint must execute main from its live module guard")
 
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
