@@ -2501,3 +2501,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Claim full suite success only after observed exact-source Readonly/Publisher workflow execution; revisit if the canonical validator intentionally adds documented diagnostic stdout on controlled failure.
+
+## 2026-10-24 — Generator corruption negatives must reject mixed success stdout
+
+### Outcome
+- Commit `9868cc6c0a8d0daa0dc14e61bfb90522811b116f` extends the existing strict snapshot negative harness to require empty stdout when the generator exits 1 with an expected case-specific corruption diagnostic.
+
+### Evidence
+- Previously `run_generator_rejects` used `proc.stderr or proc.stdout`, so a matching stderr could conceal a contradictory success marker on stdout. The canonical generator prints its success markers only after all authority checks and atomic publication validation complete.
+- The new in-suite synthetic control requires rejection of a generator success marker on negative stdout. An independent five-case classifier check accepted empty/whitespace output and rejected success, unrelated, and error-like stdout.
+- No exact-source CI success is claimed until the Readonly/Publisher workflows are observed at a matching source revision.
+
+### Why safe
+- Only the CI-reachable negative harness changed. Generator implementation, production status, strict snapshot, objective/generation registries, recovery evidence and promotion authorities remain unchanged.
+
+### Reusable mechanism
+- Negative subprocess proof requires a consistent tuple: expected nonzero exit, case-specific stderr, no implementation traceback, no contradictory stdout, and unchanged protected output. Reuse this rule for both validator and generator rejection paths.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged; independent review and separate human promotion remain mandatory.
+- Learning history is append-only and never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the canonical generator intentionally changes its controlled-failure stdout contract or a new mixed-output bypass is observed. Claim CI success only from observed exact-source runs.
