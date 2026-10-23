@@ -2802,3 +2802,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical PR/publisher validator invocation architecture intentionally changes or a new observed masking bypass escapes the exact fail-closed classifier.
+
+## 2026-10-24 — Constant-false assertions cannot stand before diagnostic atomic publication
+
+### Outcome
+- Commit `ee62ac6aecbebc04ec09d9758077af9839286ceb` extends the existing OPS-P0-007 snapshot diagnostic AST negative so constant-false `assert` statements before required publication or cleanup calls are rejected as unconditional early termination.
+
+### Evidence
+- The prior reachability guard rejected explicit `raise`, `exit()` and constant-true branches containing them, but an `assert False` or `assert 0` could still terminate the canonical Python diagnostic before `os.replace` or `os.unlink`, while an AST call-presence scan saw the later calls.
+- Three isolated source-text negative fixtures now insert false assertions at module level, before atomic replacement inside `try`, and before cleanup inside `finally`; each requires the exact `strict snapshot diagnostic unconditional early termination` rejection.
+- Exact-source Snapshot Permission Boundary run `39994559293` at `ee62ac6a` completed SUCCESS, logging `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS` and `production decision: NO_GO`.
+
+### Why safe
+- Only the pre-existing CI-bound read-only negative harness and in-memory diagnostic fixtures changed. The publisher workflow, production status, strict snapshot, recovery registries, evidence, credentials, traffic, readiness and promotion authorities were not changed.
+
+### Reusable mechanism
+- AST call presence is insufficient for publication proof: account for deterministic exception-producing statements as well as explicit exits, and test module, `try` and `finally` reachability separately. Preserve exact diagnostic binding.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Append-only learning never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the canonical diagnostic changes its exception/optimization semantics or an observed deterministic termination bypass escapes the current AST negative suite.
