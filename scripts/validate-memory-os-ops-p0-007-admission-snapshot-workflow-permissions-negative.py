@@ -994,6 +994,91 @@ def prove_comment_only_commands_rejected() -> None:
             raise Fail(f"strict snapshot full admission validator accepted {label} references")
 
 
+def publisher_capture_step_lines(publish: str) -> list[str]:
+    lines = publish.splitlines()
+    marker = "      - name: Generate and validate strict snapshot"
+    starts = [index for index, line in enumerate(lines) if line == marker]
+    require(len(starts) == 1, "strict snapshot publisher capture step authority drift")
+    start = starts[0]
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].startswith("      - ")), len(lines))
+    runs = [index for index in range(start + 1, end) if lines[index] == "        run: |"]
+    require(len(runs) == 1, "strict snapshot publisher capture executable run block missing")
+    return [
+        line[10:].strip() for line in lines[runs[0] + 1:end]
+        if line.startswith("          ") and line[10:].strip()
+        and not line[10:].lstrip().startswith("#")
+    ]
+
+
+def require_publisher_capture_status_chain(publish: str) -> None:
+    commands = publisher_capture_step_lines(publish)
+    require(
+        commands[:4] == ["set +e", "log=/tmp/ops-p0-007-admission-snapshot.log",
+                         ': > "$log"', "code=0"],
+        "strict snapshot publisher capture startup authority drift",
+    )
+    expected = [
+        f'if [[ "$code" == "0" ]]; then python {validator} >> "$log" 2>&1 || code=$?; fi'
+        for validator in PUBLISH_REVALIDATION_CHAIN
+    ]
+    observed = [line for line in commands if "python scripts/" in line]
+    require(
+        observed == expected,
+        "strict snapshot publisher capture validator status propagation drift",
+    )
+    require(
+        "python -m py_compile \\" in commands
+        and '>> "$log" 2>&1 || code=$?' in commands
+        and commands.index('>> "$log" 2>&1 || code=$?') < commands.index(expected[0])
+        and commands[-3:] == ['echo "exit_code=$code" >> "$GITHUB_OUTPUT"', 'cat "$log"', "exit 0"],
+        "strict snapshot publisher capture output/compile status binding drift",
+    )
+
+
+def prove_publisher_capture_status_negative(publish: str) -> None:
+    require_publisher_capture_status_chain(publish)
+    for validator in PUBLISH_REVALIDATION_CHAIN:
+        original = (
+            f'          if [[ "$code" == "0" ]]; then python {validator} '
+            '>> "$log" 2>&1 || code=$?; fi\n'
+        )
+        require(publish.count(original) == 1, f"publisher capture fixture drift: {validator}")
+        mutated = publish.replace(original, original.replace(" || code=$?", ""), 1)
+        try:
+            require_publisher_capture_status_chain(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher capture validator status propagation drift",
+                f"{validator} status loss rejected outside exact capture guard: {exc}",
+            )
+        else:
+            raise Fail(f"publisher capture accepted unpropagated failure: {validator}")
+    first, second = PUBLISH_REVALIDATION_CHAIN[:2]
+    left = f'          if [[ "$code" == "0" ]]; then python {first} >> "$log" 2>&1 || code=$?; fi\n'
+    right = f'          if [[ "$code" == "0" ]]; then python {second} >> "$log" 2>&1 || code=$?; fi\n'
+    require(left + right in publish, "publisher capture ordering fixture drift")
+    reordered = publish.replace(left + right, right + left, 1)
+    for label, mutated, expected in (
+        ("reordered validators", reordered, "strict snapshot publisher capture validator status propagation drift"),
+        ("forged zero exit", publish.replace('          echo "exit_code=$code" >> "$GITHUB_OUTPUT"',
+                                            '          echo "exit_code=0" >> "$GITHUB_OUTPUT"', 1),
+         "strict snapshot publisher capture output/compile status binding drift"),
+        ("wrong initial status", publish.replace('          code=0\n', '          code=1\n', 1),
+         "strict snapshot publisher capture startup authority drift"),
+        ("compile failure masked", publish.replace('          >> "$log" 2>&1 || code=$?\n',
+                                                    '          >> "$log" 2>&1 || true\n', 1),
+         "strict snapshot publisher capture output/compile status binding drift"),
+    ):
+        require(mutated != publish, f"{label} publisher capture mutation was a no-op")
+        try:
+            require_publisher_capture_status_chain(mutated)
+        except Fail as exc:
+            require(str(exc) == expected, f"{label} rejected outside exact capture guard: {exc}")
+        else:
+            raise Fail(f"publisher capture accepted {label}")
+
+
 def require_publisher_revalidation_calls(publish: str) -> None:
     # A function definition or comment is not a call. Preserve the three
     # current retry/finalization call sites in enabled run-step shell bodies.
@@ -1268,6 +1353,7 @@ def main() -> int:
     require("git rev-parse origin/so" in publish, "strict snapshot publication workflow must compare publication authority with origin/so")
     require("refusing stale strict snapshot" in publish, "strict snapshot publication workflow must fail closed on stale authority")
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
+    prove_publisher_capture_status_negative(publish)
     prove_publisher_revalidation_call_binding(publish)
     prove_publisher_shell_fail_closed_negative(publish)
     require_full_admission_chain(publish, "strict snapshot publication workflow")
