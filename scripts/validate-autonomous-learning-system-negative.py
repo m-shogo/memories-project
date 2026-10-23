@@ -208,6 +208,16 @@ def main() -> int:
             "    if False:\n        validate_learning_guards(failures)\n",
         )),
     ))
+    cases.extend((
+        ("dead module main guard", lambda root: replace_in_entrypoint(
+            root, 'if __name__ == "__main__":\n    raise SystemExit(main())\n',
+            "if False:\n    raise SystemExit(main())\n",
+        )),
+        ("comment-only module main invocation", lambda root: replace_in_entrypoint(
+            root, 'if __name__ == "__main__":\n    raise SystemExit(main())\n',
+            'if __name__ == "__main__":\n    pass  # raise SystemExit(main())\n',
+        )),
+    ))
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
