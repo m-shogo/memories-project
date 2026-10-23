@@ -3618,3 +3618,31 @@ a promotion decision, a recovery objective, or drill evidence.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain non-resurrection records and final recovery candidates.
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Distinct eligible environments, explicitly human-approved current recovery objective, executable reviewed request binding, independent review and separate human promotion remain mandatory.
 - This append-only lesson is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Publisher compile stage must retain exact files and captured nonzero status
+
+### Outcome
+- Commit `97a0d8df03ae83f840f346389d4dbeaa3df05881` adds an exact publisher compile-stage authority guard and twelve focused synthetic negatives to the existing read-only permission negative harness.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40010748076` completed SUCCESS. The separate Snapshot Readonly run is not counted as successful without its own completed result.
+
+### Evidence
+- The reviewed publisher intentionally uses `set +e` for bounded status capture: compile failure must flow through `>> "$log" 2>&1 || code=$?` before any subsequent conditional validator.
+- The earlier capture guard required only textual presence of `python -m py_compile` and the redirect, not the exact twenty-two compile files, continuation lines, adjacency, or status-reset absence.
+- The new guard checks the complete named capture run body against the reviewed startup, exact compile arguments, failure capture, fourteen conditional validators and final status publication.
+- Twelve isolated mutations remove, comment, replace, reorder, duplicate or interrupt compile arguments, remove/mask capture, add unreviewed files or reset status. Each must produce the exact compile-stage authority-drift diagnostic.
+
+### Why safe
+- Only the existing CI-reachable read-only workflow permission negative script and in-memory workflow fixtures changed. The publisher workflow, Production Status, OPS-P0-007 snapshot, registries, recovery evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- For intentional `set +e` capture steps, prove the compile command's exact physical arguments and failure propagation together; checking only the presence of a compile command and a separate `code=$?` fragment is insufficient.
+- Reuse the reviewed PR compile file tuple for the publisher's common twenty-two files, with the PR-only permission negative excluded from the publisher's own compile stage. Keep compile checks distinct from executed recovery admission validators.
+- Scope every mutation to the unique named publisher step and its physical twelve-space YAML argument indentation; require non-no-op mutations and exact diagnostic binding.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Distinct semantically eligible environments, explicit human-approved current recovery objective, executable reviewed request, independent review and separate non-automatic human production promotion remain mandatory.
+- Learning and CI outcomes do not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed publisher capture command sequence or compile input list changes, or an observed status/compile bypass escapes the bounded negative proof.
