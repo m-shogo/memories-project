@@ -116,8 +116,16 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
                 return left != right
         if isinstance(test, ast.BoolOp):
             values = [static_truth(value) for value in test.values]
-            if all(value is not None for value in values):
-                return all(values) if isinstance(test.op, ast.And) else any(values)
+            if isinstance(test.op, ast.And):
+                if False in values:
+                    return False
+                if all(value is True for value in values):
+                    return True
+            if isinstance(test.op, ast.Or):
+                if True in values:
+                    return True
+                if all(value is False for value in values):
+                    return False
         return None
 
     # AST call presence is not proof if the publication heredoc exits
@@ -440,6 +448,10 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
          "              while True: pass\n              os.replace(tmp_name, path)"),
         ("comparison-true while cleanup", "                  os.unlink(tmp_name)",
          "                  while 1 == 1: pass\n                  os.unlink(tmp_name)"),
+        ("short-circuit true raise", "              os.replace(tmp_name, path)",
+         "              if True or runtime_unknown: raise SystemExit(0)\n              os.replace(tmp_name, path)"),
+        ("short-circuit negated false", "              os.replace(tmp_name, path)",
+         "              if not (False and runtime_unknown): raise SystemExit(0)\n              os.replace(tmp_name, path)"),
     )
     for label, before, after in mutations:
         require(publish.count(before) == 1, f"{label}: canonical diagnostic fixture drift")
@@ -467,6 +479,13 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
     )
     require(inert_loop != publish, "constant-false while positive fixture drift")
     validate_atomic_diagnostic_publication(inert_loop)
+    short_circuit_false = publish.replace(
+        "              os.replace(tmp_name, path)",
+        "              if False and runtime_unknown: raise SystemExit(0)\n              os.replace(tmp_name, path)",
+        1,
+    )
+    require(short_circuit_false != publish, "short-circuit false positive fixture drift")
+    validate_atomic_diagnostic_publication(short_circuit_false)
 
 
 def prove_diagnostic_privacy_boundary_rejected(publish: str) -> None:
