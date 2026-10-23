@@ -4386,3 +4386,26 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only the existing synthetic CI negative changed. The production writer, typed registry, recovery generation/objective/drill/evidence authorities, credentials, traffic, readiness, strict snapshot and promotion authority were not written.
 - `productionDecision=NO_GO` remains mandatory; strict semantically eligible distinct environments, human-approved current objective, executable reviewed request for new generation evidence, complete typed eight-domain coverage, independent review and separate human promotion are unchanged.
 - Learning and CI are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Typed writer authority negative admission must remain AST-reachable
+
+### Outcome and observed evidence
+- Commit `3e15b05899e9810682b86a8587bfd1b5ed976a0a` adds an executable CI-bound source-binding proof to the canonical typed non-resurrection negative suite. It parses the canonical admission validator and requires exactly one direct, unconditional top-level `run_validator(WRITER_AUTHORITY_NEGATIVE, ...)` statement in its synchronous `main`, with the exact reviewed writer-authority negative path binding.
+- Five isolated AST mutations independently remove, dead-branch, string-substitute, duplicate or path-substitute the call. Every case must fail with its own expected diagnostic; the canonical source is the positive control. Mutations occur only in memory, never in the production validator file.
+- Exact-source Readonly run `40033865867`, Reconcile Negative run `40033865365`, and Admission run `40033865433` completed SUCCESS. Post-write comparison from `ed7c00ac` to `3e15b058` changed only the existing synthetic negative harness (88 added lines). Production Status, strict OPS-P0-007 snapshot and learning contract blobs were unchanged.
+
+### Symptom, observed evidence, verified root cause, and failed approach
+- Symptom: after adding the writer-authority negative to canonical admission, a future edit could remove or bury its call without the writer-authority test itself running. A file's existence or a commented invocation is not CI reachability proof.
+- Evidence: the prior negative suite did not independently assert the admission validator's direct writer-authority call or its canonical source-path binding.
+- Verified root cause: the new execution edge lacked a separate executable regression check. No actual CI bypass or production evidence bypass was observed.
+- Failed approach: relying on the newly wired validator to prove its own continued invocation.
+
+### Correction, recurrence guard, and retry condition
+- Require the exact AST binding and a single direct call in canonical admission; mutate the AST in memory to prove missing, dead, string, duplicate and path-substitution cases are rejected for the intended reason.
+- Reusable mechanism: an independently invoked negative suite must verify the **reachability edge** of newly introduced security/authority checks; AST mutations avoid string-escape fixture mistakes and unrelated diagnostic masking.
+- Retry only if exact-source CI reports a concrete regression, the reviewed admission function architecture legitimately changes, or a new call shadowing/dead-code bypass is demonstrated. Do not retry the unchanged source-binding clean-worktree blocker.
+
+### Why safe and protected-authority check
+- The modification affects only the existing synthetic negative harness. No actual generation, approved objective, drill request, typed evidence registry, credential, traffic, readiness, snapshot, Production Status or promotion authority was written.
+- `productionDecision=NO_GO` and strict OPS-P0-007 requirements remain mandatory: unsuperseded semantically eligible distinct environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate human promotion.
+- Learning and CI results cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
