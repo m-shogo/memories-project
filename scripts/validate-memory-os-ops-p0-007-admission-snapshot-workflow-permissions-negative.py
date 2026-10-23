@@ -2490,6 +2490,13 @@ def require_readonly_workflow_authority(readonly: str) -> None:
             "        run: |",
         ], diagnostic,
     )
+    # YAML keys at step/job scope after the run block are not shell commands.
+    # They can silently skip or de-fang the entire integrity gate.
+    require(
+        all(not line.strip() or line.startswith("          ")
+            for line in steps[2][2:]),
+        diagnostic,
+    )
     body = [line[10:].strip() for line in steps[2][2:]
             if line.startswith("          ") and line[10:].strip()]
     require(body.count("authorities=(") == 1,
@@ -2646,6 +2653,27 @@ def prove_readonly_workflow_negative(readonly: str) -> None:
                     f"{command} readonly shell rejected outside exact guard: {exc}")
         else:
             raise Fail(f"readonly accepted shell override: {command}")
+    # A trailing YAML step/job property is outside the run scalar even when
+    # all required commands remain textually intact.
+    final_clean = '          test -z "$(git status --porcelain --untracked-files=all)"\\n'
+    require(readonly.endswith(final_clean.replace("\\\\n", "\\n")),
+            "strict snapshot readonly trailing metadata fixture anchor drift")
+    for label, metadata in (
+        ("nonfatal step", "        continue-on-error: true\\n"),
+        ("disabled step", "        if: false\\n"),
+        ("shell override", "        shell: bash {0}\\n"),
+        ("nonfatal job", "    continue-on-error: true\\n"),
+        ("disabled job", "    if: false\\n"),
+    ):
+        mutated = readonly + metadata.replace("\\\\n", "\\n")
+        require(mutated != readonly, f"{label} readonly mutation was a no-op")
+        try:
+            require_readonly_workflow_authority(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly workflow authority drift",
+                    f"{label} readonly metadata rejected outside exact guard: {exc}")
+        else:
+            raise Fail(f"strict snapshot readonly accepted trailing YAML metadata: {label}")
     mutations = (
         ("write grant", readonly.replace("permissions:\n  contents: read\n",
                                          "permissions:\n  contents: write\n", 1)),
