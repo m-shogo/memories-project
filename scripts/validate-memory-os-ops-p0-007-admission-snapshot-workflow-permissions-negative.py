@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -78,16 +79,32 @@ def validate_atomic_diagnostic_publication(publish: str) -> None:
 def require_full_admission_chain(workflow: str, label: str) -> None:
     for validator in FULL_ADMISSION_VALIDATORS:
         require(validator in workflow, f"{label} missing full admission validator: {validator}")
+        # Require an executable shell line, not a comment or diagnostic string.
+        command = rf"(?m)^[ \t]*python[ \t]+{re.escape(validator)}(?=[ \t]|$)"
         require(
-            f"python {validator}" in workflow,
+            re.search(command, workflow) is not None,
             f"{label} does not execute full admission validator: {validator}",
         )
+
+
+def prove_comment_only_commands_rejected() -> None:
+    comment_only = "\n".join(f"# python {validator}" for validator in FULL_ADMISSION_VALIDATORS)
+    try:
+        require_full_admission_chain(comment_only, "comment-only fixture")
+    except Fail as exc:
+        require(
+            "does not execute full admission validator" in str(exc),
+            f"comment-only fixture rejected outside command-reachability guard: {exc}",
+        )
+    else:
+        raise Fail("comment-only full admission validator references unexpectedly accepted")
 
 
 def main() -> int:
     require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
     require_canonical_workflow(PUBLISH_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot.yml"))
     prove_symlink_rejected()
+    prove_comment_only_commands_rejected()
     pr = PR_WORKFLOW.read_text(encoding="utf-8")
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
