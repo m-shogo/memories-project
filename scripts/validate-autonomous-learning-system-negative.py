@@ -173,6 +173,25 @@ def main() -> int:
             root, lambda data: data["loop"].reverse()
         )),
     ))
+    # Field completeness is contractual: each required failure/success field
+    # must have its own isolated missing-field negative, not just one example.
+    for field in (
+        "symptom", "evidence", "rootCauseOrUnknown",
+        "failedApproach", "correction", "recurrenceGuard",
+    ):
+        cases.append((
+            f"drop required failure {field}",
+            lambda root, key=field: edit_contract(
+                root, lambda data: data["requiredFailureFields"].remove(key)
+            ),
+        ))
+    for field in ("outcome", "evidence", "whySafe", "reusableMechanism"):
+        cases.append((
+            f"drop required success {field}",
+            lambda root, key=field: edit_contract(
+                root, lambda data: data["requiredSuccessFields"].remove(key)
+            ),
+        ))
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
