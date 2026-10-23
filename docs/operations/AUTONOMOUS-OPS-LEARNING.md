@@ -2756,3 +2756,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical atomic writer's target/source path architecture changes or a new observed failure bypasses the identity and cleanup postconditions.
+
+## 2026-10-24 — Exact checkout binding must reject alternate-version duplicate steps
+
+### Outcome
+- Commit `95a677ad6cc2811aed8e5c45047b4b56b538c0e0` extends the existing OPS-P0-007 snapshot workflow permission negative so the expected SHA-bound `actions/checkout@v4` step must also be the only checkout step, regardless of a second checkout's action version.
+
+### Evidence
+- The prior anchored matcher counted only `- uses: actions/checkout@v4` followed by `with.ref`; an additional `actions/checkout@v3`, `@v4.2.0`, or `@main` step could evade the duplicate-step count while changing the checked-out source later.
+- The updated guard enumerates all executable `actions/checkout@...` steps and requires exactly one canonical `@v4` step. Both PR and publisher workflow negative fixtures now inject each of four duplicate versions and require the intended checkout-source diagnostic.
+- Exact-source Snapshot Permission Boundary run `39994202431` at `95a677ad` completed SUCCESS; the job log records `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS` and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing CI-bound read-only workflow negative harness and its synthetic text fixtures changed. Neither checkout workflow, production status, strict snapshot, registry, evidence, credential, traffic, readiness nor promotion authority was modified.
+
+### Reusable mechanism
+- For exact-source CI, validate both the expected step's pinned source ref and the absence of alternative-version duplicate source-mutating steps. A regex restricted to the expected version alone cannot prove uniqueness.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning entry cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if a legitimate workflow checkout architecture changes or a new observed checkout-step bypass evades the canonical single-checkout matcher.
