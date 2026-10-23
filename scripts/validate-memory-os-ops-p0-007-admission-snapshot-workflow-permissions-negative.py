@@ -2524,7 +2524,7 @@ def require_readonly_workflow_authority(readonly: str) -> None:
     # cleans the two temporary digest files.
     control = re.compile(
         r"^(?:if|elif|else|fi|while|until|case|esac|function|eval|exec|exit|return|break|continue|alias|unalias|shopt|enable|source)\b"
-        r"|^\.\s+|^bash\s+-c\b"
+        r"|^\.\s+|^bash\s+-c\b|^hash\b|^[A-Za-z_][A-Za-z0-9_]*\s*\(\)\s*\{"
     )
     require(
         not any(control.match(line) for line in body)
@@ -2643,6 +2643,10 @@ def prove_readonly_workflow_negative(readonly: str) -> None:
         "exit 0",
         "eval 'true'",
         "if false; then",
+        "python() { :; }",
+        "git () { :; }",
+        "sha256sum() { echo forged; }",
+        "hash -p /bin/true python",
     ):
         mutated = readonly.replace(shell_anchor, f"          {command}\n" + shell_anchor, 1)
         require(mutated != readonly, f"{command} readonly shell mutation was a no-op")
