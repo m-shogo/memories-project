@@ -2779,3 +2779,26 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if a legitimate workflow checkout architecture changes or a new observed checkout-step bypass evades the canonical single-checkout matcher.
+
+## 2026-10-24 — PR admission validator commands must be fail-closed, not merely reachable
+
+### Outcome
+- Commit `b0ea8905730dc5fabf1400a9ab61eecb7d685d3b` strengthens the existing OPS-P0-007 workflow permission negative so each of the four mandatory recovery-objective, reviewed-drill-request, generation-evidence and typed non-resurrection validators must run with an exact fail-closed command shape in executable workflow steps.
+
+### Evidence
+- The prior `require_full_admission_chain` accepted any reachable line beginning with `python <validator>`, including `python <validator> || true`, `|| :`, and `; true`. This could allow the PR admission gate to conceal a validator failure even while its command appeared in the workflow.
+- The new guard allows the observed plain PR invocation and exact publisher log-redirection invocation, rejecting any other candidate command shape. Twelve synthetic masked-PR cases require the intended fail-closed rejection; positive controls preserve both legitimate forms.
+- Exact-source Snapshot Permission Boundary run `39994390592` at `b0ea8905` completed SUCCESS, logging `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS` and `production decision: NO_GO`.
+
+### Why safe
+- Only the existing read-only negative harness and isolated workflow text fixtures changed. The PR/publisher workflows, production status, strict snapshot, registries, recovery evidence, credentials, traffic, readiness and promotion authorities were not modified.
+
+### Reusable mechanism
+- Workflow validator reachability and fail-closed execution are separate requirements. A line-prefix matcher proves neither failure propagation nor allowed redirection; enumerate exact supported command forms, reject masked alternatives, and prove both positive controls and cause-specific negative cases.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human production promotion remain mandatory.
+- Append-only learning cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the canonical PR/publisher validator invocation architecture intentionally changes or a new observed masking bypass escapes the exact fail-closed classifier.
