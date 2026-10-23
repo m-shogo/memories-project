@@ -294,10 +294,7 @@ def require_readonly_pr_permissions(workflow: str) -> None:
         "strict snapshot PR workflow must never receive contents: write",
     )
     scopes = "|".join(re.escape(scope) for scope in GITHUB_PERMISSION_SCOPES)
-    scope_write = (
-        rf"(?m)(?<![\\w-])['\\\"]?(?:{scopes})['\\\"]?[ \\t]*:[ \\t]*"
-        rf"['\\\"]?write['\\\"]?(?=[ \\t]*(?:[,}}]|$))"
-    )
+    scope_write = rf"""(?m)(?<![\w-])['"]?(?:{scopes})['"]?[ \t]*:[ \t]*['"]?write['"]?(?=[ \t]*(?:[,}}]|$))"""
     require(
         re.search(scope_write, active) is None,
         "strict snapshot PR workflow must never receive a write-capable permission scope",
@@ -332,12 +329,12 @@ def prove_write_all_permissions_rejected() -> None:
             raise Fail("strict snapshot PR workflow accepted compact or quoted contents-write permission")
 
     # Preserve a positive read-only control even when comments mention writes.
-    require_readonly_pr_permissions("permissions:\\n  contents: read\\n# actions: write\\n")
+    require_readonly_pr_permissions("permissions:\n  contents: read\n# actions: write\n")
     for fixture in (
-        "permissions:\\n  contents: read\\njobs:\\n  check:\\n    permissions:\\n      actions: write\\n",
-        "permissions:\\n  contents: read\\njobs:\\n  check:\\n    permissions: {id-token:write}\\n",
-        'permissions:\\n  contents: read\\njobs:\\n  check:\\n    permissions: {"pull-requests": "write"}\\n',
-        "permissions:\\n  contents: read\\njobs:\\n  check:\\n    permissions:\\n      security-events: 'write'\\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions:\n      actions: write\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions: {id-token:write}\n",
+        'permissions:\n  contents: read\njobs:\n  check:\n    permissions: {"pull-requests": "write"}\n',
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions:\n      security-events: 'write'\n",
     ):
         try:
             require_readonly_pr_permissions(fixture)
