@@ -2440,3 +2440,41 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Claim exact-source CI success only after a successful observed workflow run at the code commit or its descendant; revisit the guard if the publisher's legitimate function control flow changes.
+
+## 2026-10-24 — Fail-closed publisher validators and safe source-text replacement
+
+### Symptom
+- Commit `70cc89f1ecd0685a1aa866266b399e30d98cc1f6` accidentally duplicated roughly 178 lines of Python after a generated regex, leaving the negative guard syntactically invalid. The write succeeded but the committed diff immediately exposed the corruption.
+
+### Evidence
+- The diff showed `fail_closed_command` ending in `2>&1(publish: str) -> None:` followed by a duplicated remainder of the module. The file expanded from 567 to 767 lines. This was a repository source defect, not a production incident or an observed CI failure.
+- Corrective commit `67a2ee99640eff1b64fbf1a4d0801481df04c624` restored the source from the last known good commit and reapplied only the intended guard. The resulting file has 589 lines and one definition each of `main`, `prove_publisher_revalidation_call_binding` and `require_readonly_pr_permissions`.
+
+### Root cause or unknown
+- Verified: JavaScript `String.replace(pattern, replacementString)` interprets the `$'` sequence as the suffix of the input. The replacement text contained a Python raw-string regex ending in `$'`, so the remainder of the original module was inserted into the replacement.
+
+### Failed approach
+- Passing Python source text containing JavaScript replacement metacharacters directly as a string replacement, without checking the complete generated diff and module structure before writing.
+
+### Correction
+- Rebuild from the previous clean blob; use `replace(pattern, () => replacement)` and `String.raw` for literal Python regex text. Verify the expected line delta, exact regex terminator, absence of duplicate function definitions and absence of the corrupted splice marker before publishing.
+
+### Recurrence guard
+- The existing CI-bound Readonly workflow compiles this negative guard with `python -m py_compile`. Before connector writes involving generated source text, use a callback replacement and deterministic structural assertions; inspect the committed diff immediately. Do not count static checks as a completed canonical CI run.
+
+### Retry condition
+- Revisit this source-generation failure only if the source transformation mechanism changes or a fresh structural mismatch is observed; never reapply the corrupt `70cc89f` payload.
+
+### Outcome
+- Corrected commit `67a2ee9` adds an exact fail-closed invocation check for all four mandatory publisher revalidation commands, and 12 negative mutations (`|| true`, `|| :`, `; true`) in the existing CI-bound suite.
+- An independent 15-case Python classifier test accepted the baseline and rejected two early terminators plus all 12 masked validator commands. This is isolated classifier proof, not an observed canonical workflow success.
+
+### Why safe
+- Only the existing negative harness was changed. The publisher, recovery registries, production status, strict snapshot and promotion authorities remain unchanged. The mutations are source-text fixtures, not production evidence.
+
+### Reusable mechanism
+- A present validator command is not a fail-closed gate if shell suffixes swallow its nonzero exit. Require exact command shape inside the bounded latest-source function, then prove masking mutations are rejected for the intended reason.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human production-promotion authority remain mandatory.
+- Append-only learning is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
