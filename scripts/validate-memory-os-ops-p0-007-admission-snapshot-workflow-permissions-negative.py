@@ -438,6 +438,68 @@ def require_full_admission_chain(workflow: str, label: str) -> None:
         )
 
 
+def require_fail_closed_pr_shell(workflow: str) -> None:
+    """Every PR run step must enter fail-closed Bash before any command executes."""
+    lines = workflow.splitlines()
+    starts = [index for index, line in enumerate(lines) if line == "        run: |"]
+    require(len(starts) == 3, "strict snapshot PR shell run-step authority drift")
+    for start in starts:
+        body: list[str] = []
+        for item in lines[start + 1:]:
+            if item.strip() and not item.startswith("          "):
+                break
+            if item.startswith("          "):
+                body.append(item[10:].strip())
+        active = [command for command in body if command and not command.startswith("#")]
+        require(
+            bool(active) and active[0] == "set -euo pipefail",
+            "strict snapshot PR shell must start fail-closed in every run step",
+        )
+        # No later shell-option override is part of the reviewed PR command
+        # architecture. In particular, set +e would turn validator failure
+        # into an apparent successful admission.
+        require(
+            not any(re.match(r"^set(?:\s|$)", command) for command in active[1:]),
+            "strict snapshot PR shell options must remain fail-closed",
+        )
+
+
+def prove_pr_shell_fail_closed_negative(pr: str) -> None:
+    require_fail_closed_pr_shell(pr)
+    lines = pr.splitlines(keepends=True)
+    starts = [index for index, line in enumerate(lines) if line == "          set -euo pipefail\n"]
+    require(len(starts) == 3, "strict snapshot PR shell fixture boundary drift")
+    for start in starts:
+        for replacement in (
+            "          set -e\n",
+            "          # set -euo pipefail\n",
+            "          echo 'set -euo pipefail'\n",
+        ):
+            mutated = lines.copy()
+            mutated[start] = replacement
+            try:
+                require_fail_closed_pr_shell("".join(mutated))
+            except Fail as exc:
+                require(
+                    str(exc) == "strict snapshot PR shell must start fail-closed in every run step",
+                    f"PR shell startup mutation rejected outside exact guard: {exc}",
+                )
+            else:
+                raise Fail("strict snapshot PR shell accepted weakened startup")
+        for override in ("set +e", "set +u", "set +o pipefail", "set -e +o pipefail"):
+            mutated = lines.copy()
+            mutated[start] += f"          {override}\n"
+            try:
+                require_fail_closed_pr_shell("".join(mutated))
+            except Fail as exc:
+                require(
+                    str(exc) == "strict snapshot PR shell options must remain fail-closed",
+                    f"PR shell override rejected outside exact guard: {exc}",
+                )
+            else:
+                raise Fail(f"strict snapshot PR shell accepted {override}")
+
+
 def prove_comment_only_commands_rejected() -> None:
     commands = "\n".join(f"          python {validator}" for validator in FULL_ADMISSION_VALIDATORS)
     positive = "jobs:\n  validate:\n    steps:\n      - name: live\n        run: |\n" + commands + "\n"
@@ -749,6 +811,7 @@ def main() -> int:
     require_canonical_workflow(PUBLISH_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot.yml"))
     prove_symlink_rejected()
     prove_comment_only_commands_rejected()
+    prove_pr_shell_fail_closed_negative(PR_WORKFLOW.read_text(encoding="utf-8"))
     prove_write_all_permissions_rejected()
     pr = PR_WORKFLOW.read_text(encoding="utf-8")
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
