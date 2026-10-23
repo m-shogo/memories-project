@@ -2360,3 +2360,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
 - Learning is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Generator path-substitution negatives need exact authority labels
+
+### Outcome
+- Commit `9c50dc08fad705162d2b2cdf4f88f641aac17c97` binds all 17 existing generator runtime authority substitutions to the exact canonical `strict snapshot authority drift: <label>` rejection rather than accepting any error containing `strict snapshot authority`.
+
+### Evidence
+- Before the change, an unrelated failure containing the generic authority substring could satisfy a substitution test. The generator's `require_exact_repo_file` emits the exact drift diagnostic for a substituted valid in-repository path. The new classifier tests the intended label and rejects a wrong label, prefixed/suffixed unrelated text and a non-string exit code.
+- Exact-source Readonly run `39973533882` (job `120482130094`) and Snapshot publisher run `39973533663` (job `120482129418`) both completed SUCCESS, logging strict snapshot negative PASS, 22 controlled validator corruptions rejected, 3 generator corruptions rejected and `production decision: NO_GO`.
+
+### Why safe
+- The change only tightens existing negative test diagnostics. All 17 original substitutions and restoration checks remain, and the production snapshot, generator, registries, recovery evidence and promotion authorities are untouched.
+
+### Reusable mechanism
+- For path-binding negatives, associate each mutation with the exact canonical authority label and compare the complete exit diagnostic, not a broad substring. Include an independently tested classifier rejecting unrelated text and wrong-target failures.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Learning is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
