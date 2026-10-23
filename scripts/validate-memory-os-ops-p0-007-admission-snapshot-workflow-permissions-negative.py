@@ -359,6 +359,25 @@ def require_publisher_revalidation_calls(publish: str) -> None:
         len(calls) >= 3,
         "strict snapshot publisher missing executable bounded revalidation call sites",
     )
+    # The required validators must execute inside the called revalidation
+    # function. Merely mentioning them in another, never-called function or
+    # a separate run step is not proof of bounded latest-source revalidation.
+    lines = commands.splitlines()
+    starts = [
+        index for index, line in enumerate(lines)
+        if re.fullmatch(r"revalidate_latest_snapshot\(\)[ \t]*\{", line)
+    ]
+    require(len(starts) == 1, "strict snapshot publisher revalidation function boundary ambiguous")
+    start = starts[0]
+    ends = [index for index in range(start + 1, len(lines)) if lines[index] == "}"]
+    require(bool(ends), "strict snapshot publisher revalidation function closing boundary missing")
+    body = "\n".join(lines[start + 1:ends[0]])
+    for validator in FULL_ADMISSION_VALIDATORS:
+        command = rf"(?m)^  python[ \t]+{re.escape(validator)}(?=[ \t]|$)"
+        require(
+            re.search(command, body) is not None,
+            f"strict snapshot publisher missing executable {validator} inside bounded revalidation",
+        )
 
 
 def prove_publisher_revalidation_call_binding(publish: str) -> None:
@@ -379,6 +398,24 @@ def prove_publisher_revalidation_call_binding(publish: str) -> None:
             )
         else:
             raise Fail(f"strict snapshot publisher accepted {label}")
+
+    # A decoy validator in another run step cannot replace the one inside
+    # the bounded function, even if global command search still finds it.
+    validator = FULL_ADMISSION_VALIDATORS[0]
+    original = f'            python {validator} >> "$log" 2>&1'
+    require(publish.count(original) == 1, "strict snapshot bounded validator fixture drift")
+    decoy = publish.replace(original, f"            # python {validator} moved outside", 1)
+    decoy += f"\n      - name: unbound validator decoy\n        run: |\n          python {validator}\n"
+    require_full_admission_chain(decoy, "decoy still globally reachable")
+    try:
+        require_publisher_revalidation_calls(decoy)
+    except Fail as exc:
+        require(
+            f"missing executable {validator} inside bounded revalidation" in str(exc),
+            f"unbound validator decoy rejected outside function-binding guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot publisher accepted validator outside bounded revalidation")
 
 
 def require_readonly_pr_permissions(workflow: str) -> None:
