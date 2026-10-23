@@ -197,15 +197,21 @@ def prove_comment_only_commands_rejected() -> None:
 def require_readonly_pr_permissions(workflow: str) -> None:
     # GitHub accepts 'permissions: write-all'; banning 'contents: write' alone
     # does not prevent a PR workflow from receiving a write-capable token.
+    # Normalize only trailing YAML comments; compact/quoted permission values
+    # are still real GitHub Actions grants and must not bypass the guard.
+    active = "\n".join(line.split("#", 1)[0] for line in workflow.splitlines())
     require(
-        re.search(r"(?m)^ *permissions: *write-all(?: *(?:#.*)?)?$", workflow) is None,
+        re.search(r"(?m)^[ \t]*permissions[ \t]*:[ \t]*['\"]?write-all['\"]?[ \t]*$", active) is None,
         "strict snapshot PR workflow must never use permissions: write-all",
     )
     require(
         re.search(r"(?m)^permissions: *\n +contents: *read(?: *(?:#.*)?)?$", workflow) is not None,
         "strict snapshot PR workflow must declare top-level contents: read",
     )
-    require("contents: write" not in workflow, "strict snapshot PR workflow must never receive contents: write")
+    require(
+        re.search(r"(?m)\bcontents[ \t]*:[ \t]*['\"]?write['\"]?(?=[ \t]*$|[ \t]*[,}])", active) is None,
+        "strict snapshot PR workflow must never receive contents: write",
+    )
 
 
 def prove_write_all_permissions_rejected() -> None:
@@ -213,6 +219,7 @@ def prove_write_all_permissions_rejected() -> None:
     for fixture in (
         "permissions: write-all\n# contents: read\n",
         "permissions:\n  contents: read\njobs:\n  check:\n    permissions: write-all\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions: 'write-all'\n",
     ):
         try:
             require_readonly_pr_permissions(fixture)
@@ -220,6 +227,20 @@ def prove_write_all_permissions_rejected() -> None:
             require("permissions: write-all" in str(exc), f"write-all rejected outside permission guard: {exc}")
         else:
             raise Fail("strict snapshot PR workflow accepted write-all permissions")
+
+
+    for fixture in (
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions:\n      contents:write\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions: {contents:write}\n",
+        "permissions:\n  contents: read\njobs:\n  check:\n    permissions:\n      contents: \"write\"\n",
+    ):
+        try:
+            require_readonly_pr_permissions(fixture)
+        except Fail as exc:
+            require("contents: write" in str(exc), f"compact write grant rejected outside permission guard: {exc}")
+        else:
+            raise Fail("strict snapshot PR workflow accepted compact or quoted contents-write permission")
+
 
 
 def main() -> int:
