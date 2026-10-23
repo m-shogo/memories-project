@@ -3505,3 +3505,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed PR job execution architecture changes or a newly observed job-level skip/failure-mask bypass escapes the bounded guard.
 
+
+## 2026-10-24 — PR admission must have a real event trigger and complete critical path coverage
+
+### Outcome
+- Commit 403a641caf76a95138d5da72753633fd22a6030a binds the strict OPS-P0-007 PR admission to a real pull_request event and path-filter coverage for the reviewed workflow files, snapshot/status authorities, backup/restore evidence scope and all publisher revalidation-chain validators.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40007499012 completed SUCCESS at this commit.
+
+### Evidence
+- The prior PR guard searched for pull_request: anywhere in the workflow but did not prove that it was the actual event trigger, or that the path filter included all critical validator and authority inputs. A comment-only trigger or removed validator path could silently prevent PR checks from running on relevant changes.
+- Eight synthetic mutations replace the trigger with workflow_dispatch or pull_request_target, add an unreviewed push event, remove the paths key or critical status/generator/negative-guard paths, or duplicate a path. Every mutation requires the exact PR trigger/path authority-drift rejection.
+
+### Why safe
+- Only the existing CI-bound read-only workflow permission negative harness and in-memory workflow fixtures changed. The PR/publisher workflows, Production Status, strict snapshot, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- CI reachability is an authority chain from event trigger and path filters through enabled job, enabled steps and executable validators. Validate each link; command presence cannot prove that the workflow will run for a changed authority.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the reviewed PR trigger/path architecture changes or a newly observed missing-path event bypass escapes this bounded guard.
+
