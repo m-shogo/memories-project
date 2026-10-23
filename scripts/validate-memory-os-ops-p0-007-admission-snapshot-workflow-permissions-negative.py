@@ -17,6 +17,18 @@ PUBLISH_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot.yml"
 READONLY_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"
 READONLY_SOURCE_REF = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
 
+READONLY_PROTECTED_AUTHORITIES = (
+    "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+    "contracts/operations/operability-admission-inventory.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/backup-restore-promotion-review-registry.v1.json",
+)
+
 
 FULL_ADMISSION_VALIDATORS = (
     "scripts/validate-memory-os-recovery-objectives.py",
@@ -2478,6 +2490,14 @@ def require_readonly_workflow_authority(readonly: str) -> None:
     )
     body = [line[10:].strip() for line in steps[2][2:]
             if line.startswith("          ") and line[10:].strip()]
+    require(body.count("authorities=(") == 1,
+            "strict snapshot readonly workflow authority drift")
+    authority_start = body.index("authorities=(")
+    require(
+        body[authority_start:authority_start + len(READONLY_PROTECTED_AUTHORITIES) + 2]
+        == ["authorities=(", *READONLY_PROTECTED_AUTHORITIES, ")"],
+        "strict snapshot readonly workflow authority drift",
+    )
     compiled = PR_COMPILE_FILES[-6:]
     require(
         body[:5] == [
@@ -2525,6 +2545,20 @@ def prove_readonly_workflow_negative(readonly: str) -> None:
     compile_line = "          python -m py_compile \\\n"
     require(all(readonly.count(x) == 1 for x in (marker, negative, diff, compile_line)),
             "strict snapshot readonly fixture anchor drift")
+    # The before/after digest+mode snapshot must cover every reviewed
+    # authority, including the separate human promotion-review registry.
+    for path in READONLY_PROTECTED_AUTHORITIES:
+        original = f"            {path}\n"
+        require(readonly.count(original) == 1,
+                f"readonly protected authority fixture drift: {path}")
+        mutated = readonly.replace(original, "            # protected authority omitted\n", 1)
+        try:
+            require_readonly_workflow_authority(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly workflow authority drift",
+                    f"missing protected authority rejected outside exact guard ({path}): {exc}")
+        else:
+            raise Fail(f"readonly accepted missing protected authority: {path}")
     mutations = (
         ("write grant", readonly.replace("permissions:\n  contents: read\n",
                                          "permissions:\n  contents: write\n", 1)),
