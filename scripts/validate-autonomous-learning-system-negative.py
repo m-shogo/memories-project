@@ -116,6 +116,15 @@ def symlink_authority(root: Path, relative: Path) -> None:
     path.symlink_to(target.name)
 
 
+def symlink_parent_directory(root: Path, relative: Path) -> None:
+    # The substituted parent still points only inside the disposable fixture.
+    # A canonical leaf is not a canonical path if any parent is an alias.
+    directory = root / relative
+    target = directory.with_name(directory.name + ".fixture-target")
+    directory.rename(target)
+    directory.symlink_to(target.name, target_is_directory=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -237,6 +246,15 @@ def main() -> int:
         cases.append((
             f"symlinked {label} authority",
             lambda root, path=relative: symlink_authority(root, path),
+        ))
+    for label, relative in (
+        ("scripts", Path("scripts")),
+        ("contracts operations", Path("contracts/operations")),
+        ("docs operations", Path("docs/operations")),
+    ):
+        cases.append((
+            f"symlinked {label} parent directory",
+            lambda root, path=relative: symlink_parent_directory(root, path),
         ))
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
