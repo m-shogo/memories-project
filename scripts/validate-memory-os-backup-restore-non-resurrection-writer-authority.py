@@ -455,6 +455,67 @@ def prove_writer_cli_dispatch_classifier() -> None:
     print("PASS reject: ten writer CLI dispatch and failure-status substitutes")
 
 
+def require_no_pre_dispatch_exit(source: str) -> None:
+    """Reject explicit module-scope termination before the guarded CLI dispatch."""
+    require_writer_cli_dispatch(source)
+    tree = ast.parse(source)
+
+    def exits_before_dispatch(node: ast.AST) -> bool:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            return False
+        if isinstance(node, ast.Raise):
+            return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {"exit", "quit", "exec", "eval"}:
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and (node.func.value.id, node.func.attr) in
+                    {("sys", "exit"), ("os", "_exit")}):
+                return True
+        return any(exits_before_dispatch(child) for child in ast.iter_child_nodes(node))
+
+    require(not any(exits_before_dispatch(statement) for statement in tree.body[:-1]),
+            "writer module can terminate before CLI dispatch")
+
+
+def prove_pre_dispatch_exit_classifier() -> None:
+    positive = "\n".join((
+        "def main():",
+        "    require_cli_authorities()",
+        "if __name__ == '__main__':",
+        "    try:",
+        "        raise SystemExit(main())",
+        "    except Fail as exc:",
+        "        print(str(exc))",
+        "        raise SystemExit(1)",
+        "",
+    ))
+    require_no_pre_dispatch_exit(positive)
+    guard = "if __name__ == '__main__':"
+    mutations = (
+        ("raise", "raise SystemExit(0)\n"),
+        ("sys-exit", "sys.exit(0)\n"),
+        ("os-exit", "os._exit(0)\n"),
+        ("exit", "exit(0)\n"),
+        ("quit", "quit()\n"),
+        ("branch", "if True:\n    raise SystemExit(0)\n"),
+        ("try", "try:\n    sys.exit(0)\nexcept Exception:\n    pass\n"),
+        ("exec", "exec('raise SystemExit(0)')\n"),
+        ("eval", "eval('exit(0)')\n"),
+    )
+    for label, prelude in mutations:
+        mutated = positive.replace(guard, prelude + guard, 1)
+        try:
+            require_no_pre_dispatch_exit(mutated)
+        except NegativeFailure as exc:
+            require(str(exc) == "writer module can terminate before CLI dispatch",
+                    f"writer pre-dispatch {label} diagnostic drift")
+        else:
+            raise NegativeFailure(f"writer pre-dispatch {label} exit unexpectedly accepted")
+    print("PASS reject: nine module-scope early termination substitutes")
+
+
 def prove_guard_source_classifier() -> None:
     valid = "def main():\n    require_cli_authorities()\n    parser = argparse.ArgumentParser()\n"
     require_direct_first_guard(valid)
@@ -482,9 +543,11 @@ def main() -> int:
     prove_main_binding_classifier()
     prove_parser_lock_classifier()
     prove_writer_cli_dispatch_classifier()
+    prove_pre_dispatch_exit_classifier()
     writer_source = WRITER_PATH.read_text(encoding="utf-8")
     require_unique_writer_main_binding(writer_source)
     require_writer_cli_dispatch(writer_source)
+    require_no_pre_dispatch_exit(writer_source)
     writer = load_writer()
     guard = getattr(writer, "require_cli_authorities", None)
     require(callable(guard), "typed non-resurrection writer CLI authority guard missing")
