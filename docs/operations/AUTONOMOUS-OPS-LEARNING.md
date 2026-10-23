@@ -3671,3 +3671,29 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed PR step/action architecture changes or an observed unreviewed step bypass escapes the bounded allowlist.
+
+## 2026-10-24 — Publisher must reject unreviewed Actions steps and altered failure branches
+
+### Outcome
+- Commit `b5980a3cd766cfc10d64e4bff5e5a616542e0962` adds an exact seven-step allowlist and fourteen focused negative mutations to the existing strict OPS-P0-007 publisher permission harness.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run `40011062682` completed SUCCESS. The separately triggered Snapshot Readonly run is not counted as successful until completed.
+
+### Evidence
+- Existing publisher guards verified the enabled job, checkout ref, source capture, validator chain, conditional commit, diagnostics and final status fragments, but did not reject an extra `uses:` action or changes to setup-python action/version outside those protected bodies.
+- The new guard binds the exact checkout and Python setup steps, source capture, generation/captured status step, mutually exclusive successful snapshot commit and failed-run diagnostic branches, and the final strict status enforcement.
+- Fourteen in-memory mutations add unreviewed action/run steps, weaken setup or checkout, duplicate/reorder steps, disable capture/generation, mask commit/diagnostic failures, invert diagnostic branching or remove/forge final enforcement. Each must emit the exact publisher step-allowlist drift diagnostic.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and synthetic publisher workflow text changed. The actual publisher/PR workflows, Production Status, strict snapshot, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- A publisher may have correct status-capture commands but still execute unreviewed actions or skip the required terminal failure gate. Bind the entire reviewed step inventory and exact conditional branch headers in addition to the executable commands.
+- Keep production promotion separate from snapshot publication. Exact-source CI checks are guard execution evidence only, never recovery or production readiness evidence.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain non-resurrection records and final recovery candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Distinct semantically eligible environments, explicit human-approved current recovery objective, executable reviewed request binding, independent review and separate human promotion remain mandatory.
+- Learning records and CI guard successes do not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if the reviewed publisher step inventory, action inputs, conditional publication branches or final enforcement change, or a new observed bypass escapes the bounded allowlist.
