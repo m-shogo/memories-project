@@ -4409,3 +4409,27 @@ a promotion decision, a recovery objective, or drill evidence.
 - The modification affects only the existing synthetic negative harness. No actual generation, approved objective, drill request, typed evidence registry, credential, traffic, readiness, snapshot, Production Status or promotion authority was written.
 - `productionDecision=NO_GO` and strict OPS-P0-007 requirements remain mandatory: unsuperseded semantically eligible distinct environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate human promotion.
 - Learning and CI results cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed writer main module binding must remain unique and undecorated
+
+### Outcome and observed evidence
+- Commit `1d58cae6d84d4ca6965d7f50e1ccd82593483384` extends the existing CI-bound typed writer CLI authority negative with a module-level AST guard for exactly one synchronous, undecorated, argument-free `main` definition and no module-scope rebinding.
+- Ten synthetic mutations test duplicate definitions, assignment, tuple assignment, import alias, dead-branch assignment, loop binding, `globals()['main']`, `setattr(..., 'main', ...)`, a decorator, and async substitution. Each requires its expected diagnostic. A canonical positive control precedes the negative cases.
+- Exact-source Backup Restore Non-Resurrection Readonly run `40038583508` completed SUCCESS; its log includes typed non-resurrection admission validation PASS and `production decision: NO_GO`. Backup and Restore Contracts run `40038583307` also completed SUCCESS. Admission Chain was still in progress at the time of this record and is not claimed successful.
+- GitHub compare from `86e663fbc4dd710ce880888620e225bc5e568d5f` to `1d58cae6d84d4ca6965d7f50e1ccd82593483384` showed one modified file, the existing writer-authority negative harness (78 additions, zero deletions).
+
+### Symptom, evidence, verified root cause or unknown, and failed approach
+- Symptom/risk: inspecting `inspect.getsource(writer.main)` and checking the first guarded statement does not independently prove the module has only one unshadowed CLI entrypoint. A later module-scope assignment or decorated definition could change which callable is invoked.
+- Evidence: the prior harness verified the source of the currently resolved `writer.main` but did not parse the complete writer module for duplicate/rebound `main` names.
+- Verified gap cause: function-local source inspection omits module-level name binding. No actual production bypass or malicious replacement was observed.
+- Failed approach to avoid: treating an AST-verified first statement in one function body as proof that the module-level executable binding cannot be replaced.
+
+### Correction, recurrence guard, and retry condition
+- Parse the complete canonical writer source with AST and reject module-level rebinding, including bindings inside top-level branches, loops, imports, tuples, and direct dynamic `globals`/`setattr` substitutes. Reject decorators and signature drift. Preserve the existing first-statement guard and its independent negative suite.
+- Reusable mechanism: distinguish the function-body execution proof from the module-level symbol-identity proof; require both and exercise each with exact-diagnostic synthetic negatives. Build fixture line breaks with `"\\n".join(...)` to avoid the previously observed double-escaped Python fixture failure.
+- Retry only if exact-source CI shows a concrete failure, the reviewed writer module legitimately changes, or a newly observed binding bypass exists. Do not repeat the unchanged source-binding clean-worktree blocker or a target-specific write blocker without changed preconditions.
+
+### Why safe and protected-authority check
+- Only an existing synthetic negative harness was changed; no production writer, registry, generation, recovery objective, drill request, typed evidence, credential, traffic, readiness, snapshot or promotion authority was written.
+- The source diff contained no protected authority files. `productionDecision=NO_GO` remains required, with unsuperseded semantically eligible distinct environments, a human-approved current recovery objective, a current executable reviewed request for new evidence, typed eight-domain coverage, independent review, and separate non-automatic human promotion.
+- This learning entry and the CI results are operational history only; they cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
