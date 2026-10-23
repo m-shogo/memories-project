@@ -47,9 +47,9 @@ def protected_state(path: Path) -> tuple[object, ...]:
 def prove_content_drift_classifier() -> None:
     with tempfile.TemporaryDirectory(prefix="ops-p0-007-atomic-content-") as tmp:
         path = Path(tmp) / "registry.json"
-        path.write_bytes(b'{"registeredEvidenceCount":0}\\n')
+        path.write_bytes(b'{"registeredEvidenceCount":0}\n')
         before = protected_state(path)
-        path.write_bytes(b'{"registeredEvidenceCount":1}\\n')
+        path.write_bytes(b'{"registeredEvidenceCount":1}\n')
         if protected_state(path) == before:
             raise SystemExit("atomic content classifier accepted same-inode registry byte drift")
 
