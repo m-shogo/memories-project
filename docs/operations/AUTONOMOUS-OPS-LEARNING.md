@@ -897,3 +897,45 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Post-change source re-read showed `productionDecision=NO_GO`, OPS-P0-007 `PARTIAL_FOUNDATIONS_ONLY`, blocking=true, and unchanged canonical snapshot/status blobs. Registered generations, semantically eligible generations, approved objectives, executable reviewed requests, recovery evidence, complete typed eight-domain records, and final candidates remain zero.
 - This lesson is append-only operational history, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Independent review and separate human promotion remain non-automatic gates.
+
+## 2026-10-23 — Snapshot diagnostic publication must have executable call-site proof, not text fragments
+
+### Symptom
+- The existing snapshot workflow permission negative could accept diagnostic writer fragments in comments, string literals, or statically dead Python branches as evidence of crash-safe publication.
+
+### Evidence
+- Before correction, `validate_atomic_diagnostic_publication` checked only whether source substrings such as `os.replace(tmp_name, path)`, `os.fsync(handle.fileno())`, and `os.unlink(tmp_name)` appeared in the YAML text. The check did not parse the actual Python heredoc or distinguish executable calls from non-executable text.
+- The owning push workflow `.github/workflows/ops-p0-007-snapshot-permission-boundary.yml` invokes the negative suite directly on changes to that suite.
+
+### Root cause or unknown
+- Verified: textual presence was incorrectly treated as executable call-site evidence. This was a static guard coverage gap, not an observed failure of the canonical snapshot writer.
+
+### Failed approach
+- Relying on source-fragment checks alone, which can be satisfied by comments or dead code.
+
+### Correction
+- Commit `631f4bb53487820ccec83eeaa8125dc9b78d3ea7` extends the existing negative suite to parse the publisher's actual Python heredoc, require exact AST call expressions and existing-mode assignment, enforce write/flush/fsync/replace/cleanup ordering, and require replacement plus unlink cleanup within one try/finally.
+- Isolated in-memory mutations remove live replacement, flush, fsync, or cleanup while retaining their text in comments, strings, or `if False`; a direct-write substitution is also rejected.
+
+### Recurrence guard
+- The committed suite first establishes the canonical positive control, then requires all five mutation cases to fail closed at the intended diagnostic guard. It rejects comment-only, string-only, and statically dead call-site substitutes without modifying canonical workflow or production authority.
+- This is stronger static executable-site proof, not evidence that the failure-only publication step has run in CI or that persisted diagnostic output has been privacy-reviewed.
+
+### Retry condition
+- Revisit if the publisher changes heredoc structure or a new executable-call bypass is demonstrated. Do not weaken the check to accept comments, strings, or unreachable branches.
+
+### Outcome
+- Exact-source `OPS P0 007 Snapshot Permission Boundary` run `39931221464` completed SUCCESS on commit `631f4bb53487820ccec83eeaa8125dc9b78d3ea7`.
+
+### Success evidence
+- The run compiled and invoked the bound negative script and completed the clean-worktree step; the job log reports `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS` and `production decision: NO_GO`.
+
+### Why safe
+- The commit modified only the CI-reachable negative suite; it did not change workflow token permissions, the diagnostic publisher, a registry, production status, snapshot authority, credentials, traffic, recovery evidence, or promotion.
+
+### Reusable mechanism
+- Extract the exact embedded executable language block, parse syntax rather than trusting substrings, exclude unexecuted definitions and constant-false branches, require call-site ordering and cleanup scope, and mutate a real positive control in memory. Distinguish static executable proof from observed execution of a conditional production-side step.
+
+### Protected-authority check
+- Post-commit re-read confirmed `productionDecision=NO_GO`, OPS-P0-007 strict snapshot `PREREQUISITES_BLOCKED`, zero registered/semantically eligible generations, zero approved recovery objectives, zero executable reviewed drill requests, zero recovery evidence, zero complete typed eight-domain records, and zero final candidates. Status and snapshot blobs remained unchanged.
+- Learning is append-only operational history, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion evidence. Distinct eligible environments, explicit human-approved current objective, current executable reviewed request, typed eight-domain non-resurrection, independent review, and separate human promotion remain mandatory.
