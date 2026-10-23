@@ -54,17 +54,28 @@ def load_source_authority():
 
 
 def expect_source_authority_rejected(module: Any, field: str, replacement: Any) -> None:
+    expected = {
+        "ROOT": "inventory source-authority repository root drift",
+        "SELF_REL": "inventory source-authority self path drift",
+        "REQUEST": "inventory source-authority request path drift",
+        "REQUEST_FIELDS": "inventory source-authority request field shape drift",
+        "REQUEST_CONSTRAINTS": "inventory source-authority request constraint shape drift",
+        "SOURCES": "inventory source registry authority sequence drift",
+        "COMMAND_SOURCES": "inventory source command authority sequence drift",
+        "REQUIRED_BACKUP_REVIEW_COMMAND_SOURCES": "inventory required backup review command authority set drift",
+    }
+    require(field in expected, f"unmapped source-authority negative: {field}")
     original = getattr(module, field)
     setattr(module, field, replacement)
     rejected = False
     try:
         module.enforce_runtime_authority()
-    except module.Fail:
+    except module.Fail as exc:
+        require(str(exc) == expected[field], f"source-authority {field} rejected outside intended guard: {exc}")
         rejected = True
     finally:
         setattr(module, field, original)
     require(rejected, f"inventory source-authority validator accepted substituted {field}")
-
 
 def expect_source_execution_rejected(module: Any, field: str, replacement: Any) -> None:
     # An unrelated domain failure must not count as proof that this guard fired.
@@ -92,17 +103,32 @@ def expect_source_execution_rejected(module: Any, field: str, replacement: Any) 
 
 
 def expect_inventory_execution_rejected(module: Any, field: str, replacement: Any) -> None:
+    expected = {
+        "enforce_runtime_authority": "inventory validator execution guard drift",
+        "require": "inventory validator require helper drift",
+        "valid_count": "inventory validator execution helper drift",
+        "require_count_match": "inventory validator execution helper drift",
+        "repo_relative": "inventory validator execution helper drift",
+        "load": "inventory validator execution helper drift",
+        "canonical_registry_validator": "inventory validator execution helper drift",
+        "require_canonical_registry": "inventory validator execution helper drift",
+        "validate_source_authorities": "inventory validator execution helper drift",
+        "INVENTORY": "inventory validator inventory authority drift",
+        "STATUS": "inventory validator production status authority drift",
+        "SOURCE_AUTHORITY_VALIDATOR": "inventory validator source-authority validator authority drift",
+    }
+    require(field in expected, f"unmapped inventory-validator negative: {field}")
     original = getattr(module, field)
     setattr(module, field, replacement)
     rejected = False
     try:
         module.main()
-    except module.Fail:
+    except module.Fail as exc:
+        require(str(exc) == expected[field], f"inventory validator {field} rejected outside intended guard: {exc}")
         rejected = True
     finally:
         setattr(module, field, original)
     require(rejected, f"inventory validator accepted substituted runtime authority {field}")
-
 
 def expect_generator_execution_rejected(module: Any, field: str, replacement: Any) -> None:
     original = getattr(module, field)
