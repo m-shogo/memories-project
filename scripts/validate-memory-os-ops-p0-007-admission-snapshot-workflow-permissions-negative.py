@@ -116,6 +116,10 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
                     raise Fail("strict snapshot diagnostic unconditional early termination")
             if isinstance(statement, (ast.With, ast.AsyncWith, ast.Try)):
                 reject_unconditional_termination(statement.body)
+            if isinstance(statement, ast.Try):
+                # finally runs even after a successful atomic replacement.
+                # A termination here can skip the required cleanup call.
+                reject_unconditional_termination(statement.finalbody)
             if isinstance(statement, ast.If) and isinstance(statement.test, ast.Constant):
                 reject_unconditional_termination(
                     statement.body if bool(statement.test.value) else statement.orelse
@@ -251,6 +255,12 @@ def prove_diagnostic_unconditional_exit_rejected(publish: str) -> None:
          "              sys.exit(0)\n              os.replace(tmp_name, path)"),
         ("conditional true raise", "              os.replace(tmp_name, path)",
          "              if True: raise SystemExit(0)\n              os.replace(tmp_name, path)"),
+        ("finally raise before cleanup", "                  os.unlink(tmp_name)",
+         "                  raise SystemExit(0)\n                  os.unlink(tmp_name)"),
+        ("finally exit before cleanup", "                  os.unlink(tmp_name)",
+         "                  exit(0)\n                  os.unlink(tmp_name)"),
+        ("finally constant-true exit", "                  os.unlink(tmp_name)",
+         "                  if True: raise SystemExit(0)\n                  os.unlink(tmp_name)"),
     )
     for label, before, after in mutations:
         require(publish.count(before) == 1, f"{label}: canonical diagnostic fixture drift")
