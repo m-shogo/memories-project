@@ -2825,3 +2825,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical diagnostic changes its exception/optimization semantics or an observed deterministic termination bypass escapes the current AST negative suite.
+
+
+## 2026-10-24 — Snapshot PR shell admission requires executable fail-closed options
+
+### Outcome
+- Commit fbe505fce6d768d9291b36c5a3fd73f789ec1314 added a canonical CI-bound negative guard requiring every one of the three strict OPS-P0-007 PR workflow run steps to begin with executable set -euo pipefail, with no later shell-option override.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40002039699 completed SUCCESS at that commit, including Prove strict snapshot permission boundary and read-only worktree verification.
+
+### Evidence
+- Previously, the workflow permission negative verified required validator command presence and exact command shape but did not bind PR shell startup or guard against later set +e, set +u, or set +o pipefail.
+- The new fixture first proves the canonical PR shell shape, then tests 21 synthetic weakening mutations across all three run steps: incomplete startup, comment-only startup, quoted/echoed startup, and four shell-option overrides per step. Each mutation must receive its intended exact diagnostic.
+
+### Why safe
+- Only the existing read-only, CI-reachable negative harness changed. The PR workflow, publisher workflow, production status, strict snapshot, registries, real recovery evidence, credentials, traffic, readiness and promotion authorities were not modified.
+
+### Reusable mechanism
+- Treat a validator command as fail-closed only when its containing executable shell starts with effective error, unset-variable and pipeline failure propagation and does not disable those options before running admission gates. Distinguish shell configuration proof from validator command presence and from CI success.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning entry is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the legitimate PR workflow run-step architecture changes or a newly observed executable shell-option bypass evades the exact negative suite.
