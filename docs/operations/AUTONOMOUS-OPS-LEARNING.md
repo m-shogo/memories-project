@@ -2622,3 +2622,29 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical diagnostic heredoc legitimately adds an unconditional exit path, or an observed execution-path bypass evades the bounded AST guard. Do not weaken required atomic-publication call reachability to accommodate an unrelated failure.
+
+## 2026-10-24 — Validator authority symlink-state hardening is a scoped connector-write blocker
+
+### Symptom
+- A proposed change to the existing snapshot validator authority negative suite could not be committed through the connected GitHub write action.
+
+### Evidence
+- The connector returned `The tool failed internally` after a bounded update attempt targeting `scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py`. A fresh `so` read still showed HEAD `fa47ebd7f3b7b84273aefb29a84e8a5d9fbb638e` and unchanged target blob `9475062def8aa438d282d0e2b7cd61b1d9b4e5ff`; the proposed `protected_state` helper is absent.
+
+### Root cause or unknown
+- Unknown: the connector reported an internal tool error, not a verified repository-level validation, permission or content error.
+
+### Failed approach
+- Attempting one contents-API update to add bytes/mode/symlink-identity assertions and isolated symlink-only negative proof.
+
+### Correction
+- Do not claim the guard was implemented or tested. Preserve the existing suite and continue independent read-only inspection and previously CI-reachable safe work.
+
+### Recurrence guard
+- Re-read branch and target blob after an ambiguous connector failure; treat the write as uncommitted unless the exact source change is observed. Never infer a commit SHA or a validator PASS from the attempted payload.
+
+### Retry condition
+- Retry only after observable connector health/write capability changes, or a new independently supported safe edit path becomes available under the existing repository policy; do not repeat the same unchanged failed write blindly.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains blocked prerequisites and zero real recovery candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. This learning entry cannot become production or promotion evidence.
