@@ -114,6 +114,8 @@ CASE_SPECIFIC_VALIDATOR_REJECTIONS = {
     "typed boolean aggregate count": "typed non-resurrection canonical registry authority invalid: completeRecordCount drift",
     "typed append-only boundary": "typed non-resurrection canonical registry authority invalid: registry must remain append-only",
     "typed production evidence boundary": "typed non-resurrection canonical registry authority invalid: registry production boundary drift",
+    "canonical blocker replacement with unchanged count": "OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers",
+    "canonical blocker ordering drift": "OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers",
 }
 
 
