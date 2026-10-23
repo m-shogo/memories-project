@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import copy
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
+from io import StringIO
 import importlib.util
 import json
 import subprocess
@@ -278,8 +279,37 @@ def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...],
         raise Fail(f"{label}: generator rejection did not use one intended authority diagnostic: {output!r}")
 
 
-def require_negative_generator_stdout(stdout: str, label: str) -> None:
-    if stdout.strip():
+def capture_canonical_generator_preflight_stdout() -> str:
+    """Observe the read-only canonical validators before any negative mutation."""
+    output = StringIO()
+    with redirect_stdout(output):
+        load_generator_module().run_full_admission_validators()
+    baseline = output.getvalue()
+    for marker in (
+        "Memory OS recovery objectives validation PASS",
+        "Memory OS production-equivalent backup/restore drill request validation PASS",
+        "Memory OS drill-bound generation backup/restore evidence validation PASS",
+        "Memory OS backup/restore typed non-resurrection admission validation PASS",
+    ):
+        if baseline.splitlines().count(marker) != 1:
+            raise Fail(f"canonical generator preflight positive control missing or duplicated: {marker}")
+    if "Memory OS OPS-P0-007 strict admission snapshot generated" in baseline:
+        raise Fail("canonical preflight baseline includes a generator publication marker")
+    return baseline
+
+
+def require_negative_generator_stdout(stdout: str, baseline: str, label: str) -> None:
+    # The generator's four canonical admission validators legitimately print
+    # positive diagnostics before a later authority rejects a mutation.
+    # Accept only a complete-line prefix of the observed clean preflight,
+    # never arbitrary output or the generator's own publication success.
+    lines = stdout.splitlines()
+    canonical = baseline.splitlines()
+    if (
+        (stdout and not stdout.endswith("\n"))
+        or len(lines) > len(canonical)
+        or lines != canonical[:len(lines)]
+    ):
         raise Fail(f"{label}: canonical generator rejection emitted unexpected stdout")
 
 
@@ -297,17 +327,30 @@ def prove_generator_diagnostic_classifier() -> None:
     expected = ("canonical OPS-P0-007 blocker authority invalid",)
     valid = "canonical OPS-P0-007 blocker authority invalid: synthetic detail"
     require_expected_generator_diagnostic(valid + "\n", expected, "synthetic positive")
-    require_negative_generator_stdout("", "synthetic clean generator rejection")
-    try:
-        require_negative_generator_stdout(
-            "Memory OS OPS-P0-007 strict admission snapshot generated\n",
-            "synthetic mixed generator output",
-        )
-    except Fail as exc:
-        if "canonical generator rejection emitted unexpected stdout" not in str(exc):
-            raise Fail(f"mixed generator output rejected outside intended guard: {exc}") from exc
-    else:
-        raise Fail("generator rejection classifier accepted a simultaneous success marker")
+    baseline = (
+        "Memory OS recovery objectives validation PASS\n"
+        "production decision: NO_GO\n"
+        "Memory OS production-equivalent backup/restore drill request validation PASS\n"
+    )
+    require_negative_generator_stdout("", baseline, "synthetic clean generator rejection")
+    require_negative_generator_stdout(
+        "Memory OS recovery objectives validation PASS\n", baseline, "synthetic upstream prefix"
+    )
+    require_negative_generator_stdout(baseline, baseline, "synthetic full upstream prefix")
+    for bad_stdout in (
+        "Memory OS OPS-P0-007 strict admission snapshot generated\n",
+        "Memory OS recovery objectives validation PASS\nunrelated success\n",
+        "production decision: NO_GO\n",
+        "Memory OS recovery objectives validation PASS",
+        baseline + "Memory OS OPS-P0-007 strict admission snapshot generated\n",
+    ):
+        try:
+            require_negative_generator_stdout(bad_stdout, baseline, "synthetic mixed generator output")
+        except Fail as exc:
+            if "canonical generator rejection emitted unexpected stdout" not in str(exc):
+                raise Fail(f"mixed generator output rejected outside intended guard: {exc}") from exc
+        else:
+            raise Fail("generator rejection classifier accepted unrelated or publication stdout")
     nested_prefix = "typed non-resurrection canonical admission authority invalid: local Apple replay restore validator failed:"
     nested_label = "generator canonical blocker replacement"
     nested_line = NESTED_GENERATOR_REJECTIONS[nested_label]
@@ -386,12 +429,12 @@ def prove_snapshot_state_classifier() -> None:
             raise Fail("snapshot state classifier accepted synthetic bytes/mode drift")
 
 
-def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...]) -> None:
+def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...], preflight_stdout: str) -> None:
     before = snapshot_state()
     proc = run_bounded_python(GENERATOR, label)
     if proc.returncode != 1:
         raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
-    require_negative_generator_stdout(proc.stdout, label)
+    require_negative_generator_stdout(proc.stdout, preflight_stdout, label)
     output = proc.stderr or proc.stdout
     allowed = (expected_messages,) if isinstance(expected_messages, str) else expected_messages
     require_expected_generator_diagnostic(output, allowed, label)
@@ -670,7 +713,7 @@ def restore_all(originals: dict[Path, bytes]) -> None:
         path.write_bytes(payload)
 
 
-def run_source_symlink_escape(originals: dict[Path, bytes]) -> None:
+def run_source_symlink_escape(originals: dict[Path, bytes], preflight_stdout: str) -> None:
     # Never overwrite a fixed /tmp pathname: another process may own it or
     # replace it with a symlink to an unrelated file.
     with tempfile.TemporaryDirectory(prefix="memory-os-ops-p0-007-objective-negative-") as tmp:
@@ -682,7 +725,7 @@ def run_source_symlink_escape(originals: dict[Path, bytes]) -> None:
         try:
             OBJECTIVES.symlink_to(external)
             run_validator(False, "objective source symlink escape")
-            run_generator_rejects("generator objective source symlink escape", "strict snapshot authority")
+            run_generator_rejects("generator objective source symlink escape", "strict snapshot authority", preflight_stdout)
         finally:
             if OBJECTIVES.is_symlink():
                 OBJECTIVES.unlink()
@@ -690,7 +733,7 @@ def run_source_symlink_escape(originals: dict[Path, bytes]) -> None:
             OBJECTIVES.chmod(original_mode)
 
 
-def run_module_symlink_escape(originals: dict[Path, bytes]) -> None:
+def run_module_symlink_escape(originals: dict[Path, bytes], preflight_stdout: str) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-ops-p0-007-writer-negative-") as tmp:
         external = Path(tmp) / "objective-writer.py"
         external.write_bytes(originals[OBJECTIVE_WRITER])
@@ -703,6 +746,7 @@ def run_module_symlink_escape(originals: dict[Path, bytes]) -> None:
             run_generator_rejects(
                 "generator objective writer module symlink escape",
                 "strict snapshot authority",
+                preflight_stdout,
             )
         finally:
             if OBJECTIVE_WRITER.is_symlink():
@@ -785,13 +829,14 @@ def main() -> int:
         prove_generator_diagnostic_classifier()
         prove_subprocess_timeout_guard()
         run_validator(True, "clean baseline")
+        preflight_stdout = capture_canonical_generator_preflight_stdout()
         run_generator_atomic_write_mode_preservation()
         run_generator_atomic_write_failure()
         run_generator_full_admission_chain_required()
         run_generator_post_write_validator_substitution_rejected()
         run_generator_authority_substitution()
-        run_source_symlink_escape(originals)
-        run_module_symlink_escape(originals)
+        run_source_symlink_escape(originals, preflight_stdout)
+        run_module_symlink_escape(originals, preflight_stdout)
         for label, path, mutate in cases:
             restore_all(originals)
             canonical = load(path)
@@ -808,7 +853,7 @@ def main() -> int:
             mutate(status)
             require_material_mutation(canonical, status, label)
             write(STATUS, status)
-            run_generator_rejects(label, expected_messages)
+            run_generator_rejects(label, expected_messages, preflight_stdout)
 
         restore_all(originals)
         run_validator(True, "restored baseline")
