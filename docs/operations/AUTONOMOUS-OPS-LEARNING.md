@@ -4051,3 +4051,29 @@ a promotion decision, a recovery objective, or drill evidence.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 strict snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, with zero registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates.
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Distinct semantically eligible environments, human-approved current recovery objective, current executable reviewed request, independent review, typed eight-domain coverage and separate human promotion remain mandatory.
 - Learning and CI outcomes never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — PR and publisher run blocks must reject trailing step-level execution overrides
+
+### Outcome and evidence
+- Commit `4809dbfcfdbcba3444850b8b9fdaab8e48562aa0` extends the existing PR/publisher step allowlist to reject YAML metadata dedented after the reviewed `run: |` scalar, even when all required shell commands remain unchanged.
+- Independent source-read positive controls accepted the canonical PR and publisher workflows (2/2). Six bounded trailing `if: false`, `continue-on-error: true` and custom `shell` mutations were rejected (6/6). These are structural classifier checks, **not** completed exact-source GitHub Actions CI; the combined-status endpoint returned no statuses.
+
+### Symptom, root cause and failed approach
+- Symptom: the previous PR and publisher allowlists checked step headers and filtered shell lines but could ignore a later YAML step property that disables or makes a critical step nonfatal.
+- Evidence: both reviewed workflow source files have run blocks with no trailing step metadata; their previous validators did not constrain dedented lines after `run: |`. In-memory fixtures demonstrate the omitted boundary.
+- Verified root cause: shell body extraction discarded valid YAML step-level overrides appearing after a run block. No actual production failure is claimed.
+- Failed approach: treating a reviewed step header and exact shell command list as sufficient proof of fatal Actions step execution.
+
+### Correction, recurrence guard and retry condition
+- For each of the three PR run steps and four publisher run-block steps, require every subsequent nonblank line to remain within the ten-space shell scalar indentation. Keep the publisher's final inline enforcement step separately bound by its existing exact-step equality check.
+- Add six CI-reachable negative fixtures requiring the exact PR/publisher step allowlist authority-drift diagnostic. Preserve both canonical positive controls.
+- Revisit only when the reviewed workflow step architecture changes or a new valid YAML override escapes this guard. Do not repeat the known clean-worktree blocker without changed preconditions.
+
+### Why safe and reusable mechanism
+- Only the existing negative harness changed; neither actual workflow, snapshot, Production Status, recovery registry, evidence nor human promotion authority was written.
+- Reusable principle: validate both executable shell commands and the surrounding GitHub Actions YAML step boundary; ordering of YAML mapping keys is not an execution guarantee.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`. OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates.
+- Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Distinct eligible environments, human-approved current recovery objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate human promotion remain mandatory.
+- Learning/CI outcomes never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
