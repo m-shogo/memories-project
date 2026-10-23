@@ -147,6 +147,14 @@ def validate(repo_root: Path) -> None:
     ]
     if len(live_calls) != 1:
         raise ValidationFailure("learning CI entrypoint main must directly invoke bound learning guards")
+    # A direct AST call after an unconditional top-level terminator is not
+    # reachable, even though it remains a statement in main().body.
+    call_index = main_definitions[0].body.index(live_calls[0])
+    if any(
+        isinstance(node, (ast.Return, ast.Raise))
+        for node in main_definitions[0].body[:call_index]
+    ):
+        raise ValidationFailure("learning CI entrypoint guard call follows unconditional return or raise")
     expected_entry_guard = ast.dump(
         ast.parse('if __name__ == "__main__":\n    raise SystemExit(main())').body[0],
         include_attributes=False,
