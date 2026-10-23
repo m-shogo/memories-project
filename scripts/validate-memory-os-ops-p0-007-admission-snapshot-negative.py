@@ -413,18 +413,24 @@ def run_generator_full_admission_chain_required() -> None:
 
 
 def run_generator_atomic_write_mode_preservation() -> None:
-    snapshot_before = SNAPSHOT.read_bytes()
-    original_mode = mode(SNAPSHOT)
+    snapshot_before = snapshot_state()
+    status_before = (STATUS.read_bytes(), mode(STATUS), STATUS.is_symlink())
+    temporary_before = set(SNAPSHOT.parent.glob(f".{SNAPSHOT.name}.*.tmp"))
     module = load_generator_module()
-    try:
-        SNAPSHOT.chmod(0o640)
-        module.atomic_write_text(SNAPSHOT, snapshot_before.decode("utf-8"))
-        if SNAPSHOT.read_bytes() != snapshot_before:
+    with temporary_mode(SNAPSHOT, 0o640):
+        module.atomic_write_text(SNAPSHOT, snapshot_before[0].decode("utf-8"))
+        if SNAPSHOT.read_bytes() != snapshot_before[0]:
             raise Fail("successful atomic strict snapshot rewrite changed canonical bytes")
         if mode(SNAPSHOT) != 0o640:
             raise Fail(f"successful atomic strict snapshot rewrite changed mode: {oct(mode(SNAPSHOT))}")
-    finally:
-        SNAPSHOT.chmod(original_mode)
+        if SNAPSHOT.is_symlink() != snapshot_before[2]:
+            raise Fail("successful atomic strict snapshot rewrite changed symlink identity")
+    require_snapshot_state_unchanged(snapshot_before, snapshot_state(), "successful atomic rewrite")
+    if (STATUS.read_bytes(), mode(STATUS), STATUS.is_symlink()) != status_before:
+        raise Fail("successful atomic strict snapshot rewrite changed canonical Production Status")
+    temporary_after = set(SNAPSHOT.parent.glob(f".{SNAPSHOT.name}.*.tmp"))
+    if temporary_after != temporary_before:
+        raise Fail("successful atomic strict snapshot rewrite left or changed temporary authority files")
 
 
 def prove_temporary_mode_cleanup() -> None:
