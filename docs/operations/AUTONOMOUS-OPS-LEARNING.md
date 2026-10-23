@@ -3359,3 +3359,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed publisher status-capture architecture changes or a new observed status-forging shell hook escapes this bounded guard.
 
+
+## 2026-10-24 — Publisher protected steps must not mask failures with shell hooks
+
+### Outcome
+- Commit 4652d54009e578f14d42c3d0e00cf6e51fe50535 extends the strict OPS-P0-007 publisher protected-step fail-closed shell guard to reject traps, sourced scripts, shell alias manipulation and option indirection after the mandatory set -euo pipefail prefix.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40006331321 completed SUCCESS at this commit.
+
+### Evidence
+- The prior protected-step guard rejected a later set override but not an ERR/EXIT trap that could exit 0 on a failed source refresh, publication or diagnostic command. Those commands could remain textually present without retaining fail-closed behavior.
+- Each of the three reviewed protected steps now has synthetic negative fixtures for ERR/EXIT traps, source/dot-source, alias, shopt and the original four shell-option overrides. All must produce the exact protected-shell-options rejection.
+
+### Why safe
+- Only the CI-bound read-only workflow permission negative harness and synthetic workflow fixtures changed. The actual publisher and PR workflows, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- A fail-closed shell prefix is not sufficient if later traps or sourced code can replace its failure semantics. Bind every protected publication step to an uninterrupted shell control surface and prove each forbidden override through exact-diagnostic negatives.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if the protected publisher step architecture changes or a newly observed shell failure-masking hook evades the bounded guard.
+
