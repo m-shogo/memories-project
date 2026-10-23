@@ -296,6 +296,20 @@ def main() -> int:
             state["domainProductionField"] = field
             expect_rejected(f"domain evidence {field} production boundary", lambda: writer.validate_record(valid))
         state["domainProductionField"] = None
+        # Every remaining typed domain must independently reject each production-boundary flag.
+        for domain in contract["requiredDomains"][1:]:
+            state["domainTarget"] = domain
+            for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
+                case = f"domain evidence {field} production boundary: {domain}"
+                EXPECTED_DIAGNOSTICS[case] = f"domain {domain} evidence {field} must remain false"
+                state["domainProductionField"] = field
+                try:
+                    expect_rejected(case, lambda: writer.validate_record(valid))
+                finally:
+                    state["domainProductionField"] = None
+        state["domainTarget"] = None
+        writer.validate_record(valid)
+        print("PASS accept: all eight typed domains independently reject production-boundary flags")
 
         state["reviewGeneration"] = "brge_other_generation"; expect_rejected("review generation binding mismatch", lambda: writer.validate_record(valid)); state["reviewGeneration"] = "brge_negative_generation"
         state["reviewSha"] = "b" * 40; expect_rejected("review source commit binding mismatch", lambda: writer.validate_record(valid)); state["reviewSha"] = SHA
