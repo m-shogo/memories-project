@@ -354,7 +354,9 @@ def require_exact_checkout_ref(workflow: str, expected: str, label: str) -> None
     # An extra checkout with another action version could overwrite the exact
     # source after the legitimate checkout and must not escape this matcher.
     checkout_steps = re.findall(
-        r"""(?m)^[ \t]*-[ \t]*uses:[ \t]*['"]?(actions/checkout@[^\s'"#]+)""",
+        # Both legal GitHub Actions step key orders must count. A named step
+        # can declare uses: below - name: rather than on the list-item line.
+        r"""(?m)^(?:      - uses:|        uses:)[ \t]*['"]?(actions/checkout@[^\s'"#]+)""",
         workflow,
     )
     require(
@@ -395,6 +397,23 @@ def prove_checkout_comment_bypass_rejected(pr: str, publish: str) -> None:
                 require("checkout must bind" in str(exc), f"{label} duplicate {extra_ref} rejected outside checkout guard: {exc}")
             else:
                 raise Fail(f"{label} accepted ambiguous duplicate checkout: {extra_ref}")
+            anchor = "          fetch-depth: 0\n"
+            require(workflow.count(anchor) == 1, f"{label} named checkout fixture boundary drift")
+            named = workflow.replace(
+                anchor,
+                anchor + f"      - name: second checkout\n        uses: {extra_ref}\n"
+                f"        with:\n          ref: {expected}\n",
+                1,
+            )
+            try:
+                require_exact_checkout_ref(named, expected, label)
+            except Fail as exc:
+                require(
+                    "checkout must bind" in str(exc),
+                    f"{label} named duplicate {extra_ref} rejected outside checkout guard: {exc}",
+                )
+            else:
+                raise Fail(f"{label} accepted named duplicate checkout: {extra_ref}")
 
 
 def executable_run_lines(workflow: str) -> list[str]:
