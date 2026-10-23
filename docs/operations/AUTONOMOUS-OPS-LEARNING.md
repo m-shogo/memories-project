@@ -2897,3 +2897,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the reviewed PR admission step intentionally introduces conditional execution, or if a newly observed shell wrapper bypasses the bounded negative classifier.
+
+
+## 2026-10-24 — Constant-true comparisons cannot hide diagnostic early termination
+
+### Outcome
+- Commit ea8e7e7e4012387fe935b0eb1aed20c9464266b8 strengthens the existing strict OPS-P0-007 diagnostic Python AST negative with literal-only static truth evaluation of comparisons, negation and boolean conjunction/disjunction.
+- Exact-source OPS P0 007 Snapshot Permission Boundary job 120581830451 in run 40002469879 completed SUCCESS, including the canonical negative proof and clean-worktree verification.
+
+### Evidence
+- The previous early-termination classifier recognized literal if True and if False but not equivalent deterministic conditions such as if 1 == 1 or if not False. An unconditional raise or exit under those conditions could precede atomic replacement or cleanup while required calls remained present later in the AST.
+- Four new synthetic negatives insert deterministic true branches containing raise, exit or assert before atomic replacement. They require the exact unconditional-termination diagnostic. A constant-false comparison branch containing a raise is the positive control, proving that unreachable code is not mistaken for executed termination.
+
+### Why safe
+- Only the pre-existing read-only CI-bound workflow negative harness and synthetic Python heredoc mutations changed. Publisher workflow, Production Status, OPS-P0-007 snapshot, registries, real recovery evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- For executable AST proof, evaluate only a bounded whitelist of literal operations and inspect the branch whose truth value is deterministically known. Never use eval on source code; unknown runtime conditions must remain unknown. Pair true-branch negative controls with false-branch positive controls.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Revisit only if diagnostic source changes the supported expression grammar or an observed deterministic termination form bypasses this bounded classifier.
