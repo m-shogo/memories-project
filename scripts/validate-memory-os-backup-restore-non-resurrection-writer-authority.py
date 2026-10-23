@@ -358,6 +358,103 @@ def prove_parser_lock_classifier() -> None:
     print("PASS reject: eleven parser/lock reachability and fail-closed substitutes")
 
 
+def require_writer_cli_dispatch(source: str) -> None:
+    """Require a live CLI invocation and a nonzero Fail exception boundary."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise NegativeFailure("writer dispatch source syntax invalid") from exc
+    guards = [node for node in tree.body
+              if isinstance(node, ast.If)
+              and isinstance(node.test, ast.Compare)
+              and isinstance(node.test.left, ast.Name)
+              and node.test.left.id == "__name__"
+              and len(node.test.ops) == 1
+              and isinstance(node.test.ops[0], ast.Eq)
+              and len(node.test.comparators) == 1
+              and isinstance(node.test.comparators[0], ast.Constant)
+              and node.test.comparators[0].value == "__main__"]
+    require(len(guards) == 1 and guards[0] is tree.body[-1],
+            "writer canonical CLI dispatch guard missing or duplicated")
+    guard = guards[0]
+    require(not guard.orelse and len(guard.body) == 1
+            and isinstance(guard.body[0], ast.Try),
+            "writer CLI dispatch must be a direct try")
+    dispatch = guard.body[0]
+    require(len(dispatch.body) == 1 and isinstance(dispatch.body[0], ast.Raise),
+            "writer CLI dispatch must raise main exit status")
+    raised = dispatch.body[0].exc
+    require(isinstance(raised, ast.Call) and isinstance(raised.func, ast.Name)
+            and raised.func.id == "SystemExit" and len(raised.args) == 1
+            and not raised.keywords
+            and isinstance(raised.args[0], ast.Call)
+            and isinstance(raised.args[0].func, ast.Name)
+            and raised.args[0].func.id == "main"
+            and not raised.args[0].args and not raised.args[0].keywords,
+            "writer CLI dispatch must call guarded main")
+    require(not dispatch.orelse and not dispatch.finalbody
+            and len(dispatch.handlers) == 1
+            and isinstance(dispatch.handlers[0].type, ast.Name)
+            and dispatch.handlers[0].type.id == "Fail",
+            "writer CLI dispatch must catch only writer Fail")
+    handler = dispatch.handlers[0]
+    require(bool(handler.body) and isinstance(handler.body[-1], ast.Raise)
+            and isinstance(handler.body[-1].exc, ast.Call)
+            and isinstance(handler.body[-1].exc.func, ast.Name)
+            and handler.body[-1].exc.func.id == "SystemExit"
+            and len(handler.body[-1].exc.args) == 1
+            and isinstance(handler.body[-1].exc.args[0], ast.Constant)
+            and type(handler.body[-1].exc.args[0].value) is int
+            and handler.body[-1].exc.args[0].value != 0,
+            "writer CLI Fail handler must exit nonzero")
+
+
+def prove_writer_cli_dispatch_classifier() -> None:
+    positive = "\n".join((
+        "def main():",
+        "    require_cli_authorities()",
+        "if __name__ == '__main__':",
+        "    try:",
+        "        raise SystemExit(main())",
+        "    except Fail as exc:",
+        "        print(str(exc))",
+        "        raise SystemExit(1)",
+        "",
+    ))
+    require_writer_cli_dispatch(positive)
+    mutations = (
+        ("guard-removed", positive.replace("if __name__ == '__main__':", "if False:"),
+         "writer canonical CLI dispatch guard missing or duplicated"),
+        ("guard-name", positive.replace("'__main__'", "'__other__'"),
+         "writer canonical CLI dispatch guard missing or duplicated"),
+        ("guard-duplicate", positive + "if __name__ == '__main__':\n    pass\n",
+         "writer canonical CLI dispatch guard missing or duplicated"),
+        ("dispatch-call-only", positive.replace("raise SystemExit(main())", "main()"),
+         "writer CLI dispatch must raise main exit status"),
+        ("dispatch-success", positive.replace("raise SystemExit(main())", "raise SystemExit(0)"),
+         "writer CLI dispatch must call guarded main"),
+        ("dispatch-string", positive.replace("raise SystemExit(main())", "'raise SystemExit(main())'"),
+         "writer CLI dispatch must raise main exit status"),
+        ("dispatch-dead", positive.replace("        raise SystemExit(main())",
+                                           "        if False:\n            raise SystemExit(main())"),
+         "writer CLI dispatch must raise main exit status"),
+        ("handler-type", positive.replace("except Fail as exc:", "except Exception as exc:"),
+         "writer CLI dispatch must catch only writer Fail"),
+        ("handler-swallow", positive.replace("        raise SystemExit(1)", "        pass"),
+         "writer CLI Fail handler must exit nonzero"),
+        ("handler-zero", positive.replace("raise SystemExit(1)", "raise SystemExit(0)"),
+         "writer CLI Fail handler must exit nonzero"),
+    )
+    for label, mutated, expected in mutations:
+        try:
+            require_writer_cli_dispatch(mutated)
+        except NegativeFailure as exc:
+            require(str(exc) == expected, f"writer CLI dispatch {label} diagnostic drift")
+        else:
+            raise NegativeFailure(f"writer CLI dispatch {label} bypass unexpectedly accepted")
+    print("PASS reject: ten writer CLI dispatch and failure-status substitutes")
+
+
 def prove_guard_source_classifier() -> None:
     valid = "def main():\n    require_cli_authorities()\n    parser = argparse.ArgumentParser()\n"
     require_direct_first_guard(valid)
@@ -384,7 +481,10 @@ def main() -> int:
     prove_guard_source_classifier()
     prove_main_binding_classifier()
     prove_parser_lock_classifier()
-    require_unique_writer_main_binding(WRITER_PATH.read_text(encoding="utf-8"))
+    prove_writer_cli_dispatch_classifier()
+    writer_source = WRITER_PATH.read_text(encoding="utf-8")
+    require_unique_writer_main_binding(writer_source)
+    require_writer_cli_dispatch(writer_source)
     writer = load_writer()
     guard = getattr(writer, "require_cli_authorities", None)
     require(callable(guard), "typed non-resurrection writer CLI authority guard missing")
