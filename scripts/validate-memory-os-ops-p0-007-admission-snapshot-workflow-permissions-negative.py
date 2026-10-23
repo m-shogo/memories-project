@@ -15,6 +15,7 @@ PR_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-pr.yml"
 PUBLISH_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot.yml"
 
 READONLY_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"
+READONLY_SOURCE_REF = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
 
 
 FULL_ADMISSION_VALIDATORS = (
@@ -2400,7 +2401,7 @@ def require_readonly_workflow_authority(readonly: str) -> None:
     require(
         body[:5] == [
             "set -euo pipefail",
-            'expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"',
+            'expected="' + READONLY_SOURCE_REF + '"',
             'test -n "$expected"',
             'test "$(git rev-parse HEAD)" = "$expected"',
             'test -z "$(git status --porcelain --untracked-files=all)"',
