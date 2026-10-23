@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+from contextlib import contextmanager
 import importlib.util
 import json
 import subprocess
@@ -42,6 +43,16 @@ def write(path: Path, value: dict[str, Any]) -> None:
 
 def mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
+
+
+@contextmanager
+def temporary_mode(path: Path, temporary: int):
+    original = mode(path)
+    try:
+        path.chmod(temporary)
+        yield
+    finally:
+        path.chmod(original)
 
 
 def require_material_mutation(before: dict[str, Any], after: dict[str, Any], label: str) -> None:
@@ -409,36 +420,56 @@ def run_generator_atomic_write_mode_preservation() -> None:
         SNAPSHOT.chmod(original_mode)
 
 
+def prove_temporary_mode_cleanup() -> None:
+    # Exception-path restoration is proven in an isolated fixture, not by
+    # deliberately failing halfway through a canonical snapshot mutation.
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-mode-cleanup-negative-") as tmp:
+        fixture = Path(tmp) / "mode-fixture"
+        fixture.write_text("unchanged", encoding="utf-8")
+        fixture.chmod(0o600)
+        try:
+            with temporary_mode(fixture, 0o640):
+                if mode(fixture) != 0o640:
+                    raise Fail("temporary mode guard did not apply the requested mode")
+                raise RuntimeError("synthetic interrupted negative")
+        except RuntimeError as exc:
+            if str(exc) != "synthetic interrupted negative":
+                raise Fail(f"temporary mode cleanup test failed outside injected exception: {exc}") from exc
+        else:
+            raise Fail("temporary mode cleanup fixture did not raise")
+        if mode(fixture) != 0o600 or fixture.read_text(encoding="utf-8") != "unchanged":
+            raise Fail("temporary mode cleanup did not restore isolated fixture mode/bytes")
+
+
 def run_generator_atomic_write_failure() -> None:
     snapshot_before = SNAPSHOT.read_bytes()
     status_before = STATUS.read_bytes()
-    original_mode = mode(SNAPSHOT)
     module = load_generator_module()
     original_replace = module.os.replace
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
         raise OSError("synthetic strict snapshot atomic replace rejection")
 
-    try:
-        SNAPSHOT.chmod(0o640)
+    # Restore the canonical mode on *every* exit, including an unexpected
+    # exception or a failed assertion before the ordinary cleanup checks.
+    with temporary_mode(SNAPSHOT, 0o640):
         module.os.replace = reject_replace
         try:
-            module.atomic_write_text(SNAPSHOT, snapshot_before.decode("utf-8") + " ")
-        except SystemExit as exc:
-            if "cannot atomically write contracts/operations/ops-p0-007-admission-snapshot.v1.json" not in str(exc):
-                raise Fail(f"atomic strict snapshot write rejected at wrong boundary: {exc}") from exc
-        else:
-            raise Fail("synthetic strict snapshot atomic replace failure unexpectedly accepted")
-    finally:
-        module.os.replace = original_replace
+            try:
+                module.atomic_write_text(SNAPSHOT, snapshot_before.decode("utf-8") + " ")
+            except SystemExit as exc:
+                if "cannot atomically write contracts/operations/ops-p0-007-admission-snapshot.v1.json" not in str(exc):
+                    raise Fail(f"atomic strict snapshot write rejected at wrong boundary: {exc}") from exc
+            else:
+                raise Fail("synthetic strict snapshot atomic replace failure unexpectedly accepted")
+        finally:
+            module.os.replace = original_replace
 
-    if SNAPSHOT.read_bytes() != snapshot_before:
-        SNAPSHOT.chmod(original_mode)
-        raise Fail("atomic replace rejection mutated canonical strict snapshot")
-    if mode(SNAPSHOT) != 0o640:
-        SNAPSHOT.chmod(original_mode)
-        raise Fail(f"atomic replace rejection changed canonical strict snapshot mode: {oct(mode(SNAPSHOT))}")
-    SNAPSHOT.chmod(original_mode)
+        if SNAPSHOT.read_bytes() != snapshot_before:
+            raise Fail("atomic replace rejection mutated canonical strict snapshot")
+        if mode(SNAPSHOT) != 0o640:
+            raise Fail(f"atomic replace rejection changed canonical strict snapshot mode: {oct(mode(SNAPSHOT))}")
+
     if STATUS.read_bytes() != status_before:
         raise Fail("atomic replace rejection mutated canonical production status")
     leftovers = list(SNAPSHOT.parent.glob(f".{SNAPSHOT.name}.*.tmp"))
@@ -637,6 +668,7 @@ def main() -> int:
 
     try:
         prove_snapshot_state_classifier()
+        prove_temporary_mode_cleanup()
         prove_positive_validator_classifier()
         prove_case_specific_validator_classifier()
         prove_generator_diagnostic_classifier()
