@@ -1634,6 +1634,80 @@ def publisher_capture_step_lines(publish: str) -> list[str]:
     ]
 
 
+
+def require_publisher_compile_stage(publish: str) -> None:
+    """Prove publisher compilation is a live, exact, status-propagating command."""
+    lines = publish.splitlines()
+    name = "      - name: Generate and validate strict snapshot"
+    starts = [index for index, line in enumerate(lines) if line == name]
+    require(len(starts) == 1, "strict snapshot publisher compile stage authority drift")
+    start = starts[0]
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].startswith("      - ")), len(lines))
+    runs = [index for index in range(start + 1, end) if lines[index] == "        run: |"]
+    require(len(runs) == 1, "strict snapshot publisher compile stage authority drift")
+    body = [line[10:] for line in lines[runs[0] + 1:end]
+            if line.startswith("          ") and line[10:].strip()]
+    expected = [
+        "set +e",
+        "log=/tmp/ops-p0-007-admission-snapshot.log",
+        ': > "$log"',
+        "code=0",
+        "python -m py_compile \\",
+        *(f"  {path} \\" for path in PR_COMPILE_FILES[:-1]),
+        '  >> "$log" 2>&1 || code=$?',
+        *(f'if [[ "$code" == "0" ]]; then python {path} >> "$log" 2>&1 || code=$?; fi'
+          for path in PUBLISH_REVALIDATION_CHAIN),
+        'echo "exit_code=$code" >> "$GITHUB_OUTPUT"',
+        'cat "$log"',
+        "exit 0",
+    ]
+    require(body == expected, "strict snapshot publisher compile stage authority drift")
+
+
+def prove_publisher_compile_stage_negative(publish: str) -> None:
+    require_publisher_compile_stage(publish)
+    name = "      - name: Generate and validate strict snapshot\n"
+    end_name = "      - name: Commit deterministic strict snapshot\n"
+    require(publish.count(name) == publish.count(end_name) == 1,
+            "strict snapshot publisher compile fixture step boundary drift")
+    before, remainder = publish.split(name, 1)
+    step, after = remainder.split(end_name, 1)
+    prefix = before + name
+    suffix = end_name + after
+    def check(label: str, changed: str) -> None:
+        require(changed != step, f"{label} publisher compile fixture mutation was a no-op")
+        try:
+            require_publisher_compile_stage(prefix + changed + suffix)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot publisher compile stage authority drift",
+                f"{label} publisher compile fixture rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted weakened compile stage: {label}")
+
+    first = f"            {PR_COMPILE_FILES[0]} \\\n"
+    second = f"            {PR_COMPILE_FILES[1]} \\\n"
+    last = f"            {PR_COMPILE_FILES[-2]} \\\n"
+    command = "          python -m py_compile \\\n"
+    redirect = '            >> "$log" 2>&1 || code=$?\n'
+    require(all(step.count(line) == 1 for line in (first, second, last, command, redirect)),
+            "strict snapshot publisher compile fixture anchor drift")
+    check("missing first argument", step.replace(first, "", 1))
+    check("comment-only argument", step.replace(first, "            # " + first.strip() + "\n", 1))
+    check("wrong argument", step.replace(first, "            scripts/unreviewed-compile.py \\\n", 1))
+    check("reordered arguments", step.replace(first + second, second + first, 1))
+    check("missing compile invocation", step.replace(command, "          echo python -m py_compile \\\n", 1))
+    check("masked compile failure", step.replace(redirect, '            >> "$log" 2>&1 || true\n', 1))
+    check("missing status capture", step.replace(redirect, "", 1))
+    check("extra compile argument", step.replace(last, last + "            scripts/unreviewed-compile.py \\\n", 1))
+    check("comment inside continuation", step.replace(first, first + "            # breaks shell continuation\n", 1))
+    check("early exit before compile", step.replace(command, "          exit 0\n" + command, 1))
+    check("duplicate compile", step.replace(command, command + command, 1))
+    check("forged status reset", step.replace(redirect, redirect + "          code=0\n", 1))
+
+
 def require_publisher_capture_status_chain(publish: str) -> None:
     commands = publisher_capture_step_lines(publish)
     require(
@@ -2115,6 +2189,7 @@ def main() -> int:
     require("refusing stale strict snapshot" in publish, "strict snapshot publication workflow must fail closed on stale authority")
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
     prove_publisher_capture_status_negative(publish)
+    prove_publisher_compile_stage_negative(publish)
     prove_publisher_staging_negative(publish)
     prove_publisher_revalidation_call_binding(publish)
     prove_publisher_shell_fail_closed_negative(publish)
