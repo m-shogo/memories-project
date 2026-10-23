@@ -3090,3 +3090,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical atomic writer changes its error contract or an observed failure injection bypasses exact target/diagnostic binding.
+
+
+## 2026-10-24 — Post-write rollback must reject symlinked canonical authorities before mutation
+
+### Outcome
+- Commit f80d201fd0ff87f2faa50534ddf918a7444e6bce adds fail-closed source-path checks to the existing strict OPS-P0-007 snapshot post-write rollback negative before either canonical mutation scenario and after each cleanup.
+- Exact-source OPS P0 007 Snapshot Post Write Rollback Negative run 40004096132 completed SUCCESS at this commit.
+
+### Evidence
+- The rollback harness intentionally writes and restores the canonical strict snapshot. Its previous bytes/mode checks did not explicitly prevent a same-content symlinked snapshot, Production Status or generator path from becoming the target of that test's mutation.
+- The new precondition requires the exact expected repository-relative file, resolved path, regular-file identity and non-symlinked parent for all three authorities. Isolated temporary fixtures prove acceptance of a canonical file, exact rejection of a same-content file symlink, restoration, and exact rejection of a parent-directory symlink. No fixture symlink is created in the canonical checkout.
+
+### Why safe
+- The added checks execute before existing rollback mutation and again after each cleanup. Only the CI-bound rollback negative harness changed; the canonical generator, publisher workflow, Production Status, snapshot content, registries, evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- Before an intentionally mutating negative test, prove canonical source path identity independently of content and mode. Use disposable file/parent symlink fixtures for negative proof, then recheck canonical path authority before each destructive phase.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if canonical rollback source-path architecture changes or a newly observed symlink/path alias bypasses the pre-mutation guard.
