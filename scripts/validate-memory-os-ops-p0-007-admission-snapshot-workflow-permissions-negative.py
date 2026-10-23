@@ -821,8 +821,8 @@ def prove_pr_source_verification_negative(pr: str) -> None:
             "      - name: Verify exact pull request source\n        continue-on-error: true\n        run: |\n",
         ),
         (
-            '          test -z "$(git status --porcelain)"\n',
-            '          true\n          test -z "$(git status --porcelain)"\n',
+            '          test "$(git rev-parse HEAD)" = "$expected"\n          test -z "$(git status --porcelain)"\n',
+            '          test "$(git rev-parse HEAD)" = "$expected"\n          true\n          test -z "$(git status --porcelain)"\n',
         ),
     )
     for original, replacement in substitutions:
