@@ -1743,3 +1743,45 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - The learning contract remained blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status remained blob `ce67e9353d6583e4eaf792470563cad25a7396b3` with `productionDecision=NO_GO`, and the OPS-P0-007 snapshot remained blob `dbaa36b082366737dca2461d15748103b9740ef6` with zero registered/semantically eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records, and final candidates. Independent review and separate human promotion remain mandatory.
 - Learning history is append-only execution guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Negative rejection proof must be a single intended diagnostic
+
+### Symptom
+- The learning negative classifier used substring membership for an expected diagnostic. A canonical exit-1 result containing an unrelated first error and the expected text on a later line could be misclassified as the intended negative rejection.
+
+### Evidence
+- The prior `require_expected_rejection` checked `expected in result.stderr`, without constraining the diagnostic to a single line. Two synthetic multi-error results can satisfy that old condition; this is a source-level false-positive risk, not an observed production failure.
+
+### Root cause or unknown
+- Verified: substring membership conflated the location of a diagnostic with its mere presence and did not exclude additional errors.
+
+### Failed approach
+- Accepting any stderr that starts with the generic canonical prefix and contains the expected diagnostic anywhere, regardless of additional failures.
+
+### Correction
+- Commit `b93a45d387d700da3812bf20c69becca0f6dad68` requires one canonical diagnostic line beginning with the case-specific expected message and adds two synthetic classifier controls rejecting an expected second-line diagnostic and a trailing unrelated error.
+- The same commit adds a positive-controlled negative fixture for replacing the only synchronous learning guard with an async-only definition.
+- Commit `e23867f18cb74a42cc532fa70de46573af1c505a` raises the existing operability CI minimum to 67 fail-closed cases.
+
+### Recurrence guard
+- The negative harness now rejects multiline and wrong-prefix diagnostics, tests its classifier with synthetic unrelated errors, and requires the async-only guard mutation to fail for the specific missing-synchronous-guard reason. The existing CI caller refuses fewer than 67 cases.
+
+### Retry condition
+- Revisit if canonical validator diagnostic formatting intentionally changes or a new ambiguous same-line diagnostic bypass is demonstrated. Do not loosen classification merely to make a failing negative fixture appear green.
+
+### Outcome
+- Two code commits landed on `so`; exact-source Operability Contracts run `39953028673` completed SUCCESS on `e23867f18cb74a42cc532fa70de46573af1c505a`.
+
+### Success evidence
+- CI job `120411933218` logged `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (67 fail-closed cases)`, `Memory OS entrypoint document validation PASS`, and `production decision: NO_GO`.
+- Compare `4eb5db35f655d9cc35957fe566fe29b00798331e...e23867f18cb74a42cc532fa70de46573af1c505a` changed only the canonical learning negative suite and existing operability CI entrypoint.
+
+### Why safe
+- The new classifier controls are synthetic subprocess results and the async-only negative mutates an isolated fixture; no canonical production evidence, recovery generation, objective, drill, credential, traffic, readiness or promotion authority changed.
+
+### Reusable mechanism
+- For negative proof, bind both the specific intended diagnostic and its single-line position, and self-test rejection of extra/unrelated failures. Keep executed exact-source CI evidence distinct from production readiness.
+
+### Protected-authority check
+- The autonomous-learning contract remained blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status remained blob `ce67e9353d6583e4eaf792470563cad25a7396b3` with `productionDecision=NO_GO`, and the strict OPS-P0-007 snapshot remained blob `dbaa36b082366737dca2461d15748103b9740ef6` with zero registered/semantically eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates. Independent review and separate human promotion remain mandatory.
+- This append-only learning entry cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
