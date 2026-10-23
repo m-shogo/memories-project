@@ -2146,3 +2146,44 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, objectives, executable requests, recovery evidence, typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Typed eight-domain coverage, independent review and separate human promotion remain mandatory.
 - Append-only learning is operational guidance, not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Positive-control output proof and fixture newline escaping
+
+### Symptom
+- The new positive-control classifier rejected its own synthetic valid fixture and failed both strict snapshot workflows before the negative cases.
+
+### Evidence
+- Commit `9d7ad9de0a45c59c858acf4408a7314969b5af24`; Readonly run `39969357561` (job `120467591399`) and Snapshot run `39969357580` (job `120467591823`) both failed: `synthetic positive: canonical positive validator success output missing or duplicated`.
+- Source inspection and a direct Python `splitlines()` check showed literal backslash-n strings, not real newlines. The publisher temporarily committed a failure diagnostic fixture at `32dda94aaafde010c610a1c28698b3e3aac4f27a`, later removed by the publisher's bounded success reconciliation at `5d46e81ba91f2ed83a6e06e43bf9816d2ef0cf48`. Neither is production evidence.
+
+### Root cause or unknown
+- Verified: JavaScript-to-Python source generation double-escaped newlines. The synthetic positive output was a single line with literal backslash-n sequences.
+
+### Failed approach
+- Adding synthetic positive-output controls without inspecting the generated Python string's actual newline semantics. This repeated a previously known fixture-escaping failure class; its recurrence guard was not applied during source generation.
+
+### Correction
+- Commit `a481e7ce810e6b4fd1df6f0ffb899b783dfc6a7c` converts ten double-escaped fixture sequences to actual Python newline escapes while retaining exactly-one-PASS and exactly-one-NO_GO output requirements.
+
+### Recurrence guard
+- The CI-bound negative suite now rejects a baseline validator that exits zero without its canonical PASS and `production decision: NO_GO` output. Its classifier has a synthetic positive and six missing, unrelated, wrong-decision, duplicate and embedded-marker controls.
+- When generating Python fixture source through JavaScript, inspect serialized source and independently verify `splitlines()` before commit.
+
+### Retry condition
+- Revisit only if the canonical validator's positive output changes or a concrete new success-spoofing bypass is demonstrated. Never reuse double-escaped synthetic newlines unchanged.
+
+### Outcome
+- Corrected exact-source Readonly run `39969470365` (job `120467982921`) and Snapshot publisher run `39969470368` (job `120467982891`) both completed SUCCESS on `a481e7ce810e6b4fd1df6f0ffb899b783dfc6a7c`.
+
+### Success evidence
+- Both logs contain strict snapshot negative PASS, 22 controlled validator corruptions rejected, and `production decision: NO_GO`. The earlier CI failures remain historical failures.
+
+### Why safe
+- Only the existing negative harness was strengthened; synthetic fixtures and diagnostic files are not recovery or promotion evidence. No generation, objective, reviewed request, recovery evidence, credential, traffic, readiness or promotion was created.
+
+### Reusable mechanism
+- Require canonical positive PASS and NO_GO lines as well as zero exit; prove the classifier rejects missing or spoofed output and confirm the exact-source CI outcome.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Append-only learning cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
