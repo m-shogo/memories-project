@@ -14,6 +14,19 @@ ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
+SNAPSHOT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+PROTECTED_AUTHORITIES = (
+    SNAPSHOT,
+    STATUS,
+    GENERATOR,
+    ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    ROOT / "contracts/operations/recovery-objectives-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json",
+)
+
 
 def protected_identity(path: Path) -> tuple[object, ...]:
     """Identity of both the authority and its parent, without following links for stat."""
@@ -24,6 +37,21 @@ def protected_identity(path: Path) -> tuple[object, ...]:
         (parent.st_mode, parent.st_dev, parent.st_ino),
         path.resolve(strict=True),
     )
+
+
+def protected_state(path: Path) -> tuple[object, ...]:
+    """Capture bytes as well as file/parent identity; same-inode writes are drift."""
+    return (path.read_bytes(), protected_identity(path))
+
+
+def prove_content_drift_classifier() -> None:
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-atomic-content-") as tmp:
+        path = Path(tmp) / "registry.json"
+        path.write_bytes(b'{"registeredEvidenceCount":0}\\n')
+        before = protected_state(path)
+        path.write_bytes(b'{"registeredEvidenceCount":1}\\n')
+        if protected_state(path) == before:
+            raise SystemExit("atomic content classifier accepted same-inode registry byte drift")
 
 
 def prove_identity_classifier() -> None:
@@ -145,6 +173,7 @@ def load_generator():
 
 def main() -> int:
     prove_identity_classifier()
+    prove_content_drift_classifier()
     prove_exact_failure_classifier()
     prove_atomic_temp_source_classifier()
     prove_materialized_atomic_temp_source_classifier()
@@ -155,12 +184,16 @@ def main() -> int:
     if not callable(atomic_write):
         raise SystemExit("strict snapshot atomic writer missing")
 
-    target = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
+    target = SNAPSHOT
+    for path in PROTECTED_AUTHORITIES:
+        if (not path.is_file() or path.is_symlink() or path.parent.is_symlink()
+                or path.resolve(strict=True) != path):
+            raise SystemExit(f"atomic negative protected authority path drift: {path.relative_to(ROOT)}")
     before = target.read_bytes()
     before_mode = stat.S_IMODE(target.stat().st_mode)
     status_before = STATUS.read_bytes()
     status_mode = stat.S_IMODE(STATUS.stat().st_mode)
-    protected_before = {path: protected_identity(path) for path in (target, STATUS, GENERATOR)}
+    protected_before = {path: protected_state(path) for path in PROTECTED_AUTHORITIES}
     temp_prefix = f".{target.name}."
     before_temps = {p.name for p in target.parent.glob(f"{temp_prefix}*.tmp")}
 
@@ -192,9 +225,9 @@ def main() -> int:
         raise SystemExit("failed atomic replacement mutated canonical snapshot mode")
     if STATUS.read_bytes() != status_before or stat.S_IMODE(STATUS.stat().st_mode) != status_mode:
         raise SystemExit("failed atomic replacement mutated canonical production status bytes/mode")
-    for path, original_identity in protected_before.items():
-        if protected_identity(path) != original_identity:
-            raise SystemExit(f"failed atomic replacement changed protected path identity: {path.relative_to(ROOT)}")
+    for path, original_state in protected_before.items():
+        if protected_state(path) != original_state:
+            raise SystemExit(f"failed atomic replacement changed protected authority bytes/identity: {path.relative_to(ROOT)}")
     after_temps = {p.name for p in target.parent.glob(f"{temp_prefix}*.tmp")}
     if after_temps != before_temps:
         raise SystemExit("failed atomic replacement left temporary residue")
@@ -202,7 +235,7 @@ def main() -> int:
     print("OPS-P0-007 strict snapshot atomic replacement negative proof: PASS")
     print("exact injected replacement failure and one canonical target attempt verified: true")
     print("canonical production status bytes/mode unchanged: true")
-    print("snapshot/status/generator source and parent identity unchanged: true")
+    print("snapshot/status/generator/recovery registries bytes and identity unchanged: true")
     print("isolated file/parent symlink identity bypass accepted: false")
     return 0
 
