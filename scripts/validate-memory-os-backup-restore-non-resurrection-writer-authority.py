@@ -42,6 +42,20 @@ def expect_rejected(writer: Any, field: str, substitute: Path) -> None:
         setattr(writer, field, original)
 
 
+def require_owned_lock_symlink(lock: Path, target: Path, leaf_identity: tuple[int, int],
+                               parent_identity: tuple[int, int]) -> None:
+    require(lock.parent.is_dir() and not lock.parent.is_symlink(),
+            "typed negative lock parent missing or symlinked")
+    parent_stat = lock.parent.stat()
+    require((parent_stat.st_dev, parent_stat.st_ino) == parent_identity,
+            "typed negative lock parent identity drift")
+    require(lock.is_symlink() and lock.resolve() == target.resolve(),
+            "typed negative lock symlink target drift")
+    leaf_stat = lock.lstat()
+    require((leaf_stat.st_dev, leaf_stat.st_ino) == leaf_identity,
+            "typed negative lock symlink identity drift")
+
+
 def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
     lock = writer.LOCK
     require(lock == ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock",
@@ -52,7 +66,13 @@ def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
         target = Path(temp_dir) / "outside.lock"
         target.write_bytes(b"outside-lock-target\n")
         before = target.read_bytes()
+        require(lock.parent.is_dir() and not lock.parent.is_symlink(),
+                "typed negative lock parent missing or symlinked")
+        parent_stat = lock.parent.stat()
+        parent_identity = (parent_stat.st_dev, parent_stat.st_ino)
         lock.symlink_to(target)
+        leaf_stat = lock.lstat()
+        leaf_identity = (leaf_stat.st_dev, leaf_stat.st_ino)
         try:
             try:
                 writer.os.open(lock, writer.os.O_WRONLY | writer.os.O_CREAT | writer.os.O_EXCL, 0o600)
@@ -60,14 +80,32 @@ def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
                 pass
             else:
                 raise NegativeFailure("typed non-resurrection writer lock flags followed a materialized symlink")
-            require(lock.is_symlink(), "typed non-resurrection lock symlink unexpectedly replaced")
+            require_owned_lock_symlink(lock, target, leaf_identity, parent_identity)
             require(target.read_bytes() == before,
                     "typed non-resurrection lock symlink rejection mutated external target")
         finally:
-            try:
-                lock.unlink()
-            except FileNotFoundError:
-                pass
+            # Never delete a lock path whose parent or symlink inode was replaced.
+            require_owned_lock_symlink(lock, target, leaf_identity, parent_identity)
+            lock.unlink()
+
+        # A same-target replacement must not count as ownership of the original inode.
+        isolated_link = Path(temp_dir) / "isolated-owned-link"
+        isolated_replacement = Path(temp_dir) / "isolated-replacement-link"
+        isolated_link.symlink_to(target)
+        original = isolated_link.lstat()
+        isolated_replacement.symlink_to(target)
+        isolated_replacement.replace(isolated_link)
+        try:
+            require_owned_lock_symlink(isolated_link, target,
+                                      (original.st_dev, original.st_ino), parent_identity)
+        except NegativeFailure as exc:
+            require(str(exc) == "typed negative lock symlink identity drift",
+                    "typed lock replacement diagnostic drift")
+            print("PASS reject: same-target symlink replacement is not fixture ownership")
+        else:
+            raise NegativeFailure("same-target symlink replacement unexpectedly accepted")
+        finally:
+            isolated_link.unlink()
     require(not lock.exists() and not lock.is_symlink(),
             "typed non-resurrection lock symlink negative left canonical lock materialized")
 
