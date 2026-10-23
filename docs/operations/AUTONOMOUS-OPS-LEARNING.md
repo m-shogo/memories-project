@@ -2322,3 +2322,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `NO_GO`; strict OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates. Learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Independent review and separate human promotion remain mandatory.
 - Learning remains append-only guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Interrupted atomic negative tests must restore snapshot mode
+
+### Outcome
+- Commit `8e9e7caccfabe373f235e64f5ae79a0f360eaffb` makes the strict snapshot atomic-replace negative restore the original canonical file mode through a `finally`-backed context manager, even if the injected failure or a subsequent assertion unexpectedly raises.
+
+### Evidence
+- Previously the test restored the mode only along its expected rejection/assertion branches; an unexpected exception before those branches could leave the canonical snapshot at temporary mode `0o640`. The new isolated temporary-file control deliberately raises mid-context and checks original mode and bytes were restored.
+- Exact-source Readonly run `39972914029` (job `120479990351`) and Snapshot publisher run `39972914013` (job `120479990596`) both completed SUCCESS, logging strict snapshot negative PASS, 22 controlled validator corruptions rejected, 3 generator corruptions rejected and `production decision: NO_GO`.
+
+### Why safe
+- The new exception-path probe runs in an external temporary directory; the canonical atomic-replace negative still uses its original expected fail-closed replacement error, byte/mode assertions, cleanup checks and status immutability check. No production or recovery evidence was created.
+
+### Reusable mechanism
+- Tests that temporarily change canonical authority metadata must use unconditional restoration, not only success-path cleanup. Prove exceptional restoration using an isolated synthetic fixture before exercising the canonical test.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human promotion remain mandatory.
+- Learning is append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
