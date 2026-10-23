@@ -108,6 +108,8 @@ def expected_diagnostic(name: str) -> str:
         "comment-only learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
         "quoted learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
         "dead-branch learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
+        "unreachable learning guard after return": "learning CI entrypoint guard call follows unconditional return or raise",
+        "unreachable learning guard after raise": "learning CI entrypoint guard call follows unconditional return or raise",
         "dead module main guard": "learning CI entrypoint must execute main from its live module guard",
         "comment-only module main invocation": "learning CI entrypoint must execute main from its live module guard",
     }
@@ -307,6 +309,14 @@ def main() -> int:
         ("dead-branch learning guard call", lambda root: replace_in_entrypoint(
             root, "    validate_learning_guards(failures)\n",
             "    if False:\n        validate_learning_guards(failures)\n",
+        )),
+        ("unreachable learning guard after return", lambda root: replace_in_entrypoint(
+            root, "    validate_learning_guards(failures)\n",
+            "    return 0\n    validate_learning_guards(failures)\n",
+        )),
+        ("unreachable learning guard after raise", lambda root: replace_in_entrypoint(
+            root, "    validate_learning_guards(failures)\n",
+            "    raise RuntimeError('unreachable')\n    validate_learning_guards(failures)\n",
         )),
     ))
     cases.extend((
