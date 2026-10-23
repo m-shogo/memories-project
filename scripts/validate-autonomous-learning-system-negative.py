@@ -196,7 +196,7 @@ def main() -> int:
     # an unrelated canonical failure elsewhere in the fixture.
     wrong_reason = subprocess.CompletedProcess(
         [], 1, "",
-        "AUTONOMOUS LEARNING VALIDATION FAILED: unrelated injected failure\\n",
+        "AUTONOMOUS LEARNING VALIDATION FAILED: unrelated injected failure\n",
     )
     try:
         require_expected_rejection("weaken mandatory rule", wrong_reason)
@@ -209,7 +209,7 @@ def main() -> int:
         subprocess.CompletedProcess(
             [], 1, "",
             "AUTONOMOUS LEARNING VALIDATION FAILED: "
-            "mandatory learning rule must remain true: unchangedBlockerIsNotRetried\\n",
+            "mandatory learning rule must remain true: unchangedBlockerIsNotRetried\n",
         ),
     )
 
