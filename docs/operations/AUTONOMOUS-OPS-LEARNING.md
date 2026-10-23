@@ -3297,3 +3297,41 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Retry condition
 - Revisit only if the reviewed linear PR shell architecture changes or a new observed shell-command indirection bypasses the bounded negative guard.
 
+
+## 2026-10-24 — PR source-verification authority and repeated fixture-anchor collision
+
+### Symptom
+- Initial exact-source Snapshot Permission Boundary run 40005920442 at cbc18a67b54e5b466ff73990f374dbc94e879c9d failed with strict snapshot PR source verification fixture drift.
+- The first correction at 7ccfc01d71dd21f688653a6bbe92cd7b71e0e59c still failed in run 40005999096 with the same diagnostic.
+
+### Evidence
+- The canonical PR workflow has two legitimate clean-worktree assertions: one in Verify exact pull request source and one after the deterministic snapshot diff check.
+- Both the missing-clean-check and extra-command negative fixtures originally used the shared test -z git status line as a global uniqueness anchor. The first correction scoped only the missing-clean-check fixture; the extra-command fixture still counted the shared line twice.
+
+### Root cause or unknown
+- Verified: the synthetic mutation harness required a globally unique substring that was not unique in the reviewed workflow. This was a fixture-boundary failure, not a failure of the production or PR validator execution.
+
+### Failed approach
+- Replacing one repeated shell line by globally counting it, and then correcting only one of two fixtures that shared the same ambiguous anchor.
+
+### Correction
+- Commits 7ccfc01 and 7fad5de scope both mutations to the unique pair of checked-out HEAD verification and clean-worktree assertion in the named PR source step.
+- Exact-source Snapshot Permission Boundary run 40006081169 at 7fad5de81c4473393b37ca414e5c3fc838403c4a completed SUCCESS.
+
+### Recurrence guard
+- The CI-bound negative now requires an exact named source-verification step: fail-closed shell startup, nonempty PR-head SHA, checked-out HEAD equality, clean worktree, no conditional or continue-on-error override, no extra command, and no duplicate step. Nine isolated mutations must produce its exact authority-drift diagnostic.
+- Mutation anchors for repeated workflow commands must be unique within the intended step, not globally matched by a shared command suffix. Before adding fixtures, count every occurrence in the actual canonical workflow.
+
+### Outcome and evidence
+- The repaired negative suite passed exact-source CI run 40006081169; it rejects weakening of the source-binding precondition without changing the reviewed workflow.
+
+### Why safe and reusable mechanism
+- Only the existing CI-bound read-only negative harness changed; its fixture mutations operate on in-memory workflow text. Bind source verification to a reviewed step-shaped allowlist and exercise exact-diagnostic negatives for each required assertion. No production evidence or readiness was generated.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- This append-only learning record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+### Retry condition
+- Do not retry the ambiguous cbc18a67 or partially fixed 7ccfc01 fixture. Revisit only if the reviewed source-verification step changes or an observed source-binding bypass escapes the bounded exact-step guard.
+
