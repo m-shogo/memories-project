@@ -1911,3 +1911,43 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`productionDecision=NO_GO`), and strict OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remained unchanged. The snapshot retains zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records, and final candidates. Typed non-resurrection still requires all eight domains and two independent bundle/digest-bound reviews; separate human promotion remains mandatory.
 - Learning history is append-only execution guidance and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-23 — Full admission validator proof must come from reachable workflow run blocks
+
+### Symptom
+- Static snapshot workflow admission-chain proof could count a line beginning with `python scripts/validate-...` even when it appeared in non-executable YAML data, a disabled step, a shell heredoc, or after an unconditional shell exit. This was a source-level false-positive risk, not an observed production or recovery failure.
+
+### Evidence
+- Before commit `07b69ce732e5b70e7b4f79b3d178a0fa026aa65b`, `require_full_admission_chain` searched the entire workflow text with a line-anchored regex and had only a comment-only control. The new positive-controlled fixtures explicitly cover a YAML `env` literal, `if: false` step, heredoc body and post-`exit 0` command; each is rejected for the intended missing executable validator diagnostic.
+
+### Root cause or unknown
+- Verified: source-text matching did not bind the mandatory recovery-objective, reviewed-drill-request, generation-evidence and typed non-resurrection validators to enabled GitHub Actions `run: |` steps or executable shell regions.
+
+### Failed approach
+- Treating any syntactically command-shaped line in the YAML source as proof that the full admission validator executes.
+
+### Correction
+- Commit `07b69ce732e5b70e7b4f79b3d178a0fa026aa65b` limits evidence to enabled `run: |` step bodies, excludes heredoc data and stops counting commands after a direct unconditional shell exit. The existing canonical workflow permission negative suite now includes one positive control and five rejection fixtures (including the original comment-only case).
+
+### Recurrence guard
+- The pre-existing CI-bound snapshot workflow permission negative suite executes the reachability controls on each relevant change. Exact-source `OPS P0 007 Snapshot Permission Boundary` run `39960522958` and `OPS P0 007 Admission Snapshot Readonly` run `39960522755` both completed SUCCESS on commit `07b69ce732e5b70e7b4f79b3d178a0fa026aa65b`; the readonly job logged canonical snapshot/negative/authority validation PASS and `production decision: NO_GO`.
+
+### Retry condition
+- Extend the bounded parser only when a concrete new workflow syntax or unreachable shell construct is demonstrated to bypass it, or if canonical workflow run-step structure legitimately changes. Do not treat static line presence or this learning entry as production, recovery or promotion evidence.
+
+### Outcome
+- One fail-closed executable guard commit landed on `so`, and two exact-source snapshot workflows succeeded. No production-equivalent environment generation, approved objective, executable reviewed request, recovery evidence, traffic, credential, readiness or promotion state was created.
+
+### Success evidence
+- Workflow run `39960522958`, job `120437071311`: `Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS`, full objective/request/evidence/eight-domain checks reported required, and `production decision: NO_GO`.
+- Workflow run `39960522755`, job `120437070149`: strict admission snapshot, negative suite, validator authority, generator execution authority and workflow permission negative all logged PASS at the same source SHA.
+
+### Why safe
+- Only the existing negative guard was changed; all new fixtures are in-memory strings. The guard is read-only and fail-closed, and both CI jobs verified source binding and authority immutability.
+
+### Reusable mechanism
+- Bind workflow execution evidence to enabled run-step bodies, exclude inert YAML and shell heredoc text, require positive-controlled negative fixtures, and confirm exact-source CI execution rather than relying on textual command presence.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/semantically eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates; autonomous-learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate non-automatic human promotion remain mandatory.
+- This append-only learning history is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
