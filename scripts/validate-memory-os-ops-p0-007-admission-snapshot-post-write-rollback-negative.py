@@ -107,7 +107,7 @@ def corrupt_published_snapshot() -> None:
 PRIMARY_ROLLBACK_DIAGNOSTIC = "generated strict snapshot invalid: snapshot field set drift"
 FAILED_ROLLBACK_DIAGNOSTIC = (
     PRIMARY_ROLLBACK_DIAGNOSTIC
-    + "; rollback incomplete: synthetic strict snapshot rollback replace rejection"
+    + "; rollback incomplete: cannot atomically write contracts/operations/ops-p0-007-admission-snapshot.v1.json: synthetic strict snapshot rollback replace rejection"
 )
 
 
