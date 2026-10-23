@@ -1951,3 +1951,42 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` retains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` retains zero registered/semantically eligible generations, approved objectives, executable requests, generation recovery evidence, complete typed eight-domain records and final candidates; autonomous-learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate non-automatic human promotion remain mandatory.
 - This append-only learning history is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-23 — Snapshot corruption negatives must identify their intended canonical rejection
+
+### Symptom
+- The strict OPS-P0-007 snapshot corruption negative harness accepted any canonical-prefixed exit-1 diagnostic for every validator mutation, even if an unrelated invariant caused the failure. This was a verified test-classification weakness, not an observed production failure.
+
+### Evidence
+- Before commit `a95f3149b75232c207cd1237345a60bdb8c4d1e7`, `run_validator(False, label)` checked only exit code 1, the generic `OPS-P0-007 ADMISSION SNAPSHOT FAILED:` substring and absence of a traceback. It did not distinguish the intended field-set, count, downstream projection, next-action or production-decision rejection from unrelated errors.
+
+### Root cause or unknown
+- Verified: the negative harness conflated any controlled canonical failure with case-specific proof.
+
+### Failed approach
+- Using a generic fail-closed prefix as sufficient evidence that a particular corruption mutation was detected for its intended reason.
+
+### Correction
+- Commit `a95f3149b75232c207cd1237345a60bdb8c4d1e7` binds six high-value snapshot/status mutations to an exact single-line canonical diagnostic. The classifier's synthetic positive control and three wrong/multiline controls reject unrelated errors; other existing negative cases remain governed by their prior checks pending separately verified case-specific mappings.
+
+### Recurrence guard
+- The existing `scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py` suite now fails if one of the six mapped cases is rejected for the wrong reason. Exact-source `OPS P0 007 Admission Snapshot Readonly` run `39960839717`, job `120438124050`, completed SUCCESS and logged strict snapshot negative PASS, validator authority negative PASS, workflow permission negative PASS and `production decision: NO_GO`.
+
+### Retry condition
+- Expand exact mappings only after verifying the intended diagnostics for the remaining registry/blocker mutations; revisit if canonical validator messages legitimately change. Never loosen the classifier merely to convert an unrelated failure into a passing negative.
+
+### Outcome
+- A second executable guard commit landed on `so`, with exact-source readonly CI SUCCESS. No production-equivalent generations, objectives, executable reviewed requests, generation recovery evidence, typed non-resurrection records, credentials, traffic, readiness or promotion were created.
+
+### Success evidence
+- `a95f3149b75232c207cd1237345a60bdb8c4d1e7` changed only the existing snapshot negative suite. CI `39960839717` exercised the new classifier controls and all existing strict snapshot negative cases successfully at that SHA.
+
+### Why safe
+- The change strengthens only negative classification, uses synthetic diagnostics for classifier self-tests, and retains the existing canonical validator and disposable/restored mutation handling. No authority was weakened.
+
+### Reusable mechanism
+- For negative admission proof, pair material mutation and a clean positive control with an exact expected diagnostic; reject multiline or unrelated canonical failures and verify exact-source CI.
+
+### Protected-authority check
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `productionDecision=NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` still has zero registered/semantically eligible generations, approved objectives, executable requests, recovery evidence, complete typed eight-domain records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Independent review and separate human production promotion remain mandatory.
+- Learning is append-only operational guidance, never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
