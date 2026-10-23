@@ -1056,6 +1056,69 @@ def prove_pr_job_execution_policy_negative(pr: str) -> None:
         raise Fail("strict snapshot PR accepted duplicate validate job")
 
 
+def require_pr_trigger_authority(pr: str) -> None:
+    """Require a real pull_request trigger covering all reviewed admission inputs."""
+    lines = pr.splitlines()
+    starts = [index for index, line in enumerate(lines) if line == "on:"]
+    require(len(starts) == 1, "strict snapshot PR trigger/path authority drift")
+    start = starts[0]
+    end = next(
+        (index for index in range(start + 1, len(lines))
+         if lines[index].strip() and not lines[index].startswith("  ")),
+        len(lines),
+    )
+    active = [line for line in lines[start:end] if line.strip()]
+    require(
+        active[:3] == ["on:", "  pull_request:", "    paths:"]
+        and all(re.fullmatch(r'      - "[^"]+"', line) for line in active[3:]),
+        "strict snapshot PR trigger/path authority drift",
+    )
+    paths = [line.split('"')[1] for line in active[3:]]
+    required = {
+        ".github/workflows/ops-p0-007-admission-snapshot.yml",
+        ".github/workflows/ops-p0-007-admission-snapshot-pr.yml",
+        "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+        "contracts/operations/production-operability-status.json",
+        "docs/evidence/backup-restore/**",
+        "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py",
+        *PUBLISH_REVALIDATION_CHAIN,
+    }
+    require(
+        len(paths) == len(set(paths)) and required.issubset(paths),
+        "strict snapshot PR trigger/path authority drift",
+    )
+
+
+def prove_pr_trigger_negative(pr: str) -> None:
+    require_pr_trigger_authority(pr)
+    self_path = '      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py"\n'
+    status_path = '      - "contracts/operations/production-operability-status.json"\n'
+    generator_path = '      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"\n'
+    mutations = (
+        ("  pull_request:\n", "  workflow_dispatch:\n"),
+        ("  pull_request:\n", "  pull_request_target:\n"),
+        ("  pull_request:\n", "  pull_request:\n  push:\n"),
+        ("    paths:\n", "    # paths disabled\n"),
+        (self_path, "      # negative guard path filter removed\n"),
+        (status_path, "      # production status path filter removed\n"),
+        (generator_path, "      # generator path filter removed\n"),
+        (self_path, self_path + self_path),
+    )
+    for original, replacement in mutations:
+        require(pr.count(original) == 1, "strict snapshot PR trigger mutation anchor drift")
+        mutated = pr.replace(original, replacement, 1)
+        require(mutated != pr, "strict snapshot PR trigger mutation was a no-op")
+        try:
+            require_pr_trigger_authority(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR trigger/path authority drift",
+                f"PR trigger/path mutation rejected outside exact guard: {exc}",
+            )
+        else:
+            raise Fail("strict snapshot PR accepted weakened trigger or path coverage")
+
+
 def publisher_protected_shell_starts(workflow: str) -> list[int]:
     lines = workflow.splitlines()
     names = (
@@ -1839,6 +1902,7 @@ def main() -> int:
     prove_pr_source_verification_negative(pr)
     prove_pr_drift_rejection_negative(pr)
     prove_pr_job_execution_policy_negative(pr)
+    prove_pr_trigger_negative(pr)
     prove_publisher_source_capture_negative(publish)
 
     require("pull_request:" in pr, "read-only strict snapshot PR workflow must be pull-request scoped")
