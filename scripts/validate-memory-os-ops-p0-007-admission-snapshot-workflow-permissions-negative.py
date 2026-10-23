@@ -20,6 +20,23 @@ FULL_ADMISSION_VALIDATORS = (
     "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
 )
 
+PUBLISH_REVALIDATION_CHAIN = (
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-backup-restore-drill-request.py",
+    "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
+    "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot-generator-execution-authority-negative.py",
+)
+
 # GitHub's write-capable token scopes are not limited to contents:write.
 # The snapshot PR job must remain read-only across every recognized scope.
 GITHUB_PERMISSION_SCOPES = (
@@ -379,18 +396,35 @@ def require_publisher_revalidation_calls(publish: str) -> None:
             re.match(r"^[ \t]*(?:return|exit)(?:[ \t;]|$)", line) is None,
             "strict snapshot publisher revalidation contains unconditional early return/exit",
         )
-    for validator in FULL_ADMISSION_VALIDATORS:
-        command = rf"(?m)^  python[ \t]+{re.escape(validator)}(?=[ \t]|$)"
+    # The bounded retry must refresh source before executing the full
+    # review/snapshot chain. The initial workflow validation is not enough.
+    source_refresh = (
+        "git fetch origin so",
+        "git reset --hard origin/so",
+        'SOURCE_SHA="$(git rev-parse HEAD)"',
+        "export SOURCE_SHA",
+        ': > "$log"',
+    )
+    live_commands = [line.strip() for line in body.splitlines() if line.strip()]
+    require(
+        tuple(live_commands[:len(source_refresh)]) == source_refresh,
+        "strict snapshot publisher bounded revalidation source refresh order drift",
+    )
+    expected_chain = [f'python {validator} >> "$log" 2>&1' for validator in PUBLISH_REVALIDATION_CHAIN]
+    for validator, expected in zip(PUBLISH_REVALIDATION_CHAIN, expected_chain):
+        command = rf"(?m)^  python[ \\t]+{re.escape(validator)}(?=[ \\t]|$)"
         require(
             re.search(command, body) is not None,
             f"strict snapshot publisher missing executable {validator} inside bounded revalidation",
         )
-        # A masked command does not enforce fail-closed admission.
-        fail_closed_command = rf'(?m)^  python[ \t]+{re.escape(validator)}[ \t]+>>[ \t]+"\$log"[ \t]+2>&1$'
         require(
-            re.search(fail_closed_command, body) is not None,
+            live_commands.count(expected) == 1,
             f"strict snapshot publisher masks or redirects {validator} admission failure",
         )
+    require(
+        live_commands[len(source_refresh):] == expected_chain,
+        "strict snapshot publisher bounded revalidation command order drift",
+    )
 
 
 def prove_publisher_revalidation_call_binding(publish: str) -> None:
@@ -444,8 +478,48 @@ def prove_publisher_revalidation_call_binding(publish: str) -> None:
         else:
             raise Fail(f"strict snapshot publisher accepted validators after early {command}")
 
+    # Source refresh must precede every validator, including after retries.
+    for label, before_line, after_line in (
+        ("missing fetch", "git fetch origin so", ": # git fetch origin so"),
+        ("missing reset", "git reset --hard origin/so", ": # git reset --hard origin/so"),
+        ("stale source SHA", 'SOURCE_SHA="$(git rev-parse HEAD)"', 'SOURCE_SHA="$(git rev-parse github.sha)"'),
+        ("missing export", "export SOURCE_SHA", ": # export SOURCE_SHA"),
+        ("missing log reset", ': > "$log"', ': # > "$log"'),
+    ):
+        original = function_start + "            " + before_line
+        replacement = function_start + "            " + after_line
+        require(original in publish, f"{label}: bounded source fixture drift")
+        mutated = publish.replace(original, replacement, 1)
+        try:
+            require_publisher_revalidation_calls(mutated)
+        except Fail as exc:
+            require(
+                "bounded revalidation source refresh order drift" in str(exc),
+                f"{label} rejected outside source-refresh guard: {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot publisher accepted {label}")
+
+    # All review and snapshot gates must be ordered, not merely present.
+    first, second = PUBLISH_REVALIDATION_CHAIN[2:4]
+    left = f'            python {first} >> "$log" 2>&1'
+    right = f'            python {second} >> "$log" 2>&1'
+    require(publish.count(left) == 1 and publish.count(right) == 1,
+            "strict snapshot revalidation ordering fixture drift")
+    swapped = publish.replace(left + "\n" + right, right + "\n" + left, 1)
+    require(swapped != publish, "strict snapshot revalidation order mutation was a no-op")
+    try:
+        require_publisher_revalidation_calls(swapped)
+    except Fail as exc:
+        require(
+            "bounded revalidation command order drift" in str(exc),
+            f"reordered admission chain rejected outside intended order guard: {exc}",
+        )
+    else:
+        raise Fail("strict snapshot publisher accepted reordered review admission chain")
+
     # A command that ignores a failed admission cannot count as a gate.
-    for validator in FULL_ADMISSION_VALIDATORS:
+    for validator in PUBLISH_REVALIDATION_CHAIN:
         original = f'            python {validator} >> "$log" 2>&1'
         require(publish.count(original) == 1, f"strict snapshot {validator} command fixture drift")
         for suffix in (" || true", " || :", "; true"):
