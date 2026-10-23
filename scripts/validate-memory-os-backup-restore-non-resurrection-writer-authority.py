@@ -91,13 +91,15 @@ def prove_materialized_lock_symlink_fails_closed(writer: Any) -> None:
         # A same-target replacement must not count as ownership of the original inode.
         isolated_link = Path(temp_dir) / "isolated-owned-link"
         isolated_replacement = Path(temp_dir) / "isolated-replacement-link"
+        isolated_parent_stat = isolated_link.parent.stat()
+        isolated_parent_identity = (isolated_parent_stat.st_dev, isolated_parent_stat.st_ino)
         isolated_link.symlink_to(target)
         original = isolated_link.lstat()
         isolated_replacement.symlink_to(target)
         isolated_replacement.replace(isolated_link)
         try:
             require_owned_lock_symlink(isolated_link, target,
-                                      (original.st_dev, original.st_ino), parent_identity)
+                                      (original.st_dev, original.st_ino), isolated_parent_identity)
         except NegativeFailure as exc:
             require(str(exc) == "typed negative lock symlink identity drift",
                     "typed lock replacement diagnostic drift")
