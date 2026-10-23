@@ -3249,3 +3249,27 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit only if the canonical atomic writer changes its temporary-file materialization architecture or an observed alias/non-regular source bypass escapes this guard.
+
+
+## 2026-10-24 — Short-circuit literal truth is sufficient to reject diagnostic early termination
+
+### Outcome
+- Commit ed61c88fa4827d8782e45e6eb3dc5dbb10305929 extends the strict OPS-P0-007 diagnostic Python AST negative to evaluate deterministically true or false short-circuit boolean expressions even when another operand depends on unknown runtime state.
+- Exact-source OPS P0 007 Snapshot Permission Boundary run 40005061554 completed SUCCESS at this commit.
+
+### Evidence
+- The prior bounded static truth evaluator required all operands of and/or to be known. An if True or runtime_unknown branch was actually always true, but its unknown operand prevented classification, so an early raise before atomic replacement could evade the unconditional-termination proof.
+- New negative fixtures insert if True or runtime_unknown and if not (False and runtime_unknown) before atomic replacement; both require the exact early-termination rejection. A positive control with if False and runtime_unknown must not be misclassified as executable termination.
+
+### Why safe
+- Only the existing read-only CI-bound workflow permission negative harness and in-memory Python AST fixtures changed. The publisher workflow, Production Status, strict snapshot, registries, real evidence, credentials, traffic, readiness and promotion authorities were untouched.
+
+### Reusable mechanism
+- For static reachability, logical AND is false when any operand is deterministically false, and logical OR is true when any operand is deterministically true, regardless of other unknown operands. Retain unknown for all other cases; never evaluate arbitrary runtime code.
+
+### Protected-authority check
+- Production Status blob ce67e9353d6583e4eaf792470563cad25a7396b3 remains NO_GO; strict OPS-P0-007 snapshot blob dbaa36b082366737dca2461d15748103b9740ef6 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed eight-domain records and final candidates. Learning contract blob 87712ea9c0e1d25dea1565f34b1c21a2b2d276db remains unchanged. Independent review and separate human promotion remain mandatory.
+- Learning remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+### Retry condition
+- Revisit only if diagnostic condition syntax expands beyond the bounded literal evaluator or a newly observed deterministic branch bypass escapes the AST negative.
