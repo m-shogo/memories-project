@@ -164,6 +164,82 @@ def require_direct_first_guard(source: str) -> None:
             "writer main must begin with direct CLI authority guard")
 
 
+def require_unique_writer_main_binding(source: str) -> None:
+    """Reject module-level replacement of the guarded CLI entrypoint."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise NegativeFailure("writer module source syntax invalid") from exc
+    definitions = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name == "main"]
+    require(len(definitions) == 1, "writer module must define exactly one synchronous main")
+    definition = definitions[0]
+    args = definition.args
+    require(not definition.decorator_list and not args.posonlyargs and not args.args
+            and not args.vararg and not args.kwonlyargs and not args.kwarg
+            and not args.defaults and not args.kw_defaults,
+            "writer module main signature or decorators drift")
+
+    def rebinds_main(node: ast.AST) -> bool:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return node.name == "main"
+        if isinstance(node, ast.alias):
+            return (node.asname or node.name.split(".")[0]) == "main"
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            return node.id == "main"
+        if (isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "globals"
+                and not node.value.args and not node.value.keywords
+                and isinstance(node.slice, ast.Constant)
+                and node.slice.value == "main"):
+            return True
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "setattr" and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == "main"):
+            return True
+        return any(rebinds_main(child) for child in ast.iter_child_nodes(node))
+
+    for statement in tree.body:
+        if statement is not definition:
+            require(not rebinds_main(statement), "writer module main binding drift")
+
+
+def prove_main_binding_classifier() -> None:
+    positive = "\n".join((
+        "def main():",
+        "    require_cli_authorities()",
+        "if __name__ == '__main__':",
+        "    main()",
+        "",
+    ))
+    require_unique_writer_main_binding(positive)
+    mutations = (
+        ("duplicate", positive + "def main(): pass\n", "writer module must define exactly one synchronous main"),
+        ("assignment", positive + "main = lambda: 0\n", "writer module main binding drift"),
+        ("tuple", positive + "main, other = (lambda: 0), 1\n", "writer module main binding drift"),
+        ("import-alias", positive + "from random import randint as main\n", "writer module main binding drift"),
+        ("dead-branch", positive + "if False:\n    main = lambda: 0\n", "writer module main binding drift"),
+        ("loop", positive + "for main in ():\n    pass\n", "writer module main binding drift"),
+        ("globals", positive + "globals()['main'] = lambda: 0\n", "writer module main binding drift"),
+        ("setattr", positive + "setattr(sys.modules[__name__], 'main', lambda: 0)\n", "writer module main binding drift"),
+        ("decorator", "@wrapper\n" + positive, "writer module main signature or decorators drift"),
+        ("async", positive.replace("def main():", "async def main():", 1),
+         "writer module must define exactly one synchronous main"),
+    )
+    for label, mutated, expected in mutations:
+        try:
+            require_unique_writer_main_binding(mutated)
+        except NegativeFailure as exc:
+            require(str(exc) == expected, f"writer module {label} diagnostic drift")
+        else:
+            raise NegativeFailure(f"writer module {label} shadowing unexpectedly accepted")
+    print("PASS reject: ten module-level writer main binding/decorator substitutes")
+
+
 def prove_guard_source_classifier() -> None:
     valid = "def main():\n    require_cli_authorities()\n    parser = argparse.ArgumentParser()\n"
     require_direct_first_guard(valid)
@@ -188,6 +264,8 @@ def prove_guard_source_classifier() -> None:
 
 def main() -> int:
     prove_guard_source_classifier()
+    prove_main_binding_classifier()
+    require_unique_writer_main_binding(WRITER_PATH.read_text(encoding="utf-8"))
     writer = load_writer()
     guard = getattr(writer, "require_cli_authorities", None)
     require(callable(guard), "typed non-resurrection writer CLI authority guard missing")
