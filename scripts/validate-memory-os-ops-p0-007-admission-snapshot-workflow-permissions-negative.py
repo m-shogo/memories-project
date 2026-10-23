@@ -39,6 +39,22 @@ PUBLISH_REVALIDATION_CHAIN = (
 
 # GitHub's write-capable token scopes are not limited to contents:write.
 # The snapshot PR job must remain read-only across every recognized scope.
+REQUIRED_PR_ADMISSION_CONTRACTS = (
+    "production-equivalent-environment-generation-contract.v1.json",
+    "production-equivalent-environment-generation-registry.v1.json",
+    "production-equivalent-environment-record.v1.schema.json",
+    "production-equivalent-environment-generation-record.v1.schema.json",
+    "production-equivalent-environment-eligibility-contract.v1.json",
+    "recovery-objectives-admission-contract.v1.json",
+    "recovery-objectives-registry.v1.json",
+    "backup-restore-drill-request-contract.v1.json",
+    "backup-restore-drill-request-registry.v1.json",
+    "backup-restore-generation-evidence-contract.v1.json",
+    "backup-restore-generation-evidence-registry.v1.json",
+    "backup-restore-non-resurrection-admission-contract.v1.json",
+    "backup-restore-non-resurrection-admission-registry.v1.json",
+)
+
 GITHUB_PERMISSION_SCOPES = (
     "actions", "attestations", "checks", "contents", "deployments",
     "discussions", "id-token", "issues", "models", "packages", "pages",
@@ -1083,6 +1099,7 @@ def require_pr_trigger_authority(pr: str) -> None:
         "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py",
         *PUBLISH_REVALIDATION_CHAIN,
     }
+    required.update(f"contracts/operations/{name}" for name in REQUIRED_PR_ADMISSION_CONTRACTS)
     require(
         len(paths) == len(set(paths)) and required.issubset(paths),
         "strict snapshot PR trigger/path authority drift",
@@ -1104,6 +1121,21 @@ def prove_pr_trigger_negative(pr: str) -> None:
         (generator_path, "      # generator path filter removed\n"),
         (self_path, self_path + self_path),
     )
+    # Every typed generation/objective/drill/evidence contract and registry
+    # must trigger PR admission when changed, not only the snapshot projection.
+    for name in REQUIRED_PR_ADMISSION_CONTRACTS:
+        original = f'      - "contracts/operations/{name}"\n'
+        require(pr.count(original) == 1, f"PR contract path fixture drift: {name}")
+        mutated = pr.replace(original, "      # required contract path removed\n", 1)
+        try:
+            require_pr_trigger_authority(mutated)
+        except Fail as exc:
+            require(
+                str(exc) == "strict snapshot PR trigger/path authority drift",
+                f"missing PR contract path rejected outside exact guard ({name}): {exc}",
+            )
+        else:
+            raise Fail(f"strict snapshot PR accepted missing contract path: {name}")
     for original, replacement in mutations:
         require(pr.count(original) == 1, "strict snapshot PR trigger mutation anchor drift")
         mutated = pr.replace(original, replacement, 1)
