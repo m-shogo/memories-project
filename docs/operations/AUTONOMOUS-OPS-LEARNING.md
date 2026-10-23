@@ -4251,3 +4251,25 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only the existing synthetic negative validator changed; neither the typed contract/registry nor any production, generation, objective, drill, credential, traffic, readiness, snapshot or promotion authority was written. The post-write diff contains only the negative harness.
 - `productionDecision=NO_GO` and strict OPS-P0-007 gates remain mandatory: unsuperseded eligible generations from distinct environments, current human-approved objective, current executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate explicit human promotion.
 - Learning records, static checks and CI results cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Production-boundary flags need independent rejection in every typed domain
+
+### Outcome and evidence
+- Commit `65cb1f513174d13f62e26b5dc48172b258fa175b` adds 28 isolated domain-evidence negative probes: each of the seven previously unproven typed domains independently rejects `productionTraffic`, `productionCredentials`, `productionEvidence` and `productionReady` relabeling. The first domain retains its four original flag probes, yielding 32 domain/flag combinations.
+- Post-write source read confirms each probe targets one domain, requires the exact domain/field-specific canonical writer diagnostic, restores the flag in `finally`, resets domain targeting and revalidates the positive fixture. The commit comparison contains only 14 added lines in the existing negative suite. GitHub combined status returned no statuses, so **canonical CI success is unverified**.
+
+### Symptom, verified root cause and failed approach
+- Symptom: the negative suite exercised four domain-level production flags only for its first typed domain; later domains could theoretically lose their own checks without a case-specific negative failure.
+- Evidence: the previous domain flag loop used a shared unscoped synthetic loader and expected only the first-domain diagnostic.
+- Verified root cause: per-domain fixture selection was missing until the preceding provenance hardening introduced `domainTarget`. No real production evidence bypass is asserted.
+- Failed approach: assuming one domain's production-boundary rejection demonstrates independent enforcement for the other seven.
+
+### Correction, recurrence guard and retry condition
+- Reuse the existing domain-target selector to inject exactly one prohibited flag into one domain payload at a time, leaving every other domain canonical. Require the exact diagnostic, restore fixture state and run a final positive control.
+- Reusable mechanism: derive the Cartesian product of contract-required domains and forbidden production-boundary flags for negative proof, not just a representative domain. Keep the proof isolated and diagnostic-specific.
+- Retry only if a concrete exact-source CI result identifies a failure, or reviewed domain schema, production-boundary rules or writer ordering changes. Do not retry the unchanged clean-worktree source-binding blocker.
+
+### Why safe and protected-authority check
+- Only the existing CI-bound synthetic negative harness changed. No production-equivalent generations, human-approved objectives, drill requests, typed evidence/registries, credentials, traffic, readiness, snapshots or promotion authority were created or changed.
+- The code commit diff contains no protected authority. `productionDecision=NO_GO`, distinct semantically eligible environments, current human-approved objective, executable reviewed drill request for new evidence, complete eight-domain coverage, independent review and separate human promotion remain required.
+- Neither this learning record nor any CI outcome can satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
