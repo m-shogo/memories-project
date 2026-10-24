@@ -100,35 +100,50 @@ def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
         real = scripts / "runner-real.py"
         real.write_text(TARGET.read_text(encoding="utf-8"), encoding="utf-8")
         canonical = scripts / "validate-memory-os-backup-restore-admission-chain-full.py"
-        outside = fixture_root.parent / f"{fixture_root.name}-outside-runner.py"
+
+        # Never derive an unowned sibling path and overwrite/unlink it.
+        # NamedTemporaryFile creates the external fixture with exclusive ownership.
+        outside: Path | None = None
+        outside_identity: tuple[int, int] | None = None
         if target == "../outside-runner.py":
-            outside.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=fixture_root.parent,
+                    prefix=f"{fixture_root.name}-outside-", suffix=".py", delete=False,
+                ) as owned:
+                    owned.write("#!/usr/bin/env python3\n")
+                    outside = Path(owned.name)
+                outside_stat = outside.stat()
+                outside_identity = (outside_stat.st_dev, outside_stat.st_ino)
+            except OSError as exc:
+                raise Fail(f"{label}: external self symlink fixture unavailable: {exc}") from exc
             link_target = f"../../{outside.name}"
         else:
             link_target = target
+
         try:
-            canonical.symlink_to(link_target)
-        except (NotImplementedError, OSError) as exc:
-            outside.unlink(missing_ok=True)
-            raise Fail(f"{label}: self symlink fixture unavailable: {exc}") from exc
-        try:
+            try:
+                canonical.symlink_to(link_target)
+            except (NotImplementedError, OSError) as exc:
+                raise Fail(f"{label}: self symlink fixture unavailable: {exc}") from exc
             module = load_fixture_target(real)
-            module.enforce_runtime_authority()
-        except module.Fail as exc:
-            if expected not in str(exc):
-                raise Fail(f"{label}: wrong fail-closed diagnostic: {exc}") from exc
-            print(f"PASS negative: {label}")
-            return
+            try:
+                module.enforce_runtime_authority()
+            except module.Fail as exc:
+                if expected not in str(exc):
+                    raise Fail(f"{label}: wrong fail-closed diagnostic: {exc}") from exc
+                print(f"PASS negative: {label}")
+                return
+            raise Fail(f"{label}: symlinked runner identity was accepted")
         finally:
-            outside.unlink(missing_ok=True)
-        raise Fail(f"{label}: symlinked runner identity was accepted")
-
-
-
-
-
-
-
+            if outside is not None:
+                require(outside_identity is not None, "external self symlink fixture identity missing")
+                require(outside.is_file() and not outside.is_symlink(),
+                        "external self symlink fixture replaced before cleanup")
+                current_stat = outside.stat()
+                require((current_stat.st_dev, current_stat.st_ino) == outside_identity,
+                        "external self symlink fixture inode drift before cleanup")
+                outside.unlink()
 
 
 def require_full_runner_helper_bindings(tree: ast.Module) -> None:
