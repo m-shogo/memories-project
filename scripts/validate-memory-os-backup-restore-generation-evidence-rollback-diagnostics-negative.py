@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CANONICAL = {
     "CONTRACT": ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
@@ -40,6 +41,19 @@ def load_reconciler():
     return module
 
 
+def load_fixture_guard():
+    require(RECONCILE_NEGATIVE.is_file(), "generation reconcile negative fixture guard missing")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_generation_reconcile_fixture_guard_rollback", RECONCILE_NEGATIVE
+    )
+    require(spec is not None and spec.loader is not None, "cannot load reconcile fixture guard")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "reconcile fixture guard missing callable")
+    return module
+
+
 def mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
 
@@ -47,6 +61,32 @@ def mode(path: Path) -> int:
 def main() -> int:
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    fixture_guard = load_fixture_guard()
+
+    def guarded_temp(prefix: str, parent: Path):
+        try:
+            return fixture_guard.guarded_temporary_directory(prefix=prefix, parent=parent)
+        except fixture_guard.Fail as exc:
+            raise Fail(str(exc)) from exc
+
+    # A symlinked parent must be rejected before this independent harness
+    # creates any disposable rollback authority files.
+    with guarded_temp(".tmp-generation-rollback-parent-negative-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temp(".tmp-must-not-create-", link):
+                raise Fail("rollback fixture symlink parent accepted")
+        except Fail as exc:
+            require(str(exc) == "reconcile negative temp ancestor missing or symlinked",
+                    f"rollback fixture symlink rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("rollback fixture symlink parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "rollback fixture symlink created an unexpected child")
+    print("PASS: rollback fixture reuses reconcile pre-publication parent guard")
     reconciler = load_reconciler()
 
     original_enforcer = reconciler.enforce_runtime_authorities
@@ -55,7 +95,7 @@ def main() -> int:
     original_paths = {attr: getattr(reconciler, attr) for attr in CANONICAL}
     try:
         reconciler.enforce_runtime_authorities = lambda: None
-        with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-rollback-diagnostics-", dir=TMP_PARENT) as tmpdir:
+        with guarded_temp(".tmp-generation-evidence-rollback-diagnostics-", TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
             originals: dict[Path, bytes] = {}
             original_modes: dict[Path, int] = {}
