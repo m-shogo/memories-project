@@ -595,6 +595,15 @@ def main() -> int:
                 operabilityReviewRef=registry["records"][0]["securityReviewRef"]),
         )
         expect_typed_candidate_blocked(
+            "missing operability typed review",
+            lambda registry: registry["records"][0].update(operabilityReviewRef=None),
+        )
+        expect_typed_candidate_blocked(
+            "undeclared ninth typed domain",
+            lambda registry: registry["records"][0]["domains"].update(
+                UNDECLARED_DOMAIN={"result": "PASS", "evidenceRef": "docs/evidence/backup-restore/non-resurrection/unapproved.json"}),
+        )
+        expect_typed_candidate_blocked(
             "incomplete typed overlay",
             lambda registry: registry["records"][0].update(evidenceComplete=False),
         )
