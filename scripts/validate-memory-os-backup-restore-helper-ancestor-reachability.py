@@ -129,6 +129,22 @@ def is_module_namespace_mutation(node: ast.AST, names: tuple[str, ...]) -> bool:
     return False
 
 
+def validate_step_key_inventory(
+    source: str, expected: tuple[tuple[str, ...], ...], diagnostic: str
+) -> None:
+    """Bind executable step headers and step-level keys, including duplicates."""
+    headers = re.findall(r"(?m)^      - ([a-z][a-z-]*):", source)
+    require(headers == ["uses", "uses", *(["name"] * (len(expected) - 2))],
+            diagnostic)
+    blocks = re.split(r"(?m)(?=^      - (?:uses|name): )", source)
+    step_blocks = [block for block in blocks if block.startswith("      - ")]
+    actual = tuple(
+        tuple(re.findall(r"(?m)^        ([a-z][a-z-]*):", block))
+        for block in step_blocks
+    )
+    require(actual == expected, diagnostic)
+
+
 def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
@@ -251,7 +267,11 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
             "ancestor exact-source workflow check drift")
     require(workflow_source.count("      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          git diff --exit-code\n          test -z \"$(git status --porcelain)\"\n") == 1,
             "ancestor read-only workflow postcondition drift")
-
+    validate_step_key_inventory(
+        workflow_source,
+        (("with",), ("with",), ("run",), ("run",), ("run",), ("run",), ("run",)),
+        "ancestor workflow step authority drift",
+    )
 
 
 def validate_independent_learning_workflow(source: str) -> None:
@@ -337,7 +357,12 @@ def validate_independent_learning_workflow(source: str) -> None:
         "      - name: Validate learning contract and executable negatives",
         "      - name: Independently enforce helper ancestor runtime workflow reachability",
         "      - name: Confirm read-only execution",
-    ], "independent learning workflow step allowlist drift")
+    ], "independent learning workflow step allowlist drift")    validate_step_key_inventory(
+        source,
+        (("with",), ("with",), ("shell", "run"), ("shell", "run"),
+         ("shell", "env", "run"), ("shell", "env", "run"), ("shell", "run")),
+        "independent learning workflow step authority drift",
+    )
 
 
 def validate_source(source: str, expected_diagnostic: str) -> None:
@@ -1044,6 +1069,20 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
     cases += (
         ("  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs:\n      synthetic:\n        type: boolean\n", "ancestor workflow dispatch options drift"),
     )
+    cases += (
+        ("      - name: Verify read-only postcondition\n",
+         "        env:\n          BASH_ENV: /tmp/synthetic\n      - name: Verify read-only postcondition\n",
+         "ancestor workflow step authority drift"),
+        ("      - name: Verify read-only postcondition\n",
+         "        working-directory: /tmp\n      - name: Verify read-only postcondition\n",
+         "ancestor workflow step authority drift"),
+        ("      - name: Verify read-only postcondition\n",
+         "        timeout-minutes: 99\n      - name: Verify read-only postcondition\n",
+         "ancestor workflow step authority drift"),
+        ("      - name: Verify read-only postcondition\n",
+         "        run: echo synthetic-override\n      - name: Verify read-only postcondition\n",
+         "ancestor workflow step authority drift"),
+    )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
                 f"workflow negative anchor not unique: {expected}")
@@ -1142,6 +1181,20 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("  workflow_dispatch:\n", "    paths: []\n  workflow_dispatch:\n", "independent learning workflow push options drift"),
         ("  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs:\n      synthetic:\n        type: boolean\n", "independent learning workflow dispatch options drift"),
     )
+    cases += (
+        ("      - name: Confirm read-only execution\n",
+         "        env:\n          BASH_ENV: /tmp/synthetic\n      - name: Confirm read-only execution\n",
+         "independent learning workflow step authority drift"),
+        ("      - name: Confirm read-only execution\n",
+         "        working-directory: /tmp\n      - name: Confirm read-only execution\n",
+         "independent learning workflow step authority drift"),
+        ("      - name: Confirm read-only execution\n",
+         "        timeout-minutes: 99\n      - name: Confirm read-only execution\n",
+         "independent learning workflow step authority drift"),
+        ("      - name: Confirm read-only execution\n",
+         "        run: echo synthetic-override\n      - name: Confirm read-only execution\n",
+         "independent learning workflow step authority drift"),
+    )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
                 f"independent workflow negative anchor not unique: {expected}")
@@ -1205,7 +1258,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 108, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 116, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
