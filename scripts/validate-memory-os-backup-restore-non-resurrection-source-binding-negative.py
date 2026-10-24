@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +22,29 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_fixture_vacant(path: Path) -> None:
+    require(not path.exists() and not path.is_symlink(),
+            f"source-binding negative fixture already occupied: {path}")
+
+
+def require_fixture_parent_canonical(parent: Path, root: Path = ROOT) -> tuple[int, int]:
+    try:
+        relative = parent.relative_to(root)
+    except ValueError as exc:
+        raise Fail("source-binding negative fixture parent escapes canonical root") from exc
+    require(root.is_dir() and not root.is_symlink(),
+            "source-binding negative fixture root missing or symlinked")
+    cursor = root
+    for part in relative.parts:
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "source-binding negative fixture parent missing or symlinked")
+    require(parent.resolve(strict=True) == root.resolve(strict=True) / relative,
+            "source-binding negative fixture parent canonical resolution drift")
+    stat = parent.stat()
+    return stat.st_dev, stat.st_ino
 
 
 def git(*args: str) -> str:
@@ -45,7 +70,9 @@ def load_writer():
 def expect_rejected(writer, source_commit: str, ref: str, field: str) -> None:
     try:
         writer.require_ref_bound_to_source(source_commit, ref, field)
-    except writer.Fail:
+    except writer.Fail as exc:
+        require(str(exc) == f"{field} evidence missing from sourceCommitSha",
+                f"{field} rejected at wrong source-binding authority: {exc}")
         print(f"PASS reject: {field}")
         return
     raise Fail(f"post-source evidence unexpectedly accepted: {field}")
@@ -131,13 +158,66 @@ def main() -> int:
     writer.require_ref_bound_to_source(source_commit, writer_ref, "tracked control evidence")
     print("PASS accept: tracked control evidence exists unchanged at sourceCommitSha")
 
-    POST_SOURCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # The negative fixture may not create repository directories or replace evidence.
+    with tempfile.TemporaryDirectory(prefix="source-binding-ownership-") as temp_root:
+        isolated = Path(temp_root)
+        occupied = isolated / "occupied.json"
+        occupied.write_bytes(b"sentinel")
+        try:
+            require_fixture_vacant(occupied)
+        except Fail as exc:
+            require(str(exc) == f"source-binding negative fixture already occupied: {occupied}",
+                    "occupied source-binding fixture rejection diagnostic drift")
+            require(occupied.read_bytes() == b"sentinel",
+                    "occupied source-binding fixture was modified")
+        else:
+            raise Fail("occupied source-binding fixture unexpectedly accepted")
+        dangling = isolated / "dangling"
+        dangling.symlink_to(isolated / "missing")
+        try:
+            try:
+                require_fixture_vacant(dangling)
+            except Fail as exc:
+                require(str(exc) == f"source-binding negative fixture already occupied: {dangling}",
+                        "dangling source-binding fixture rejection diagnostic drift")
+                require(dangling.is_symlink(), "dangling source-binding fixture was modified")
+            else:
+                raise Fail("dangling source-binding fixture unexpectedly accepted")
+        finally:
+            dangling.unlink()
+
+        isolated_parent = isolated / "evidence"
+        isolated_parent.mkdir()
+        require_fixture_parent_canonical(isolated_parent, isolated)
+        for unsafe_parent, expected in (
+            (isolated / "missing-parent", "source-binding negative fixture parent missing or symlinked"),
+            (ROOT, "source-binding negative fixture parent escapes canonical root"),
+        ):
+            try:
+                require_fixture_parent_canonical(unsafe_parent, isolated)
+            except Fail as exc:
+                require(str(exc) == expected,
+                        "source-binding fixture parent rejection diagnostic drift")
+            else:
+                raise Fail("unsafe source-binding fixture parent unexpectedly accepted")
+
+    parent_identity = require_fixture_parent_canonical(POST_SOURCE_PATH.parent)
+    require_fixture_vacant(POST_SOURCE_PATH)
+    fd = os.open(POST_SOURCE_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    created_stat = os.fstat(fd)
+    created_identity = (created_stat.st_dev, created_stat.st_ino)
     try:
-        POST_SOURCE_PATH.unlink(missing_ok=True)
-        POST_SOURCE_PATH.write_text("{}\n", encoding="utf-8")
+        with os.fdopen(fd, "w", encoding="utf-8") as owned:
+            owned.write("{}\n")
         expect_rejected(writer, source_commit, POST_SOURCE_REF, "post-source typed evidence")
     finally:
-        POST_SOURCE_PATH.unlink(missing_ok=True)
+        require(require_fixture_parent_canonical(POST_SOURCE_PATH.parent) == parent_identity,
+                "source-binding fixture parent inode drift before cleanup")
+        current = POST_SOURCE_PATH.lstat()
+        require((current.st_dev, current.st_ino) == created_identity
+                and POST_SOURCE_PATH.is_file() and not POST_SOURCE_PATH.is_symlink(),
+                "source-binding fixture file inode drift before cleanup")
+        POST_SOURCE_PATH.unlink()
 
     validate_historical_generation_delegation(writer)
     validate_atomic_diagnostic_publication()
