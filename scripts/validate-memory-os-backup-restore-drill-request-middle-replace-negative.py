@@ -17,6 +17,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 AUTHORITIES = (REGISTRY, CONTRACT, STATUS)
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
+DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 
 
 class Fail(RuntimeError):
@@ -42,14 +43,47 @@ def load_module():
     return module
 
 
+def guarded_temporary_directory(prefix: str, parent: Path):
+    if not DRILL_REQUEST_LOAD_NEGATIVE.is_file() or DRILL_REQUEST_LOAD_NEGATIVE.is_symlink():
+        raise Fail("drill request fixture parent guard source missing or symlinked")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_drill_fixture_guard_middle_replace", DRILL_REQUEST_LOAD_NEGATIVE)
+    if spec is None or spec.loader is None:
+        raise Fail("drill request fixture parent guard cannot load")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not callable(getattr(module, "guarded_temporary_directory", None)):
+        raise Fail("drill request fixture parent guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
+
+
 def main() -> int:
     if not TMP_PARENT.is_dir():
         raise Fail("temporary fixture parent missing")
+    with guarded_temporary_directory(".tmp-drill-middle-parent-negative-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("drill middle symlinked temp parent accepted")
+        except Fail as exc:
+            if str(exc) != "drill request temp ancestor missing or symlinked":
+                raise Fail(f"drill middle temp parent rejected at wrong boundary: {exc}") from exc
+        else:
+            raise Fail("drill middle symlinked temp parent accepted")
+        if sorted(p.name for p in sandbox.iterdir()) != before:
+            raise Fail("drill middle symlinked temp parent published a child")
+    print("PASS: drill request middle replace fixture reuses checked parent guard")
     canonical_before = {path: path.read_bytes() for path in AUTHORITIES}
     canonical_modes = {path: mode(path) for path in AUTHORITIES}
     module = load_module()
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-drill-request-middle-replace-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-drill-request-middle-replace-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         fixture_by_canonical: dict[Path, Path] = {}
         for source in AUTHORITIES:
