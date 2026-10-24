@@ -6149,3 +6149,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Drill approval digest fixture must reject symlink parent before writer overrides
+
+### Material success: outcome and observed evidence
+- Code commits `13689d1e1b8289fca541e10f0ffd31960d89b90c` and `9e36a06ec513a273d084517ee47ad40ef3b86ad0` replace the digest negative suite's `FIXTURE_ROOT.mkdir(parents=True, exist_ok=True)` and direct repository-local `TemporaryDirectory(dir=FIXTURE_ROOT)` with an existing-directory precondition and the checked drill-request parent helper. A real symlink-parent negative requires exact rejection and unchanged sandbox entries before writer test overrides.
+- Post-write source inspection confirms guarded creation, no recursive mkdir, proof before writer monkeypatch and unchanged production authorities. Exact-source runtime PASS was not yet observed at learning-write time.
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach
+- Verified source-level fixture risk, not a production incident: the previous digest suite would follow an already symlinked fixture parent via `mkdir(exist_ok=True)` and create a temporary child through it.
+- Additional pre-CI correction: the first patch placed the new safety proof after temporarily replacing `writer.validate_request` and `writer.request_currently_executable`, but before the existing `try/finally` restoration. If the new proof failed, those in-process test overrides would not be restored. Verified root cause was insertion after the mutable setup instead of before it; no observed runtime leak is claimed.
+- Failed approach to avoid: introduce a potentially failing fixture precheck between mutable test setup and its restoration scope.
+
+### Correction, executable recurrence guard, retry condition
+- Require the tracked fixture directory to exist, reject repository ancestor symlinks before creation, and run the real symlink-negative before loading or mutating the writer. The existing `try/finally` still restores overrides after digest cases. Precheck does not establish atomic race freedom.
+- Retry exact-source Drill Request Admission/Admission Chain CI on completion; revisit on observed failure, reviewed helper/path change or demonstrated bypass. Do not retry unchanged clean-worktree, permission or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only a synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
