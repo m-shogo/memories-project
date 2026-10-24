@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import ast
+import copy
 import importlib.util
 import shutil
 import tempfile
@@ -18,6 +20,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admissio
 REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
+TRANSPORT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
 
 
 class Fail(RuntimeError):
@@ -150,10 +153,129 @@ def prove_reconcile_operability_rollback() -> None:
     print("PASS rollback: typed recovery authority restored exact bytes+mode after operability failure")
 
 
+
+def require_typed_transport_guard_reachability(tree: ast.Module) -> None:
+    """External proof that the typed transport negative suite executes its guards."""
+    mains = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"]
+    require(len(mains) == 1 and not mains[0].decorator_list,
+            "typed transport negative must have one undecorated main")
+    body = mains[0].body
+    guards = (
+        "prove_typed_admission_main_reachability",
+        "prove_typed_admission_child_reachability",
+        "prove_typed_admission_candidate_derivation",
+        "prove_typed_admission_registry_validation",
+        "prove_typed_pre_dispatch_exit",
+        "prove_typed_admission_cli_dispatch",
+        "prove_typed_admission_main_binding",
+        "prove_validator_runner_binding",
+    )
+    def direct_call(stmt: ast.stmt, name: str, arguments: tuple[str, ...] = ()) -> bool:
+        return (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == name
+                and len(stmt.value.args) == len(arguments) and not stmt.value.keywords
+                and all(isinstance(arg, ast.Name) and arg.id == expected
+                        for arg, expected in zip(stmt.value.args, arguments)))
+
+    first = ast.parse('require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")').body[0]
+    require(len(body) >= 13 and ast.dump(body[0]) == ast.dump(first),
+            "typed transport negative must validate canonical validator before guards")
+    for index, name in enumerate(guards, start=1):
+        require(direct_call(body[index], name),
+                f"typed transport negative must invoke {name} in canonical order")
+    load = ast.parse("validator = load_validator()").body[0]
+    require(ast.dump(body[9]) == ast.dump(load),
+            "typed transport negative must load canonical validator after guards")
+    require(direct_call(body[10], "exercise_validator_child_exit_propagation", ("validator",)),
+            "typed transport negative must prove child exit propagation")
+    calls = [(i, stmt) for i, stmt in enumerate(body)
+             if direct_call(stmt, "exercise_registry_transaction_transport")
+             or direct_call(stmt, "exercise_reconciler_transaction_transport")]
+    require(len(calls) == 2 and direct_call(calls[0][1], "exercise_registry_transaction_transport")
+            and direct_call(calls[1][1], "exercise_reconciler_transaction_transport")
+            and calls[0][0] > 10 and calls[1][0] == calls[0][0] + 1,
+            "typed transport negative must execute registry and reconcile transaction probes")
+    require(isinstance(body[-1], ast.Return) and isinstance(body[-1].value, ast.Constant)
+            and type(body[-1].value.value) is int and body[-1].value.value == 0,
+            "typed transport negative must return only after its guards")
+    for stmt in body[:-1]:
+        for node in ast.walk(stmt):
+            if isinstance(node, ast.Return):
+                raise Fail("typed transport negative cannot return before its guards")
+
+
+def prove_typed_transport_guard_reachability() -> None:
+    require(TRANSPORT_NEGATIVE.is_file() and not TRANSPORT_NEGATIVE.is_symlink(),
+            "canonical typed transport negative source missing or symlinked")
+    try:
+        canonical = ast.parse(TRANSPORT_NEGATIVE.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed transport negative source unavailable") from exc
+    require_typed_transport_guard_reachability(canonical)
+    cases = (
+        ("missing-main-guard", "typed transport negative must invoke prove_typed_admission_main_reachability in canonical order"),
+        ("missing-child-guard", "typed transport negative must invoke prove_typed_admission_child_reachability in canonical order"),
+        ("missing-candidate-guard", "typed transport negative must invoke prove_typed_admission_candidate_derivation in canonical order"),
+        ("missing-registry-guard", "typed transport negative must invoke prove_typed_admission_registry_validation in canonical order"),
+        ("swap-candidate-registry", "typed transport negative must invoke prove_typed_admission_candidate_derivation in canonical order"),
+        ("dead-child-guard", "typed transport negative must invoke prove_typed_admission_child_reachability in canonical order"),
+        ("missing-source-check", "typed transport negative must validate canonical validator before guards"),
+        ("early-return", "typed transport negative must invoke prove_typed_admission_child_reachability in canonical order"),
+        ("wrong-loader", "typed transport negative must load canonical validator after guards"),
+        ("missing-child-exit", "typed transport negative must prove child exit propagation"),
+        ("missing-registry-transport", "typed transport negative must execute registry and reconcile transaction probes"),
+        ("missing-reconcile-transport", "typed transport negative must execute registry and reconcile transaction probes"),
+        ("wrong-final-return", "typed transport negative must return only after its guards"),
+        ("nested-early-return", "typed transport negative cannot return before its guards"),
+    )
+    for label, expected in cases:
+        mutated = copy.deepcopy(canonical)
+        main = next(node for node in mutated.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        body = main.body
+        if label.startswith("missing-") and label.endswith("-guard"):
+            index = {"missing-main-guard": 1, "missing-child-guard": 2,
+                     "missing-candidate-guard": 3, "missing-registry-guard": 4}[label]
+            body[index] = ast.Pass()
+        elif label == "swap-candidate-registry":
+            body[3], body[4] = body[4], body[3]
+        elif label == "dead-child-guard":
+            body[2] = ast.If(test=ast.Constant(value=False), body=[body[2]], orelse=[])
+        elif label == "missing-source-check":
+            body[0] = ast.Pass()
+        elif label == "early-return":
+            body[2] = ast.Return(value=ast.Constant(value=0))
+        elif label == "wrong-loader":
+            body[9] = ast.parse("validator = None").body[0]
+        elif label == "missing-child-exit":
+            body[10] = ast.Pass()
+        elif label in ("missing-registry-transport", "missing-reconcile-transport"):
+            name = ("exercise_registry_transaction_transport" if label == "missing-registry-transport"
+                    else "exercise_reconciler_transaction_transport")
+            index = next(i for i, stmt in enumerate(body)
+                         if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                         and isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == name)
+            body[index] = ast.Pass()
+        elif label == "wrong-final-return":
+            body[-1].value = ast.Constant(value=1)
+        elif label == "nested-early-return":
+            body.insert(11, ast.If(test=ast.Constant(value=True),
+                        body=[ast.Return(value=ast.Constant(value=0))], orelse=[]))
+        try:
+            require_typed_transport_guard_reachability(mutated)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"typed transport guard {label} diagnostic drift: {exc}")
+        else:
+            raise Fail(f"typed transport guard {label} bypass unexpectedly accepted")
+    print("PASS reject: fourteen external typed transport guard reachability substitutions")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_typed_transport_guard_reachability()
     writer = load_module(WRITER, "memory_os_typed_non_resurrection_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_typed_non_resurrection_load_negative")
     require(writer.canonical_repo_file(WRITER, "typed evidence writer") == WRITER, "canonical typed writer path rejected")
