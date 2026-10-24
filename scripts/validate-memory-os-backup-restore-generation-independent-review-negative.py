@@ -176,8 +176,10 @@ def typed_payload(row: dict, role: str) -> dict:
     }
 
 
-def expect_review_payload_fail(module, payload: dict, label: str) -> None:
+def with_virtual_review_payload(module, payload: dict, role: str, action) -> None:
+    require(role in ("SECURITY", "OPERABILITY"), "synthetic review role invalid")
     row = base_row()
+    ref_field = "securityReviewRef" if role == "SECURITY" else "operabilityReviewRef"
     original_canonical_ref = module.canonical_ref
     original_append_only = module.require_append_only_review
     original_load_json = module.load_json
@@ -188,22 +190,47 @@ def expect_review_payload_fail(module, payload: dict, label: str) -> None:
         )
         module.require_append_only_review = lambda _ref, _path, _field: None
         module.load_json = lambda _path, _field: payload
-        try:
-            module.validate_review(row, "securityReviewRef", "SECURITY")
-        except module.Fail:
-            return
-        raise Fail(f"review payload negative unexpectedly passed: {label}")
+        action(row, ref_field, role)
     finally:
         module.canonical_ref = original_canonical_ref
         module.require_append_only_review = original_append_only
         module.load_json = original_load_json
 
 
-def expect_bound_field_fail(module, field: str) -> None:
+def expect_review_payload_pass(module, role: str) -> None:
+    payload = typed_payload(base_row(), role)
+
+    def action(row, ref_field, expected_role) -> None:
+        try:
+            ref, reviewer = module.validate_review(row, ref_field, expected_role)
+        except module.Fail as exc:
+            raise Fail(f"synthetic independent-review positive control failed ({role}): {exc}") from exc
+        require(ref == "docs/evidence/backup-restore/synthetic-review.json",
+                f"synthetic independent-review positive ref drift: {role}")
+        require(reviewer == payload["reviewerPseudonym"],
+                f"synthetic independent-review positive reviewer drift: {role}")
+
+    with_virtual_review_payload(module, payload, role, action)
+
+
+def expect_review_payload_fail(module, payload: dict, label: str, expected: str, role: str) -> None:
+    def action(row, ref_field, expected_role) -> None:
+        try:
+            module.validate_review(row, ref_field, expected_role)
+        except module.Fail as exc:
+            require(str(exc) == f"{ref_field} {expected}",
+                    f"review payload rejected at wrong authority ({label}): {exc}")
+            return
+        raise Fail(f"review payload negative unexpectedly passed: {label}")
+
+    with_virtual_review_payload(module, payload, role, action)
+
+
+def expect_bound_field_fail(module, field: str, role: str) -> None:
     row = base_row()
-    payload = typed_payload(row, "SECURITY")
+    payload = typed_payload(row, role)
     payload[field] = "mismatched-authority"
-    expect_review_payload_fail(module, payload, f"authority mismatch: {field}")
+    expect_review_payload_fail(module, payload, f"{role} authority mismatch: {field}", f"{field} mismatch", role)
 
 
 def expect_contract_fail(module, mutate, label: str) -> None:
@@ -278,39 +305,65 @@ def main() -> int:
         production_boundary[field] = True
         expect_fail(module, production_boundary, f"{field} promotion")
 
-    for field in module.BOUND_FIELDS:
-        expect_bound_field_fail(module, field)
+    # Each review role has an independently passing canonical synthetic control.
+    # Every mutation must fail at its own typed-review boundary, not merely throw Fail.
+    for role in ("SECURITY", "OPERABILITY"):
+        expect_review_payload_pass(module, role)
+        for field in module.BOUND_FIELDS:
+            expect_bound_field_fail(module, field, role)
 
-    for field in ("productionTrafficChanged", "productionCredentialsUsed", "automaticPromotion"):
-        payload = typed_payload(base_row(), "SECURITY")
-        payload[field] = True
-        expect_review_payload_fail(module, payload, f"independent review unsafe production boundary: {field}")
+        for field in ("productionTrafficChanged", "productionCredentialsUsed", "automaticPromotion"):
+            payload = typed_payload(base_row(), role)
+            payload[field] = True
+            diagnostic = {
+                "productionTrafficChanged": "cannot change production traffic",
+                "productionCredentialsUsed": "cannot use production credentials",
+                "automaticPromotion": "cannot authorize automatic promotion",
+            }[field]
+            expect_review_payload_fail(module, payload, f"{role} unsafe production boundary: {field}", diagnostic, role)
 
-    payload = typed_payload(base_row(), "SECURITY")
-    payload["reviewRole"] = "OPERABILITY"
-    expect_review_payload_fail(module, payload, "independent review role mismatch")
+        payload = typed_payload(base_row(), role)
+        payload["reviewRole"] = "OPERABILITY" if role == "SECURITY" else "SECURITY"
+        expect_review_payload_fail(module, payload, f"{role} review role mismatch", "reviewRole mismatch", role)
 
-    payload = typed_payload(base_row(), "SECURITY")
-    payload["reviewResult"] = "REJECTED"
-    expect_review_payload_fail(module, payload, "independent review not approved")
+        payload = typed_payload(base_row(), role)
+        payload["reviewResult"] = "REJECTED"
+        expect_review_payload_fail(module, payload, f"{role} review not approved", "review must be APPROVED", role)
 
-    for invalid_reviewed_at in (
-        "2026-08-15",
-        "2026-08-15T00:00:00+00:00",
-        "2026-08-15T00:00:00.000Z",
-        "2026-13-15T00:00:00Z",
-    ):
-        payload = typed_payload(base_row(), "SECURITY")
-        payload["reviewedAt"] = invalid_reviewed_at
-        expect_review_payload_fail(module, payload, f"non-canonical reviewedAt: {invalid_reviewed_at}")
+        for invalid_reviewed_at in (
+            "2026-08-15",
+            "2026-08-15T00:00:00+00:00",
+            "2026-08-15T00:00:00.000Z",
+            "2026-13-15T00:00:00Z",
+        ):
+            payload = typed_payload(base_row(), role)
+            payload["reviewedAt"] = invalid_reviewed_at
+            expect_review_payload_fail(module, payload, f"{role} non-canonical reviewedAt: {invalid_reviewed_at}",
+                                       "reviewedAt must be canonical UTC RFC3339 seconds", role)
 
-    for invalid_reviewer in (
-        "ab", "Security Reviewer", "security@example.com", "../security",
-        "SECURITY_REVIEWER", " reviewer-security",
-    ):
-        payload = typed_payload(base_row(), "SECURITY")
-        payload["reviewerPseudonym"] = invalid_reviewer
-        expect_review_payload_fail(module, payload, f"unsafe reviewer pseudonym: {invalid_reviewer}")
+        for invalid_reviewer in (
+            "ab", "Security Reviewer", "security@example.com", "../security",
+            "SECURITY_REVIEWER", " reviewer-security",
+        ):
+            payload = typed_payload(base_row(), role)
+            payload["reviewerPseudonym"] = invalid_reviewer
+            expect_review_payload_fail(module, payload, f"{role} unsafe reviewer pseudonym: {invalid_reviewer}",
+                                       "reviewerPseudonym invalid", role)
+
+        for field_set_mutation in ("MISSING", "EXTRA"):
+            payload = typed_payload(base_row(), role)
+            if field_set_mutation == "MISSING":
+                del payload["reviewedAt"]
+            else:
+                payload["unexpectedField"] = False
+            expect_review_payload_fail(module, payload, f"{role} review field set {field_set_mutation}",
+                                       "typed review fields drift", role)
+
+        payload = typed_payload(base_row(), role)
+        payload["schemaVersion"] = "memory-os-backup-restore-generation-review-evidence.v0"
+        expect_review_payload_fail(module, payload, f"{role} obsolete review schema",
+                                   "schemaVersion drift", role)
+        expect_review_payload_pass(module, role)
 
     expect_contract_fail(module, lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"), "required review field removed")
     expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("independentReviewMustBindRecoveryObjectivesId", False), "binding rule disabled")
