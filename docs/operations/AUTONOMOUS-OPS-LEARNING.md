@@ -4744,3 +4744,24 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe and protected-authority check
 - Only a synthetic negative validator, append-only learning and the CI-owned privacy-safe failure diagnostic lifecycle changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, recovery evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Distinct unsuperseded semantically eligible environments, an explicitly human-approved current objective, a current executable reviewed request for new generation evidence, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Full-chain main must execute authority guards before canonical steps
+
+### Material success: outcome and observed evidence
+- Code commit `2bf96461ce64ca0b2689fb2be6d291090dc633ff` adds a canonical AST positive control and fifteen negative probes to the existing full-chain negative suite. The probes reject skipped, inverted, dead, swallowed or reordered authority checks, missing step identity checks, no-op/dead/empty/wrapped loops, swapped step arguments and early success returns.
+- Exact-source Backup Restore Admission Chain run `40054122931` (job `120753176207`) completed SUCCESS. The job explicitly logged `PASS reject: fifteen full-chain main guard/step reachability substitutions`, `Admission-chain full runner negative validation PASS` and `production decision: NO_GO`.
+- This is executable synthetic control-flow proof through an existing CI-reachable path, not a production restore or readiness result.
+
+### Symptom/risk, verified coverage gap, failed approach to avoid
+- Risk: a correctly named, undecorated `main` can still return success before enforcing runtime authority, or can skip or reorder the `STEPS` validation loop. No actual production incident or successful bypass was observed.
+- Verified coverage gap: earlier full-chain guards checked the callable's binding, CLI dispatch and child exit propagation, but not the direct first statements of `main` and their ordered execution path.
+- Failed approach to avoid: relying on function signature, text presence or successful import without checking that runtime authority and step identity checks precede direct canonical step execution.
+
+### Correction, recurrence guard and retry condition
+- Require the canonical `main` AST to begin with a direct authority identity rejection, a direct `enforce_runtime_authority()` call, a direct step-function identity rejection, and a direct `for relative, label in STEPS: run_step(relative, label)` loop. Require exact rejection diagnostics for fifteen isolated AST mutations.
+- Retry only on exact-source CI regression, reviewed legitimate control-flow refactoring, or a demonstrated new execution-order bypass. Preserve known clean-worktree, workflow-write and external-evidence blocker retry conditions.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the existing synthetic negative harness changed; no production writer, generation, human-approved objective, reviewed request, recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion authority changed.
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains PREREQUISITES_BLOCKED with zero registered/semantically eligible generations, objectives, requests, evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Strict preflight still requires unsuperseded semantically eligible generations from distinct environments plus an explicitly human-approved current objective; new evidence requires a current executable reviewed request; final candidates require typed eight-domain non-resurrection coverage and independent review; human promotion is separate and non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
