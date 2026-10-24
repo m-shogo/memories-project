@@ -12,6 +12,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 FIXTURE_ROOT = ROOT / "docs/fixtures/memory-os-operability"
+DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 
 
 class Fail(RuntimeError):
@@ -31,6 +32,23 @@ def load_writer():
     return module
 
 
+def guarded_temporary_directory(prefix: str, parent: Path):
+    require(DRILL_REQUEST_LOAD_NEGATIVE.is_file() and not DRILL_REQUEST_LOAD_NEGATIVE.is_symlink(),
+            "drill request fixture parent guard source missing or symlinked")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_drill_fixture_guard_digest", DRILL_REQUEST_LOAD_NEGATIVE)
+    require(spec is not None and spec.loader is not None,
+            "drill request fixture parent guard cannot load")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "drill request fixture parent guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
+
+
 def expect_rejected(writer: Any, name: str, action: Callable[[], Any]) -> None:
     try:
         action()
@@ -47,9 +65,25 @@ def main() -> int:
     writer.validate_request = lambda record, require_current=False: None
     writer.request_currently_executable = lambda record: False
 
-    FIXTURE_ROOT.mkdir(parents=True, exist_ok=True)
+    require(FIXTURE_ROOT.is_dir(), "drill approval digest fixture parent missing")
+    with guarded_temporary_directory(".tmp-drill-digest-parent-negative-", FIXTURE_ROOT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("drill digest symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "drill request temp ancestor missing or symlinked",
+                    f"drill digest temp parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("drill digest symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "drill digest symlinked temp parent published a child")
+    print("PASS: drill approval digest fixture reuses checked parent guard")
     try:
-        with tempfile.TemporaryDirectory(prefix="drill-approval-digest-", dir=FIXTURE_ROOT) as temp_dir:
+        with guarded_temporary_directory("drill-approval-digest-", FIXTURE_ROOT) as temp_dir:
             temp = Path(temp_dir)
             refs: dict[str, str] = {}
             for key in writer.APPROVAL_ROLES:
