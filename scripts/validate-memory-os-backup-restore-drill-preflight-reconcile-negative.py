@@ -55,6 +55,31 @@ def guarded_temporary_directory(prefix: str, parent: Path):
         raise Fail(str(exc)) from exc
 
 
+
+def prove_helper_source_symlink_rejected() -> None:
+    # Test the helper import authority separately from its parent-path guard.
+    global DRILL_REQUEST_LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="preflight-reconcile-helper-source-") as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real-helper.py"
+        real.touch()
+        link = sandbox / "helper.py"
+        link.symlink_to(real)
+        original = DRILL_REQUEST_LOAD_NEGATIVE
+        try:
+            DRILL_REQUEST_LOAD_NEGATIVE = link
+            try:
+                guarded_temporary_directory(".tmp-must-not-create-", TMP_PARENT)
+            except Fail as exc:
+                require(str(exc) == "drill request fixture parent guard source missing or symlinked",
+                        f"preflight reconcile helper rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("preflight reconcile symlinked helper accepted")
+        finally:
+            DRILL_REQUEST_LOAD_NEGATIVE = original
+    print("PASS: preflight reconcile fixture helper symlink rejected before import")
+
+
 def fixture_authorities(module, tmp: Path, label: str) -> tuple[Path, Path]:
     contract = tmp / f"{label}-{module.CONTRACT.name}"
     status = tmp / f"{label}-{module.STATUS.name}"
@@ -258,6 +283,7 @@ def main() -> int:
                 "preflight reconcile symlinked temp parent published a child")
     print("PASS: preflight reconcile fixture reuses checked drill parent guard")
 
+    prove_helper_source_symlink_rejected()
     module = load_module()
     module.enforce_execution_identity()
     module.enforce_runtime_authorities()
