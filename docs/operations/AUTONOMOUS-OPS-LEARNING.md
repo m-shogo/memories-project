@@ -5367,3 +5367,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the CI-reachable synthetic source-binding negative suite changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current recovery objective; new recovery evidence requires a current executable reviewed request. Final candidates require all generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Drill-request writer negative temp modules retain exclusive descriptor ownership
+
+### Material success: observed outcome and evidence
+- Code commit `dc3883a64a918ee0d142b040c2e0b8877b08b150` hardens the existing drill-request writer authority negative suite. Its `mkstemp` module fixtures are now written through the original held descriptor, with canonical non-symlinked repository parent checks and original parent/leaf device-inode binding. Cleanup tracks only files exclusively created in the current negative case, including files created before a fixture registration error, and refuses substituted files.
+- Exact-source Backup Restore Unreadable Authority Negatives run `40062543011` (job `120778958179`) completed SUCCESS, explicitly logging `PASS: drill request executable/data/lock authority substitutions are rejected`. Unreadable Authority Readonly run `40062543041` also completed SUCCESS. Admission Chain was still running at the time of this record.
+
+### Symptom/risk, verified root cause and failed approach
+- Risk: the previous negative harness called `mkstemp`, immediately closed the exclusive descriptor, reopened the pathname via `Path.write_text`, then unconditionally `unlink(missing_ok=True)` for cleanup. A substituted path could redirect the write or cause cleanup to delete an unrelated file. No actual race or deletion was observed.
+- Verified gap: exclusive ownership was not retained through publication and cleanup lacked inode checks and coverage of files created before `cleanup.append`.
+- Failed approach to avoid: assuming a temporary pathname remains exclusively owned after closing its descriptor, or using an unverified cleanup list to delete repository-local fixture files.
+
+### Correction, executable recurrence guard and retry condition
+- Reuse the generation writer's descriptor-held publication mechanism; track created path identities, compare them with expected cleanup registrations, and require unchanged canonical parent and file inode before unlinking. A write failure can clean up only a file matching the created inode.
+- Retry only after exact-source CI regression, reviewed legitimate fixture parent change or demonstrated substitution bypass. Unchanged workflow-write, clean-worktree and external-evidence blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the CI-reachable synthetic drill-request writer authority negative suite changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Preflight requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current recovery objective; new generation evidence requires a current executable reviewed request. Final candidates require all generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
