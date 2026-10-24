@@ -83,7 +83,7 @@ LEARNING_GUARDS = (
     "scripts/validate-autonomous-learning-system-negative.py",
 )
 LEARNING_GUARD_TIMEOUT_SECONDS = 120
-MIN_LEARNING_NEGATIVE_CASES = 74
+MIN_LEARNING_NEGATIVE_CASES = 84
 
 
 def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[str]) -> bool:
