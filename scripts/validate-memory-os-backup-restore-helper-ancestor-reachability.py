@@ -207,6 +207,16 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         ),
         "main exits before ancestor proof",
     )
+    # The canonical proof call can still be shadowed from inside main()
+    # before execution, even if its module-level binding was initially safe.
+    for statement in main.body[:proof_index]:
+        for node in ast.walk(statement):
+            if (isinstance(node, ast.Name)
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and node.id in guarded_names):
+                raise GuardFailure("main pre-proof binding mutation")
+            if is_module_namespace_mutation(node, guarded_names):
+                raise GuardFailure("main pre-proof binding mutation")
     dispatches = [
         node for node in tree.body
         if isinstance(node, ast.If)
@@ -375,6 +385,19 @@ def negative_cases(source: str, diagnostic: str) -> int:
             ('globals().pop("main")', "module dynamic binding mutation"),
         )
     )
+    replacements += tuple(
+        ("    prove_helper_ancestor_swap_during_fd_walk_rejected()\\n",
+         "    " + injection + "\\n"
+         "    prove_helper_ancestor_swap_during_fd_walk_rejected()\\n",
+         "main pre-proof binding mutation")
+        for injection in (
+            'globals()["prove_helper_ancestor_swap_during_fd_walk_rejected"] = lambda: None',
+            'globals().update(prove_helper_ancestor_swap_during_fd_walk_rejected=lambda: None)',
+            'exec("prove_helper_ancestor_swap_during_fd_walk_rejected = lambda: None")',
+            'prove_helper_ancestor_swap_during_fd_walk_rejected = lambda: None',
+            'setattr(sys.modules[__name__], "prove_helper_ancestor_swap_during_fd_walk_rejected", lambda: None)',
+        )
+    )
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
@@ -405,7 +428,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 21 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 26 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
