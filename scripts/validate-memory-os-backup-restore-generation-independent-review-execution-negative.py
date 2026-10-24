@@ -226,16 +226,23 @@ def require_pair_negative_harness_binding(tree: ast.Module) -> None:
     """A passing pair mutation helper is useless if the CI-invoked negative main skips it."""
     proofs = [node for node in tree.body if isinstance(node, ast.FunctionDef)
               and node.name == "prove_candidate_pair_source_binding"]
+    runtime_proofs = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                      and node.name == "prove_runtime_review_pair_controls"]
     mains = [node for node in tree.body if isinstance(node, ast.FunctionDef)
              and node.name == "main"]
     require(len(proofs) == 1 and len(mains) == 1,
             "candidate pair negative harness definition drift")
+    require(len(runtime_proofs) == 1,
+            "candidate pair runtime negative harness definition drift")
     for node in tree.body:
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             if any(isinstance(target, ast.Name) and target.id == "prove_candidate_pair_source_binding"
                    for target in targets):
                 raise Fail("candidate pair negative harness proof shadowed")
+            if any(isinstance(target, ast.Name) and target.id == "prove_runtime_review_pair_controls"
+                   for target in targets):
+                raise Fail("candidate pair runtime negative harness proof shadowed")
     body = mains[0].body
     expected = ast.parse("prove_candidate_pair_source_binding()").body[0]
     calls = [index for index, node in enumerate(body)
@@ -248,6 +255,12 @@ def require_pair_negative_harness_binding(tree: ast.Module) -> None:
             and isinstance(body[2].value.func, ast.Name)
             and body[2].value.func.id == "load_validator",
             "candidate pair negative harness proof must precede validator loading")
+    runtime_call = ast.parse("prove_runtime_review_pair_controls()").body[0]
+    runtime_indices = [index for index, node in enumerate(body)
+                       if ast.dump(node, include_attributes=False) ==
+                       ast.dump(runtime_call, include_attributes=False)]
+    require(len(runtime_indices) == 1 and runtime_indices[0] == 3,
+            "candidate pair runtime negative proof not fourth direct main step")
 
 
 def prove_pair_negative_harness_reachability() -> None:
@@ -264,6 +277,11 @@ def prove_pair_negative_harness_reachability() -> None:
         ("duplicate proof call", "duplicate", "candidate pair negative harness proof not second direct main step"),
         ("remove proof definition", "remove_def", "candidate pair negative harness definition drift"),
         ("shadow proof helper", "shadow", "candidate pair negative harness proof shadowed"),
+        ("remove runtime proof", "remove_runtime", "candidate pair runtime negative proof not fourth direct main step"),
+        ("dead runtime proof", "dead_runtime", "candidate pair runtime negative proof not fourth direct main step"),
+        ("duplicate runtime proof", "duplicate_runtime", "candidate pair runtime negative proof not fourth direct main step"),
+        ("remove runtime definition", "remove_runtime_def", "candidate pair runtime negative harness definition drift"),
+        ("shadow runtime proof", "shadow_runtime", "candidate pair runtime negative harness proof shadowed"),
     )
     for label, action, expected in cases:
         mutant = copy.deepcopy(tree)
@@ -272,6 +290,9 @@ def prove_pair_negative_harness_reachability() -> None:
         proof = next(node for node in mutant.body
                      if isinstance(node, ast.FunctionDef)
                      and node.name == "prove_candidate_pair_source_binding")
+        runtime_proof = next(node for node in mutant.body
+                             if isinstance(node, ast.FunctionDef)
+                             and node.name == "prove_runtime_review_pair_controls")
         if action == "remove":
             main.body.pop(1)
         elif action == "move":
@@ -284,6 +305,18 @@ def prove_pair_negative_harness_reachability() -> None:
             mutant.body.remove(proof)
         elif action == "shadow":
             mutant.body.append(ast.Assign(targets=[ast.Name(id="prove_candidate_pair_source_binding",
+                                                              ctx=ast.Store())],
+                                          value=ast.Constant(None)))
+        elif action == "remove_runtime":
+            main.body.pop(3)
+        elif action == "dead_runtime":
+            main.body[3] = ast.If(test=ast.Constant(False), body=[main.body[3]], orelse=[])
+        elif action == "duplicate_runtime":
+            main.body.insert(4, copy.deepcopy(main.body[3]))
+        elif action == "remove_runtime_def":
+            mutant.body.remove(runtime_proof)
+        elif action == "shadow_runtime":
+            mutant.body.append(ast.Assign(targets=[ast.Name(id="prove_runtime_review_pair_controls",
                                                               ctx=ast.Store())],
                                           value=ast.Constant(None)))
         try:
