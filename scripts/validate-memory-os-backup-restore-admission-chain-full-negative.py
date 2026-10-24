@@ -7,6 +7,8 @@ fixture. It never changes repository files or creates operational evidence.
 
 from __future__ import annotations
 
+import ast
+import copy
 import importlib.util
 import io
 import subprocess
@@ -123,6 +125,112 @@ def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
 
 
 
+
+def require_full_runner_step_binding(tree: ast.Module) -> None:
+    """Reject rebinding the step function before main captures its default."""
+    definitions = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == "run_step"]
+    require(len(definitions) == 1,
+            "full-chain runner must define exactly one synchronous step")
+    definition = definitions[0]
+    args = definition.args
+    require(not definition.decorator_list and not args.posonlyargs
+            and [arg.arg for arg in args.args] ==
+            ["relative", "label", "canonical_transport_guard", "canonical_script_resolver"]
+            and len(args.defaults) == 2 and not args.vararg
+            and not args.kwonlyargs and not args.kwarg and not args.kw_defaults,
+            "full-chain runner step signature/decorator drift")
+
+    def rebinds(node: ast.AST) -> bool:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name == "run_step":
+                return True
+        if isinstance(node, ast.arg) and node.arg == "run_step":
+            return True
+        if isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == "run_step":
+            return True
+        if isinstance(node, ast.Name) and node.id == "run_step" and isinstance(node.ctx, (ast.Store, ast.Del)):
+            return True
+        if (isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.slice, ast.Constant)
+                and node.slice.value == "run_step"):
+            target = node.value
+            if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                    and target.func.id in {"globals", "vars", "locals"}
+                    and not target.args and not target.keywords):
+                return True
+            if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
+                return True
+            if (isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}
+                    and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value == "run_step"):
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"update", "pop", "popitem", "clear",
+                                           "setdefault", "__setitem__", "__delitem__"}):
+                target = node.func.value
+                if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                        and target.func.id in {"globals", "vars", "locals"}
+                        and not target.args and not target.keywords):
+                    return True
+                if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                    return True
+        return any(rebinds(child) for child in ast.iter_child_nodes(node))
+
+    for statement in tree.body:
+        if statement is not definition:
+            require(not rebinds(statement), "full-chain runner step binding drift")
+
+
+def prove_full_runner_step_binding() -> None:
+    try:
+        canonical = ast.parse(TARGET.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("full-chain runner step source unavailable") from exc
+    require_full_runner_step_binding(canonical)
+    cases = (
+        ("assignment", "run_step = lambda *args: None"),
+        ("import-alias", "from random import randint as run_step"),
+        ("dead-branch", "if False: run_step = None"),
+        ("globals", "globals()['run_step'] = None"),
+        ("globals-update", "globals().update(run_step=None)"),
+        ("globals-pop", "globals().pop('run_step')"),
+        ("module-dict", "sys.modules[__name__].__dict__['run_step'] = None"),
+        ("setattr", "setattr(sys.modules[__name__], 'run_step', None)"),
+        ("exec", "exec('run_step = None')"),
+        ("duplicate", "def run_step(relative, label): pass"),
+    )
+    for label, mutation in cases:
+        mutated = copy.deepcopy(canonical)
+        main_index = next(i for i, node in enumerate(mutated.body)
+                          if isinstance(node, ast.FunctionDef) and node.name == "main")
+        mutated.body[main_index:main_index] = ast.parse(mutation).body
+        try:
+            require_full_runner_step_binding(mutated)
+        except Fail as exc:
+            expected = ("full-chain runner must define exactly one synchronous step"
+                        if label == "duplicate" else "full-chain runner step binding drift")
+            require(str(exc) == expected, f"full-chain step {label} rejection diagnostic drift")
+        else:
+            raise Fail(f"full-chain step {label} pre-main rebinding unexpectedly accepted")
+    decorated = copy.deepcopy(canonical)
+    step = next(node for node in decorated.body
+                if isinstance(node, ast.FunctionDef) and node.name == "run_step")
+    step.decorator_list.append(ast.Name(id="wrapper", ctx=ast.Load()))
+    try:
+        require_full_runner_step_binding(decorated)
+    except Fail as exc:
+        require(str(exc) == "full-chain runner step signature/decorator drift",
+                "full-chain step decorator rejection diagnostic drift")
+    else:
+        raise Fail("full-chain step decorator bypass unexpectedly accepted")
+    print("PASS reject: eleven full-chain pre-main step rebinding/decorator substitutions")
+
+
 def prove_full_step_exit_propagation() -> None:
     """Prove the full-chain parent cannot promote a failed child with PASS stdout."""
     module = load_target()
@@ -179,6 +287,7 @@ def prove_full_step_exit_propagation() -> None:
 
 
 def main() -> int:
+    prove_full_runner_step_binding()
     prove_full_step_exit_propagation()
     expect_fail(
         "repository root substitution",
