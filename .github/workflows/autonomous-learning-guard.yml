@@ -1,0 +1,55 @@
+name: Autonomous Learning Guard
+
+on:
+  push:
+    branches: [so]
+    paths:
+      - ".github/workflows/autonomous-learning-guard.yml"
+      - "contracts/operations/autonomous-learning-system.json"
+      - "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
+      - "scripts/validate-autonomous-learning-system.py"
+      - "scripts/validate-autonomous-learning-system-negative.py"
+      - "scripts/validate-memory-os-entry-docs.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autonomous-learning-guard-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain)"
+      - name: Validate learning contract and executable negatives
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python -B scripts/validate-autonomous-learning-system.py
+          python -B scripts/validate-autonomous-learning-system-negative.py
+          python -B scripts/validate-memory-os-entry-docs.py
+      - name: Confirm read-only execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
