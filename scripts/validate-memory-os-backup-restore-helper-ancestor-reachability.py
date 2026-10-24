@@ -156,6 +156,20 @@ def validate_step_key_inventory(
     require(actual == expected, diagnostic)
 
 
+def validate_root_key_inventory(
+    source: str, expected: tuple[str, ...], diagnostic: str
+) -> None:
+    """Reject YAML-equivalent quoted or duplicate root keys."""
+    actual = []
+    for line in source.splitlines():
+        if not line or line[0].isspace() or line.startswith("#"):
+            continue
+        match = re.fullmatch(r"([a-z][a-z-]*):(?:[ \t].*)?", line)
+        require(match is not None, diagnostic)
+        actual.append(match.group(1))
+    require(tuple(actual) == expected, diagnostic)
+
+
 def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
@@ -207,6 +221,10 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     require(len(re.findall(r"(?m)^on:", workflow_source)) == 1
             and len(re.findall(r"(?m)^permissions:", workflow_source)) == 1,
             "ancestor workflow duplicate root authority")
+    validate_root_key_inventory(
+        workflow_source, ("name", "on", "permissions", "jobs"),
+        "ancestor workflow root key inventory drift",
+    )
     event_block = workflow_source.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
     require(re.findall(r"(?m)^  ([a-z_]+):", event_block)
             == ["push", "pull_request", "workflow_dispatch"],
@@ -297,6 +315,10 @@ def validate_independent_learning_workflow(source: str) -> None:
     require(len(re.findall(r"(?m)^on:", source)) == 1
             and len(re.findall(r"(?m)^permissions:", source)) == 1,
             "independent learning workflow duplicate root authority")
+    validate_root_key_inventory(
+        source, ("name", "on", "permissions", "concurrency", "jobs"),
+        "independent learning workflow root key inventory drift",
+    )
     require(re.search(r"(?m)^on:\n  push:\n    branches: \[so\]\n    paths:\n", source)
             is not None and "\n  workflow_dispatch:\n" in source,
             "independent learning workflow trigger drift")
@@ -1176,6 +1198,12 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor workflow duplicate root authority"),
         (workflow_source + "\non:\n  workflow_dispatch:\n",
          "ancestor workflow duplicate root authority"),
+        (workflow_source + '\n"permissions":\n  contents: write\n',
+         "ancestor workflow root key inventory drift"),
+        (workflow_source + '\n"on":\n  workflow_dispatch:\n',
+         "ancestor workflow root key inventory drift"),
+        (workflow_source + '\n"jobs":\n  verify:\n    runs-on: self-hosted\n',
+         "ancestor workflow root key inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1333,6 +1361,12 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "independent learning workflow duplicate root authority"),
         (source + "\non:\n  workflow_dispatch:\n",
          "independent learning workflow duplicate root authority"),
+        (source + '\n"permissions":\n  contents: write\n',
+         "independent learning workflow root key inventory drift"),
+        (source + '\n"on":\n  workflow_dispatch:\n',
+         "independent learning workflow root key inventory drift"),
+        (source + '\n"jobs":\n  validate:\n    runs-on: self-hosted\n',
+         "independent learning workflow root key inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1428,7 +1462,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 129, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 135, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
