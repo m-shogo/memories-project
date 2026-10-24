@@ -122,7 +122,14 @@ def negative_cases(source: str, diagnostic: str) -> int:
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
-        mutated = source.replace(original, mutation, 1)
+        if expected == "ancestor proof missing exact diagnostic":
+            # The loader guard also contains this diagnostic; mutate the proof,
+            # not the earlier guard declaration, to test the intended boundary.
+            position = source.rfind(original)
+            require(position >= 0, "negative diagnostic mutation anchor absent")
+            mutated = source[:position] + mutation + source[position + len(original):]
+        else:
+            mutated = source.replace(original, mutation, 1)
         try:
             validate_source(mutated, diagnostic)
         except GuardFailure as exc:
