@@ -386,9 +386,9 @@ def negative_cases(source: str, diagnostic: str) -> int:
         )
     )
     replacements += tuple(
-        ("    prove_helper_ancestor_swap_during_fd_walk_rejected()\\n",
-         "    " + injection + "\\n"
-         "    prove_helper_ancestor_swap_during_fd_walk_rejected()\\n",
+        ("    prove_helper_ancestor_swap_during_fd_walk_rejected()\n",
+         "    " + injection + "\n"
+         "    prove_helper_ancestor_swap_during_fd_walk_rejected()\n",
          "main pre-proof binding mutation")
         for injection in (
             'globals()["prove_helper_ancestor_swap_during_fd_walk_rejected"] = lambda: None',
