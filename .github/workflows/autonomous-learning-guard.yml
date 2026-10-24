@@ -28,6 +28,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -37,6 +38,25 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain)"
+      - name: Enforce append-only learning authority against parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          authority = "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
+          previous = subprocess.check_output(
+              ["git", "show", f"HEAD^:{authority}"]
+          )
+          current = Path(authority).read_bytes()
+          if not current.startswith(previous):
+              raise SystemExit(
+                  "AUTONOMOUS LEARNING APPEND-ONLY FAILED: previous authority bytes changed"
+              )
+          print("Autonomous learning append-only PASS")
+          PY
       - name: Validate learning contract and executable negatives
         shell: bash
         env:
