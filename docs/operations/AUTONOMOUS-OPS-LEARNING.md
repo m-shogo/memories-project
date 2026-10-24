@@ -7219,3 +7219,20 @@ a promotion decision, a recovery objective, or drill evidence.
 
 ### Retry condition
 - Revisit the ancestor walk only if a new deterministic bypass is demonstrated, the canonical directory traversal changes, or exact-source CI regresses. Do not repeat unchanged clean-worktree or atomic-final-deletion blockers; inspect independent workflow outcomes without promoting partial PASS markers.
+
+## 2026-10-24 — Learning CI minimum tracks the 111 exercised negative cases
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach
+- Symptom: after twelve new eager-binding negatives were added, the shared entry-docs CI success classifier still accepted any negative-suite count of at least 95, allowing a partial loss of current coverage to retain a PASS-looking result.
+- Evidence: `scripts/validate-memory-os-entry-docs.py` blob `0aa6384df4f19758602adae7dbdd4c74d910945d` set `MIN_LEARNING_NEGATIVE_CASES = 95`; exact-source run `40097353186` observed 111 cases. Verified root cause: the floor had not advanced with the expanded suite. Failed approach: treating the older monotonic floor as proof of all newly added cases.
+
+### Correction, executable recurrence guard, retry condition
+- Commit `ff5b214c3227906760fdd7b8dcef7012533c6d1e` raises the canonical entry-docs classifier floor to 111. Existing synthetic classifier controls derive from that floor and reject truncated count. Exact-source Autonomous Learning Guard run `40097534678`, job `120882815080`, completed SUCCESS with 111 negatives, positive PASS, entry-docs PASS and read-only postcondition.
+- Recurrence guard: raise the bound minimum alongside any legitimate expansion of the negative suite and prove the new count through exact-source CI; the minimum is a coverage floor, not a production-readiness signal.
+- Retry condition: update only when the canonical suite legitimately changes its exercised case count or an exact-source classifier regression is observed. Do not reduce the floor to conceal a failed case.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: one CI-entrypoint code commit is verified on `so`, with exact-source run `40097534678` SUCCESS and `111 fail-closed cases` in the job log.
+- Why safe: only the existing synthetic learning CI count threshold changed; no production evidence, recovery authority, traffic, credential or promotion decision was touched.
+- Reusable mechanism: couple expanding negative coverage with the existing caller's monotonic count guard and a synthetic truncated-suite classifier test.
+- Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered and semantically eligible generations remain distinct; current human-approved objective, current executable reviewed request, complete typed eight-domain non-resurrection, independent review and separate human promotion remain required. Learning/CI never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
