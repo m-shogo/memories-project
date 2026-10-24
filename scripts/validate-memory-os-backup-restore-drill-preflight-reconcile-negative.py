@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 
@@ -38,15 +40,41 @@ def load_module():
     return module
 
 
+def load_pinned_fixture_guard(path: Path, name: str):
+    """Load the checked regular-file bytes from a no-follow descriptor."""
+    require(hasattr(os, "O_NOFOLLOW"),
+            "preflight fixture guard no-follow open unsupported")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise Fail("preflight fixture guard source open failed") from exc
+    try:
+        opened = os.fstat(fd)
+        entry = path.lstat()
+        require(
+            stat.S_ISREG(opened.st_mode) and stat.S_ISREG(entry.st_mode)
+            and (opened.st_dev, opened.st_ino) == (entry.st_dev, entry.st_ino),
+            "preflight fixture guard source identity drift",
+        )
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            source = stream.read()
+        spec = importlib.util.spec_from_file_location(name, path)
+        require(spec is not None and spec.loader is not None,
+                "drill request fixture parent guard cannot load")
+        module = importlib.util.module_from_spec(spec)
+        exec(compile(source, str(path), "exec"), module.__dict__)
+        return module
+    except OSError as exc:
+        raise Fail("preflight fixture guard pinned source read failed") from exc
+    finally:
+        os.close(fd)
+
+
 def guarded_temporary_directory(prefix: str, parent: Path):
     require(DRILL_REQUEST_LOAD_NEGATIVE.is_file() and not DRILL_REQUEST_LOAD_NEGATIVE.is_symlink(),
             "drill request fixture parent guard source missing or symlinked")
-    spec = importlib.util.spec_from_file_location(
-        "memory_os_drill_fixture_guard_preflight_reconcile", DRILL_REQUEST_LOAD_NEGATIVE)
-    require(spec is not None and spec.loader is not None,
-            "drill request fixture parent guard cannot load")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = load_pinned_fixture_guard(
+        DRILL_REQUEST_LOAD_NEGATIVE, "memory_os_drill_fixture_guard_preflight_reconcile")
     require(callable(getattr(module, "guarded_temporary_directory", None)),
             "drill request fixture parent guard callable missing")
     try:
@@ -78,6 +106,54 @@ def prove_helper_source_symlink_rejected() -> None:
         finally:
             DRILL_REQUEST_LOAD_NEGATIVE = original
     print("PASS: preflight reconcile fixture helper symlink rejected before import")
+
+
+def prove_helper_source_swap_during_import_is_pinned() -> None:
+    # The helper may be renamed after its non-symlink check but before import.
+    global DRILL_REQUEST_LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="preflight-reconcile-helper-import-race-") as raw:
+        sandbox = Path(raw)
+        trusted = sandbox / "helper.py"
+        parked = sandbox / "original-helper.py"
+        untrusted = sandbox / "untrusted.py"
+        trusted.write_text(
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(prefix, parent):\n"
+            "    return ('pinned-source', prefix)\n",
+            encoding="utf-8",
+        )
+        untrusted.write_text("raise RuntimeError('untrusted helper executed')\n", encoding="utf-8")
+        original_path = DRILL_REQUEST_LOAD_NEGATIVE
+        original_spec = importlib.util.spec_from_file_location
+        swapped = False
+        try:
+            DRILL_REQUEST_LOAD_NEGATIVE = trusted
+            require(
+                guarded_temporary_directory(".tmp-positive-", TMP_PARENT)
+                == ("pinned-source", ".tmp-positive-"),
+                "preflight helper pinned import positive control failed",
+            )
+
+            def swap_before_spec(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == trusted:
+                    swapped = True
+                    trusted.rename(parked)
+                    trusted.symlink_to(untrusted)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_before_spec
+            require(
+                guarded_temporary_directory(".tmp-race-", TMP_PARENT)
+                == ("pinned-source", ".tmp-race-"),
+                "preflight helper import executed substituted source",
+            )
+            require(swapped and trusted.is_symlink() and parked.is_file(),
+                    "preflight helper race probe did not substitute checked source")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            DRILL_REQUEST_LOAD_NEGATIVE = original_path
+    print("PASS: preflight reconcile helper import uses pinned source after pathname substitution")
 
 
 def fixture_authorities(module, tmp: Path, label: str) -> tuple[Path, Path]:
@@ -284,6 +360,7 @@ def main() -> int:
     print("PASS: preflight reconcile fixture reuses checked drill parent guard")
 
     prove_helper_source_symlink_rejected()
+    prove_helper_source_swap_during_import_is_pinned()
     module = load_module()
     module.enforce_execution_identity()
     module.enforce_runtime_authorities()
