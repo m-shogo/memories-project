@@ -37,7 +37,8 @@ def load_module(path: Path, name: str):
 def guarded_temporary_directory(*, prefix: str, parent: Path):
     # Reuse the tested sibling negative-harness parent guard; never create
     # repository-local fixtures through an unchecked symlinked ancestor.
-    require(RECONCILE_NEGATIVE.is_file(), "generation reconcile fixture guard missing")
+    require(RECONCILE_NEGATIVE.is_file() and not RECONCILE_NEGATIVE.is_symlink(),
+            "generation reconcile fixture guard source missing or symlinked")
     spec = importlib.util.spec_from_file_location(
         "memory_os_generation_reconcile_fixture_guard_load", RECONCILE_NEGATIVE
     )
@@ -50,6 +51,30 @@ def guarded_temporary_directory(*, prefix: str, parent: Path):
         return module.guarded_temporary_directory(prefix=prefix, parent=parent)
     except module.Fail as exc:
         raise Fail(str(exc)) from exc
+
+
+def prove_helper_source_symlink_rejected() -> None:
+    global RECONCILE_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="generation-evidence-helper-source-") as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real-helper.py"
+        real.touch()
+        link = sandbox / "helper.py"
+        link.symlink_to(real)
+        original = RECONCILE_NEGATIVE
+        try:
+            RECONCILE_NEGATIVE = link
+            try:
+                with guarded_temporary_directory(prefix=".tmp-must-not-create-", parent=TMP_PARENT):
+                    raise Fail("generation-evidence symlinked fixture helper accepted")
+            except Fail as exc:
+                require(str(exc) == "generation reconcile fixture guard source missing or symlinked",
+                        f"generation-evidence fixture helper rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("generation-evidence symlinked fixture helper accepted")
+        finally:
+            RECONCILE_NEGATIVE = original
+    print("PASS: generation-evidence fixture helper symlink rejected before import")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -314,6 +339,7 @@ def main() -> int:
     require(VALIDATOR.is_file(), "generation evidence validator missing")
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_helper_source_symlink_rejected()
     with guarded_temporary_directory(prefix=".tmp-generation-load-parent-negative-", parent=TMP_PARENT) as raw:
         sandbox = Path(raw)
         link = sandbox / "redirect"
