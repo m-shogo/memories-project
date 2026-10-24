@@ -54,6 +54,22 @@ jobs:
           python -m py_compile scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
           python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
           python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative
+      - name: Prove six other helper ancestor races without downstream admission dependencies
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import runpy
+          for filename in (
+              "validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+              "validate-memory-os-backup-restore-generation-evidence-load-negative.py",
+              "validate-memory-os-backup-restore-non-resurrection-transport-negative.py",
+              "validate-memory-os-backup-restore-generation-binding-negative.py",
+              "validate-memory-os-backup-restore-drill-request-reconcile-negative.py",
+              "validate-memory-os-backup-restore-admission-chain-reconcile-negative.py",
+          ):
+              proof = runpy.run_path(f"scripts/{filename}")
+              proof["prove_helper_ancestor_swap_during_fd_walk_rejected"]()
+          PY
       - name: Prove preflight reconcile helper races without downstream source-binding dependency
         run: |
           set -euo pipefail
