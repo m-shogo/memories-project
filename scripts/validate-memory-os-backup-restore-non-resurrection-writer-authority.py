@@ -189,13 +189,27 @@ def require_unique_writer_main_binding(source: str) -> None:
             return node.id == "main"
         if (isinstance(node, ast.Subscript)
                 and isinstance(node.ctx, (ast.Store, ast.Del))
-                and isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Name)
-                and node.value.func.id == "globals"
-                and not node.value.args and not node.value.keywords
                 and isinstance(node.slice, ast.Constant)
                 and node.slice.value == "main"):
-            return True
+            target = node.value
+            if (isinstance(target, ast.Call)
+                    and isinstance(target.func, ast.Name)
+                    and target.func.id in {"globals", "vars", "locals"}
+                    and not target.args and not target.keywords):
+                return True
+            if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                return True
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"update", "pop", "popitem", "clear",
+                                       "setdefault", "__setitem__", "__delitem__"}):
+            target = node.func.value
+            if (isinstance(target, ast.Call)
+                    and isinstance(target.func, ast.Name)
+                    and target.func.id in {"globals", "vars", "locals"}
+                    and not target.args and not target.keywords):
+                return True
+            if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                return True
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id == "setattr" and len(node.args) >= 2
                 and isinstance(node.args[1], ast.Constant)
@@ -229,6 +243,24 @@ def prove_main_binding_classifier() -> None:
         ("decorator", "@wrapper\n" + positive, "writer module main signature or decorators drift"),
         ("async", positive.replace("def main():", "async def main():", 1),
          "writer module must define exactly one synchronous main"),
+        ("globals-update", positive + "globals().update({'main': lambda: 0})\\n",
+         "writer module main binding drift"),
+        ("globals-keyword", positive + "globals().update(main=lambda: 0)\\n",
+         "writer module main binding drift"),
+        ("globals-pop", positive + "globals().pop('main')\\n",
+         "writer module main binding drift"),
+        ("vars-subscript", positive + "vars()['main'] = lambda: 0\\n",
+         "writer module main binding drift"),
+        ("locals-subscript", positive + "locals()['main'] = lambda: 0\\n",
+         "writer module main binding drift"),
+        ("globals-setitem", positive + "globals().__setitem__('main', lambda: 0)\\n",
+         "writer module main binding drift"),
+        ("module-dict", positive + "sys.modules[__name__].__dict__['main'] = lambda: 0\\n",
+         "writer module main binding drift"),
+        ("module-dict-update", positive + "sys.modules[__name__].__dict__.update({'main': lambda: 0})\\n",
+         "writer module main binding drift"),
+        ("dead-dynamic", positive + "if False:\\n    globals().update({'main': lambda: 0})\\n",
+         "writer module main binding drift"),
     )
     for label, mutated, expected in mutations:
         try:
@@ -237,7 +269,7 @@ def prove_main_binding_classifier() -> None:
             require(str(exc) == expected, f"writer module {label} diagnostic drift")
         else:
             raise NegativeFailure(f"writer module {label} shadowing unexpectedly accepted")
-    print("PASS reject: ten module-level writer main binding/decorator substitutes")
+    print("PASS reject: nineteen module-level writer main binding/decorator/dynamic substitutes")
 
 
 def require_parser_lock_reachability(source: str) -> None:
