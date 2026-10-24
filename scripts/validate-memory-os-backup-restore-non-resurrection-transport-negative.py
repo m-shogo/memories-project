@@ -40,10 +40,40 @@ def load_module(path: Path, name: str):
     return module
 
 
+def load_pinned_fixture_helper(path: Path, name: str):
+    """Execute source bytes pinned to the checked regular-file descriptor."""
+    require(hasattr(os, "O_NOFOLLOW"),
+            "typed transport fixture guard no-follow open unsupported")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise Fail("typed transport fixture guard source open failed") from exc
+    try:
+        opened = os.fstat(fd)
+        entry = path.lstat()
+        require(
+            stat.S_ISREG(opened.st_mode) and stat.S_ISREG(entry.st_mode)
+            and (opened.st_dev, opened.st_ino) == (entry.st_dev, entry.st_ino),
+            "typed transport fixture guard source identity drift",
+        )
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            source = stream.read()
+        spec = importlib.util.spec_from_file_location(name, path)
+        require(spec is not None and spec.loader is not None,
+                "typed transport fixture guard cannot load")
+        module = importlib.util.module_from_spec(spec)
+        exec(compile(source, str(path), "exec"), module.__dict__)
+        return module
+    except OSError as exc:
+        raise Fail("typed transport fixture guard pinned source read failed") from exc
+    finally:
+        os.close(fd)
+
+
 def guarded_temporary_directory(prefix: str, parent: Path):
     require(PATH_NEGATIVE.is_file() and not PATH_NEGATIVE.is_symlink(),
             "typed contract path fixture guard missing or symlinked")
-    module = load_module(PATH_NEGATIVE, "memory_os_typed_path_fixture_guard_transport")
+    module = load_pinned_fixture_helper(PATH_NEGATIVE, "memory_os_typed_path_fixture_guard_transport")
     require(callable(getattr(module, "guarded_temporary_directory", None)),
             "typed contract path fixture guard callable missing")
     try:
@@ -75,6 +105,54 @@ def prove_helper_source_symlink_rejected() -> None:
         finally:
             PATH_NEGATIVE = original
     print("PASS: typed transport fixture helper symlink rejected before import")
+
+
+def prove_helper_source_swap_during_import_is_pinned() -> None:
+    # Exercise a substitution precisely after the trusted bytes are pinned.
+    global PATH_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="typed-transport-helper-import-race-") as raw:
+        sandbox = Path(raw)
+        trusted = sandbox / "helper.py"
+        parked = sandbox / "original-helper.py"
+        untrusted = sandbox / "untrusted.py"
+        trusted.write_text(
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(prefix, parent):\n"
+            "    return ('pinned-source', prefix)\n",
+            encoding="utf-8",
+        )
+        untrusted.write_text("raise RuntimeError('untrusted helper executed')\n", encoding="utf-8")
+        original_path = PATH_NEGATIVE
+        original_spec = importlib.util.spec_from_file_location
+        swapped = False
+        try:
+            PATH_NEGATIVE = trusted
+            require(
+                guarded_temporary_directory(".tmp-positive-", TEMP_PARENT)
+                == ("pinned-source", ".tmp-positive-"),
+                "typed transport helper pinned import positive control failed",
+            )
+
+            def swap_before_spec(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == trusted:
+                    swapped = True
+                    trusted.rename(parked)
+                    trusted.symlink_to(untrusted)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_before_spec
+            require(
+                guarded_temporary_directory(".tmp-race-", TEMP_PARENT)
+                == ("pinned-source", ".tmp-race-"),
+                "typed transport helper import executed substituted source",
+            )
+            require(swapped and trusted.is_symlink() and parked.is_file(),
+                    "typed transport helper race probe did not substitute checked source")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            PATH_NEGATIVE = original_path
+    print("PASS: typed transport helper import uses pinned source after pathname substitution")
 
 
 def load_validator():
@@ -1258,6 +1336,7 @@ def main() -> int:
     validator = load_validator()
     exercise_validator_child_exit_propagation(validator)
     prove_helper_source_symlink_rejected()
+    prove_helper_source_swap_during_import_is_pinned()
 
     original_subprocess_run = validator.subprocess.run
     original_spec_from_file_location = validator.importlib.util.spec_from_file_location
