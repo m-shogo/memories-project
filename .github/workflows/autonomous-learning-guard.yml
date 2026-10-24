@@ -19,6 +19,24 @@ on:
       - "scripts/validate-autonomous-learning-system.py"
       - "scripts/validate-autonomous-learning-system-negative.py"
       - "scripts/validate-memory-os-entry-docs.py"
+  pull_request:
+    branches: [so]
+    paths:
+      - ".github/workflows/autonomous-learning-guard.yml"
+      - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
+      - "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
+      - "contracts/operations/autonomous-learning-system.json"
+      - "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
+      - "scripts/validate-autonomous-learning-system.py"
+      - "scripts/validate-autonomous-learning-system-negative.py"
+      - "scripts/validate-memory-os-entry-docs.py"
   workflow_dispatch:
 
 permissions:
@@ -65,6 +83,12 @@ jobs:
                       "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid push baseline"
                   )
               baseline = before
+          elif event_name == "pull_request":
+              baseline = "${{ github.event.pull_request.base.sha }}"
+              if not re.fullmatch(r"[0-9a-f]{40}", baseline):
+                  raise SystemExit(
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR base"
+                  )
           elif event_name == "workflow_dispatch":
               baseline = "HEAD^"
           else:
