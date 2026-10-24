@@ -13,6 +13,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -48,9 +50,72 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+OWNED_TRANSIENTS: dict[Path, tuple[int, int, int, int]] = {}
+
+
+def canonical_parent_identity(parent: Path) -> tuple[int, int]:
+    try:
+        relative = parent.relative_to(ROOT)
+    except ValueError as exc:
+        raise Fail("candidate transient parent escapes repository") from exc
+    require(ROOT.is_dir() and not ROOT.is_symlink(), "candidate transient root missing or symlinked")
+    cursor = ROOT
+    for part in relative.parts:
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "candidate transient ancestor missing or symlinked")
+    require(parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
+            "candidate transient parent canonical resolution drift")
+    parent_stat = parent.stat()
+    return parent_stat.st_dev, parent_stat.st_ino
+
+
+def require_owned_transient(path: Path) -> None:
+    require(path in OWNED_TRANSIENTS, "candidate transient file was not exclusively registered")
+    parent_dev, parent_ino, leaf_dev, leaf_ino = OWNED_TRANSIENTS[path]
+    require(canonical_parent_identity(path.parent) == (parent_dev, parent_ino),
+            "candidate transient parent identity drift")
+    leaf = path.lstat()
+    require(stat.S_ISREG(leaf.st_mode) and (leaf.st_dev, leaf.st_ino) == (leaf_dev, leaf_ino),
+            "candidate transient leaf identity drift")
+
+
+def cleanup_owned_transients(cleanup: list[Path]) -> None:
+    require(set(cleanup).issubset(OWNED_TRANSIENTS),
+            "candidate transient cleanup contains an unowned file")
+    for path in reversed(tuple(OWNED_TRANSIENTS)):
+        parent_dev, parent_ino, leaf_dev, leaf_ino = OWNED_TRANSIENTS[path]
+        require(canonical_parent_identity(path.parent) == (parent_dev, parent_ino),
+                "candidate transient cleanup parent identity drift")
+        try:
+            leaf = path.lstat()
+        except FileNotFoundError:
+            continue
+        require(stat.S_ISREG(leaf.st_mode) and (leaf.st_dev, leaf.st_ino) == (leaf_dev, leaf_ino),
+                "candidate transient cleanup leaf identity drift")
+        path.unlink()
+    OWNED_TRANSIENTS.clear()
+
+
 def write_json(path: Path, value: dict[str, Any]) -> None:
+    payload = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+    if path in OWNED_TRANSIENTS:
+        require_owned_transient(path)
+        fd = os.open(path, os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            leaf = os.fstat(fd)
+            require((leaf.st_dev, leaf.st_ino) == OWNED_TRANSIENTS[path][2:],
+                    "candidate transient descriptor identity drift")
+            with os.fdopen(fd, "w", encoding="utf-8") as output:
+                fd = -1
+                output.truncate(0)
+                output.write(payload)
+        finally:
+            if fd >= 0:
+                os.close(fd)
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(payload, encoding="utf-8")
 
 
 def repo_ref(path: Path) -> str:
@@ -69,7 +134,16 @@ def transient_path(prefix: str, suffix: str) -> Path:
         encoding="utf-8",
     )
     path = Path(handle.name)
-    handle.close()
+    try:
+        parent_identity = canonical_parent_identity(path.parent)
+        leaf = os.fstat(handle.fileno())
+        require_owned = path.lstat()
+        require(stat.S_ISREG(require_owned.st_mode)
+                and (leaf.st_dev, leaf.st_ino) == (require_owned.st_dev, require_owned.st_ino),
+                "candidate transient descriptor/leaf identity drift")
+        OWNED_TRANSIENTS[path] = (*parent_identity, leaf.st_dev, leaf.st_ino)
+    finally:
+        handle.close()
     return path
 
 
@@ -349,11 +423,7 @@ def main() -> int:
         print("production decision: NO_GO")
         return 0
     finally:
-        for path in cleanup:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+        cleanup_owned_transients(cleanup)
 
 
 if __name__ == "__main__":
