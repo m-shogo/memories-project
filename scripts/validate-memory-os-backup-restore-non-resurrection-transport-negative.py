@@ -361,7 +361,7 @@ def require_typed_admission_child_reachability(tree: ast.Module) -> None:
         and isinstance(stmt.targets[0], ast.Name)
         and stmt.targets[0].id == "boundary"), -1)
     indices = [item[0] for item in observed]
-    require(0 <= indices[0] < indices[1] < registry_check_index
+    require(0 <= registry_check_index < indices[0] < indices[1]
             < boundary_index < indices[2] < indices[3] < indices[4],
             "typed admission child validation must follow canonical gate order")
     require(indices[1] == indices[0] + 1
