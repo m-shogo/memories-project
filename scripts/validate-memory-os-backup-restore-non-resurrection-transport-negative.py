@@ -20,6 +20,7 @@ VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-a
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
 TEMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
+PATH_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
 
 
 class Fail(RuntimeError):
@@ -37,6 +38,17 @@ def load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    require(PATH_NEGATIVE.is_file(), "typed contract path fixture guard missing")
+    module = load_module(PATH_NEGATIVE, "memory_os_typed_path_fixture_guard_transport")
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "typed contract path fixture guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
 
 
 def load_validator():
@@ -79,7 +91,7 @@ def exercise_registry_transaction_transport() -> None:
         "productionReady": False,
     }
 
-    with tempfile.TemporaryDirectory(prefix=".memory-os-nonres-transport-negative-", dir=TEMP_PARENT) as tmp:
+    with guarded_temporary_directory(".memory-os-nonres-transport-negative-", TEMP_PARENT) as tmp:
         parent = Path(tmp)
         registry = parent / "typed-registry.json"
         registry.write_text(json.dumps(base, indent=2) + "\n", encoding="utf-8")
@@ -139,7 +151,7 @@ def exercise_reconciler_transaction_transport() -> None:
     output_names = ("REGISTRY", "GEN_REGISTRY", "CONTRACT", "STATUS")
 
     for fail_index in (2, 3, 4):
-        with tempfile.TemporaryDirectory(prefix=f".memory-os-nonres-reconcile-transaction-{fail_index}-", dir=TEMP_PARENT) as tmp:
+        with guarded_temporary_directory(f".memory-os-nonres-reconcile-transaction-{fail_index}-", TEMP_PARENT) as tmp:
             parent = Path(tmp)
             originals = {name: getattr(reconciler, name) for name in output_names}
             copies: dict[str, Path] = {}
@@ -1190,6 +1202,22 @@ def exercise_validator_child_exit_propagation(validator) -> None:
 
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
+    with guarded_temporary_directory(".tmp-typed-transport-parent-negative-", TEMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("typed transport symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "typed contract path temp ancestor missing or symlinked",
+                    f"typed transport symlinked parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("typed transport symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "typed transport symlinked temp parent published a child")
+    print("PASS: typed transport fixture reuses checked parent guard")
     prove_typed_admission_main_reachability()
     prove_typed_admission_child_reachability()
     prove_typed_admission_candidate_derivation()
