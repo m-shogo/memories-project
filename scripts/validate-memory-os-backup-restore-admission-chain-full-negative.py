@@ -176,7 +176,11 @@ def require_full_runner_helper_bindings(tree: ast.Module) -> None:
                     return True
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
-                    return True
+                    if not node.args or not isinstance(node.args[0], ast.Constant):
+                        return True
+                    if not isinstance(node.args[0].value, str):
+                        return True
+                    return symbol in node.args[0].value
                 if (isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}
                         and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
                         and node.args[1].value == symbol):
@@ -185,12 +189,29 @@ def require_full_runner_helper_bindings(tree: ast.Module) -> None:
                         and node.func.attr in {"update", "pop", "popitem", "clear",
                                                "setdefault", "__setitem__", "__delitem__"}):
                     target = node.func.value
-                    if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
-                            and target.func.id in {"globals", "vars", "locals"}
-                            and not target.args and not target.keywords):
-                        return True
-                    if isinstance(target, ast.Attribute) and target.attr == "__dict__":
-                        return True
+                    namespace = (isinstance(target, ast.Call)
+                                 and isinstance(target.func, ast.Name)
+                                 and target.func.id in {"globals", "vars", "locals"}
+                                 and not target.args and not target.keywords)
+                    module_dict = isinstance(target, ast.Attribute) and target.attr == "__dict__"
+                    if namespace or module_dict:
+                        method = node.func.attr
+                        if method in {"clear", "popitem"}:
+                            return True
+                        if method == "update":
+                            if any(keyword.arg is None or keyword.arg == symbol
+                                   for keyword in node.keywords):
+                                return True
+                            for argument in node.args:
+                                if not isinstance(argument, ast.Dict):
+                                    return True
+                                if any(not isinstance(key, ast.Constant) or key.value == symbol
+                                       for key in argument.keys):
+                                    return True
+                            return False
+                        if not node.args or not isinstance(node.args[0], ast.Constant):
+                            return True
+                        return node.args[0].value == symbol
             return any(rebinds(child) for child in ast.iter_child_nodes(node))
 
         for statement in tree.body:
