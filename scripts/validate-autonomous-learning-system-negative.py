@@ -155,6 +155,8 @@ def expected_diagnostic(name: str) -> str:
     }
     if name in fixed:
         return fixed[name]
+    if name.startswith("early learning guard "):
+        return "learning CI entrypoint guard call follows unconditional return or raise"
     if name.startswith("dynamic main "):
         return "learning CI entrypoint main binding is shadowed by module control flow"
     if name.startswith("dynamic learning guard "):
@@ -455,6 +457,31 @@ def main() -> int:
             'if __name__ == "__main__":\n    pass  # raise SystemExit(main())\n',
         )),
     ))
+    # The guard must remain reachable through nested branches, eager
+    # definitions and termination calls, not just direct Return/Raise nodes.
+    newline = chr(10)
+    guard_call = "    validate_learning_guards(failures)" + newline
+    for label, prefix in (
+        ("if-return", "    if True:" + newline + "        return 0" + newline),
+        ("if-raise", "    if True:" + newline + "        raise SystemExit(0)" + newline),
+        ("sys-exit", "    sys.exit(0)" + newline),
+        ("os-exit", "    os._exit(0)" + newline),
+        ("exit", "    exit(0)" + newline),
+        ("quit", "    quit()" + newline),
+        ("dead-return", "    if False:" + newline + "        return 0" + newline),
+        ("try-return", "    try:" + newline + "        return 0" + newline
+         + "    finally:" + newline + "        pass" + newline),
+        ("exec-exit", "    exec('sys.exit(0)')" + newline),
+        ("eager-default", "    def helper(value=exit(0)):" + newline
+         + "        pass" + newline),
+        ("eager-class", "    class Early:" + newline + "        sys.exit(0)" + newline),
+    ):
+        cases.append((
+            f"early learning guard {label}",
+            lambda root, injected=prefix, before=guard_call: replace_in_entrypoint(
+                root, before, injected + before
+            ),
+        ))
     # Dynamic module namespace mutation must not replace a verified guard
     # after the AST sees its original function definition.
     for label, symbol, anchor in (
