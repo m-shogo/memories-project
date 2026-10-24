@@ -218,8 +218,87 @@ def require_source_order_main_negative_proof() -> None:
     print(f"PASS: source-order main AST execution binding rejects {len(cases)} review bypass mutations")
 
 
+
+PAIR_NEGATIVE_REL = Path("scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py")
+
+
+def require_pair_negative_harness_binding(tree: ast.Module) -> None:
+    """A passing pair mutation helper is useless if the CI-invoked negative main skips it."""
+    proofs = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+              and node.name == "prove_candidate_pair_source_binding"]
+    mains = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+             and node.name == "main"]
+    require(len(proofs) == 1 and len(mains) == 1,
+            "candidate pair negative harness definition drift")
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "prove_candidate_pair_source_binding"
+                   for target in targets):
+                raise Fail("candidate pair negative harness proof shadowed")
+    body = mains[0].body
+    expected = ast.parse("prove_candidate_pair_source_binding()").body[0]
+    calls = [index for index, node in enumerate(body)
+             if ast.dump(node, include_attributes=False) ==
+             ast.dump(expected, include_attributes=False)]
+    require(len(calls) == 1 and calls[0] == 1,
+            "candidate pair negative harness proof not second direct main step")
+    require(len(body) > 2 and isinstance(body[2], ast.Assign)
+            and isinstance(body[2].value, ast.Call)
+            and isinstance(body[2].value.func, ast.Name)
+            and body[2].value.func.id == "load_validator",
+            "candidate pair negative harness proof must precede validator loading")
+
+
+def prove_pair_negative_harness_reachability() -> None:
+    path = ROOT / PAIR_NEGATIVE_REL
+    require(path.is_file() and not path.is_symlink()
+            and path.resolve(strict=True) == ROOT.resolve(strict=True) / PAIR_NEGATIVE_REL,
+            "candidate pair negative harness executable missing or substituted")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    require_pair_negative_harness_binding(tree)
+    cases = (
+        ("omit proof call", "remove", "candidate pair negative harness proof not second direct main step"),
+        ("move proof after loader", "move", "candidate pair negative harness proof not second direct main step"),
+        ("dead proof branch", "dead", "candidate pair negative harness proof not second direct main step"),
+        ("duplicate proof call", "duplicate", "candidate pair negative harness proof not second direct main step"),
+        ("remove proof definition", "remove_def", "candidate pair negative harness definition drift"),
+        ("shadow proof helper", "shadow", "candidate pair negative harness proof shadowed"),
+    )
+    for label, action, expected in cases:
+        mutant = copy.deepcopy(tree)
+        main = next(node for node in mutant.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        proof = next(node for node in mutant.body
+                     if isinstance(node, ast.FunctionDef)
+                     and node.name == "prove_candidate_pair_source_binding")
+        if action == "remove":
+            main.body.pop(1)
+        elif action == "move":
+            main.body.insert(3, main.body.pop(1))
+        elif action == "dead":
+            main.body[1] = ast.If(test=ast.Constant(False), body=[main.body[1]], orelse=[])
+        elif action == "duplicate":
+            main.body.insert(2, copy.deepcopy(main.body[1]))
+        elif action == "remove_def":
+            mutant.body.remove(proof)
+        elif action == "shadow":
+            mutant.body.append(ast.Assign(targets=[ast.Name(id="prove_candidate_pair_source_binding",
+                                                              ctx=ast.Store())],
+                                          value=ast.Constant(None)))
+        try:
+            require_pair_negative_harness_binding(mutant)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"candidate pair harness mutation wrong diagnostic ({label}): {exc}")
+        else:
+            raise Fail(f"candidate pair harness mutation accepted: {label}")
+    print(f"PASS: external candidate pair negative harness reachability rejects {len(cases)} bypasses")
+
+
 def main() -> int:
     require_source_order_main_negative_proof()
+    prove_pair_negative_harness_reachability()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
     canonical_registry = module.REGISTRY.read_bytes()
