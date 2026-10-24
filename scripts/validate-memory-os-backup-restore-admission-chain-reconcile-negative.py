@@ -82,7 +82,7 @@ def prove_helper_source_symlink_rejected() -> None:
     with tempfile.TemporaryDirectory(prefix="admission-chain-helper-source-") as raw:
         sandbox = Path(raw)
         real = sandbox / "real-helper.py"
-        real.write_text("VALUE = 1\\n", encoding="utf-8")
+        real.touch()
         link = sandbox / "helper.py"
         link.symlink_to(real)
         original = LOAD_NEGATIVE
