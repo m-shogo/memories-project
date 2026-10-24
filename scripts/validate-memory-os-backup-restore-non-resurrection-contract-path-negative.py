@@ -105,9 +105,31 @@ def _pinned_temporary_directory(prefix: str, parent: Path):
                 and (current_child.st_dev, current_child.st_ino) == (created.st_dev, created.st_ino),
                 "typed contract path temp child identity drift before cleanup",
             )
-            # Descriptor-relative, symlink-resistant cleanup cannot traverse a
-            # substituted parent pathname. Child inode drift fails closed.
-            shutil.rmtree(name, dir_fd=fd)
+            # Pin the owned child before recursive deletion. A replacement of
+            # its name after the identity check must never redirect rmtree
+            # into an unowned directory with data.
+            child_fd = os.open(name, flags, dir_fd=fd)
+            try:
+                pinned_child = os.fstat(child_fd)
+                require(
+                    (pinned_child.st_dev, pinned_child.st_ino) == (created.st_dev, created.st_ino),
+                    "typed contract path temp child identity drift before traversal",
+                )
+                for entry_name in os.listdir(child_fd):
+                    entry = os.stat(entry_name, dir_fd=child_fd, follow_symlinks=False)
+                    if stat.S_ISDIR(entry.st_mode):
+                        shutil.rmtree(entry_name, dir_fd=child_fd)
+                    else:
+                        os.unlink(entry_name, dir_fd=child_fd)
+                final_child = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                require(
+                    stat.S_ISDIR(final_child.st_mode)
+                    and (final_child.st_dev, final_child.st_ino) == (created.st_dev, created.st_ino),
+                    "typed contract path temp child identity drift before final removal",
+                )
+                os.rmdir(name, dir_fd=fd)
+            finally:
+                os.close(child_fd)
     except OSError as exc:
         raise Fail(f"typed contract path pinned fixture operation failed: {exc}") from exc
     finally:
@@ -216,6 +238,47 @@ def prove_child_substitution_before_cleanup_rejected() -> None:
     print("PASS: typed contract path substituted child inode rejects cleanup without deleting replacement")
 
 
+def prove_child_swap_during_cleanup_preserves_unowned_data() -> None:
+    # Replace the child name only after the owned inode has been opened.
+    # Traversal must stay on the pinned FD; final name drift must fail closed.
+    with guarded_temporary_directory(prefix=".tmp-typed-path-cleanup-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        replacement = sandbox / "unowned-replacement"
+        replacement.mkdir()
+        sentinel = replacement / "important.txt"
+        sentinel.write_text("preserve me", encoding="utf-8")
+        parked = sandbox / "parked-owned-child"
+        original_listdir = os.listdir
+        switched = False
+        try:
+            with guarded_temporary_directory(prefix=".tmp-typed-path-cleanup-race-", parent=sandbox) as inner:
+                child = Path(inner)
+                (child / "owned.txt").write_text("owned fixture", encoding="utf-8")
+
+                def swap_before_traversal(target):
+                    nonlocal switched
+                    if not switched and isinstance(target, int):
+                        switched = True
+                        child.rename(parked)
+                        replacement.rename(child)
+                    return original_listdir(target)
+
+                os.listdir = swap_before_traversal
+        except Fail as exc:
+            require(str(exc) == "typed contract path temp child identity drift before final removal",
+                    f"typed path cleanup race rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("typed path cleanup race unexpectedly accepted")
+        finally:
+            os.listdir = original_listdir
+        require(switched, "typed path cleanup race never reached pinned child traversal")
+        require(child.is_dir() and (child / "important.txt").read_text(encoding="utf-8") == "preserve me",
+                "typed path cleanup race deleted unowned replacement data")
+        require(parked.is_dir() and not (parked / "owned.txt").exists(),
+                "typed path cleanup race did not traverse the pinned owned child")
+    print("PASS: typed contract path cleanup race preserves unowned replacement data")
+
+
 def load_validator():
     spec = importlib.util.spec_from_file_location("memory_os_non_resurrection_admission_path_negative", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load typed admission validator")
@@ -316,6 +379,7 @@ def main() -> int:
     print("PASS: typed contract path fixture parent symlink rejected before creation")
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
+    prove_child_swap_during_cleanup_preserves_unowned_data()
     validator = load_validator()
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
