@@ -5804,3 +5804,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - The runtime proof uses an in-memory rejecting guard and disposable fixture, with original binding restored in `finally`. Future parent-safety helper changes should prove actual publisher reachability and no premature publication, not only helper-level rejection.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, current executable reviewed request, typed eight-domain coverage, independent review and separate non-automatic human promotion remain mandatory. Learning and CI are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-24 — Generation reconcile negative fixtures need pre-creation parent checks
+
+### Material success: outcome and observed evidence
+- Code commit `904073582366f9f959db9ab4edfd129e2c32b49d` adds `guarded_temporary_directory` to the existing generation-evidence reconcile negative suite and routes its four repository-local temporary-directory call sites through it. The guard verifies the repository root and each parent ancestor are real directories, not symlinks, and checks canonical resolution before invoking `tempfile.TemporaryDirectory`.
+- An isolated positive control first creates an owned temporary directory; a symlinked child is then rejected with the exact ancestor diagnostic and no child publication. Post-write GitHub source inspection confirms four converted call sites and the negative probe. Exact-source CI for this commit was still running at the time of this learning write; static source checks are not runtime PASS.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified fixture creation risk, not an observed filesystem incident: the reconcile negative suite previously had four direct `tempfile.TemporaryDirectory(dir=TMP_PARENT)` calls. Its main function checked `TMP_PARENT.is_dir()`, which follows symlinks and therefore does not reject a symlinked fixture parent before a directory is created.
+- Root cause: the pre-publication canonical parent safety pattern previously applied to candidate fixtures was absent from the independent generation reconcile negative harness.
+- Failed approach to avoid: treating `is_dir()` or a post-creation check as protection against creation through a symlinked parent.
+
+### Correction, executable recurrence guard and retry condition
+- Use one local guard for all four creation sites, retaining the harness's standalone dependency boundary; test an actual symlinked disposable parent with exact rejection and unchanged directory contents. Do not independently unlink the synthetic link; let the enclosing owned temporary directory clean it.
+- Retry runtime verification after the exact-source Reconcile Negative/Admission Chain workflows finish; revisit only on observed CI failure, reviewed fixture path changes, or a demonstrated guard bypass. This precheck does not claim to eliminate a concurrent path replacement race. Do not retry unchanged external-evidence, workflow-permission, or clean-worktree blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic reconcile negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered generations remain distinct from unsuperseded semantically eligible environments; preflight requires two distinct eligible environments and a current explicitly human-approved objective; new evidence needs a current executable reviewed request; final candidates need complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
