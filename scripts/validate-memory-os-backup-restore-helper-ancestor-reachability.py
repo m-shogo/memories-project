@@ -1275,7 +1275,7 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor workflow event key inventory drift"),
         (workflow_source.replace(
              "  workflow_dispatch:\n",
-             '  "pull_request":\n    paths: []\n  workflow_dispatch:\n', 1),
+             '  "pull_request":\n  workflow_dispatch:\n', 1),
          "ancestor workflow event key inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
@@ -1456,7 +1456,7 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "independent learning workflow event key inventory drift"),
         (source.replace(
              "  workflow_dispatch:\n",
-             '  "pull_request":\n    paths: []\n  workflow_dispatch:\n', 1),
+             '  "pull_request":\n  workflow_dispatch:\n', 1),
          "independent learning workflow event key inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
