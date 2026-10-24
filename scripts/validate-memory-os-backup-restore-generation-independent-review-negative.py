@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import ast
+import copy
 import importlib.util
 import json
 import subprocess
@@ -361,7 +363,92 @@ def expect_source_order_execution(module) -> None:
             setattr(source_order, name, original_value)
 
 
+EXECUTION_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py"
+
+
+def require_external_source_order_guard(tree: ast.Module) -> None:
+    guards = [node for node in tree.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+              and node.name == "require_source_order_main_negative_proof"]
+    require(len(guards) == 1 and isinstance(guards[0], ast.FunctionDef),
+            "external source-order AST guard definition drift")
+    guard_calls = [node for node in ast.walk(guards[0])
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id == "require_source_order_main_binding"]
+    require(len(guard_calls) >= 2 and any(isinstance(node, ast.For) for node in guards[0].body),
+            "external source-order AST guard mutation proof drift")
+    mains = [node for node in tree.body
+             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "main"]
+    require(len(mains) == 1 and isinstance(mains[0], ast.FunctionDef),
+            "external source-order AST negative main definition drift")
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "main" for target in node.targets
+        ):
+            raise Fail("external source-order AST negative main shadowed")
+    body = mains[0].body
+    calls = [
+        node for node in body
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "require_source_order_main_negative_proof"
+        and not node.value.args and not node.value.keywords
+    ]
+    require(len(calls) == 1 and body[0] is calls[0],
+            "external source-order AST guard not first direct main step")
+
+
+def require_external_source_order_guard_negative_proof() -> None:
+    require(EXECUTION_NEGATIVE.is_file() and not EXECUTION_NEGATIVE.is_symlink(),
+            "external source-order AST negative executable missing or symlinked")
+    require(EXECUTION_NEGATIVE.resolve(strict=True) ==
+            ROOT.resolve(strict=True) / "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py",
+            "external source-order AST negative executable path drift")
+    tree = ast.parse(EXECUTION_NEGATIVE.read_text(encoding="utf-8"))
+    require_external_source_order_guard(tree)
+    cases = (
+        ("omit main guard call", "external source-order AST guard not first direct main step"),
+        ("move guard after loader", "external source-order AST guard not first direct main step"),
+        ("dead-branch guard", "external source-order AST guard not first direct main step"),
+        ("duplicate main guard", "external source-order AST guard not first direct main step"),
+        ("remove guard definition", "external source-order AST guard definition drift"),
+        ("remove mutation loop", "external source-order AST guard mutation proof drift"),
+        ("shadow main", "external source-order AST negative main shadowed"),
+    )
+    for label, expected in cases:
+        mutant = copy.deepcopy(tree)
+        main = next(node for node in mutant.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        guard = next(node for node in mutant.body
+                     if isinstance(node, ast.FunctionDef)
+                     and node.name == "require_source_order_main_negative_proof")
+        if label == "omit main guard call":
+            main.body.pop(0)
+        elif label == "move guard after loader":
+            main.body.insert(1, main.body.pop(0))
+        elif label == "dead-branch guard":
+            main.body[0] = ast.If(test=ast.Constant(False), body=[main.body[0]], orelse=[])
+        elif label == "duplicate main guard":
+            main.body.insert(1, copy.deepcopy(main.body[0]))
+        elif label == "remove guard definition":
+            mutant.body.remove(guard)
+        elif label == "remove mutation loop":
+            guard.body[:] = [node for node in guard.body if not isinstance(node, ast.For)]
+        elif label == "shadow main":
+            mutant.body.append(ast.Assign(targets=[ast.Name(id="main", ctx=ast.Store())],
+                                          value=ast.Constant(None)))
+        try:
+            require_external_source_order_guard(mutant)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"external source-order guard mutation rejected at wrong boundary ({label}): {exc}")
+        else:
+            raise Fail(f"external source-order guard accepted mutation: {label}")
+    print(f"PASS: external source-order AST guard reachability rejects {len(cases)} mutations")
+
+
 def main() -> int:
+    require_external_source_order_guard_negative_proof()
     module = load_validator()
     expect_source_order_execution(module)
 
