@@ -425,7 +425,8 @@ def validate_independent_learning_workflow(source: str) -> None:
         "      - name: Validate learning contract and executable negatives",
         "      - name: Independently enforce helper ancestor runtime workflow reachability",
         "      - name: Confirm read-only execution",
-    ], "independent learning workflow step allowlist drift")    validate_step_key_inventory(
+    ], "independent learning workflow step allowlist drift")
+    validate_step_key_inventory(
         source,
         (("with",), ("with",), ("shell", "run"), ("shell", "run"),
          ("shell", "env", "run"), ("shell", "env", "run"), ("shell", "run")),
