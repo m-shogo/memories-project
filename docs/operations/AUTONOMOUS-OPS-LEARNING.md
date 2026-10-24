@@ -5309,3 +5309,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the CI-reachable synthetic generation-binding negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Preflight still requires unsuperseded semantically eligible generations from distinct environments and an explicitly human-approved current recovery objective. New recovery evidence requires a current executable reviewed request; final candidates require all generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Generation-evidence contract-ref symlink cleanup is inode-bound
+
+### Material success: observed outcome and evidence
+- Code commit `1b1c0fb08106731842451dfd92d0726295baa255` hardens the existing generation-evidence contract-path negative suite's fixed repository-root symlink fixture. The fixture retains its occupied-path rejection and now requires the original non-symlinked root device/inode, created symlink device/inode and expected external target before cleanup.
+- Exact-source Backup Restore Generation Evidence run `40062230682` (job `120778013900`) completed SUCCESS. Its log explicitly reports `PASS reject: repository-local symlink escaping generation-evidence authority root`, `Memory OS generation evidence contract path negative suite PASS` and `production decision: NO_GO`. Backup Restore Admission Chain `40062230684` also completed SUCCESS.
+
+### Symptom/risk, verified root cause and failed approach
+- Risk: the previous negative fixture refused occupied leaves before creation but unconditionally called `unlink(missing_ok=True)` in cleanup; a substituted leaf or parent could cause the test to delete an object it did not create. No substitution or deletion incident was observed.
+- Verified gap: cleanup did not bind the original parent and leaf identity. The sibling generation-binding and typed non-resurrection suites already demonstrate a reusable inode-bound cleanup pattern.
+- Failed approach to avoid: treating a one-time vacant-path assertion as permanent ownership of a repository-relative fixture path.
+
+### Correction, executable recurrence guard and retry condition
+- Reuse the established parent/leaf identity-bound cleanup. If the root is substituted, its inode changes, the leaf inode changes or the symlink no longer targets the intended temporary artifact, fail closed without unlinking it.
+- Retry only after exact-source CI regression, reviewed fixture-path change or demonstrated ownership bypass. Unchanged workflow-write, clean-worktree and external-evidence blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the CI-reachable synthetic contract-path negative suite changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Preflight still requires distinct unsuperseded semantically eligible environments and a human-approved current recovery objective; new recovery evidence requires a current executable reviewed request. Final candidates require all generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
