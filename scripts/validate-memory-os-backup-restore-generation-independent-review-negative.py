@@ -88,21 +88,35 @@ def expect_pass(module, registry: dict, label: str) -> None:
 
 
 def expect_authority_substitution_fail(module, field: str, substitute: Path) -> None:
+    module.enforce_execution_authority()
+    module.enforce_runtime_authorities()
     canonical_contract = (ROOT / module.CONTRACT_REL).read_bytes()
     canonical_registry = (ROOT / module.REGISTRY_REL).read_bytes()
+    expected = {
+        "CONTRACT": "generation evidence contract authority drift",
+        "REGISTRY": "generation evidence registry authority drift",
+        "MATERIAL_DELTA_VALIDATOR": "candidate material-delta review validator authority drift",
+        "REVIEW_SOURCE_ORDER_VALIDATOR": "candidate review source-order validator authority drift",
+        "VALIDATOR": "generation independent-review validator authority drift",
+    }[field]
     original = getattr(module, field)
     setattr(module, field, substitute)
     try:
         try:
             module.main()
-        except module.Fail:
-            pass
+        except module.Fail as exc:
+            require(str(exc) == expected,
+                    f"independent-review runtime authority substitution wrong diagnostic ({field}): {exc}")
         else:
             raise Fail(f"runtime authority substitution unexpectedly passed: {field}")
-        require((ROOT / module.CONTRACT_REL).read_bytes() == canonical_contract, f"canonical contract mutated while rejecting {field}")
-        require((ROOT / module.REGISTRY_REL).read_bytes() == canonical_registry, f"canonical registry mutated while rejecting {field}")
+        require((ROOT / module.CONTRACT_REL).read_bytes() == canonical_contract,
+                f"canonical contract mutated while rejecting {field}")
+        require((ROOT / module.REGISTRY_REL).read_bytes() == canonical_registry,
+                f"canonical registry mutated while rejecting {field}")
     finally:
         setattr(module, field, original)
+    module.enforce_execution_authority()
+    module.enforce_runtime_authorities()
 
 
 def expect_execution_substitution_fail(module, field: str, replacement) -> None:
