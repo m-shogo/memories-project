@@ -5089,3 +5089,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the existing synthetic negative suite changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered and semantically eligible generations remain distinct; preflight needs distinct unsuperseded eligible environments and an explicitly human-approved current recovery objective. New generation evidence requires a current executable reviewed drill request; final candidates require all upstream gates, typed eight-domain coverage and independent review; human promotion remains separate and non-automatic. No evidence, credential, traffic, readiness or promotion authority was manufactured. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed review bundle references and digest values reject malformed types
+
+### Material success: observed outcome and evidence
+- Code commit `bca2de113efbef53eac65edbf495594f2368f900` extends the existing CI-reachable typed admission negative suite with eight exact-diagnostic cases: both SECURITY and OPERABILITY review payloads independently reject duplicate or non-list reviewed domain references, and invalid-hex or boolean digest values.
+- Exact-source Non-Resurrection Readonly run `40058316805` and Reconcile Negative run `40058316813` completed SUCCESS. The Readonly path runs canonical typed admission and preserves `production decision: NO_GO`; individual child-negative output is suppressed on success, so the case-by-case diagnostics are not claimed as separately visible in the job log.
+- The existing writer already checks list uniqueness and digest SHA-256 shape before review approval; synthetic positive controls restore a valid eight-domain record after each review-specific mutation.
+
+### Symptom/risk, verified gap, failed approach
+- Risk: a later review parser refactor could accept duplicate/non-list reviewed refs or malformed digest types while nominally retaining complete review coverage. No actual production bypass or incident was observed.
+- Verified gap: prior negatives exercised missing/extra digest keys and mismatched valid-length digests but did not independently exercise reviewed-reference type/uniqueness or digest type/hex-shape for each review role.
+- Failed approach to avoid: equating digest value inequality or set equality alone with complete input-type and uniqueness validation.
+
+### Correction, executable recurrence guard and retry condition
+- Extend the existing `fake_load` synthetic seam with `DUPLICATE`, `NON_LIST`, `BAD_HEX` and `BOOLEAN` review-only mutations; require exact domain-specific rejection diagnostics, restore mutation state in `finally`, and validate the unchanged positive control.
+- Retry only on exact-source CI regression, reviewed legitimate review payload schema change or demonstrated malformed review input bypass. Do not retry unchanged source-binding clean-worktree, workflow-write or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only a synthetic negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable drill requests, generation evidence, typed records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current recovery objective; new generation recovery evidence requires a current executable reviewed drill request; final candidates require all upstream gates, complete typed eight-domain coverage and independent review; human promotion remains separate/non-automatic. No production evidence, credentials, traffic, readiness or promotion was created. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
