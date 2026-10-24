@@ -12,6 +12,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
   pull_request:
     paths:
       - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
@@ -22,6 +23,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -46,12 +48,26 @@ jobs:
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
-      - name: Prove six canonical ancestor negatives remain reachable
+      - name: Prove seven canonical ancestor negatives remain reachable
         run: |
           set -euo pipefail
           python -m py_compile scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
           python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
           python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative
+      - name: Prove preflight reconcile helper races without downstream source-binding dependency
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import runpy
+          proof = runpy.run_path("scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py")
+          for name in (
+              "prove_helper_source_symlink_rejected",
+              "prove_helper_source_swap_during_import_is_pinned",
+              "prove_helper_parent_swap_after_pin_uses_original_source",
+              "prove_helper_ancestor_swap_during_fd_walk_rejected",
+          ):
+              proof[name]()
+          PY
       - name: Verify read-only postcondition
         run: |
           git diff --check
