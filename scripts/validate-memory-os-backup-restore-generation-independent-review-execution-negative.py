@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import ast
+import copy
 import importlib.util
 import re
 from pathlib import Path
@@ -70,7 +72,154 @@ def expect_main_rejected(module: Any, mutate: Callable[[], None], restore: Calla
         restore()
 
 
+SOURCE_ORDER_REL = Path("scripts/validate-memory-os-backup-restore-review-source-order.py")
+
+
+def source_order_main_body(tree: ast.Module) -> list[ast.stmt]:
+    mains = [node for node in tree.body
+             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "main"]
+    require(len(mains) == 1 and isinstance(mains[0], ast.FunctionDef),
+            "source-order canonical main definition drift")
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "main" for target in node.targets
+        ):
+            raise Fail("source-order canonical main shadowed")
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "main":
+            raise Fail("source-order canonical main shadowed")
+    return mains[0].body
+
+
+def source_order_review_loop(body: list[ast.stmt]) -> tuple[int, ast.For]:
+    loops = [(index, node) for index, node in enumerate(body) if isinstance(node, ast.For)]
+    require(len(loops) == 1, "source-order main review loop drift")
+    index, loop = loops[0]
+    expected_iter = ast.parse("enumerate(rows)", mode="eval").body
+    require(ast.dump(loop.iter) == ast.dump(expected_iter),
+            "source-order main review iterator drift")
+    require(
+        isinstance(loop.target, ast.Tuple)
+        and len(loop.target.elts) == 2
+        and all(isinstance(item, ast.Name) for item in loop.target.elts)
+        and [item.id for item in loop.target.elts] == ["index", "row"],
+        "source-order main review target drift",
+    )
+    expected_call = ast.parse("validate_row(row, index)").body[0]
+    require(len(loop.body) == 1 and ast.dump(loop.body[0]) == ast.dump(expected_call)
+            and not loop.orelse, "source-order main row validator call drift")
+    return index, loop
+
+
+def require_source_order_main_binding(tree: ast.Module) -> None:
+    body = source_order_main_body(tree)
+    require(len(body) >= 10, "source-order main body unexpectedly truncated")
+    self_test_branch = body[0]
+    expected_gate = ast.parse(
+        "len(sys.argv) == 2 and sys.argv[1] == '--self-test'", mode="eval"
+    ).body
+    expected_test = ast.parse("self_test()").body[0]
+    expected_return = ast.parse("return 0").body[0]
+    require(
+        isinstance(self_test_branch, ast.If)
+        and ast.dump(self_test_branch.test) == ast.dump(expected_gate)
+        and len(self_test_branch.body) == 2
+        and ast.dump(self_test_branch.body[0]) == ast.dump(expected_test)
+        and ast.dump(self_test_branch.body[1]) == ast.dump(expected_return)
+        and not self_test_branch.orelse,
+        "source-order main self-test gate drift",
+    )
+    loop_index, _loop = source_order_review_loop(body)
+    expected_contract = ast.parse("validate_contract(contract)").body[0]
+    contract_positions = [
+        index for index, node in enumerate(body)
+        if ast.dump(node) == ast.dump(expected_contract)
+    ]
+    require(len(contract_positions) == 1 and contract_positions[0] < loop_index,
+            "source-order main contract validation reachability drift")
+    expected_rows = ast.parse('rows = registry.get("records")').body[0]
+    row_positions = [
+        index for index, node in enumerate(body)
+        if ast.dump(node) == ast.dump(expected_rows)
+    ]
+    require(len(row_positions) == 1 and contract_positions[0] < row_positions[0] < loop_index,
+            "source-order main canonical row source drift")
+    require(not any(isinstance(node, (ast.Return, ast.Raise, ast.Break, ast.Continue))
+                    for node in body[1:loop_index]),
+            "source-order main early termination before review validation")
+    require(ast.dump(body[-1]) == ast.dump(expected_return) and loop_index < len(body) - 1,
+            "source-order main terminal success boundary drift")
+
+
+def require_source_order_main_negative_proof() -> None:
+    source_path = ROOT / SOURCE_ORDER_REL
+    require(source_path.is_file() and not source_path.is_symlink(),
+            "canonical source-order validator missing or symlinked")
+    require(source_path.resolve(strict=True) == ROOT.resolve(strict=True) / SOURCE_ORDER_REL,
+            "canonical source-order validator path drift")
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    require_source_order_main_binding(tree)
+
+    cases = (
+        ("remove review loop", "source-order main review loop drift"),
+        ("dead-branch review loop", "source-order main review loop drift"),
+        ("empty review iterator", "source-order main review iterator drift"),
+        ("swapped review target", "source-order main review target drift"),
+        ("skip row validator", "source-order main row validator call drift"),
+        ("early successful return", "source-order main early termination before review validation"),
+        ("unbound row source", "source-order main canonical row source drift"),
+        ("omit contract validation", "source-order main contract validation reachability drift"),
+        ("unconditional self-test exit", "source-order main self-test gate drift"),
+        ("shadow main", "source-order canonical main shadowed"),
+        ("duplicate main", "source-order canonical main definition drift"),
+    )
+    for label, expected in cases:
+        mutant = copy.deepcopy(tree)
+        body = source_order_main_body(mutant)
+        index, loop = source_order_review_loop(body)
+        if label == "remove review loop":
+            body.pop(index)
+        elif label == "dead-branch review loop":
+            body[index] = ast.If(test=ast.Constant(False), body=[loop], orelse=[])
+        elif label == "empty review iterator":
+            loop.iter.args[0] = ast.List(elts=[], ctx=ast.Load())
+        elif label == "swapped review target":
+            loop.target.elts[0].id = "row"
+        elif label == "skip row validator":
+            loop.body[0].value.func.id = "print"
+        elif label == "early successful return":
+            body.insert(index, ast.Return(value=ast.Constant(0)))
+        elif label == "unbound row source":
+            row_assign = next(node for node in body
+                              if isinstance(node, ast.Assign)
+                              and any(isinstance(t, ast.Name) and t.id == "rows" for t in node.targets))
+            row_assign.value = ast.List(elts=[], ctx=ast.Load())
+        elif label == "omit contract validation":
+            body[:] = [node for node in body if not (
+                isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "validate_contract"
+            )]
+        elif label == "unconditional self-test exit":
+            body[0].test = ast.Constant(True)
+        elif label == "shadow main":
+            mutant.body.append(ast.Assign(targets=[ast.Name(id="main", ctx=ast.Store())],
+                                          value=ast.Constant(None)))
+        elif label == "duplicate main":
+            original_main = next(node for node in mutant.body
+                                 if isinstance(node, ast.FunctionDef) and node.name == "main")
+            mutant.body.append(copy.deepcopy(original_main))
+        try:
+            require_source_order_main_binding(mutant)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"source-order main mutation rejected at wrong boundary ({label}): {exc}")
+        else:
+            raise Fail(f"source-order main guard accepted mutation: {label}")
+    print(f"PASS: source-order main AST execution binding rejects {len(cases)} review bypass mutations")
+
+
 def main() -> int:
+    require_source_order_main_negative_proof()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
     canonical_registry = module.REGISTRY.read_bytes()
