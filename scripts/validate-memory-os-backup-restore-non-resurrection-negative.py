@@ -127,6 +127,33 @@ def require_writer_authority_reachability(tree: ast.Module) -> None:
     require(len(direct_calls) == 1,
             "typed writer CLI negative not directly executed by admission main")
 
+    call_index = mains[0].body.index(direct_calls[0])
+
+    def exits_before_guard(node: ast.AST) -> bool:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return False
+        if isinstance(node, ast.Return):
+            return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {"exit", "quit"}:
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and (node.func.value.id, node.func.attr) in
+                    {("sys", "exit"), ("os", "_exit")}):
+                return True
+        if (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)
+                and isinstance(node.exc.func, ast.Name)
+                and node.exc.func.id == "SystemExit"
+                and len(node.exc.args) == 1
+                and isinstance(node.exc.args[0], ast.Constant)
+                and node.exc.args[0].value == 0):
+            return True
+        return any(exits_before_guard(child) for child in ast.iter_child_nodes(node))
+
+    require(not any(exits_before_guard(node) for node in mains[0].body[:call_index]),
+            "typed writer CLI negative can exit successfully before admission execution")
+
 
 def prove_writer_authority_reachability() -> None:
     try:
@@ -164,6 +191,33 @@ def prove_writer_authority_reachability() -> None:
                     f"typed writer CLI reachability {label} rejection diagnostic drift")
         else:
             raise Fail(f"typed writer CLI reachability {label} bypass unexpectedly accepted")
+    early_exit_cases = (
+        ("direct-return", ast.Return(value=ast.Constant(value=0))),
+        ("conditional-return", ast.If(test=ast.Constant(value=True),
+                                      body=[ast.Return(value=ast.Constant(value=0))],
+                                      orelse=[])),
+        ("success-exit", ast.Expr(value=ast.Call(
+            func=ast.Attribute(value=ast.Name(id="sys", ctx=ast.Load()),
+                               attr="exit", ctx=ast.Load()),
+            args=[ast.Constant(value=0)], keywords=[]))),
+        ("system-exit", ast.Raise(exc=ast.Call(
+            func=ast.Name(id="SystemExit", ctx=ast.Load()),
+            args=[ast.Constant(value=0)], keywords=[]), cause=None)),
+        ("finally-return", ast.Try(body=[ast.Pass()], handlers=[], orelse=[],
+                                   finalbody=[ast.Return(value=ast.Constant(value=0))])),
+    )
+    for label, early_exit in early_exit_cases:
+        mutated = copy.deepcopy(tree)
+        main_copy = next(node for node in mutated.body
+                         if isinstance(node, ast.FunctionDef) and node.name == "main")
+        main_copy.body.insert(call_index, early_exit)
+        try:
+            require_writer_authority_reachability(mutated)
+        except Fail as exc:
+            require(str(exc) == "typed writer CLI negative can exit successfully before admission execution",
+                    f"typed writer CLI early-exit {label} diagnostic drift")
+        else:
+            raise Fail(f"typed writer CLI early-exit {label} unexpectedly accepted")
     mutated = copy.deepcopy(tree)
     binding = next(node for node in mutated.body if isinstance(node, ast.Assign)
                    and any(isinstance(target, ast.Name) and target.id == "WRITER_AUTHORITY_NEGATIVE"
@@ -176,7 +230,7 @@ def prove_writer_authority_reachability() -> None:
                 "typed writer CLI reachability binding diagnostic drift")
     else:
         raise Fail("typed writer CLI path substitution unexpectedly accepted")
-    print("PASS reject: typed writer CLI admission missing/dead/string/duplicate/path bypasses")
+    print("PASS reject: typed writer CLI admission missing/dead/string/duplicate/path and five early-exit bypasses")
 
 
 def main() -> int:
