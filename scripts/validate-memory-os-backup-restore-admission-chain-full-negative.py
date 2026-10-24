@@ -128,6 +128,82 @@ def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
 
 
 
+
+def require_no_full_runner_pre_dispatch_exit(tree: ast.Module) -> None:
+    """Reject eager module termination before the canonical CLI entrypoint."""
+    require_full_runner_cli_dispatch(tree)
+
+    def terminates_during_import(node: ast.AST) -> bool:
+        # Deferred function bodies are not executed during module initialization.
+        # Their decorators and default expressions are executed eagerly.
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            eager = [*node.decorator_list, *node.args.defaults,
+                     *(value for value in node.args.kw_defaults if value is not None)]
+            return any(terminates_during_import(value) for value in eager)
+        if isinstance(node, ast.Lambda):
+            eager = [*node.args.defaults,
+                     *(value for value in node.args.kw_defaults if value is not None)]
+            return any(terminates_during_import(value) for value in eager)
+        # Class bases, decorators and bodies execute during definition.
+        if isinstance(node, ast.ClassDef):
+            eager = [*node.decorator_list, *node.bases,
+                     *(keyword.value for keyword in node.keywords), *node.body]
+            return any(terminates_during_import(value) for value in eager)
+        if isinstance(node, ast.Raise):
+            return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {
+                "exit", "quit", "exec", "eval"
+            }:
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and (node.func.value.id, node.func.attr) in {
+                        ("sys", "exit"), ("os", "_exit")
+                    }):
+                return True
+        return any(terminates_during_import(child) for child in ast.iter_child_nodes(node))
+
+    require(not any(terminates_during_import(node) for node in tree.body[:-1]),
+            "full-chain module can terminate before CLI dispatch")
+
+
+def prove_full_runner_pre_dispatch_exit() -> None:
+    try:
+        canonical = ast.parse(TARGET.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("full-chain pre-dispatch source unavailable") from exc
+    require_no_full_runner_pre_dispatch_exit(canonical)
+    mutations = (
+        ("raise", "raise SystemExit(0)"),
+        ("sys-exit", "sys.exit(0)"),
+        ("os-exit", "os._exit(0)"),
+        ("exit", "exit(0)"),
+        ("quit", "quit()"),
+        ("branch", "if True:\\n    raise SystemExit(0)"),
+        ("try", "try:\\n    sys.exit(0)\\nexcept Exception:\\n    pass"),
+        ("exec", "exec('raise SystemExit(0)')"),
+        ("eval", "eval('exit(0)')"),
+        ("class-exit", "class Early:\\n    sys.exit(0)"),
+        ("class-raise", "class Early:\\n    raise SystemExit(0)"),
+        ("decorator-exit", "@exit(0)\\ndef helper():\\n    pass"),
+        ("default-exit", "def helper(value=exit(0)):\\n    pass"),
+        ("class-base-exit", "class Early(exit(0)):\\n    pass"),
+        ("lambda-default-exit", "helper = lambda value=exit(0): value"),
+    )
+    for label, source in mutations:
+        mutated = copy.deepcopy(canonical)
+        mutated.body[-1:-1] = ast.parse(source).body
+        try:
+            require_no_full_runner_pre_dispatch_exit(mutated)
+        except Fail as exc:
+            require(str(exc) == "full-chain module can terminate before CLI dispatch",
+                    f"full-chain pre-dispatch {label} rejection diagnostic drift")
+        else:
+            raise Fail(f"full-chain pre-dispatch {label} termination unexpectedly accepted")
+    print("PASS reject: fifteen full-chain pre-dispatch eager termination substitutions")
+
+
 def require_full_runner_cli_dispatch(tree: ast.Module) -> None:
     """Prove the actual script entrypoint calls main and propagates Fail."""
     guards = [node for node in tree.body
@@ -508,6 +584,7 @@ def prove_full_step_exit_propagation() -> None:
 
 
 def main() -> int:
+    prove_full_runner_pre_dispatch_exit()
     prove_full_runner_cli_dispatch()
     prove_full_runner_main_binding()
     prove_full_runner_step_binding()
