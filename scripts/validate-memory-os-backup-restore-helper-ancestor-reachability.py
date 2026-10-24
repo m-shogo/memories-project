@@ -1129,8 +1129,8 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("  workflow_dispatch:\n", "  schedule:\n    - cron: '0 * * * *'\n  workflow_dispatch:\n", "independent learning workflow event inventory drift"),
     )
     cases += (
-        ("    branches: [so]\n    paths:\n", "    branches: [so]\n    tags: [synthetic]\n    paths:\n", "independent learning workflow push options drift"),
-        ("    branches: [so]\n    paths:\n", "    branches: [so]\n    paths: []\n    paths:\n", "independent learning workflow push options drift"),
+        ("  workflow_dispatch:\n", "    tags: [synthetic]\n  workflow_dispatch:\n", "independent learning workflow push options drift"),
+        ("  workflow_dispatch:\n", "    paths: []\n  workflow_dispatch:\n", "independent learning workflow push options drift"),
         ("  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs:\n      synthetic:\n        type: boolean\n", "independent learning workflow dispatch options drift"),
     )
     for original, replacement, expected in cases:
