@@ -1421,6 +1421,7 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor workflow step authority drift"),
         (workflow_source + "\n      - 'uses': synthetic/unreviewed@v1\n",
          "ancestor workflow step authority drift"),
+    )
     duplicate_root_cases += tuple(
         (workflow_source.replace(last + next_step,
                                  last + "          echo synthetic bypass\n" + next_step, 1),
@@ -1434,7 +1435,6 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
     duplicate_root_cases += (
         (workflow_source + "          echo synthetic bypass\n",
          "ancestor workflow run boundary drift"),
-    )
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1636,6 +1636,7 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "independent learning workflow step authority drift"),
         (source + "\n      - 'uses': synthetic/unreviewed@v1\n",
          "independent learning workflow step authority drift"),
+    )
     duplicate_root_cases += tuple(
         (source.replace(last + next_step,
                         last + "          echo synthetic bypass\n" + next_step, 1),
@@ -1645,7 +1646,6 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
     duplicate_root_cases += (
         (source + "          echo synthetic bypass\n",
          "independent learning workflow run boundary drift"),
-    )
     )
     for mutated, expected in duplicate_root_cases:
         try:
