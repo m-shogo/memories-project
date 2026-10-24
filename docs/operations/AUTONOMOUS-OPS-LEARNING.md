@@ -4617,3 +4617,23 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only a synthetic, CI-bound negative suite changed. No production writer, environment generation, recovery objective, reviewed drill request, recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion authority was modified.
 - Post-change Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, strict OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisites blocked, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current objective; new generation evidence requires a current executable reviewed request; final candidates require complete typed eight-domain coverage and independent review; human production promotion is separate and non-automatic. Learning and CI do not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Concurrent bot publication must not turn stale source into evidence
+
+### Material failure: symptom and observed evidence
+- Two exact-source runs at `0b80efea9c9646d4604c008f27702deea008bb40` failed during concurrent branch advancement: Drill Request Admission `40044180746` (job `120721963481`) and Operability Admission Inventory `40044180615` (job `120721962518`).
+- Both logs show `origin/so` advancing from `0b80efea` to `87792aac` during execution. The drill job explicitly emitted `Drill planning source HEAD changed during reconciliation; refusing stale derived authority.` and exited 75. Inventory first encountered the previously known `source-binding negative requires clean canonical source worktree`, then refused to publish a stale failure diagnostic after the same source advance and exited 75.
+- The concurrent commit `87792aacc2b413de77208e925359bfa4f98f5879` was the source parent of a scheduled automated incident-control exercise, not a new production-equivalent generation, recovery objective, or promotion. Neither failed run produced valid new recovery evidence.
+
+### Root cause or explicit unknown, failed approach, and correction
+- Verified immediate cause of the exit-75 reconciliation failures: source HEAD changed while the jobs were running, violating their exact-source freshness precondition. The separate clean-worktree negative's underlying interference remains the already-recorded scoped blocker; do not invent a new cause for it.
+- Failed approach to avoid: classifying these as failed recovery validation or treating stale diagnostics as current evidence; rerunning an unchanged clean-worktree path without a changed precondition.
+- Correction: preserve the existing executable bounded source-SHA refresh/reconcile rejection and classify both as stale-source/concurrent-write failures. No workflow mutation or bypass is warranted from this evidence.
+
+### Recurrence guard and retry condition
+- Reusable mechanism: compare the captured validation source to the refreshed branch head immediately before any derived-authority or diagnostic publication; abort on mismatch rather than rebase/force-push or relabeling stale results. Distinguish CI status from valid exact-source proof.
+- Retry only after a stable source window or a reviewed bounded-reconcile design change; the known clean-worktree blocker requires its separate recorded retry precondition to change. Independent synthetic guards may continue in parallel without promoting the failed runs.
+
+### Protected-authority check
+- This is append-only learning history, not readiness or evidence. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, generation recovery evidence, typed records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Human-approved current objectives, distinct unsuperseded semantically eligible environments, current executable reviewed drill request for new evidence, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
