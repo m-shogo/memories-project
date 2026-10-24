@@ -207,6 +207,10 @@ def require_typed_transport_guard_reachability(tree: ast.Module) -> None:
             and direct_call(calls[1][1], "exercise_reconciler_transaction_transport")
             and calls[0][0] > 10 and calls[1][0] == calls[0][0] + 1,
             "typed transport negative must execute registry and reconcile transaction probes")
+    parent_proofs = [(i, stmt) for i, stmt in enumerate(body)
+                     if direct_call(stmt, "prove_typed_transport_fixture_parent_guard")]
+    require(len(parent_proofs) == 1 and parent_proofs[0][0] == calls[1][0] + 1,
+            "typed transport negative must execute checked fixture parent proof after transactions")
     require(isinstance(body[-1], ast.Return) and isinstance(body[-1].value, ast.Constant)
             and type(body[-1].value.value) is int and body[-1].value.value == 0,
             "typed transport negative must return only after its guards")
@@ -237,6 +241,8 @@ def prove_typed_transport_guard_reachability() -> None:
         ("missing-child-exit", "typed transport negative must prove child exit propagation"),
         ("missing-registry-transport", "typed transport negative must execute registry and reconcile transaction probes"),
         ("missing-reconcile-transport", "typed transport negative must execute registry and reconcile transaction probes"),
+        ("missing-parent-proof", "typed transport negative must execute checked fixture parent proof after transactions"),
+        ("early-parent-proof", "typed transport negative must execute checked fixture parent proof after transactions"),
         ("wrong-final-return", "typed transport negative must return only after its guards"),
         ("nested-early-return", "typed transport negative cannot return before its guards"),
     )
@@ -268,6 +274,15 @@ def prove_typed_transport_guard_reachability() -> None:
                          if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
                          and isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == name)
             body[index] = ast.Pass()
+        elif label in ("missing-parent-proof", "early-parent-proof"):
+            index = next(i for i, stmt in enumerate(body)
+                         if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                         and isinstance(stmt.value.func, ast.Name)
+                         and stmt.value.func.id == "prove_typed_transport_fixture_parent_guard")
+            if label == "missing-parent-proof":
+                body[index] = ast.Pass()
+            else:
+                body[index - 1], body[index] = body[index], body[index - 1]
         elif label == "wrong-final-return":
             body[-1].value = ast.Constant(value=1)
         elif label == "nested-early-return":
@@ -280,7 +295,7 @@ def prove_typed_transport_guard_reachability() -> None:
                     f"typed transport guard {label} diagnostic drift: {exc}")
         else:
             raise Fail(f"typed transport guard {label} bypass unexpectedly accepted")
-    print("PASS reject: fourteen external typed transport guard reachability substitutions")
+    print("PASS reject: sixteen external typed transport guard reachability substitutions")
 
 
 def main() -> int:
