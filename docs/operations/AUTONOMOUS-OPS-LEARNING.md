@@ -5863,3 +5863,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the synthetic load negative suite and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, current executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate non-automatic human promotion remain mandatory. Learning, synthetic fixtures and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Owned temporary review symlinks should not be unlinked independently
+
+### Material success: outcome and observed evidence
+- Code commit `25792e24a25889cc0a02b87791cade705bd2f66b` removes two direct `Path.unlink()` cleanup calls for a dangling review symlink and a symlinked review parent from the existing generation-evidence negative suite. Both are created inside an exclusively owned `TemporaryDirectory`, whose context cleanup already handles symlink leaves without following them.
+- The original occupied-path, dangling-symlink and symlinked-parent rejection assertions remain executable and unchanged in meaning. Post-write GitHub source inspection confirms both independent unlink sites are gone. Exact-source CI for this code commit was not yet complete at this record's creation.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified fixture cleanup risk, not an observed deletion incident: two disposable symlink negatives used unconditional `unlink()` in `finally` after creating the links inside the owned temporary tree. A path substituted before cleanup could cause an independently resolved unlink to affect a different object.
+- Root cause: duplicate manual cleanup existed even though the enclosing context already owned and removed the entire temporary tree.
+- Failed approach to avoid: individually unlinking mutable negative fixture leaves solely because the harness created their original path, without retaining identity through cleanup.
+
+### Correction, executable recurrence guard and retry condition
+- Retain the same rejection diagnostics and fixture collision tests; leave both symlinks within the exclusively owned temporary directory for context cleanup. Do not weaken the separate repository-local escape-link cleanup, which already checks parent and symlink inode/target identity before unlinking.
+- Retry exact-source runtime verification after this SHA's Generation Evidence/Admission Chain workflows finish. Revisit only on observed CI regression, changes to the owned temporary-tree lifecycle, or a demonstrated cleanup bypass. Unchanged external-evidence, clean-worktree and workflow-permission blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the existing synthetic generation negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, two distinct unsuperseded eligible environments, a current human-approved objective, current executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate non-automatic human promotion remain mandatory. Learning, CI and synthetic fixtures cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
