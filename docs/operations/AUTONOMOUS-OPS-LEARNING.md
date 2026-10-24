@@ -6010,3 +6010,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the existing synthetic drill request load negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered generations remain distinct from semantically preflight-eligible generations; preflight needs two distinct unsuperseded eligible environments and a current explicitly human-approved objective; new recovery evidence needs a current executable reviewed request; final candidates require all generation/objective gates, typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Preflight load and atomic-write negatives reuse checked drill parent
+
+### Material success: outcome and observed evidence
+- Code commit `ec1946f363b954a5c34bd0fbffb42b16a65526a3` replaces both repository-local `TemporaryDirectory(dir=TMP_PARENT)` sites in the existing preflight load/atomic-write negative suite with the checked drill-request load fixture parent guard. A disposable symlink-parent negative requires the exact ancestor rejection and unchanged sandbox entries.
+- Post-write source reads confirm both guarded fixture sites, the actual negative proof, and checked helper blob `99b6442ec5c18e6ffb712ba22d4a21c26aca4993`. Exact-source runtime PASS was not yet confirmed at learning-write time. Concurrent branch movement to `4e5cec09bbd6aad47c832ccfb2cfcd9e9c8e7d84` was re-read before this append; its only intervening file was the separate preflight diagnostic fixture.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified synthetic fixture safety gap, not a production incident: preflight load and atomic-write negatives created two repository-local temporary children after only checking `TMP_PARENT.is_dir()`, which follows symlinks.
+- Root cause: independent preflight load harness did not reuse the checked-parent creation mechanism already available in the related drill-request negative suite.
+- Failed approach to avoid: relying on preflight authority reference checks to protect unrelated fixture-creation parents, or duplicating weaker guards across related harnesses.
+
+### Correction, executable recurrence guard, retry condition
+- Dynamically load the related drill-request guard, require a callable, preserve preflight domain `Fail` diagnostics and route both actual fixture sites plus a real symlink-parent rejection through it. Precheck does not establish atomic check/use race freedom.
+- Retry exact-source Unreadable Authority/Admission Chain CI verification when completed; revisit on observed failure, reviewed helper/path changes or demonstrated bypass. Do not retry unchanged clean-worktree, permission or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only a synthetic negative harness and append-only learning history changed in this correction. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered generations are not semantically preflight-eligible by registration alone; preflight requires distinct unsuperseded eligible environments and a current human-approved objective; new evidence needs a current executable reviewed request; final candidates need typed eight-domain coverage and independent review. Human promotion is separate/non-automatic. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
