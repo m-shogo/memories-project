@@ -434,6 +434,35 @@ def require_no_full_runner_pre_dispatch_exit(tree: ast.Module) -> None:
             "full-chain module can terminate before CLI dispatch")
 
 
+
+def parse_checked_negative_fixture(source: str) -> list[ast.stmt]:
+    """Do not let a malformed synthetic fixture masquerade as guard rejection."""
+    require(chr(92) + "n" not in source,
+            "full-chain negative fixture contains double-escaped newline")
+    try:
+        return ast.parse(source).body
+    except SyntaxError as exc:
+        raise Fail("full-chain negative fixture is invalid Python") from exc
+
+
+def prove_negative_fixture_syntax() -> None:
+    parse_checked_negative_fixture("if True:" + chr(10) + "    pass")
+    for label, source, expected in (
+        ("double-escaped", "if True:" + chr(92) + "n    pass",
+         "full-chain negative fixture contains double-escaped newline"),
+        ("malformed", "if True:",
+         "full-chain negative fixture is invalid Python"),
+    ):
+        try:
+            parse_checked_negative_fixture(source)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"full-chain {label} fixture diagnostic drift")
+        else:
+            raise Fail(f"full-chain {label} fixture unexpectedly accepted")
+    print("PASS reject: two malformed full-chain negative fixture syntax controls")
+
+
 def prove_full_runner_pre_dispatch_exit() -> None:
     try:
         canonical = ast.parse(TARGET.read_text(encoding="utf-8"))
@@ -459,7 +488,7 @@ def prove_full_runner_pre_dispatch_exit() -> None:
     )
     for label, source in mutations:
         mutated = copy.deepcopy(canonical)
-        mutated.body[-1:-1] = ast.parse(source).body
+        mutated.body[-1:-1] = parse_checked_negative_fixture(source)
         try:
             require_no_full_runner_pre_dispatch_exit(mutated)
         except Fail as exc:
@@ -852,6 +881,7 @@ def prove_full_step_exit_propagation() -> None:
 def main() -> int:
     prove_full_runner_helper_bindings()
     prove_full_runner_main_reachability()
+    prove_negative_fixture_syntax()
     prove_full_runner_pre_dispatch_exit()
     prove_full_runner_cli_dispatch()
     prove_full_runner_main_binding()
