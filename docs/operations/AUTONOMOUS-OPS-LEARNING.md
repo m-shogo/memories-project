@@ -6843,3 +6843,28 @@ a promotion decision, a recovery objective, or drill evidence.
 - Why safe: the mutation is limited to a synthetic fixture negative; the file swap occurs within a disposable owned sandbox and no canonical production registry or evidence authority is written.
 - Reusable mechanism: test non-directory unlink separately from directory traversal; mutate the entry between the two inode checks, verify an unowned sentinel, and require an exact diagnostic rather than any early failure.
 - Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Distinct semantically eligible environments, human-approved current objective, current executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed regular-file unlink negative reaches exact-source CI
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: code head `0f9aadae813aa447a750a94fbe7e2544f8298648` reached Non-Resurrection Path Negative run `40089291181`, job `120858484976`, which completed SUCCESS and logged `PASS: typed contract path file unlink race rejects unowned replacement` and `Memory OS backup/restore non-resurrection contract path negative suite PASS`. Same-head Readonly `40089291055` and Reconcile Negative `40089291115` also completed SUCCESS.
+- Why safe: the negative swaps disposable synthetic files inside an owned fixture directory; no production authority or evidence is modified.
+- Reusable mechanism: prove file-entry identity drift independently of directory traversal by swapping between two FD-relative inode checks, requiring an exact diagnostic and preservation of the unowned file.
+- Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. All semantic eligibility, human-approved objective, executable reviewed request, typed eight-domain, independent review, and separate human promotion gates remain strict.
+
+## 2026-10-24 — Drill-request regular-file unlink gets identity-drift negative
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach
+- Symptom: the drill-request load fixture cleanup had a second inode check for non-directory entries but no deterministic regular-file replacement negative; deleting that check could allow an unowned file to be unlinked. No production incident was observed.
+- Evidence: source blob `3e7aea5ed9f97cef9ac07e23d5998d2796c3d9b6` included the second check and `drill request nested entry identity drift before unlink` diagnostic. Existing negatives tested root/nested directory substitutions, not the regular-file boundary. Root cause of the coverage gap: earlier cleanup race work prioritized directory recursion. Failed approach: treating directory race coverage as sufficient for file-entry unlink.
+
+### Correction, executable recurrence guard, retry condition
+- Code `1466d9c846fecac3359963e8c3c8f5d8374e6475` adds `prove_file_swap_before_unlink_rejected`: positive owned file and unowned sentinel, replacement precisely at the second FD-relative `os.stat`, exact domain rejection, and both contents preserved. The test runs before canonical writer/validator/reconciler loading.
+- Source inspection confirmed main-path invocation. The new exact-source workflow had not completed when this entry was written; do not claim CI success yet.
+- Recurrence guard: maintain separate deterministic non-directory and nested-directory substitution negatives with exact rejection markers. Retry condition: observe the exact-source Unreadable Authority Negatives workflow or revisit on a demonstrated final-unlink bypass with a safe atomic mitigation. No claim of atomic inode-conditional `unlink` is made.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: the new negative was committed and statically reachable in the existing drill-request load suite; runtime CI success remains unverified.
+- Why safe: test-only file swaps occur inside disposable owned fixtures; production registries, objectives, credentials, traffic and readiness are untouched.
+- Reusable mechanism: exercise the file-entry identity boundary directly, require the exact rejection and verify unowned data survived.
+- Protected-authority check: production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered and semantically eligible generations differ; preflight requires unsuperseded eligible generations from distinct environments and current human-approved objective; new recovery evidence requires a current executable reviewed request; final candidates require complete typed eight-domain coverage and independent review; human promotion remains separate. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
