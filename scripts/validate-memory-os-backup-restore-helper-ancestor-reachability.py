@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ TARGETS = {
 }
 PROOF = "prove_helper_ancestor_swap_during_fd_walk_rejected"
 PIN = "pin_checked_helper_parent"
+MIN_CANONICAL_TARGETS = 7
 
 
 class GuardFailure(RuntimeError):
@@ -125,6 +127,19 @@ def is_module_namespace_mutation(node: ast.AST, names: tuple[str, ...]) -> bool:
         if isinstance(receiver, ast.Attribute) and receiver.attr == "__dict__":
             return True
     return False
+
+
+def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
+    """Reject silent loss of a canonical harness or its workflow trigger."""
+    require(len(targets) >= MIN_CANONICAL_TARGETS,
+            "ancestor target matrix below seven canonical harnesses")
+    triggered = set(re.findall(
+        r'^\s+- "scripts/(validate-memory-os-backup-restore-[^"]+-negative\.py)"\s*$',
+        workflow_source,
+        flags=re.MULTILINE,
+    ))
+    require(set(targets) == triggered,
+            "ancestor target matrix workflow trigger drift")
 
 
 def validate_source(source: str, expected_diagnostic: str) -> None:
@@ -622,16 +637,51 @@ def negative_cases(source: str, diagnostic: str) -> int:
     return count
 
 
+def target_matrix_negative_cases(workflow_source: str) -> int:
+    validate_target_matrix(TARGETS, workflow_source)
+    first = next(iter(TARGETS))
+    dropped = dict(TARGETS)
+    dropped.pop(first)
+    expanded = dict(TARGETS)
+    expanded["synthetic-extra-negative.py"] = "synthetic ancestor identity drift"
+    untriggered = workflow_source.replace(
+        f'"scripts/{first}"', '"scripts/synthetic-untracked-negative.py"'
+    )
+    cases = (
+        (dropped, workflow_source,
+         "ancestor target matrix below seven canonical harnesses"),
+        (expanded, workflow_source,
+         "ancestor target matrix workflow trigger drift"),
+        (TARGETS, untriggered,
+         "ancestor target matrix workflow trigger drift"),
+    )
+    for targets, workflow, expected in cases:
+        try:
+            validate_target_matrix(targets, workflow)
+        except GuardFailure as exc:
+            require(str(exc) == expected,
+                    f"ancestor matrix rejected at wrong boundary: {exc}")
+        else:
+            raise GuardFailure(f"ancestor matrix mutation accepted: {expected}")
+    return len(cases)
+
+
 def main() -> int:
+    workflow_source = (
+        ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
+    ).read_text(encoding="utf-8")
+    validate_target_matrix(TARGETS, workflow_source)
     total = 0
     for filename, diagnostic in TARGETS.items():
         source = (ROOT / "scripts" / filename).read_text(encoding="utf-8")
         validate_source(source, diagnostic)
         if "--negative" in sys.argv[1:]:
             total += negative_cases(source, diagnostic)
+    if "--negative" in sys.argv[1:]:
+        total += target_matrix_negative_cases(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 3, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
