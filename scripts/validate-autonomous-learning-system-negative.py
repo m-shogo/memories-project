@@ -348,6 +348,7 @@ def main() -> int:
     for label, snippet in (
         ("deferred generator body", "(globals().__setitem__('main', None) for _ in (0,))\n"),
         ("comprehension-local target", "[0 for main in (0,)]\n"),
+        ("deferred lambda body", "(lambda: globals().__setitem__('main', None))\n"),
     ):
         with tempfile.TemporaryDirectory(prefix="learning-comprehension-positive-") as tmp:
             root = Path(tmp)
@@ -595,6 +596,8 @@ def main() -> int:
             ("set-comprehension", f"{{globals().__setitem__('{symbol}', None) for _ in (0,)}}"),
             ("dict-comprehension", f"{{_: globals().__setitem__('{symbol}', None) for _ in (0,)}}"),
             ("generator-iterable", f"(None for _ in (globals().__setitem__('{symbol}', None) or (0,)))"),
+            ("immediate-lambda", f"(lambda: globals().__setitem__('{symbol}', None))()"),
+            ("lambda-in-comprehension", f"[(lambda: globals().__setitem__('{symbol}', None))() for _ in (0,)]"),
         ):
             cases.append((
                 f"dynamic {label} {kind}",
