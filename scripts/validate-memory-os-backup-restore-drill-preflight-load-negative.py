@@ -16,6 +16,7 @@ RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-preflight.
 CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
+DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 
 
 class Fail(RuntimeError):
@@ -37,6 +38,18 @@ def load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    require(DRILL_REQUEST_LOAD_NEGATIVE.is_file() and not DRILL_REQUEST_LOAD_NEGATIVE.is_symlink(),
+            "drill request fixture parent guard source missing or symlinked")
+    module = load_module(DRILL_REQUEST_LOAD_NEGATIVE, "memory_os_drill_fixture_guard_preflight_load")
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "drill request fixture parent guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -97,7 +110,7 @@ def prove_atomic_write_failure(reconciler: object) -> None:
     canonical_contract_mode = mode(CANONICAL_CONTRACT)
     canonical_status_mode = mode(CANONICAL_STATUS)
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-preflight-atomic-write-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-preflight-atomic-write-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         contract = tmp / CANONICAL_CONTRACT.name
         shutil.copyfile(CANONICAL_CONTRACT, contract)
@@ -260,7 +273,7 @@ def main() -> int:
     prove_data_and_executable_authority_rejection(reconciler)
     prove_atomic_write_failure(reconciler)
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-preflight-load-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-preflight-load-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
 
         invalid_utf8 = tmp / "invalid-utf8.json"
@@ -278,6 +291,23 @@ def main() -> int:
 
     escaped = Path("/tmp/memory-os-preflight-reconcile-escaped.json")
     expect_domain_fail("preflight reconcile authority path escapes repository", lambda: reconciler.load(escaped), reconciler.Fail)
+
+    with guarded_temporary_directory(".tmp-preflight-parent-negative-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("preflight symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "drill request temp ancestor missing or symlinked",
+                    f"preflight temp parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("preflight symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "preflight symlinked temp parent published a child")
+    print("PASS: preflight load fixtures reuse checked drill parent guard")
 
     print("Preflight unreadable-authority and reconcile rollback negative suite PASS")
     print("direct reconciler data/executable authority substitutions accepted: false")
