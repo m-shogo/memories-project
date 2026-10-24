@@ -5466,3 +5466,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the synthetic negative validator changed. No registry, recovery evidence, production status, objective, credential, traffic or promotion authority was written. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Preserve the separation between registered and semantically eligible generations, distinct eligible environments, current human-approved objective, executable reviewed request for new recovery evidence, complete typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Material-delta review immutability needs creation-blob positive/negative controls
+
+### Material success: outcome and observed evidence
+- Code commit `3fb4253aff54178c3f373d89cbf9cd3512f1b19c` extends the existing material-delta review negative suite with an isolated synthetic review file, exact mocked creation-commit `git show`, one-commit unchanged-byte positive control, changed-byte negative control and restored positive control.
+- Exact-source Backup Restore Generation Independent Review Negative run `40065616811` (job `120788120064`) completed SUCCESS. Its log explicitly reports `PASS: material-delta append-only history and creation-blob immutability positive/negative controls`, followed by the material-delta review negative suite PASS. The same job also confirms the independent-review candidate pair source-binding and creation-byte controls.
+
+### Symptom, evidence, verified root cause and failed approach
+- Verified coverage gap, not an observed production incident: the prior material-delta negative injected two synthetic history commits and accepted any `Fail`. It did not prove unchanged first-commit bytes are accepted or post-creation byte changes rejected at the correct canonical boundary.
+- Root cause: the multi-commit history failure was used as a proxy for byte-level append-only immutability.
+- Failed approach to avoid: accepting an arbitrary exception from a history-count-only fixture as proof of both history and content immutability.
+
+### Correction, executable recurrence guard and retry condition
+- Reuse the independently validated Security/Operability review fixture mechanism, with canonical newline bytes from the start, exact expected diagnostics, and a disposable path that never touches repository evidence. Restore `git_history` and `subprocess.run` in `finally`.
+- Retry only after exact-source CI regression, reviewed canonical material-delta validator change, or demonstrated bypass. Do not retry unchanged external evidence, workflow-permission or clean-worktree blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic material-delta negative validator changed; no recovery evidence, production registry, objectives, credentials, traffic, readiness or promotion authority was written. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Registered and semantically preflight-eligible generations remain distinct; preflight needs distinct unsuperseded eligible environments and a current human-approved objective; new recovery evidence needs a current executable reviewed request. Final candidates require all generation/objective gates plus typed eight-domain non-resurrection coverage and independent review. Human production promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
