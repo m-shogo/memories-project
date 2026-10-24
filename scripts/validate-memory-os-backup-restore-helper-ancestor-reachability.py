@@ -467,6 +467,11 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     )
 
 
+    require(workflow_source.startswith(
+        "name: Backup Restore Helper Ancestor Reachability\n"
+    ), "ancestor workflow identity drift")
+
+
 def validate_independent_learning_workflow(source: str) -> None:
     """Guard independent learning CI from the ancestor validator."""
     require(not re.search(r"(?m)^\s*(?:if|continue-on-error):", source),
@@ -662,6 +667,11 @@ def validate_independent_learning_workflow(source: str) -> None:
     validate_learning_root_mapping_bodies(
         source, "independent learning workflow root mapping drift",
     )
+
+
+    require(source.startswith(
+        "name: Autonomous Learning Guard\n"
+    ), "independent learning workflow identity drift")
 
 
 def validate_source(source: str, expected_diagnostic: str) -> None:
@@ -1459,6 +1469,12 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         (workflow_source + "          echo synthetic bypass\n",
          "ancestor workflow run boundary drift"),
     )
+    duplicate_root_cases += (
+        (workflow_source.replace(
+             "name: Backup Restore Helper Ancestor Reachability\n",
+             "name: Synthetic Unreviewed Workflow\n", 1),
+         "ancestor workflow identity drift"),
+    )
     for mutated, expected in duplicate_root_cases:
         try:
             validate_workflow_runtime_reachability(mutated)
@@ -1688,6 +1704,12 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
              '  cancel-in-progress: false\n  "group": synthetic\n\njobs:', 1),
          "independent learning workflow root mapping drift"),
     )
+    duplicate_root_cases += (
+        (source.replace(
+             "name: Autonomous Learning Guard\n",
+             "name: Synthetic Unreviewed Workflow\n", 1),
+         "independent learning workflow identity drift"),
+    )
     for mutated, expected in duplicate_root_cases:
         try:
             validate_independent_learning_workflow(mutated)
@@ -1851,7 +1873,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 173, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 175, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
