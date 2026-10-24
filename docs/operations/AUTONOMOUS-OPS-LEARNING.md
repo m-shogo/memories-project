@@ -5005,3 +5005,27 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic negative validator changed. Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, evidence, complete typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Distinct unsuperseded semantically eligible environments, explicit human-approved current objectives, current executable reviewed requests for new evidence, complete typed eight-domain coverage, independent review and separate non-automatic human promotion remain mandatory. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Independent eight-domain review omissions and digest drift are negative-tested
+
+### Material success: observed outcome and evidence
+- Code commit `2543daf809132b34f600bba0ed8e4228727f8644` extends the existing CI-reachable typed non-resurrection negative admission suite with 32 isolated cases. For each of eight required domains, each SECURITY and OPERABILITY review independently rejects both a missing exact bundle member and a mismatched canonical evidence digest. Each mutation has a specific expected writer-domain rejection diagnostic, and the synthetic state is restored in `finally`.
+- Exact-source Backup Restore Non-Resurrection Readonly run `40057960623`, Reconcile Negative run `40057960588` and Non-Resurrection Admission run `40057960628` completed SUCCESS at the code SHA. The Readonly job logged typed admission validation PASS and `production decision: NO_GO`; child-validator stdout is suppressed on success, so individual new case messages were not visible in that job log. The canonical admission invokes the existing negative suite via its fail-closed `run_validator` path.
+- Positive controls retain the valid complete eight-domain synthetic record before and after reviewer-specific mutations. These are synthetic tests, never production-equivalent recovery evidence.
+
+### Symptom/risk, verified gap, failed approach
+- Risk: one representative review-domain digest or missing bundle member can miss a regression limited to another domain or reviewer. No actual production bypass or incident was observed.
+- Verified gap: prior negative probes tested both review roles but bundle omission always removed the last member and digest corruption always targeted the first member; the other domain positions lacked isolated review-specific proof.
+- Failed approach to avoid: treating one representative review mutation or any unrelated `writer.Fail` as proof of eight-domain independent reviewer coverage.
+
+### Correction, executable recurrence guard and retry condition
+- Reuse the canonical CI-transitive negative suite, its exact-diagnostic `expect_rejected`, targeted per-review state and post-batch positive controls; do not add a parallel contract or change production validators.
+- Retry only on exact-source CI regression, reviewed legitimate review-bundle refactor or a demonstrated new per-domain bypass. Do not retry unchanged clean-worktree, workflow-write or external-evidence blockers.
+
+### Orchestration failure: symptom, evidence, root cause or unknown, correction
+- A first pre-write patch orchestration failed locally with `SyntaxError: Invalid or unexpected token` and made no repository change. The precise parser location/root cause was not observed; the failed approach mixed quoted multiline replacement literals.
+- Correction: use template literals, require each replacement anchor exactly once, bound the delta, and re-read branch head and target blob before writing. A subsequent learning append initially aborted safely when a concurrent diagnostic commit advanced `so` from `2543daf` to `451309e`; no stale write was attempted. Recurrence guard: bounded re-read/compare before each write; retry only when the branch/target precondition is refreshed.
+
+### Why safe, reusable mechanism and protected-authority check
+- The code commit changed only the synthetic negative suite. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. No generation, human-approved objective, executable reviewed request, recovery evidence, typed production record, credentials, traffic, readiness or promotion authority was created.
+- Preflight still requires distinct unsuperseded semantically eligible environments and an explicit human-approved current objective; new generation recovery evidence requires a current executable reviewed drill request; final candidates require all upstream gates, typed eight-domain coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
