@@ -185,6 +185,31 @@ def validate_job_key_inventory(
     require(tuple(actual) == expected, diagnostic)
 
 
+
+def validate_event_key_inventory(
+    source: str, expected: tuple[tuple[str, tuple[str, ...]], ...],
+    diagnostic: str,
+) -> None:
+    """Bind event names and options, rejecting quoted YAML key overrides."""
+    event_block = source.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    actual: list[list] = []
+    for line in event_block.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("  ") and not line.startswith("   "):
+            match = re.fullmatch(r"  ([a-z_]+):", line)
+            require(match is not None, diagnostic)
+            actual.append([match.group(1), []])
+        elif line.startswith("    ") and not line.startswith("     "):
+            match = re.fullmatch(r"    ([a-z][a-z-]*):(?:[ \t].*)?", line)
+            require(match is not None and bool(actual), diagnostic)
+            actual[-1][1].append(match.group(1))
+    require(
+        tuple((event, tuple(keys)) for event, keys in actual) == expected,
+        diagnostic,
+    )
+
+
 def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
@@ -246,6 +271,12 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
             "ancestor workflow event inventory drift")
     require(not event_block.split("  workflow_dispatch:\n", 1)[1].strip(),
             "ancestor workflow dispatch options drift")
+    validate_event_key_inventory(
+        workflow_source,
+        (("push", ("branches", "paths")), ("pull_request", ("paths",)),
+         ("workflow_dispatch", ())),
+        "ancestor workflow event key inventory drift",
+    )
     static_step = """      - name: Prove seven canonical ancestor negatives remain reachable
         run: |
           set -euo pipefail
@@ -381,6 +412,13 @@ def validate_independent_learning_workflow(source: str) -> None:
             is not None, "independent learning workflow PR trigger drift")
     require(re.findall(r"(?m)^    ([a-z][a-z-]*):", pr_body)
             == ["branches", "paths"], "independent learning workflow PR options drift")
+    validate_event_key_inventory(
+        source,
+        (("push", ("branches", "paths")),
+         ("pull_request", ("branches", "paths")),
+         ("workflow_dispatch", ())),
+        "independent learning workflow event key inventory drift",
+    )
     pr_match = re.search(r'(?m)^    paths:\n(?P<paths>(?:      - "[^"]+"\n)+)', pr_body)
     require(pr_match is not None, "independent learning workflow PR trigger drift")
     pr_paths = set(re.findall(r'^      - "([^"]+)"$', pr_match.group("paths"),
@@ -1227,6 +1265,18 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor workflow root key inventory drift"),
         (workflow_source + '\n"jobs":\n  verify:\n    runs-on: self-hosted\n',
          "ancestor workflow root key inventory drift"),
+        (workflow_source.replace(
+             "  pull_request:\n",
+             '    "branches": [main]\n  pull_request:\n', 1),
+         "ancestor workflow event key inventory drift"),
+        (workflow_source.replace(
+             "  workflow_dispatch:\n",
+             '    "paths": []\n  workflow_dispatch:\n', 1),
+         "ancestor workflow event key inventory drift"),
+        (workflow_source.replace(
+             "  workflow_dispatch:\n",
+             '  "pull_request":\n    paths: []\n  workflow_dispatch:\n', 1),
+         "ancestor workflow event key inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1396,6 +1446,18 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "independent learning workflow root key inventory drift"),
         (source + '\n"jobs":\n  validate:\n    runs-on: self-hosted\n',
          "independent learning workflow root key inventory drift"),
+        (source.replace(
+             "  pull_request:\n",
+             '    "branches": [main]\n  pull_request:\n', 1),
+         "independent learning workflow event key inventory drift"),
+        (source.replace(
+             "  workflow_dispatch:\n",
+             '    "paths": []\n  workflow_dispatch:\n', 1),
+         "independent learning workflow event key inventory drift"),
+        (source.replace(
+             "  workflow_dispatch:\n",
+             '  "pull_request":\n    paths: []\n  workflow_dispatch:\n', 1),
+         "independent learning workflow event key inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1497,7 +1559,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 141, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 147, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
