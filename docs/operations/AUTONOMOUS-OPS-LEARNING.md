@@ -5523,3 +5523,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the synthetic independent-review negative suite changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - No production-equivalent generations, objectives, drill/recovery evidence, credentials, traffic, readiness or promotion were created. Preflight still requires distinct unsuperseded semantically eligible environments and a current human-approved objective. New recovery evidence requires a current executable reviewed request; final candidates require all existing gates, complete typed eight-domain non-resurrection coverage and independent review. Human production promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — External CI harness must prove candidate pair negative execution reachability
+
+### Material success: outcome and observed evidence
+- Code commit `d7b5aede161f1becd9743c2498f1808bac03b7cc` extends the existing independent-review execution-negative suite to inspect the separate CI-invoked independent-review negative harness. It requires exactly one candidate-pair proof definition, its second direct `main()` step before validator loading, and no top-level reassignment.
+- Six negative mutations remove, move, hide, duplicate or shadow the proof call/definition and must fail with exact diagnostics.
+- Exact-source Backup Restore Generation Independent Review Negative run `40065799032` (job `120788672371`) completed SUCCESS, explicitly logging `PASS: external candidate pair negative harness reachability rejects 6 bypasses`, `Memory OS generation independent-review execution authority negative PASS`, and `PASS: candidate pair direct source binding rejects 10 validation/distinctness bypasses`.
+
+### Symptom, evidence, verified root cause and failed approach
+- Verified coverage risk, not a production incident: the previously added candidate-pair mutation helper could be present in the repository yet become ineffective if the independent-review negative harness stopped invoking it. Its own function-level negative tests cannot prove that their caller still runs.
+- Root cause: a helper's existence and passing internal mutations are distinct from external CI entrypoint reachability.
+- Failed approach to avoid: treating a standalone test helper's source or self-report as sufficient proof that the workflow actually executes it.
+
+### Correction, executable recurrence guard and retry condition
+- Use the existing external execution-negative harness as the immutable caller for a direct AST reachability check, then mutate the harness's invocation and definition in memory. Keep the canonical workflow's current execution path; no new parallel authority is introduced.
+- Retry only after exact-source CI regression, reviewed change to the negative harness call graph or demonstrated source-binding bypass. Unchanged workflow-write, clean-worktree and external-evidence blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the CI-reachable synthetic execution-negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- No production-equivalent generations, objectives, drill/recovery evidence, credentials, traffic, readiness or promotion were created. Registered generations remain distinct from unsuperseded semantically eligible generations; preflight requires distinct eligible environments and a human-approved current objective. New recovery evidence requires a current executable reviewed request. Final candidates require all generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion is separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
