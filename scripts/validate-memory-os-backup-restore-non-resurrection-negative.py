@@ -447,6 +447,18 @@ def main() -> int:
         reject_variant("evidenceComplete false despite eight PASS domains", lambda r: r.update(evidenceComplete=False))
         reject_variant("security and operability review reuse", lambda r: r.update(operabilityReviewRef=r["securityReviewRef"]))
         reject_variant("HIGH unresolved finding", lambda r: r.update(unresolvedFindings=[{"findingId": "finding_high", "severity": "HIGH", "status": "OPEN"}]))
+        # Non-blocking findings are allowed only when the record explicitly remains incomplete.
+        # An approved review cannot silently convert LOW/MEDIUM unresolved findings into completeness.
+        for severity, finding_status in (("LOW", "OPEN"), ("MEDIUM", "ACCEPTED_WITH_OWNER")):
+            finding = {"findingId": f"finding_{severity.lower()}", "severity": severity, "status": finding_status}
+            incomplete = copy.deepcopy(valid)
+            incomplete["unresolvedFindings"] = [finding]
+            incomplete["evidenceComplete"] = False
+            writer.validate_record(incomplete)
+            case = f"{severity} unresolved finding cannot claim complete typed evidence"
+            EXPECTED_DIAGNOSTICS[case] = "evidenceComplete derivation drift"
+            reject_variant(case, lambda r, row=finding: r.update(unresolvedFindings=[row], evidenceComplete=True))
+        print("PASS reject: unresolved LOW/MEDIUM findings cannot create complete typed evidence")
         reject_variant("production traffic relabel", lambda r: r.update(productionTraffic=True))
         reject_variant("production credentials relabel", lambda r: r.update(productionCredentials=True))
         reject_variant("production evidence relabel", lambda r: r.update(productionEvidence=True))
