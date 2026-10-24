@@ -233,6 +233,16 @@ def validate_trigger_path_inventory(
                 diagnostic)
 
 
+
+def validate_setup_python_input_inventory(source: str, diagnostic: str) -> None:
+    """Bind complete setup-python inputs, not just an approved prefix."""
+    anchor = "      - uses: actions/setup-python@v5\n"
+    require(source.count(anchor) == 1, diagnostic)
+    block = source.split(anchor, 1)[1].split("      - name:", 1)[0]
+    require(block == '        with:\n          python-version: "3.12"\n',
+            diagnostic)
+
+
 def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
@@ -384,6 +394,11 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     validate_trigger_path_inventory(
         workflow_source, expected_paths,
         "ancestor workflow trigger path inventory drift",
+    )
+
+
+    validate_setup_python_input_inventory(
+        workflow_source, "ancestor workflow setup-python input inventory drift",
     )
 
 
@@ -565,6 +580,11 @@ def validate_independent_learning_workflow(source: str) -> None:
     validate_trigger_path_inventory(
         source, expected_paths,
         "independent learning workflow trigger path inventory drift",
+    )
+
+
+    validate_setup_python_input_inventory(
+        source, "independent learning workflow setup-python input inventory drift",
     )
 
 
@@ -1336,6 +1356,14 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
              "  workflow_dispatch:\n",
              "      - '!**'\n  workflow_dispatch:\n", 1),
          "ancestor workflow trigger path inventory drift"),
+        (workflow_source.replace(
+             '          python-version: "3.12"\n',
+             '          python-version: "3.12"\n          "python-version": "3.9"\n', 1),
+         "ancestor workflow setup-python input inventory drift"),
+        (workflow_source.replace(
+             '          python-version: "3.12"\n',
+             '          python-version: "3.12"\n          cache: pip\n', 1),
+         "ancestor workflow setup-python input inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1525,6 +1553,14 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
              "  workflow_dispatch:\n",
              "      - '!**'\n  workflow_dispatch:\n", 1),
          "independent learning workflow trigger path inventory drift"),
+        (source.replace(
+             '          python-version: "3.12"\n',
+             '          python-version: "3.12"\n          "python-version": "3.9"\n', 1),
+         "independent learning workflow setup-python input inventory drift"),
+        (source.replace(
+             '          python-version: "3.12"\n',
+             '          python-version: "3.12"\n          cache: pip\n', 1),
+         "independent learning workflow setup-python input inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1689,7 +1725,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 152, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 156, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
