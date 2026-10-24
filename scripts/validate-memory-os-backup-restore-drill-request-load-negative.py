@@ -358,6 +358,50 @@ def prove_nested_swap_during_cleanup_preserves_unowned_data() -> None:
                 "drill request nested cleanup race did not traverse pinned owned directory")
     print("PASS: drill request nested cleanup race preserves unowned replacement data")
 
+def prove_file_swap_before_unlink_rejected() -> None:
+    # A non-directory entry may change between inode checks. Reject the
+    # substituted unowned file before unlink and preserve both contents.
+    with guarded_temporary_directory(prefix=".tmp-drill-request-unlink-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        replacement = sandbox / "unowned-file.txt"
+        replacement.write_text("preserve unowned", encoding="utf-8")
+        original_stat = os.stat
+        checks = 0
+        swapped = False
+        try:
+            with guarded_temporary_directory(prefix=".tmp-drill-request-unlink-race-", parent=sandbox) as inner:
+                child = Path(inner)
+                owned = child / "owned.txt"
+                parked = child / "parked-owned.txt"
+                owned.write_text("owned fixture", encoding="utf-8")
+
+                def swap_before_second_stat(path, *args, **kwargs):
+                    nonlocal checks, swapped
+                    if (path == "owned.txt" and kwargs.get("dir_fd") is not None
+                            and kwargs.get("follow_symlinks") is False):
+                        checks += 1
+                        if checks == 2:
+                            owned.rename(parked)
+                            replacement.rename(owned)
+                            swapped = True
+                    return original_stat(path, *args, **kwargs)
+
+                os.stat = swap_before_second_stat
+        except Fail as exc:
+            require(str(exc) == "drill request nested entry identity drift before unlink",
+                    f"drill request file cleanup race rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("drill request file cleanup race unexpectedly accepted")
+        finally:
+            os.stat = original_stat
+        require(swapped and checks == 2, "drill request file cleanup race never reached second inode check")
+        require(owned.read_text(encoding="utf-8") == "preserve unowned",
+                "drill request file cleanup race deleted unowned replacement")
+        require(parked.read_text(encoding="utf-8") == "owned fixture",
+                "drill request file cleanup race deleted original owned file")
+    print("PASS: drill request file unlink race rejects unowned replacement")
+
+
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
     try:
         action()
@@ -440,6 +484,7 @@ def main() -> int:
     prove_child_substitution_before_cleanup_rejected()
     prove_child_swap_during_cleanup_preserves_unowned_data()
     prove_nested_swap_during_cleanup_preserves_unowned_data()
+    prove_file_swap_before_unlink_rejected()
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
