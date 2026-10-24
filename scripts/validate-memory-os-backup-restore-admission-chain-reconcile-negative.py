@@ -47,33 +47,48 @@ def load_module(path: Path, name: str):
 
 
 def load_pinned_fixture_guard(path: Path, name: str):
-    """Execute only the checked helper's descriptor-pinned source bytes."""
-    require(hasattr(os, "O_NOFOLLOW"),
-            "admission-chain fixture guard no-follow open unsupported")
+    """Pin the checked parent and leaf FDs before executing helper source."""
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+            "admission-chain fixture guard no-follow directory open unsupported")
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        parent_before = path.parent.lstat()
+        parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError as exc:
-        raise Fail("admission-chain fixture guard source open failed") from exc
+        raise Fail("admission-chain fixture guard parent open failed") from exc
     try:
-        opened = os.fstat(fd)
-        entry = path.lstat()
+        parent_opened = os.fstat(parent_fd)
         require(
-            stat.S_ISREG(opened.st_mode) and stat.S_ISREG(entry.st_mode)
-            and (opened.st_dev, opened.st_ino) == (entry.st_dev, entry.st_ino),
-            "admission-chain fixture guard source identity drift",
+            stat.S_ISDIR(parent_before.st_mode)
+            and (parent_before.st_dev, parent_before.st_ino)
+            == (parent_opened.st_dev, parent_opened.st_ino),
+            "admission-chain fixture guard parent identity drift",
         )
-        with os.fdopen(os.dup(fd), "rb") as stream:
-            source = stream.read()
-        spec = importlib.util.spec_from_file_location(name, path)
-        require(spec is not None and spec.loader is not None,
-                "admission-chain fixture guard cannot load")
-        module = importlib.util.module_from_spec(spec)
-        exec(compile(source, str(path), "exec"), module.__dict__)
-        return module
-    except OSError as exc:
-        raise Fail("admission-chain fixture guard pinned source read failed") from exc
+        try:
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        except OSError as exc:
+            raise Fail("admission-chain fixture guard source open failed") from exc
+        try:
+            opened = os.fstat(fd)
+            entry = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            require(
+                stat.S_ISREG(opened.st_mode) and stat.S_ISREG(entry.st_mode)
+                and (opened.st_dev, opened.st_ino) == (entry.st_dev, entry.st_ino),
+                "admission-chain fixture guard source identity drift",
+            )
+            with os.fdopen(os.dup(fd), "rb") as stream:
+                source = stream.read()
+            spec = importlib.util.spec_from_file_location(name, path)
+            require(spec is not None and spec.loader is not None,
+                    "admission-chain fixture guard cannot load")
+            module = importlib.util.module_from_spec(spec)
+            exec(compile(source, str(path), "exec"), module.__dict__)
+            return module
+        except OSError as exc:
+            raise Fail("admission-chain fixture guard pinned source read failed") from exc
+        finally:
+            os.close(fd)
     finally:
-        os.close(fd)
+        os.close(parent_fd)
 
 
 def guarded_temporary_directory(prefix: str, parent: Path = TMP_PARENT):
@@ -179,6 +194,111 @@ def prove_helper_source_swap_during_import_is_pinned() -> None:
             importlib.util.spec_from_file_location = original_spec
             LOAD_NEGATIVE = original_path
     print("PASS: admission-chain reconcile helper import uses pinned source after pathname substitution")
+
+
+def prove_helper_parent_swap_after_pin_uses_original_source() -> None:
+    # A checked parent may be renamed after its FD is pinned but before the
+    # leaf opens. Source bytes must still come from the original directory.
+    global LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="admission-chain-helper-parent-race-") as raw:
+        sandbox = Path(raw)
+        trusted_parent = sandbox / "trusted"
+        parked_parent = sandbox / "parked"
+        untrusted_parent = sandbox / "untrusted"
+        trusted_parent.mkdir()
+        untrusted_parent.mkdir()
+        (trusted_parent / "helper.py").write_text(
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(prefix, parent):\n"
+            "    return ('pinned-parent', prefix)\n",
+            encoding="utf-8",
+        )
+        (untrusted_parent / "helper.py").write_text(
+            "raise RuntimeError('untrusted parent helper executed')\n", encoding="utf-8")
+        original_path = LOAD_NEGATIVE
+        original_open = os.open
+        swapped = False
+        try:
+            LOAD_NEGATIVE = trusted_parent / "helper.py"
+            require(
+                guarded_temporary_directory(".tmp-positive-", TMP_PARENT)
+                == ("pinned-parent", ".tmp-positive-"),
+                "admission-chain parent-pinned helper positive control failed",
+            )
+
+            def swap_before_leaf_open(target, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and target == "helper.py" and kwargs.get("dir_fd") is not None:
+                    swapped = True
+                    trusted_parent.rename(parked_parent)
+                    trusted_parent.symlink_to(untrusted_parent, target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            os.open = swap_before_leaf_open
+            require(
+                guarded_temporary_directory(".tmp-parent-race-", TMP_PARENT)
+                == ("pinned-parent", ".tmp-parent-race-"),
+                "admission-chain helper import followed substituted parent",
+            )
+            require(swapped and trusted_parent.is_symlink() and (parked_parent / "helper.py").is_file(),
+                    "admission-chain helper parent race did not substitute checked parent")
+        finally:
+            os.open = original_open
+            LOAD_NEGATIVE = original_path
+    print("PASS: admission-chain reconcile helper parent swap preserves pinned source")
+
+
+def prove_helper_parent_swap_before_pin_rejected() -> None:
+    # If the checked parent changes before the directory FD opens, refuse it.
+    global LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="admission-chain-helper-parent-preopen-") as raw:
+        sandbox = Path(raw)
+        trusted_parent = sandbox / "trusted"
+        parked_parent = sandbox / "parked"
+        untrusted_parent = sandbox / "untrusted"
+        trusted_parent.mkdir()
+        untrusted_parent.mkdir()
+        (trusted_parent / "helper.py").write_text(
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(prefix, parent):\n"
+            "    return ('pinned-parent', prefix)\n",
+            encoding="utf-8",
+        )
+        (untrusted_parent / "helper.py").write_text(
+            "raise RuntimeError('untrusted parent helper executed')\n", encoding="utf-8")
+        original_path = LOAD_NEGATIVE
+        original_open = os.open
+        swapped = False
+        try:
+            LOAD_NEGATIVE = trusted_parent / "helper.py"
+            require(
+                guarded_temporary_directory(".tmp-positive-", TMP_PARENT)
+                == ("pinned-parent", ".tmp-positive-"),
+                "admission-chain parent pre-open positive control failed",
+            )
+
+            def swap_before_parent_open(target, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(target) == trusted_parent and kwargs.get("dir_fd") is None:
+                    swapped = True
+                    trusted_parent.rename(parked_parent)
+                    trusted_parent.symlink_to(untrusted_parent, target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            os.open = swap_before_parent_open
+            try:
+                guarded_temporary_directory(".tmp-parent-preopen-", TMP_PARENT)
+            except Fail as exc:
+                require(str(exc) == "admission-chain fixture guard parent open failed",
+                        f"admission-chain helper parent pre-open rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("admission-chain substituted helper parent accepted before FD pinning")
+            require(swapped and trusted_parent.is_symlink() and (parked_parent / "helper.py").is_file(),
+                    "admission-chain helper parent pre-open race did not substitute checked parent")
+        finally:
+            os.open = original_open
+            LOAD_NEGATIVE = original_path
+    print("PASS: admission-chain reconcile helper parent swap before pin rejected")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -425,6 +545,8 @@ def main() -> int:
     prove_symlink_parent_rejected()
     prove_helper_source_symlink_rejected()
     prove_helper_source_swap_during_import_is_pinned()
+    prove_helper_parent_swap_after_pin_uses_original_source()
+    prove_helper_parent_swap_before_pin_rejected()
     validator = load_module(VALIDATOR, "memory_os_admission_chain_validator_negative")
     reconciler = load_module(RECONCILER, "memory_os_admission_chain_reconcile_negative")
 
