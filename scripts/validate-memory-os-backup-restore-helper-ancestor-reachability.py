@@ -71,6 +71,62 @@ def has_method(fn: ast.FunctionDef, method: str) -> bool:
     )
 
 
+def module_effect_nodes(node: ast.AST):
+    """Inspect eager module expressions without treating function bodies as eager."""
+    yield node
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        expressions = [
+            *node.decorator_list,
+            *node.args.defaults,
+            *(value for value in node.args.kw_defaults if value is not None),
+        ]
+    elif isinstance(node, ast.Lambda):
+        expressions = [
+            *node.args.defaults,
+            *(value for value in node.args.kw_defaults if value is not None),
+            node.body,
+        ]
+    else:
+        expressions = ast.iter_child_nodes(node)
+    for child in expressions:
+        yield from module_effect_nodes(child)
+
+
+def is_module_namespace_mutation(node: ast.AST, names: tuple[str, ...]) -> bool:
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
+            return True
+        if (isinstance(node.func, ast.Name)
+                and node.func.id in {"setattr", "delattr"}
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value in names):
+            return True
+        if (isinstance(node.func, ast.Attribute)
+                and node.func.attr in {
+                    "update", "pop", "popitem", "clear", "setdefault",
+                    "__setitem__", "__delitem__",
+                }):
+            receiver = node.func.value
+            if (isinstance(receiver, ast.Call)
+                    and isinstance(receiver.func, ast.Name)
+                    and receiver.func.id in {"globals", "locals", "vars"}
+                    and not receiver.args and not receiver.keywords):
+                return True
+            if isinstance(receiver, ast.Attribute) and receiver.attr == "__dict__":
+                return True
+    if isinstance(node, ast.Subscript) and isinstance(node.ctx, (ast.Store, ast.Del)):
+        receiver = node.value
+        if (isinstance(receiver, ast.Call)
+                and isinstance(receiver.func, ast.Name)
+                and receiver.func.id in {"globals", "locals", "vars"}
+                and not receiver.args and not receiver.keywords):
+            return True
+        if isinstance(receiver, ast.Attribute) and receiver.attr == "__dict__":
+            return True
+    return False
+
+
 def validate_source(source: str, expected_diagnostic: str) -> None:
     tree = ast.parse(source)
     main = named_function(tree, "main")
@@ -107,6 +163,23 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
             for node in tree.body
         )
         require(not shadowed, f"module binding shadowed: {guarded_name}")
+    # Module-scope control flow, decorators and default arguments execute before
+    # the canonical dispatcher. Direct top-level assignment checks alone miss
+    # nested stores, destructuring, and dynamic namespace replacement.
+    guarded_names = ("main", PROOF, PIN, loaders[0].name)
+    for statement in tree.body:
+        for node in module_effect_nodes(statement):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                require(node.id not in guarded_names,
+                        f"module binding shadowed: {node.id}")
+            if (isinstance(node, (ast.ClassDef, ast.AsyncFunctionDef))
+                    and node.name in guarded_names):
+                raise GuardFailure(f"module binding shadowed: {node.name}")
+            if (isinstance(node, ast.FunctionDef)
+                    and node not in tree.body and node.name in guarded_names):
+                raise GuardFailure(f"module binding shadowed: {node.name}")
+            require(not is_module_namespace_mutation(node, guarded_names),
+                    "module dynamic binding mutation")
     require(direct_call_count(main, PROOF) == 1, "main missing direct ancestor proof")
     proof_index = next(
         index for index, statement in enumerate(main.body)
@@ -285,6 +358,23 @@ def negative_cases(source: str, diagnostic: str) -> int:
          'pin_checked_helper_parent = lambda path: -1\n\nif __name__ == "__main__":',
          "module binding shadowed: pin_checked_helper_parent"),
     )
+    replacements += tuple(
+        ('if __name__ == "__main__":',
+         injection + '\n\nif __name__ == "__main__":', expected)
+        for injection, expected in (
+            ("if False: main = lambda: 0  # synthetic nested shadow",
+             "module binding shadowed: main"),
+            ("main, synthetic_unused = (lambda: 0), None",
+             "module binding shadowed: main"),
+            ('globals()["main"] = None', "module dynamic binding mutation"),
+            ("globals().update(main=None)", "module dynamic binding mutation"),
+            ('exec("main = None")', "module dynamic binding mutation"),
+            ('setattr(sys.modules[__name__], "main", None)',
+             "module dynamic binding mutation"),
+            ("class main: pass", "module binding shadowed: main"),
+            ('globals().pop("main")', "module dynamic binding mutation"),
+        )
+    )
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
@@ -315,7 +405,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 13 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 21 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
