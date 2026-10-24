@@ -208,6 +208,14 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     require(actual_headers == expected_headers,
             "ancestor workflow step allowlist drift")
 
+    # Bind remaining preflight, exact-source and read-only run bodies, not just headers.
+    require(workflow_source.count("      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n") == 1,
+            "ancestor preflight runtime proof drift")
+    require(workflow_source.count("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n") == 1,
+            "ancestor exact-source workflow check drift")
+    require(workflow_source.count("      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          git diff --exit-code\n          test -z \"$(git status --porcelain)\"\n") == 1,
+            "ancestor read-only workflow postcondition drift")
+
 
 def validate_source(source: str, expected_diagnostic: str) -> None:
     tree = ast.parse(source)
@@ -816,6 +824,29 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "jobs:\n  synthetic:\n    runs-on: ubuntu-latest\n    steps: []\n  verify:\n",
          "ancestor workflow job or permissions drift"),
     )
+    cases += (
+        ("      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n",
+         "      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"synthetic_missing_proof\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n",
+         "ancestor preflight runtime proof drift"),
+        ("      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n",
+         "      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              pass  # synthetic skipped proof\n          PY\n",
+         "ancestor preflight runtime proof drift"),
+        ("      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n",
+         "      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/synthetic.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n",
+         "ancestor preflight runtime proof drift"),
+        ("      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n",
+         "      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"synthetic_wrong_parent_proof\",\n                        ):\n              proof[name]()\n          PY\n",
+         "ancestor preflight runtime proof drift"),
+        ("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n",
+         "      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          echo synthetic-source-bypass\n          test -z \"$(git status --porcelain)\"\n",
+         "ancestor exact-source workflow check drift"),
+        ("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n",
+         "      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          echo synthetic-clean-bypass\n",
+         "ancestor exact-source workflow check drift"),
+        ("      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          git diff --exit-code\n          test -z \"$(git status --porcelain)\"\n",
+         "      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          echo synthetic-readonly-bypass\n          test -z \"$(git status --porcelain)\"\n",
+         "ancestor read-only workflow postcondition drift"),
+    )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
                 f"workflow negative anchor not unique: {expected}")
@@ -847,7 +878,7 @@ def main() -> int:
         total += workflow_runtime_negative_cases(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 24, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 31, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

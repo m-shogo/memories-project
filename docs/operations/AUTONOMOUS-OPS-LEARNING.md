@@ -7747,3 +7747,19 @@ a promotion decision, a recovery objective, or drill evidence.
 - Why safe: read-only validator plus append-only learning only; the workflow and protected production/recovery authorities were not changed by this correction.
 - Reusable mechanism: guard precedence is an executable contract, not a stylistic detail; broad structural invariants must not shadow exact negative diagnostics.
 - Protected authority: production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` is NO_GO; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` is PREREQUISITES_BLOCKED; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. No registered generation can stand in for semantic eligibility, explicit human objective, executable reviewed request, complete typed eight-domain coverage, independent review or separate human promotion. Learning and CI remain non-production evidence.
+
+## 2026-10-25 — Bind remaining ancestor CI proof and source/read-only step bodies
+
+### Material failure: symptom, evidence, verified root cause, failed approach
+- Symptom: the reviewed ancestor workflow's preflight helper-race step, exact-source check and final read-only postcondition could have their `run` bodies replaced while the new seven-step header allowlist still passed. No production incident observed.
+- Evidence: exact-source Helper Ancestor Reachability run `40120289223` succeeded with 346 negative mutations after diagnostic-precedence correction, but the validator at HEAD `10f81d089d4f3fb5ecf4037604c707e4f383cb63` checked the preflight/clean/postcondition step names, not those three command bodies. Verified root cause: header inventory alone does not bind executable behavior. Failed approach: treating reviewed step labels as sufficient evidence that the steps still run the intended commands.
+
+### Correction, executable recurrence guard, retry condition
+- Require the exact reviewed preflight three-race proof loop, exact-source SHA/clean checkout checks and read-only diff/worktree postcondition bodies. Seven in-memory mutations change the proof names, loader, invocation, source/clean checks or final diff check and must fail with the corresponding exact diagnostic. Expected negative count: 353.
+- Retry condition: revisit only for a reviewed command-body refactor, observed bypass or exact-source CI regression. Unchanged external clean-source and atomic final-deletion blockers remain deferred.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: all three reviewed workflow step blocks and seven synthetic mutation anchors were extracted uniquely and verified before write. Exact-source CI is pending, not asserted from static checks.
+- Why safe: only a read-only validator and append-only learning authority changed; the protected workflow itself, recovery/production authorities and credentials were not modified.
+- Reusable mechanism: combine reviewed step/action inventory with byte-exact critical command bodies, preserving narrow diagnostic precedence for pre-existing negatives.
+- Protected-authority check: production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` is NO_GO; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains PREREQUISITES_BLOCKED; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered environments do not imply semantically eligible distinct unsuperseded generations; current explicit human recovery objective, executable reviewed drill request binding, complete typed eight-domain non-resurrection, independent review and separate human production promotion remain mandatory. Learning/CI cannot satisfy any production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gate.
