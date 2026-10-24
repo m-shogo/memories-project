@@ -241,8 +241,15 @@ def main() -> int:
         escaped_target = Path(temporary_directory) / "outside-local-foundation.json"
         escaped_target.write_text("{}\n", encoding="utf-8")
         link_path = ROOT / ".memory-os-generation-binding-outside-foundation"
-        require(not link_path.exists() and not link_path.is_symlink(), "temporary generation-binding symlink path already exists")
+        require(ROOT.is_dir() and not ROOT.is_symlink(),
+                "generation-binding symlink fixture root missing or symlinked")
+        parent_stat = ROOT.stat()
+        parent_identity = (parent_stat.st_dev, parent_stat.st_ino)
+        require(not link_path.exists() and not link_path.is_symlink(),
+                "temporary generation-binding symlink path already exists")
         link_path.symlink_to(escaped_target)
+        created_stat = link_path.lstat()
+        created_identity = (created_stat.st_dev, created_stat.st_ino)
         try:
             symlink_state = copy.deepcopy(state)
             symlink_state[module.LOCAL_FOUNDATIONS]["foundations"][0]["contract"] = str(link_path.relative_to(ROOT))
@@ -252,7 +259,17 @@ def main() -> int:
                 lambda: run_with_state(module, symlink_state),
             )
         finally:
-            link_path.unlink(missing_ok=True)
+            require(ROOT.is_dir() and not ROOT.is_symlink(),
+                    "generation-binding symlink fixture parent substituted before cleanup")
+            current_parent = ROOT.stat()
+            require((current_parent.st_dev, current_parent.st_ino) == parent_identity,
+                    "generation-binding symlink fixture parent inode drift before cleanup")
+            current_link = link_path.lstat()
+            require((current_link.st_dev, current_link.st_ino) == created_identity,
+                    "generation-binding symlink fixture inode drift before cleanup")
+            require(link_path.is_symlink() and link_path.resolve() == escaped_target.resolve(),
+                    "generation-binding symlink fixture target drift before cleanup")
+            link_path.unlink()
 
     canonical_ref = state[module.LOCAL_FOUNDATIONS]["foundations"][0]["contract"]
     require(isinstance(canonical_ref, str) and canonical_ref, "baseline local foundation contract ref missing")
