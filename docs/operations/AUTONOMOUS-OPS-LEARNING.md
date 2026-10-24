@@ -4659,3 +4659,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; strict OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/semantically eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Distinct unsuperseded semantically eligible environments, explicit human-approved current recovery objective, current executable reviewed drill request for new evidence, complete eight-domain typed non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. This learning and CI do not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Full-chain run_step binding must be proven before main captures its default
+
+### Material success: outcome, observed evidence, why safe
+- Commit `68be4b241d6d3ae7fd6a70c18464411065f2d4f8` extends the existing CI-invoked full admission-chain negative harness with AST binding proof for `run_step`. It rejects eleven exact-diagnostic substitutions inserted before `main` captures its default callable: assignment, import alias, dead-branch assignment, `globals()` subscript/update/pop, module `__dict__`, `setattr`, `exec`, duplicate definition and decorator.
+- Exact-source Backup Restore Admission Chain run `40049559862` completed SUCCESS. Job `120738938096` explicitly logged `PASS reject: eleven full-chain pre-main step rebinding/decorator substitutions`, `PASS boundary: full-chain child nonzero/signal exits cannot become parent PASS`, and `Admission-chain full runner negative validation PASS`.
+- GitHub compare `fc7a6745..68be4b24` changed only the existing synthetic full-negative suite (109 additions, zero deletions). No production runner, registry, workflow, recovery objective or evidence authority was changed.
+
+### Symptom/risk, verified gap, and failed approach to avoid
+- Risk: the canonical runner's `main(canonical_run_step=run_step)` captures whatever `run_step` is bound to at function definition. A pre-main reassignment to a no-op could therefore defeat a later `run_step is canonical_run_step` runtime identity comparison. No actual malicious bypass or production incident was observed.
+- Verified coverage gap: previous runtime negative tests mutated `run_step` after importing the canonical module, but did not prove the source could not rebind it before `main` captured its default.
+- Failed approach to avoid: assuming a runtime identity check against a default parameter is independent authority when the default itself can capture an earlier source-level replacement.
+
+### Correction, recurrence guard, reusable mechanism, retry condition
+- Reusable mechanism: parse the actual canonical runner source, require one undecorated synchronous step with the canonical signature, reject direct and dynamic symbol rebinding (including dead branches), then prove exact diagnostics for pre-main AST mutations. Keep the existing CI-reachable negative suite and its positive source control rather than adding a parallel contract or workflow.
+- Retry only after a reviewed legitimate change to the full-runner step architecture, exact-source CI regression, or demonstrated binding bypass. Unchanged external workflow-write and source-binding clean-worktree blockers retain their recorded retry conditions.
+
+### Protected-authority check
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Preflight still requires distinct unsuperseded semantically eligible environments and a human-approved current objective; new generation evidence still requires a current executable reviewed drill request; final candidates still require complete typed eight-domain non-resurrection coverage and independent review; human production promotion remains separate and non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
