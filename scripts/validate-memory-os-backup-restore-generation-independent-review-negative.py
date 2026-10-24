@@ -8,6 +8,7 @@ import copy
 import importlib.util
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -724,20 +725,47 @@ def main() -> int:
     )
 
     original_history = module.git_history
+    original_transport = module.subprocess.run
     try:
+        review_ref = "docs/evidence/backup-restore/synthetic-review.json"
         module.git_history = lambda _ref, _field: ["a" * 40, "b" * 40]
         try:
             module.require_append_only_review(
-                "docs/evidence/backup-restore/synthetic-review.json",
-                Path("/tmp/not-read-after-history-rejection"),
-                "securityReviewRef",
+                review_ref, Path("/tmp/not-read-after-history-rejection"), "securityReviewRef",
             )
-        except module.Fail:
-            pass
+        except module.Fail as exc:
+            require(str(exc) == "securityReviewRef must remain append-only after its first committed version",
+                    f"review history mutation rejected at wrong boundary: {exc}")
         else:
-            raise Fail("review evidence edited after first commit was accepted")
+            raise Fail("review evidence with multiple committed versions was accepted")
+
+        with tempfile.TemporaryDirectory(prefix="generation-review-immutability-negative-") as tmp:
+            path = Path(tmp) / "synthetic-review.json"
+            creation_bytes = b'{"reviewResult":"APPROVED"}\\n'.replace(b"\\\\n", b"\\n")
+            path.write_bytes(creation_bytes)
+            module.git_history = lambda _ref, _field: ["a" * 40]
+
+            def synthetic_git_show(args, **_kwargs):
+                require(args == ["git", "show", f"{'a' * 40}:{review_ref}"],
+                        f"unexpected synthetic review history transport: {args}")
+                return subprocess.CompletedProcess(args, 0, stdout=creation_bytes, stderr=b"")
+
+            module.subprocess.run = synthetic_git_show
+            module.require_append_only_review(review_ref, path, "securityReviewRef")
+            path.write_bytes(b'{"reviewResult":"REJECTED"}\\n'.replace(b"\\\\n", b"\\n"))
+            try:
+                module.require_append_only_review(review_ref, path, "securityReviewRef")
+            except module.Fail as exc:
+                require(str(exc) == "securityReviewRef bytes drift from initial committed review evidence",
+                        f"review byte mutation rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("review evidence byte mutation after initial commit was accepted")
+            path.write_bytes(creation_bytes)
+            module.require_append_only_review(review_ref, path, "securityReviewRef")
     finally:
         module.git_history = original_history
+        module.subprocess.run = original_transport
+    print("PASS: review append-only history and initial-blob immutability positive/negative controls")
 
     print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, source-order authority substitution, partial review pairs, generic refs, missing review evidence, candidate pair source binding, authority mismatch, malformed timestamps, unsafe reviewer identities, unsafe production boundaries, wrong roles, non-approved reviews, chronology/candidate/promotion contract drift, post-commit edits, and production promotion while preserving unreviewed non-candidate evidence")
     print("runtime data/executable authority substitution accepted: false")
