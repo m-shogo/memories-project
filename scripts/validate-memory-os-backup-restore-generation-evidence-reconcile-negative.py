@@ -34,6 +34,25 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def guarded_temporary_directory(*, prefix: str, parent: Path):
+    # This negative harness must not create a directory through a symlinked
+    # repository fixture parent, even when its child files are disposable.
+    try:
+        relative = parent.relative_to(ROOT)
+    except ValueError as exc:
+        raise Fail("reconcile negative temp parent escapes repository") from exc
+    require(ROOT.is_dir() and not ROOT.is_symlink(),
+            "reconcile negative repository root missing or symlinked")
+    cursor = ROOT
+    for part in relative.parts:
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "reconcile negative temp ancestor missing or symlinked")
+    require(parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
+            "reconcile negative temp parent canonical resolution drift")
+    return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+
+
 def mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
 
@@ -115,7 +134,7 @@ def prove_atomic_write_failure(reconciler: object) -> None:
     def reject_replace(source: str | Path, destination: str | Path) -> None:
         raise OSError("synthetic atomic replace rejection")
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-atomic-write-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-atomic-write-", parent=TMP_PARENT) as tmpdir:
         target = Path(tmpdir) / "generation-evidence-contract.json"
         source = CANONICAL["CONTRACT"]
         shutil.copyfile(source, target)
@@ -146,7 +165,7 @@ def prove_atomic_write_failure(reconciler: object) -> None:
 
 
 def prove_mode_preserving_write(reconciler: object) -> None:
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-mode-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-mode-", parent=TMP_PARENT) as tmpdir:
         target = Path(tmpdir) / "mode-preservation.json"
         target.write_text("{}\n", encoding="utf-8")
         target.chmod(0o640)
@@ -158,7 +177,7 @@ def prove_mode_preserving_write(reconciler: object) -> None:
 
 
 def prove_rollback_attempts_all_restores(reconciler: object) -> None:
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-rollback-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-rollback-", parent=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         originals = {
             tmp / "registry.json": "registry\n",
@@ -195,6 +214,23 @@ def prove_rollback_attempts_all_restores(reconciler: object) -> None:
 def main() -> int:
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    # Positive and symlink-negative controls run before any other fixture write.
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-parent-negative-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        symlink_parent = sandbox / "redirect"
+        symlink_parent.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(prefix=".tmp-must-not-create-", parent=symlink_parent):
+                raise Fail("reconcile negative symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "reconcile negative temp ancestor missing or symlinked",
+                    f"reconcile negative parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("reconcile negative symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "reconcile negative symlinked parent created a child")
+    print("PASS: reconcile negative temp parent symlink rejected before creation")
     reconciler = load_reconciler()
 
     prove_direct_authority_identity(reconciler)
@@ -210,7 +246,7 @@ def main() -> int:
         # fixtures are enabled solely inside this negative harness so append-only
         # corruption and rollback can be proved without weakening runtime identity.
         reconciler.enforce_runtime_authorities = lambda: None
-        with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-reconcile-", dir=TMP_PARENT) as tmpdir:
+        with guarded_temporary_directory(prefix=".tmp-generation-evidence-reconcile-", parent=TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
             originals: dict[Path, bytes] = {}
             original_modes: dict[Path, int] = {}
