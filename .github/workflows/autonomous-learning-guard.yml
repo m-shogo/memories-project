@@ -37,7 +37,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -54,10 +54,32 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import subprocess
+          import re
 
           authority = "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
+          event_name = "${{ github.event_name }}"
+          before = "${{ github.event.before }}"
+          if event_name == "push":
+              if not re.fullmatch(r"[0-9a-f]{40}", before) or before == "0" * 40:
+                  raise SystemExit(
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid push baseline"
+                  )
+              baseline = before
+          elif event_name == "workflow_dispatch":
+              baseline = "HEAD^"
+          else:
+              raise SystemExit(
+                  "AUTONOMOUS LEARNING APPEND-ONLY FAILED: unreviewed event"
+              )
+          if subprocess.run(
+              ["git", "merge-base", "--is-ancestor", baseline, "HEAD"],
+              check=False,
+          ).returncode:
+              raise SystemExit(
+                  "AUTONOMOUS LEARNING APPEND-ONLY FAILED: baseline is not an ancestor"
+              )
           previous = subprocess.check_output(
-              ["git", "show", f"HEAD^:{authority}"]
+              ["git", "show", f"{baseline}:{authority}"]
           )
           current = Path(authority).read_bytes()
           if not current.startswith(previous):
