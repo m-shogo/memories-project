@@ -572,7 +572,8 @@ def validate_independent_learning_workflow(source: str) -> None:
                       "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR base"
                   )
           elif event_name == "workflow_dispatch":
-              baseline = "HEAD^"
+              # Immutable, previously validated append-only authority baseline.
+              baseline = "77b4b4a7f5d6282524ecb5e6dba4b614622d28e3"
           else:
               raise SystemExit(
                   "AUTONOMOUS LEARNING APPEND-ONLY FAILED: unreviewed event"
@@ -1579,6 +1580,12 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
     cases += (
         ("          baseline = before\n", "          baseline = \"HEAD^\"\n",
          "independent learning workflow append-only drift"),
+        ("          baseline = \"77b4b4a7f5d6282524ecb5e6dba4b614622d28e3\"\n",
+         "          baseline = \"HEAD^\"\n",
+         "independent learning workflow append-only drift"),
+        ("          baseline = \"77b4b4a7f5d6282524ecb5e6dba4b614622d28e3\"\n",
+         "          baseline = \"0000000000000000000000000000000000000000\"\n",
+         "independent learning workflow append-only drift"),
         ("          event_name = \"${{ github.event_name }}\"\n",
          "          event_name = \"workflow_dispatch\"\n",
          "independent learning workflow append-only drift"),
@@ -1873,7 +1880,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 175, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 177, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
