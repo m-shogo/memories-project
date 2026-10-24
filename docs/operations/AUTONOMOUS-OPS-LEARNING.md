@@ -5584,3 +5584,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the synthetic CI execution-negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - No production-equivalent generations, objectives, drill/recovery evidence, credentials, traffic, readiness or promotion were created. Registered and unsuperseded semantically eligible generations remain distinct. Preflight requires distinct eligible environments and a current human-approved objective; new evidence requires a current executable reviewed request; final candidates require all existing gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Real Git review source-order negatives must distinguish same-commit and timestamp violations
+
+### Material success: outcome and observed evidence
+- Code commit `3e2b3515fe4401dade8a1140cf835a5d7ce554e3` expands the existing disposable Git independent-review pair fixture with two additional immutable typed Operability reviews: one timestamped before the source commit, one after the review creation commit.
+- The real canonical candidate validator now proves exact rejection of three independently mutated cases: sourceCommitSha equal to review creation commit, reviewedAt before source commit, and reviewedAt after review creation commit. The original valid review pair remains accepted afterward.
+- Exact-source Backup Restore Generation Independent Review Negative run `40066020828` (job `120789338343`) completed SUCCESS and explicitly logged `PASS: isolated Git positive pair and exact reviewer/ref reuse plus three source-order runtime negatives`.
+
+### Symptom, evidence, verified root cause and failed approach
+- Verified test coverage gap, not an observed production incident: source-order chronology previously had isolated unit/AST negative proof, but the new end-to-end Git review pair fixture exercised only a valid post-source pair and reviewer/reference reuse.
+- Root cause: runtime pair tests did not independently mutate source commit identity and review timestamps while preserving committed, canonical typed review files.
+- Failed approach to avoid: inferring that unit chronology checks alone prove the full candidate admission path rejects stale/same-commit reviews at the intended authority.
+
+### Correction, executable recurrence guard and retry condition
+- Extend the same isolated Git fixture, commit all typed reviews once with deterministic UTC commit times, and mutate only the candidate's source SHA or selected review ref. Require exact canonical source-order diagnostics and a restored positive control.
+- Retry only after exact-source CI regression, reviewed chronology semantics changes or demonstrated bypass. Unchanged clean-worktree, workflow-permission and external-evidence blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Synthetic Git commits, review files and candidate rows remain entirely within a disposable directory; they are not production or recovery evidence. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- No production-equivalent generations, objectives, drill/recovery evidence, credentials, traffic, readiness or promotion were created. Preflight still requires distinct unsuperseded semantically eligible environments and a current human-approved objective; new generation evidence needs a current executable reviewed request; final candidates require all generation/objective gates, typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
