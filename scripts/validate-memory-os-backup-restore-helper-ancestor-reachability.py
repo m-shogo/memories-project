@@ -1602,6 +1602,67 @@ def prove_push_baseline_append_only_negative() -> None:
                 "push-baseline rejected genuine append-only extension")
 
 
+def prove_pr_base_append_only_negative() -> None:
+    """PR merge SHA must be checked against the actual reviewed base SHA."""
+    with tempfile.TemporaryDirectory(prefix="learning-pr-base-negative-") as tmp:
+        root = Path(tmp)
+        authority = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
+        target = root / authority
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        def git(*args: str) -> bytes:
+            return subprocess.check_output(
+                ["git", *args], cwd=root, stderr=subprocess.STDOUT
+            )
+
+        def commit(message: str) -> None:
+            git("add", str(authority))
+            git("-c", "user.name=Synthetic Test",
+                "-c", "user.email=synthetic@example.invalid",
+                "commit", "-qm", message)
+
+        def merge(branch: str) -> None:
+            git("-c", "user.name=Synthetic Test",
+                "-c", "user.email=synthetic@example.invalid",
+                "merge", "--no-ff", "-qm", f"merge {branch}", branch)
+
+        git("init", "-q")
+        base_branch = git("branch", "--show-current").decode("ascii").strip()
+        target.write_bytes(b"original\n")
+        commit("reviewed PR base")
+        base = git("rev-parse", "HEAD").decode("ascii").strip()
+        require(bool(re.fullmatch(r"[0-9a-f]{40}", base)),
+                "PR-base synthetic commit invalid")
+        original = git("show", f"{base}:{authority}")
+
+        git("checkout", "-qb", "feature-bad")
+        target.write_bytes(b"rewritten\n")
+        commit("rewrite on feature")
+        target.write_bytes(b"rewritten\nappended\n")
+        commit("append on feature")
+        git("checkout", "-q", base_branch)
+        merge("feature-bad")
+        require(git("rev-parse", "HEAD^1").decode("ascii").strip() == base,
+                "PR-base negative merge parent drift")
+        git("merge-base", "--is-ancestor", base, "HEAD")
+        require(not target.read_bytes().startswith(original),
+                "PR-base failed to reject rewritten merge result")
+
+        # A clean append from the same reviewed base must remain admissible.
+        git("reset", "--hard", "-q", base)
+        git("checkout", "-qb", "feature-good")
+        target.write_bytes(b"original\nsafe extension\n")
+        commit("append on feature")
+        git("checkout", "-q", base_branch)
+        merge("feature-good")
+        require(git("rev-parse", "HEAD^1").decode("ascii").strip() == base,
+                "PR-base positive merge parent drift")
+        git("merge-base", "--is-ancestor", base, "HEAD")
+        require(target.read_bytes().startswith(original),
+                "PR-base rejected genuine append-only merge result")
+
+
+
 def main() -> int:
     workflow_source = (
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
@@ -1624,9 +1685,11 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
         prove_push_baseline_append_only_negative()
         total += 1
+        prove_pr_base_append_only_negative()
+        total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 151, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 152, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
