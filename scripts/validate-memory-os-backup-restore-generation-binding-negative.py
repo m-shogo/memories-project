@@ -14,6 +14,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
 STATUS_RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-status.py"
+RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
@@ -32,6 +33,36 @@ def load_target(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path = TMP_PARENT):
+    # Reuse the generation-evidence negative harness's canonical parent check.
+    helper = load_target(RECONCILE_NEGATIVE, "memory_os_generation_binding_checked_fixture_parent")
+    guard = getattr(helper, "guarded_temporary_directory", None)
+    require(callable(guard), "generation-binding checked fixture parent helper missing")
+    try:
+        return guard(prefix=prefix, parent=parent)
+    except helper.Fail as exc:
+        raise Fail(str(exc)) from exc
+
+
+def prove_symlink_parent_rejected() -> None:
+    with guarded_temporary_directory(".tmp-generation-binding-parent-") as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(path.name for path in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("generation-binding symlink parent accepted")
+        except Fail as exc:
+            require(str(exc) == "reconcile negative temp ancestor missing or symlinked",
+                    f"generation-binding parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("generation-binding symlink parent accepted")
+        require(sorted(path.name for path in sandbox.iterdir()) == before,
+                "generation-binding symlink parent published a child")
+    print("PASS: generation-binding fixture symlink parent rejected before creation")
 
 
 def load_module():
@@ -151,7 +182,7 @@ def prove_status_reconcile_boundaries() -> None:
     reconciler = load_target(STATUS_RECONCILER, "memory_os_restore_generation_status_negative_target")
     require(TMP_PARENT.is_dir(), "generation-status temporary fixture parent missing")
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-status-negative-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-generation-status-negative-") as tmpdir:
         tmp = Path(tmpdir)
 
         invalid_utf8 = tmp / "invalid-utf8.json"
@@ -209,6 +240,7 @@ def prove_status_reconcile_boundaries() -> None:
 
 
 def main() -> int:
+    prove_symlink_parent_rejected()
     module = load_module()
     state = candidate_state(module)
 
@@ -216,7 +248,7 @@ def main() -> int:
     print("PASS baseline: recovery candidate includes independently re-derived evidence review while human promotion review remains false")
 
     require(TMP_PARENT.is_dir(), "generation-binding temporary fixture parent missing")
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-binding-load-negative-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-generation-binding-load-negative-") as tmpdir:
         tmp = Path(tmpdir)
         invalid_utf8 = tmp / "invalid-utf8.json"
         invalid_utf8.write_bytes(b"{\xff}")
