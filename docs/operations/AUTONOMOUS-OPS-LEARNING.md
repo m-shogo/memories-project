@@ -5504,3 +5504,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the CI-reachable synthetic material-delta negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - No production-equivalent generations, objectives, drill/recovery evidence, credentials, traffic, readiness or promotion were created. Distinct unsuperseded semantic eligibility, current human-approved objective, current executable reviewed request, typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Independent-review runtime substitution diagnostics must identify the actual authority
+
+### Material success: outcome and observed evidence
+- Code commit `b439c7e225ceb31f3ea3638b4cb45c2c43ee2cc1` requires exact rejection diagnostics for five independent-review runtime substitutions: contract, registry, material-delta validator, review source-order validator and independent-review validator. The unchanged canonical execution/runtime authorities must pass both before and after each negative mutation.
+- Exact-source Backup Restore Generation Independent Review Negative run `40065727361` (job `120788455456`) completed SUCCESS and logged the generation candidate review negative suite PASS, the ten candidate pair source mutations PASS, and append-only creation-blob controls PASS.
+
+### Symptom, evidence, verified root cause and failed approach
+- Verified test weakness, not a production incident: the previous five substitution cases accepted any `module.Fail` and therefore could not distinguish the intended runtime path rejection from unrelated earlier failure.
+- Root cause: rejection-class-only assertions did not bind test outcomes to the protected authority actually under mutation.
+- Failed approach to avoid: counting any fail-closed exception as a proof that a specific substituted validator/registry/contract was rejected at its intended guard.
+
+### Correction, executable recurrence guard and retry condition
+- Map each substituted authority to its exact canonical path-drift diagnostic. Require unmodified execution/runtime positive controls before and after mutation, preserve original contract/registry bytes and restore the substituted module attribute in `finally`.
+- Retry only on exact-source CI regression, reviewed canonical authority changes or demonstrated diagnostic bypass. Unchanged clean-worktree, external-evidence and workflow-permission blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic independent-review negative suite changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- No production-equivalent generations, objectives, drill/recovery evidence, credentials, traffic, readiness or promotion were created. Preflight still requires distinct unsuperseded semantically eligible environments and a current human-approved objective. New recovery evidence requires a current executable reviewed request; final candidates require all existing gates, complete typed eight-domain non-resurrection coverage and independent review. Human production promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
