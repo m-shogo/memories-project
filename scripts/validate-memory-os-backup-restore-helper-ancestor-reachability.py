@@ -336,11 +336,11 @@ def validate_independent_learning_workflow(source: str) -> None:
     require(paths - triggered_harnesses == required_authority_paths,
             "independent learning workflow source trigger drift")
     pr_body = event_block.split("  pull_request:\n", 1)[1].split("  workflow_dispatch:\n", 1)[0]
-    require(re.search(r"(?m)^    branches: \\[so\\]\\n    paths:\\n", pr_body)
+    require(re.search(r"(?m)^    branches: \[so\]\n    paths:\n", pr_body)
             is not None, "independent learning workflow PR trigger drift")
     require(re.findall(r"(?m)^    ([a-z][a-z-]*):", pr_body)
             == ["branches", "paths"], "independent learning workflow PR options drift")
-    pr_match = re.search(r'(?m)^    paths:\\n(?P<paths>(?:      - "[^"]+"\\n)+)', pr_body)
+    pr_match = re.search(r'(?m)^    paths:\n(?P<paths>(?:      - "[^"]+"\n)+)', pr_body)
     require(pr_match is not None, "independent learning workflow PR trigger drift")
     pr_paths = set(re.findall(r'^      - "([^"]+)"$', pr_match.group("paths"),
                               flags=re.MULTILINE))
