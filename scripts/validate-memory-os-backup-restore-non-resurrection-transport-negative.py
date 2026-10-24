@@ -195,6 +195,86 @@ def exercise_reconciler_transaction_transport() -> None:
 
 
 
+
+def require_no_typed_pre_dispatch_exit(tree: ast.Module) -> None:
+    """Reject eager termination before the typed admission CLI dispatch."""
+    require_typed_admission_cli_dispatch(tree)
+
+    def terminates_during_import(node: ast.AST) -> bool:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            eager = [*node.decorator_list, *node.args.defaults,
+                     *(value for value in node.args.kw_defaults if value is not None)]
+            return any(terminates_during_import(value) for value in eager)
+        if isinstance(node, ast.Lambda):
+            eager = [*node.args.defaults,
+                     *(value for value in node.args.kw_defaults if value is not None)]
+            return any(terminates_during_import(value) for value in eager)
+        if isinstance(node, ast.ClassDef):
+            eager = [*node.decorator_list, *node.bases,
+                     *(keyword.value for keyword in node.keywords), *node.body]
+            return any(terminates_during_import(value) for value in eager)
+        if isinstance(node, ast.Raise):
+            return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {
+                "exit", "quit", "exec", "eval"
+            }:
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and (node.func.value.id, node.func.attr) in {
+                        ("sys", "exit"), ("os", "_exit")
+                    }):
+                return True
+        return any(terminates_during_import(child) for child in ast.iter_child_nodes(node))
+
+    require(not any(terminates_during_import(node) for node in tree.body[:-1]),
+            "typed admission module can terminate before CLI dispatch")
+
+
+def prove_typed_pre_dispatch_exit() -> None:
+    try:
+        canonical = ast.parse(VALIDATOR.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed admission pre-dispatch source unavailable") from exc
+    require_no_typed_pre_dispatch_exit(canonical)
+    nl = chr(10)
+    mutations = (
+        ("raise", "raise SystemExit(0)"),
+        ("sys-exit", "sys.exit(0)"),
+        ("os-exit", "os._exit(0)"),
+        ("exit", "exit(0)"),
+        ("quit", "quit()"),
+        ("branch", "if True:" + nl + "    raise SystemExit(0)"),
+        ("try", "try:" + nl + "    sys.exit(0)" + nl
+         + "except Exception:" + nl + "    pass"),
+        ("exec", "exec('raise SystemExit(0)')"),
+        ("eval", "eval('exit(0)')"),
+        ("class-exit", "class Early:" + nl + "    sys.exit(0)"),
+        ("class-raise", "class Early:" + nl + "    raise SystemExit(0)"),
+        ("decorator-exit", "@exit(0)" + nl + "def helper():" + nl + "    pass"),
+        ("default-exit", "def helper(value=exit(0)):" + nl + "    pass"),
+        ("class-base-exit", "class Early(exit(0)):" + nl + "    pass"),
+        ("lambda-default-exit", "helper = lambda value=exit(0): value"),
+    )
+    for label, source in mutations:
+        require(chr(92) + "n" not in source,
+                f"typed pre-dispatch {label} fixture double-escaped newline")
+        mutated = copy.deepcopy(canonical)
+        try:
+            mutated.body[-1:-1] = ast.parse(source).body
+        except SyntaxError as exc:
+            raise Fail(f"typed pre-dispatch {label} fixture invalid Python") from exc
+        try:
+            require_no_typed_pre_dispatch_exit(mutated)
+        except Fail as exc:
+            require(str(exc) == "typed admission module can terminate before CLI dispatch",
+                    f"typed pre-dispatch {label} rejection diagnostic drift")
+        else:
+            raise Fail(f"typed pre-dispatch {label} termination unexpectedly accepted")
+    print("PASS reject: fifteen typed admission pre-dispatch eager termination substitutions")
+
+
 def require_typed_admission_cli_dispatch(tree: ast.Module) -> None:
     """Require the executable typed admission to invoke main and exit on Fail."""
     guards = [node for node in tree.body
@@ -560,6 +640,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
 
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
+    prove_typed_pre_dispatch_exit()
     prove_typed_admission_cli_dispatch()
     prove_typed_admission_main_binding()
     prove_validator_runner_binding()
