@@ -39,6 +39,38 @@ def load_module(path: Path, name: str):
     return module
 
 
+def _remove_pinned_entries(directory_fd: int, flags: int) -> None:
+    # Never recursively open a nested directory through a name that may have
+    # changed after stat. Open each child with no-follow and traverse its FD.
+    for entry_name in os.listdir(directory_fd):
+        before = os.stat(entry_name, dir_fd=directory_fd, follow_symlinks=False)
+        if stat.S_ISDIR(before.st_mode):
+            nested_fd = os.open(entry_name, flags, dir_fd=directory_fd)
+            try:
+                opened = os.fstat(nested_fd)
+                require(
+                    (opened.st_dev, opened.st_ino) == (before.st_dev, before.st_ino),
+                    "drill request nested directory identity drift before traversal",
+                )
+                _remove_pinned_entries(nested_fd, flags)
+                after = os.stat(entry_name, dir_fd=directory_fd, follow_symlinks=False)
+                require(
+                    stat.S_ISDIR(after.st_mode)
+                    and (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino),
+                    "drill request nested directory identity drift before removal",
+                )
+                os.rmdir(entry_name, dir_fd=directory_fd)
+            finally:
+                os.close(nested_fd)
+        else:
+            after = os.stat(entry_name, dir_fd=directory_fd, follow_symlinks=False)
+            require(
+                (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino),
+                "drill request nested entry identity drift before unlink",
+            )
+            os.unlink(entry_name, dir_fd=directory_fd)
+
+
 @contextmanager
 def _pinned_temporary_directory(prefix: str, parent: Path):
     # Pin every ancestor by descriptor: the checked pathname may be swapped
@@ -124,12 +156,7 @@ def _pinned_temporary_directory(prefix: str, parent: Path):
                     (pinned_child.st_dev, pinned_child.st_ino) == (created.st_dev, created.st_ino),
                     "drill request temp child identity drift before traversal",
                 )
-                for entry_name in os.listdir(child_fd):
-                    entry = os.stat(entry_name, dir_fd=child_fd, follow_symlinks=False)
-                    if stat.S_ISDIR(entry.st_mode):
-                        shutil.rmtree(entry_name, dir_fd=child_fd)
-                    else:
-                        os.unlink(entry_name, dir_fd=child_fd)
+                _remove_pinned_entries(child_fd, flags)
                 final_child = os.stat(name, dir_fd=fd, follow_symlinks=False)
                 require(
                     stat.S_ISDIR(final_child.st_mode)
@@ -287,6 +314,50 @@ def prove_child_swap_during_cleanup_preserves_unowned_data() -> None:
                 "drill request cleanup race did not traverse the pinned owned child")
     print("PASS: drill request cleanup race preserves unowned replacement data")
 
+def prove_nested_swap_during_cleanup_preserves_unowned_data() -> None:
+    # A nested directory may be replaced after its FD is opened, just like
+    # the fixture root. Recursive traversal must remain pinned to that FD.
+    with guarded_temporary_directory(prefix=".tmp-drill-request-nested-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        replacement = sandbox / "unowned-nested-replacement"
+        replacement.mkdir()
+        (replacement / "important.txt").write_text("preserve nested", encoding="utf-8")
+        original_listdir = os.listdir
+        switched = False
+        try:
+            with guarded_temporary_directory(prefix=".tmp-drill-request-nested-race-", parent=sandbox) as inner:
+                child = Path(inner)
+                nested = child / "nested"
+                nested.mkdir()
+                (nested / "owned.txt").write_text("owned nested", encoding="utf-8")
+                parked = child / "parked-owned-nested"
+                nested_stat = nested.stat()
+                nested_identity = (nested_stat.st_dev, nested_stat.st_ino)
+
+                def swap_before_nested_traversal(target):
+                    nonlocal switched
+                    if (not switched and isinstance(target, int)
+                            and (os.fstat(target).st_dev, os.fstat(target).st_ino) == nested_identity):
+                        switched = True
+                        nested.rename(parked)
+                        replacement.rename(nested)
+                    return original_listdir(target)
+
+                os.listdir = swap_before_nested_traversal
+        except Fail as exc:
+            require(str(exc) == "drill request nested directory identity drift before removal",
+                    f"drill request nested cleanup race rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("drill request nested cleanup race unexpectedly accepted")
+        finally:
+            os.listdir = original_listdir
+        require(switched, "drill request nested cleanup race never reached pinned nested traversal")
+        require((nested / "important.txt").read_text(encoding="utf-8") == "preserve nested",
+                "drill request nested cleanup race deleted unowned nested replacement data")
+        require(parked.is_dir() and not (parked / "owned.txt").exists(),
+                "drill request nested cleanup race did not traverse pinned owned directory")
+    print("PASS: drill request nested cleanup race preserves unowned replacement data")
+
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
     try:
         action()
@@ -368,6 +439,7 @@ def main() -> int:
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
     prove_child_swap_during_cleanup_preserves_unowned_data()
+    prove_nested_swap_during_cleanup_preserves_unowned_data()
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
