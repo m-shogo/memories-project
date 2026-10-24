@@ -140,6 +140,53 @@ def validate(repo_root: Path) -> None:
                 return False
             if isinstance(node, ast.Name):
                 return node.id == name and isinstance(node.ctx, (ast.Store, ast.Del))
+            if (isinstance(node, ast.Subscript)
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and isinstance(node.slice, ast.Constant) and node.slice.value == name
+                    and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Name)
+                    and node.value.func.id in {"globals", "vars", "locals"}
+                    and not node.value.args and not node.value.keywords):
+                return True
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
+                    if not node.args or not isinstance(node.args[0], ast.Constant):
+                        return True
+                    if not isinstance(node.args[0].value, str) or name in node.args[0].value:
+                        return True
+                if (isinstance(node.func, ast.Name)
+                        and node.func.id in {"setattr", "delattr"}
+                        and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
+                        and node.args[1].value == name):
+                    return True
+                if isinstance(node.func, ast.Attribute) and node.func.attr in {
+                    "update", "pop", "popitem", "clear", "setdefault",
+                    "__setitem__", "__delitem__"
+                }:
+                    target = node.func.value
+                    namespace = (isinstance(target, ast.Call)
+                                 and isinstance(target.func, ast.Name)
+                                 and target.func.id in {"globals", "vars", "locals"}
+                                 and not target.args and not target.keywords)
+                    module_dict = isinstance(target, ast.Attribute) and target.attr == "__dict__"
+                    if namespace or module_dict:
+                        method = node.func.attr
+                        if method in {"clear", "popitem"}:
+                            return True
+                        if method == "update":
+                            if any(keyword.arg is None or keyword.arg == name
+                                   for keyword in node.keywords):
+                                return True
+                            for argument in node.args:
+                                if not isinstance(argument, ast.Dict):
+                                    return True
+                                if any(not isinstance(key, ast.Constant) or key.value == name
+                                       for key in argument.keys):
+                                    return True
+                        elif not node.args or not isinstance(node.args[0], ast.Constant):
+                            return True
+                        elif node.args[0].value == name:
+                            return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return any(
                     (alias.asname or (alias.name.split(".")[0] if isinstance(node, ast.Import) else alias.name))
