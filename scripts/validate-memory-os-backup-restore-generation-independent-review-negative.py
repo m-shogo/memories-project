@@ -249,8 +249,116 @@ def expect_contract_fail(module, mutate, label: str) -> None:
         module.load_json = original_load_json
 
 
+def expect_source_order_execution(module) -> None:
+    # The source-order validator's own synthetic chronology self-test is not
+    # invoked by the workflow's ordinary empty-registry validation command.
+    source_order = module.load_review_source_order_validator()
+    require(callable(getattr(source_order, "self_test", None)),
+            "review source-order synthetic chronology self-test missing")
+    source_order.self_test()
+
+    row = base_row()
+    source_sha = row["sourceCommitSha"]
+    fixture_path = ROOT / "README.md"
+    require(fixture_path.is_file() and not fixture_path.is_symlink(),
+            "read-only review source-order fixture missing")
+    original = {
+        name: getattr(source_order, name)
+        for name in (
+            "commit_exists", "commit_time", "canonical_review_ref",
+            "first_commit_for_path", "require_source_precedes_review",
+            "creation_blob", "load_json",
+        )
+    }
+    seen_refs: list[tuple[str, bool]] = []
+    seen_chronology: list[str] = []
+    reject_field: str | None = None
+    from datetime import datetime, timezone
+
+    def fixture_ref(value, field, material_delta=False):
+        source_order.require(isinstance(value, str) and bool(value), f"{field} required")
+        seen_refs.append((field, material_delta))
+        return value, fixture_path
+
+    def fixture_chronology(_source, _review, field):
+        seen_chronology.append(field)
+        if field == reject_field:
+            raise source_order.Fail(f"{field} review predates or is not descended from sourceCommitSha")
+
+    def check(row_to_check, expected_refs, expected_chronology, label):
+        seen_refs.clear()
+        seen_chronology.clear()
+        source_order.validate_row(row_to_check, 0)
+        require(seen_refs == expected_refs, f"{label} review reference reachability drift: {seen_refs}")
+        require(seen_chronology == expected_chronology,
+                f"{label} review chronology reachability drift: {seen_chronology}")
+
+    expected_cross = [
+        ("records[0].securityReviewRef", False),
+        ("records[0].operabilityReviewRef", False),
+        ("records[0].materialDeltaReviewRef", True),
+    ]
+    try:
+        source_order.commit_exists = lambda *_args: None
+        source_order.commit_time = lambda sha, _field: datetime(
+            2026, 9, 12, 9, 0 if sha == source_sha else 10, tzinfo=timezone.utc
+        )
+        source_order.canonical_review_ref = fixture_ref
+        source_order.first_commit_for_path = lambda *_args: "b" * 40
+        source_order.require_source_precedes_review = fixture_chronology
+        source_order.creation_blob = lambda *_args: fixture_path.read_bytes()
+        source_order.load_json = lambda *_args: {"reviewedAt": "2026-09-12T09:05:00Z"}
+
+        check(row, expected_cross, [field for field, _ in expected_cross],
+              "cross-generation independent and material-delta reviews")
+
+        for field, _material_delta in expected_cross:
+            reject_field = field
+            seen_chronology.clear()
+            try:
+                source_order.validate_row(row, 0)
+            except source_order.Fail as exc:
+                require(str(exc) == f"{field} review predates or is not descended from sourceCommitSha",
+                        f"{field} chronology rejected at wrong boundary: {exc}")
+                require(field in seen_chronology,
+                        f"{field} chronology rejection occurred before guard execution")
+            else:
+                raise Fail(f"{field} chronology guard bypassed by candidate review")
+        reject_field = None
+
+        same_generation = dict(row)
+        same_generation["restoreTargetGenerationId"] = same_generation["sourceEnvironmentGenerationId"]
+        same_generation.pop("materialDeltaReviewRef")
+        check(same_generation, expected_cross[:2],
+              [field for field, _ in expected_cross[:2]], "same-generation independent reviews")
+
+        forbidden_delta = dict(same_generation)
+        forbidden_delta["materialDeltaReviewRef"] = row["materialDeltaReviewRef"]
+        try:
+            source_order.validate_row(forbidden_delta, 0)
+        except source_order.Fail as exc:
+            require(str(exc) == "records[0].materialDeltaReviewRef must remain null for same-generation restore",
+                    f"same-generation material-delta rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("same-generation restore accepted a material-delta review")
+
+        missing_delta = dict(row)
+        missing_delta.pop("materialDeltaReviewRef")
+        try:
+            source_order.validate_row(missing_delta, 0)
+        except source_order.Fail as exc:
+            require(str(exc) == "records[0].materialDeltaReviewRef required",
+                    f"cross-generation missing material-delta rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("cross-generation restore accepted missing material-delta review")
+    finally:
+        for name, original_value in original.items():
+            setattr(source_order, name, original_value)
+
+
 def main() -> int:
     module = load_validator()
+    expect_source_order_execution(module)
 
     for field, substitute in (
         ("CONTRACT", module.REGISTRY),
