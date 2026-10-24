@@ -133,13 +133,25 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
             "ancestor target matrix below seven canonical harnesses")
-    triggered = set(re.findall(
-        r'^\s+- "scripts/(validate-memory-os-backup-restore-[^"]+-negative\.py)"\s*$',
-        workflow_source,
-        flags=re.MULTILINE,
-    ))
-    require(set(targets) == triggered,
-            "ancestor target matrix workflow trigger drift")
+    require(
+        re.search(r"(?m)^on:\n  push:\n    branches: \[so\]\n", workflow_source)
+        is not None,
+        "ancestor workflow so push trigger drift",
+    )
+    for event in ("push", "pull_request"):
+        section = re.search(
+            r"(?m)^  " + event + r":\n(?P<body>(?:    [^\n]*\n)+)",
+            workflow_source,
+        )
+        require(section is not None,
+                "ancestor target matrix workflow trigger drift")
+        triggered = set(re.findall(
+            r'^      - "scripts/(validate-memory-os-backup-restore-[^"]+-negative\.py)"\s*$',
+            section.group("body"),
+            flags=re.MULTILINE,
+        ))
+        require(set(targets) == triggered,
+                "ancestor target matrix workflow trigger drift")
 
 
 def validate_workflow_runtime_reachability(workflow_source: str) -> None:
@@ -687,6 +699,18 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
     untriggered = workflow_source.replace(
         f'"scripts/{first}"', '"scripts/synthetic-untracked-negative.py"'
     )
+    anchor = f'      - "scripts/{first}"'
+    require(workflow_source.count(anchor) == 2,
+            "ancestor trigger fixture must cover push and pull_request")
+    position = workflow_source.rfind(anchor)
+    untriggered_pr = (
+        workflow_source[:position]
+        + '      - "scripts/synthetic-untracked-negative.py"'
+        + workflow_source[position + len(anchor):]
+    )
+    wrong_branch = workflow_source.replace(
+        "    branches: [so]\n", "    branches: [main]\n", 1
+    )
     cases = (
         (dropped, workflow_source,
          "ancestor target matrix below seven canonical harnesses"),
@@ -694,6 +718,10 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
          "ancestor target matrix workflow trigger drift"),
         (TARGETS, untriggered,
          "ancestor target matrix workflow trigger drift"),
+        (TARGETS, untriggered_pr,
+         "ancestor target matrix workflow trigger drift"),
+        (TARGETS, wrong_branch,
+         "ancestor workflow so push trigger drift"),
     )
     for targets, workflow, expected in cases:
         try:
@@ -778,7 +806,7 @@ def main() -> int:
         total += workflow_runtime_negative_cases(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 14, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 16, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
