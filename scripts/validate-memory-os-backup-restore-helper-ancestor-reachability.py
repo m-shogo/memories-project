@@ -210,6 +210,29 @@ def validate_event_key_inventory(
     )
 
 
+
+def validate_trigger_path_inventory(
+    source: str, expected_paths: tuple[str, ...], diagnostic: str
+) -> None:
+    """Reject unquoted, negative or duplicate YAML path filters."""
+    event_block = source.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    for event, next_event in (
+        ("push", "pull_request"),
+        ("pull_request", "workflow_dispatch"),
+    ):
+        body = event_block.split(f"  {event}:\n", 1)[1].split(
+            f"  {next_event}:\n", 1
+        )[0]
+        require(body.count("    paths:\n") == 1, diagnostic)
+        path_block = body.split("    paths:\n", 1)[1]
+        actual = [
+            line for line in path_block.splitlines()
+            if line.startswith("      - ")
+        ]
+        require(actual == [f'      - "{path}"' for path in expected_paths],
+                diagnostic)
+
+
 def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
@@ -350,6 +373,17 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
         workflow_source,
         (("with",), ("with",), ("run",), ("run",), ("run",), ("run",), ("run",)),
         "ancestor workflow step authority drift",
+    )
+
+
+    expected_paths = (
+        ".github/workflows/backup-restore-helper-ancestor-reachability.yml",
+        ".github/workflows/autonomous-learning-guard.yml",
+        "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py",
+    ) + tuple(f"scripts/{filename}" for filename in TARGETS)
+    validate_trigger_path_inventory(
+        workflow_source, expected_paths,
+        "ancestor workflow trigger path inventory drift",
     )
 
 
@@ -514,6 +548,23 @@ def validate_independent_learning_workflow(source: str) -> None:
         (("with",), ("with",), ("shell", "run"), ("shell", "run"),
          ("shell", "env", "run"), ("shell", "env", "run"), ("shell", "run")),
         "independent learning workflow step authority drift",
+    )
+
+
+    expected_paths = (
+        ".github/workflows/autonomous-learning-guard.yml",
+        ".github/workflows/backup-restore-helper-ancestor-reachability.yml",
+        "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py",
+    ) + tuple(f"scripts/{filename}" for filename in TARGETS) + (
+        "contracts/operations/autonomous-learning-system.json",
+        "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
+        "scripts/validate-autonomous-learning-system.py",
+        "scripts/validate-autonomous-learning-system-negative.py",
+        "scripts/validate-memory-os-entry-docs.py",
+    )
+    validate_trigger_path_inventory(
+        source, expected_paths,
+        "independent learning workflow trigger path inventory drift",
     )
 
 
@@ -1277,6 +1328,14 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
              "  workflow_dispatch:\n",
              '  "pull_request":\n  workflow_dispatch:\n', 1),
          "ancestor workflow event key inventory drift"),
+        (workflow_source.replace(
+             "  pull_request:\n",
+             "      - '!**'\n  pull_request:\n", 1),
+         "ancestor workflow trigger path inventory drift"),
+        (workflow_source.replace(
+             "  workflow_dispatch:\n",
+             "      - '!**'\n  workflow_dispatch:\n", 1),
+         "ancestor workflow trigger path inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1458,6 +1517,14 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
              "  workflow_dispatch:\n",
              '  "pull_request":\n  workflow_dispatch:\n', 1),
          "independent learning workflow event key inventory drift"),
+        (source.replace(
+             "  pull_request:\n",
+             "      - '!**'\n  pull_request:\n", 1),
+         "independent learning workflow trigger path inventory drift"),
+        (source.replace(
+             "  workflow_dispatch:\n",
+             "      - '!**'\n  workflow_dispatch:\n", 1),
+         "independent learning workflow trigger path inventory drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1559,7 +1626,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 147, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 151, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
