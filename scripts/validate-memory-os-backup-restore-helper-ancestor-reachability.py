@@ -155,7 +155,7 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
         require(section.group("body").count(
             '      - ".github/workflows/autonomous-learning-guard.yml"\n'
         ) == 1, "ancestor independent learning workflow trigger drift")
-        all_paths = set(re.findall(r'^      - "([^"]+)"
+        all_paths = set(re.findall(r'      - "([^"]+)"', section.group("body")))
         required_authority_paths = {
             ".github/workflows/backup-restore-helper-ancestor-reachability.yml",
             ".github/workflows/autonomous-learning-guard.yml",
