@@ -59,12 +59,6 @@ def expect_rejected(writer: Any, name: str, action: Callable[[], Any]) -> None:
 
 
 def main() -> int:
-    writer = load_writer()
-    original_validate = writer.validate_request
-    original_executable = writer.request_currently_executable
-    writer.validate_request = lambda record, require_current=False: None
-    writer.request_currently_executable = lambda record: False
-
     require(FIXTURE_ROOT.is_dir(), "drill approval digest fixture parent missing")
     with guarded_temporary_directory(".tmp-drill-digest-parent-negative-", FIXTURE_ROOT) as raw:
         sandbox = Path(raw)
@@ -82,6 +76,12 @@ def main() -> int:
         require(sorted(p.name for p in sandbox.iterdir()) == before,
                 "drill digest symlinked temp parent published a child")
     print("PASS: drill approval digest fixture reuses checked parent guard")
+    writer = load_writer()
+    original_validate = writer.validate_request
+    original_executable = writer.request_currently_executable
+    writer.validate_request = lambda record, require_current=False: None
+    writer.request_currently_executable = lambda record: False
+
     try:
         with guarded_temporary_directory("drill-approval-digest-", FIXTURE_ROOT) as temp_dir:
             temp = Path(temp_dir)
