@@ -170,6 +170,21 @@ def validate_root_key_inventory(
     require(tuple(actual) == expected, diagnostic)
 
 
+def validate_job_key_inventory(
+    source: str, expected: tuple[str, ...], diagnostic: str
+) -> None:
+    """Reject quoted or duplicate job properties that change effective CI."""
+    sections = source.split("\njobs:\n", 1)
+    require(len(sections) == 2, diagnostic)
+    lines = re.findall(r"(?m)^    ([^ \t#\n][^\n]*)$", sections[1])
+    actual = []
+    for line in lines:
+        match = re.fullmatch(r"([a-z][a-z-]*):(?:[ \t].*)?", line)
+        require(match is not None, diagnostic)
+        actual.append(match.group(1))
+    require(tuple(actual) == expected, diagnostic)
+
+
 def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
@@ -281,6 +296,10 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     require(all(len(re.findall(r"(?m)^    " + key + ":", workflow_source)) == 1
                 for key in ("runs-on", "timeout-minutes", "steps")),
             "ancestor workflow duplicate job authority")
+    validate_job_key_inventory(
+        workflow_source, ("runs-on", "timeout-minutes", "steps"),
+        "ancestor workflow job key inventory drift",
+    )
     expected_actions = "      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n"
     require(workflow_source.count(expected_actions) == 1,
             "ancestor workflow checkout/setup drift")
@@ -439,6 +458,10 @@ def validate_independent_learning_workflow(source: str) -> None:
     require(all(len(re.findall(r"(?m)^    " + key + ":", source)) == 1
                 for key in ("runs-on", "timeout-minutes", "steps")),
             "independent learning workflow duplicate job authority")
+    validate_job_key_inventory(
+        source, ("runs-on", "timeout-minutes", "steps"),
+        "independent learning workflow job key inventory drift",
+    )
     require(re.findall(r"(?m)^      - (?:uses|name):[^\n]*", source) == [
         "      - uses: actions/checkout@v4",
         "      - uses: actions/setup-python@v5",
@@ -1217,6 +1240,12 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         (workflow_source + "\n    runs-on: self-hosted\n", "ancestor workflow duplicate job authority"),
         (workflow_source + "\n    timeout-minutes: 120\n", "ancestor workflow duplicate job authority"),
         (workflow_source + "\n    steps: []\n", "ancestor workflow duplicate job authority"),
+        (workflow_source + '\n    "permissions":\n      contents: write\n',
+         "ancestor workflow job key inventory drift"),
+        (workflow_source + "\n    'if': false\n",
+         "ancestor workflow job key inventory drift"),
+        (workflow_source + '\n    "steps": []\n',
+         "ancestor workflow job key inventory drift"),
     )
     for mutated, expected in duplicate_job_cases:
         try:
@@ -1380,6 +1409,12 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         (source + "\n    runs-on: self-hosted\n", "independent learning workflow duplicate job authority"),
         (source + "\n    timeout-minutes: 120\n", "independent learning workflow duplicate job authority"),
         (source + "\n    steps: []\n", "independent learning workflow duplicate job authority"),
+        (source + '\n    "permissions":\n      contents: write\n',
+         "independent learning workflow job key inventory drift"),
+        (source + "\n    'if': false\n",
+         "independent learning workflow job key inventory drift"),
+        (source + '\n    "steps": []\n',
+         "independent learning workflow job key inventory drift"),
     )
     for mutated, expected in duplicate_job_cases:
         try:
@@ -1462,7 +1497,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 135, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 141, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
