@@ -6065,3 +6065,19 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only an existing synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate non-automatic human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Exact-source negative CI proves typed and drill fixture guards
+
+### Material successes: observed outcome and evidence
+- Typed external transport guard: exact-source Unreadable Authority Negatives run `40075666223` completed SUCCESS for code `190197b05aa1a29771a4e4b2ca7e8148c938f98f`, logging `PASS reject: sixteen external typed transport guard reachability substitutions`. Its Readonly `40075666206` and Reconcile Negative `40075666181` also completed SUCCESS.
+- Drill request load fixture: exact-source Unreadable Authority Negatives run `40075759222` completed SUCCESS for code `5479204a9c2c333fdeeb101411c8d197df23ec6d`, logging `PASS: drill request fixture temp symlink parent rejected before creation`.
+- Preflight load fixture: exact-source Unreadable Authority Negatives run `40075807007` completed SUCCESS for code `ec1946f363b954a5c34bd0fbffb42b16a65526a3`, logging `PASS: preflight load fixtures reuse checked drill parent guard`.
+- Preflight reconcile fixture: exact-source Preflight Reconcile Negative run `40075937965` logged `PASS: preflight reconcile fixture reuses checked drill parent guard` for code `7b3025463a79134cd598beace2f2cb0c60c4f256`, then failed on the already known `source-binding negative requires clean canonical source worktree` blocker. This proves only the isolated fixture rejection executed, not overall preflight admission success.
+
+### Failure reuse, correction, recurrence guard and retry condition
+- The latter failure is the existing clean-worktree Source Binding blocker; the earlier Preflight run `40075807000` observed the same cause. Root cause for the scoped CI blocker remains the previously recorded canonical worktree precondition, not a new production incident. Repeating the unchanged blocker or treating the isolated PASS as admission success is prohibited.
+- Reusable mechanism: require a real symlink-parent negative, exact rejection and no unexpected publication; bind the proof into the canonical harness; place independent safety probes before known blocked downstream validators. Retry overall preflight only if the recorded clean-worktree precondition changes, while independent safe code work continues.
+
+### Why safe and protected-authority check
+- All new tests are synthetic and disposable, and the above CI does not register production-equivalent evidence or establish readiness. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, distinct unsuperseded environments, explicitly human-approved current objective, executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
