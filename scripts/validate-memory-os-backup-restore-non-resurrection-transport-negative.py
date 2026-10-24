@@ -322,6 +322,157 @@ def prove_typed_admission_main_reachability() -> None:
     print("PASS reject: fourteen typed admission main guard/registry reachability substitutions")
 
 
+
+def require_typed_admission_child_reachability(tree: ast.Module) -> None:
+    """Bind all five child validators after the typed registry/candidate gates."""
+    require_typed_admission_main_reachability(tree)
+    main = next(node for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    body = main.body
+    expected = (
+        ("LOCAL_APPLE_VALIDATOR", "local Apple replay restore validator"),
+        ("LOCAL_COHERENT_VALIDATOR", "local coherent recovery-set validator"),
+        ("NEGATIVE", "non-resurrection negative admission suite"),
+        ("WRITER_AUTHORITY_NEGATIVE", "non-resurrection writer CLI authority negative suite"),
+        ("PATH_NEGATIVE", "non-resurrection contract path negative suite"),
+    )
+    observed = []
+    for index, stmt in enumerate(body):
+        if (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Name)
+                and stmt.value.func.id == "run_validator"):
+            call = stmt.value
+            require(len(call.args) == 2 and not call.keywords
+                    and isinstance(call.args[0], ast.Name)
+                    and isinstance(call.args[1], ast.Constant)
+                    and isinstance(call.args[1].value, str),
+                    "typed admission child invocation binding drift")
+            observed.append((index, call.args[0].id, call.args[1].value))
+    require(tuple((path, label) for _, path, label in observed) == expected,
+            "typed admission must invoke five canonical child validators in order")
+
+    registry_check_index = next((index for index, stmt in enumerate(body)
+        if isinstance(stmt, ast.Try) and any(
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "validate_registry_for_append"
+            for node in ast.walk(stmt))), -1)
+    boundary_index = next((index for index, stmt in enumerate(body)
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1
+        and isinstance(stmt.targets[0], ast.Name)
+        and stmt.targets[0].id == "boundary"), -1)
+    indices = [item[0] for item in observed]
+    require(0 <= indices[0] < indices[1] < registry_check_index
+            < boundary_index < indices[2] < indices[3] < indices[4],
+            "typed admission child validation must follow canonical gate order")
+    require(indices[1] == indices[0] + 1
+            and indices[3] == indices[2] + 1
+            and indices[4] == indices[3] + 1,
+            "typed admission child validator calls must remain consecutive")
+    require(isinstance(body[-1], ast.Return)
+            and isinstance(body[-1].value, ast.Constant)
+            and type(body[-1].value.value) is int and body[-1].value.value == 0,
+            "typed admission main must terminate after child validators")
+    for stmt in body[:-1]:
+        for node in ast.walk(stmt):
+            if isinstance(node, ast.Return):
+                raise Fail("typed admission main cannot return before child validators")
+            if isinstance(node, ast.Call):
+                func = node.func
+                if (isinstance(func, ast.Name)
+                        and func.id in ("exit", "quit", "exec", "eval", "SystemExit")):
+                    raise Fail("typed admission main cannot terminate before child validators")
+                if (isinstance(func, ast.Attribute)
+                        and isinstance(func.value, ast.Name)
+                        and (func.value.id, func.attr) in (("sys", "exit"), ("os", "_exit"))):
+                    raise Fail("typed admission main cannot terminate before child validators")
+
+
+def prove_typed_admission_child_reachability() -> None:
+    try:
+        canonical = ast.parse(VALIDATOR.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed admission child reachability source unavailable") from exc
+    require_typed_admission_child_reachability(canonical)
+    cases = (
+        ("missing-apple", "typed admission must invoke five canonical child validators in order"),
+        ("missing-coherent", "typed admission must invoke five canonical child validators in order"),
+        ("missing-negative", "typed admission must invoke five canonical child validators in order"),
+        ("missing-writer", "typed admission must invoke five canonical child validators in order"),
+        ("missing-path", "typed admission must invoke five canonical child validators in order"),
+        ("swap-local", "typed admission must invoke five canonical child validators in order"),
+        ("swap-negative", "typed admission must invoke five canonical child validators in order"),
+        ("dead-negative", "typed admission must invoke five canonical child validators in order"),
+        ("wrong-label", "typed admission must invoke five canonical child validators in order"),
+        ("wrong-path", "typed admission must invoke five canonical child validators in order"),
+        ("extra-child", "typed admission must invoke five canonical child validators in order"),
+        ("early-negative", "typed admission child validation must follow canonical gate order"),
+        ("nonconsecutive-local", "typed admission child validator calls must remain consecutive"),
+        ("early-return", "typed admission main cannot return before child validators"),
+        ("nested-return", "typed admission main cannot return before child validators"),
+        ("early-sys-exit", "typed admission main cannot terminate before child validators"),
+        ("early-os-exit", "typed admission main cannot terminate before child validators"),
+        ("early-exec", "typed admission main cannot terminate before child validators"),
+        ("early-system-exit", "typed admission main cannot terminate before child validators"),
+        ("wrong-final-return", "typed admission main must terminate after child validators"),
+    )
+    for label, expected in cases:
+        mutated = copy.deepcopy(canonical)
+        main = next(node for node in mutated.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        body = main.body
+        call_indices = [index for index, stmt in enumerate(body)
+                        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                        and isinstance(stmt.value.func, ast.Name)
+                        and stmt.value.func.id == "run_validator"]
+        if label.startswith("missing-"):
+            target = {"missing-apple": 0, "missing-coherent": 1,
+                      "missing-negative": 2, "missing-writer": 3, "missing-path": 4}[label]
+            body[call_indices[target]] = ast.Pass()
+        elif label == "swap-local":
+            i, j = call_indices[:2]; body[i], body[j] = body[j], body[i]
+        elif label == "swap-negative":
+            i, j = call_indices[2:4]; body[i], body[j] = body[j], body[i]
+        elif label == "dead-negative":
+            i = call_indices[2]
+            body[i] = ast.If(test=ast.Constant(value=False), body=[body[i]], orelse=[])
+        elif label == "wrong-label":
+            body[call_indices[0]].value.args[1] = ast.Constant(value="not canonical")
+        elif label == "wrong-path":
+            body[call_indices[4]].value.args[0] = ast.Name(id="NEGATIVE", ctx=ast.Load())
+        elif label == "extra-child":
+            body.insert(call_indices[4] + 1, copy.deepcopy(body[call_indices[4]]))
+        elif label == "early-negative":
+            block = [body[i] for i in call_indices[2:]]
+            for i in reversed(call_indices[2:]):
+                body.pop(i)
+            body[call_indices[1] + 1:call_indices[1] + 1] = block
+        elif label == "nonconsecutive-local":
+            body.insert(call_indices[1], ast.Pass())
+        elif label == "early-return":
+            body.insert(call_indices[2], ast.Return(value=ast.Constant(value=0)))
+        elif label == "nested-return":
+            body.insert(call_indices[2], ast.If(test=ast.Constant(value=True),
+                        body=[ast.Return(value=ast.Constant(value=0))], orelse=[]))
+        elif label in ("early-sys-exit", "early-os-exit", "early-exec", "early-system-exit"):
+            source = {
+                "early-sys-exit": "sys.exit(0)",
+                "early-os-exit": "os._exit(0)",
+                "early-exec": "exec('exit(0)')",
+                "early-system-exit": "raise SystemExit(0)",
+            }[label]
+            body.insert(call_indices[2], ast.parse(source).body[0])
+        elif label == "wrong-final-return":
+            body[-1].value = ast.Constant(value=1)
+        try:
+            require_typed_admission_child_reachability(mutated)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"typed admission child {label} diagnostic drift: {exc}")
+        else:
+            raise Fail(f"typed admission child {label} bypass unexpectedly accepted")
+    print("PASS reject: twenty typed admission child validation reachability substitutions")
+
+
 def require_no_typed_pre_dispatch_exit(tree: ast.Module) -> None:
     """Reject eager termination before the typed admission CLI dispatch."""
     require_typed_admission_cli_dispatch(tree)
@@ -767,6 +918,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
     prove_typed_admission_main_reachability()
+    prove_typed_admission_child_reachability()
     prove_typed_pre_dispatch_exit()
     prove_typed_admission_cli_dispatch()
     prove_typed_admission_main_binding()
