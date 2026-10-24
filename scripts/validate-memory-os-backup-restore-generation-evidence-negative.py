@@ -468,18 +468,17 @@ def main() -> int:
 
         dangling = tmp_path / "occupied-generation-review-dangling"
         dangling.symlink_to(tmp_path / "missing-generation-review-target")
+        # The enclosing exclusively owned TemporaryDirectory removes this link.
+        # Never unlink a mutable fixture leaf independently.
         try:
-            try:
-                require_fixture_path_vacant(dangling)
-            except Fail as exc:
-                require(str(exc) == f"negative fixture path already occupied: {dangling}",
-                        "dangling generation review fixture rejection diagnostic drift")
-                require(dangling.is_symlink(),
-                        "dangling generation review fixture was modified")
-            else:
-                raise Fail("dangling generation review fixture unexpectedly accepted")
-        finally:
-            dangling.unlink()
+            require_fixture_path_vacant(dangling)
+        except Fail as exc:
+            require(str(exc) == f"negative fixture path already occupied: {dangling}",
+                    "dangling generation review fixture rejection diagnostic drift")
+            require(dangling.is_symlink(),
+                    "dangling generation review fixture was modified")
+        else:
+            raise Fail("dangling generation review fixture unexpectedly accepted")
 
         isolated_root = tmp_path / "isolated-generation-review-fixture"
         isolated_parent = isolated_root / "evidence"
@@ -502,18 +501,16 @@ def main() -> int:
         external_parent.mkdir()
         alias_parent = isolated_root / "alias"
         alias_parent.symlink_to(external_parent, target_is_directory=True)
+        # Keep the alias within the owned temporary tree until context cleanup.
         try:
-            try:
-                require_fixture_parent_canonical(alias_parent, isolated_root)
-            except Fail as exc:
-                require(str(exc) == "negative fixture parent missing or symlinked",
-                        "generation review symlinked parent rejection diagnostic drift")
-                require(alias_parent.is_symlink() and alias_parent.resolve() == external_parent.resolve(),
-                        "generation review symlinked parent was modified")
-            else:
-                raise Fail("symlinked generation review fixture parent unexpectedly accepted")
-        finally:
-            alias_parent.unlink()
+            require_fixture_parent_canonical(alias_parent, isolated_root)
+        except Fail as exc:
+            require(str(exc) == "negative fixture parent missing or symlinked",
+                    "generation review symlinked parent rejection diagnostic drift")
+            require(alias_parent.is_symlink() and alias_parent.resolve() == external_parent.resolve(),
+                    "generation review symlinked parent was modified")
+        else:
+            raise Fail("symlinked generation review fixture parent unexpectedly accepted")
 
         outside_review = tmp_path / "outside-review.txt"
         outside_review.write_text("external review\n", encoding="utf-8")
