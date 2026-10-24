@@ -4888,3 +4888,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the existing synthetic negative validator and append-only learning were modified. Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, objectives, executable requests, evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Distinct unsuperseded semantically eligible environments, human-approved current recovery objective, current executable reviewed request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed admission cannot terminate before guarded CLI dispatch
+
+### Material success: outcome and observed evidence
+- Commit `6a37224012b4ad5584567ea76d7852ce9a847bc9` extends the existing typed transport-negative suite with a canonical AST positive control and fifteen negative probes for module-level `raise`, process exit, conditional/try exits, dynamic execution, eager class bodies, decorators, function defaults, class bases and lambda defaults before the typed admission CLI dispatch.
+- Exact-source Backup Restore Non-Resurrection Readonly run `40055248661` (job `120756702256`) completed SUCCESS. Logs explicitly show `PASS reject: fifteen typed admission pre-dispatch eager termination substitutions`, `Typed non-resurrection execution/registry/reconcile transport negative suite PASS` and `production decision: NO_GO`.
+- The fixture batch uses `chr(10)` for actual newlines, explicitly rejects literal backslash-n and wraps fixture parsing errors so malformed tests cannot be counted as expected guard rejections.
+
+### Symptom/risk, verified gap and failed approach to avoid
+- Risk: the typed admission module may define a correct `main` and dispatch guard but terminate successfully during module initialization before reaching it. No production incident or observed successful bypass occurred.
+- Verified gap: the previous typed admission main-binding and CLI-dispatch checks did not inspect eager statements and definition expressions preceding the final CLI guard.
+- Failed approach to avoid: assuming a terminal canonical `__main__` block is reachable merely because it is present in the source; repeating known double-escaped multiline fixture generation.
+
+### Correction, executable recurrence guard and retry condition
+- Reject explicit import-time termination through nested AST traversal while excluding deferred function bodies and including eager defaults/decorators/class bodies. Require exact diagnostics for fifteen isolated mutations.
+- Retry only on exact-source CI regression, reviewed legitimate module initialization changes or a demonstrated new early-exit bypass. Do not retry unchanged clean-worktree, workflow-write or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only a synthetic negative suite and append-only learning changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, recovery evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Distinct unsuperseded semantically eligible environments, a human-approved current objective, current executable reviewed request for new generation evidence, typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
