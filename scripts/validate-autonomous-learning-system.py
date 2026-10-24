@@ -289,10 +289,32 @@ def validate(repo_root: Path) -> None:
     # A direct AST call after an unconditional top-level terminator is not
     # reachable, even though it remains a statement in main().body.
     call_index = main_definitions[0].body.index(live_calls[0])
-    if any(
-        isinstance(node, (ast.Return, ast.Raise))
-        for node in main_definitions[0].body[:call_index]
-    ):
+    def can_terminate_before_guard(node: ast.AST) -> bool:
+        # Nested function bodies are deferred, but their eager decorators
+        # and default argument expressions execute before the guard call.
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            eager = [*node.args.defaults,
+                     *(value for value in node.args.kw_defaults if value is not None)]
+            if not isinstance(node, ast.Lambda):
+                eager.extend(node.decorator_list)
+            return any(can_terminate_before_guard(value) for value in eager)
+        if isinstance(node, (ast.Return, ast.Raise)):
+            return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {
+                "exit", "quit", "exec", "eval"
+            }:
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and (node.func.value.id, node.func.attr) in {
+                        ("sys", "exit"), ("os", "_exit")
+                    }):
+                return True
+        return any(can_terminate_before_guard(child) for child in ast.iter_child_nodes(node))
+
+    if any(can_terminate_before_guard(node)
+           for node in main_definitions[0].body[:call_index]):
         raise ValidationFailure("learning CI entrypoint guard call follows unconditional return or raise")
     expected_entry_guard = ast.dump(
         ast.parse('if __name__ == "__main__":\n    raise SystemExit(main())').body[0],
