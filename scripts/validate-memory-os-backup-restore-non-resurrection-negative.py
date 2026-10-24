@@ -266,6 +266,7 @@ def main() -> int:
             "domainTarget": None,
             "domainResult": "PASS",
             "domainProductionField": None,
+            "domainFieldMutation": None,
             "securityReviewer": "reviewer_security",
             "operabilityReviewer": "reviewer_operability",
             "reviewGeneration": "brge_negative_generation",
@@ -278,6 +279,7 @@ def main() -> int:
             "reviewDigestCoverageMutation": None,
             "reviewResult": "APPROVED",
             "reviewProductionField": None,
+            "reviewFieldMutation": None,
             "reviewTypeOverride": None,
             "reviewTarget": "BOTH",
         }
@@ -311,6 +313,10 @@ def main() -> int:
                 )
                 if mutate_domain and state["domainProductionField"] is not None:
                     payload[state["domainProductionField"]] = True
+                if mutate_domain and state["domainFieldMutation"] == "MISSING":
+                    payload.pop("schemaVersion")
+                if mutate_domain and state["domainFieldMutation"] == "EXTRA":
+                    payload["unexpectedField"] = False
                 return payload
             for review_type, prefix in review_prefixes.items():
                 if ref.startswith(prefix):
@@ -335,6 +341,10 @@ def main() -> int:
                     )
                     if mutate_review and state["reviewProductionField"] is not None:
                         payload[state["reviewProductionField"]] = True
+                    if mutate_review and state["reviewFieldMutation"] == "MISSING":
+                        payload.pop("schemaVersion")
+                    if mutate_review and state["reviewFieldMutation"] == "EXTRA":
+                        payload["unexpectedField"] = False
                     return payload
             return real_load(path)
 
@@ -597,6 +607,35 @@ def main() -> int:
             state["reviewTarget"] = "BOTH"
         writer.validate_record(valid)
         print("PASS reject: both reviewer pseudonym formats and SECURITY review type are fail-closed")
+
+        # A PASS domain/review cannot smuggle unknown schema keys or omit required keys.
+        # Exercise the exact payload field-set gate for every domain and both review roles.
+        for domain in contract["requiredDomains"]:
+            state["domainTarget"] = domain
+            for mutation, differing_key in (("MISSING", "schemaVersion"), ("EXTRA", "unexpectedField")):
+                case = f"domain {domain} payload field-set {mutation.lower()}"
+                EXPECTED_DIAGNOSTICS[case] = f"domain {domain} evidence field set drift: ['{differing_key}']"
+                state["domainFieldMutation"] = mutation
+                try:
+                    expect_rejected(case, lambda: writer.validate_record(valid))
+                finally:
+                    state["domainFieldMutation"] = None
+        state["domainTarget"] = None
+        writer.validate_record(valid)
+        for review_type in ("SECURITY", "OPERABILITY"):
+            state["reviewTarget"] = review_type
+            for mutation, differing_key in (("MISSING", "schemaVersion"), ("EXTRA", "unexpectedField")):
+                case = f"{review_type} review payload field-set {mutation.lower()}"
+                EXPECTED_DIAGNOSTICS[case] = f"{review_type} review field set drift: ['{differing_key}']"
+                state["reviewFieldMutation"] = mutation
+                try:
+                    expect_rejected(case, lambda: writer.validate_record(valid))
+                finally:
+                    state["reviewFieldMutation"] = None
+            writer.validate_record(valid)
+        state["reviewTarget"] = "BOTH"
+        writer.validate_record(valid)
+        print("PASS reject: all eight typed domains and both reviews enforce exact payload field sets")
 
         empty_registry = {
             "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
