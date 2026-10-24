@@ -22,6 +22,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admissio
 CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TEMP_PARENT = ROOT / "contracts/operations"
+PATH_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
 
 
 class Fail(RuntimeError):
@@ -39,6 +40,17 @@ def load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    require(PATH_NEGATIVE.is_file(), "typed contract path fixture guard missing")
+    module = load_module(PATH_NEGATIVE, "memory_os_typed_path_fixture_guard_aggregate")
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "typed contract path fixture guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -67,6 +79,22 @@ def main() -> int:
     require(WRITER.is_file(), "typed non-resurrection admission writer missing")
     require(CONTRACT.is_file(), "typed non-resurrection admission contract missing")
     require(TEMP_PARENT.is_dir(), "repo-local aggregate negative temp parent missing")
+    with guarded_temporary_directory(".tmp-typed-aggregate-parent-negative-", TEMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("typed aggregate symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "typed contract path temp ancestor missing or symlinked",
+                    f"typed aggregate symlinked parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("typed aggregate symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "typed aggregate symlinked parent published a child")
+    print("PASS: typed aggregate fixture reuses checked parent guard")
     canonical = load_json(CANONICAL_REGISTRY)
     require(canonical.get("productionEvidence") is False, "canonical registry productionEvidence drift")
     require(canonical.get("productionReady") is False, "canonical registry productionReady drift")
@@ -75,7 +103,7 @@ def main() -> int:
     writer = load_module(WRITER, "memory_os_non_resurrection_writer_aggregate_negative")
     contract = load_json(CONTRACT)
 
-    with tempfile.TemporaryDirectory(prefix=".memory-os-nonres-aggregate-negative-", dir=TEMP_PARENT) as tmp:
+    with guarded_temporary_directory(".memory-os-nonres-aggregate-negative-", TEMP_PARENT) as tmp:
         tmp_path = Path(tmp)
         typed_registry = tmp_path / "typed-registry.json"
         generation_registry = tmp_path / "generation-registry.json"
