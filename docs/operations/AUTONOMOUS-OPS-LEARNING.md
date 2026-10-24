@@ -6256,3 +6256,22 @@ a promotion decision, a recovery objective, or drill evidence.
 - Why safe: only an existing synthetic negative harness and append-only learning changed; the symlink target lives in system-temp and no repository authority is overwritten.
 - Reusable mechanism: check helper source identity before dynamic import, then prove rejection with an isolated symlink fixture; avoid unnecessary fixture payloads that create escaping ambiguity.
 - Protected-authority check: post-write GitHub tree retained production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`NO_GO`), OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` (`PREREQUISITES_BLOCKED`), and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. Distinct semantically eligible unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Generation-binding fixture helper source identity is fail-closed
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach
+- Symptom: the generation-binding negative's newly shared fixture helper was dynamically imported without first rejecting a symlinked executable source.
+- Evidence: code `10f08a818fdb34a8c7a675f1d2008af3f0e90a68` checked the helper callable only after `load_target(RECONCILE_NEGATIVE, ...)` had executed; an existing preflight wrapper already enforced source non-symlink identity. No real source substitution or production incident was observed.
+- Verified root cause: reusing a checked parent constructor did not also validate the Python helper's import path. Failed approach: assuming a successfully imported module is necessarily the intended canonical source.
+
+### Correction, executable recurrence guard, retry condition
+- Commit `226191675344ff334a868289621cb94a95f7b167` requires an existing non-symlink helper source before dynamic import, and adds a real system-temp symlink helper negative that checks exact rejection before the candidate baseline is evaluated.
+- The symlink target uses `Path.touch()`, avoiding the previously recorded double-escaped newline fixture failure class; `try/finally` restores the original helper binding.
+- Retry condition: inspect exact-source Generation Binding Readonly CI for this code head; revisit only on observed failure, reviewed helper/path changes or a demonstrated bypass. Unchanged clean-worktree and source-HEAD blockers remain scoped.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: GitHub source re-read confirms the new source guard, real negative, early call and no unguarded repository-local temporary fixture. Exact-source CI for this new helper-source guard was queued at observation time.
+- Earlier generation-binding fixture-parent code `10f08a818fdb34a8c7a675f1d2008af3f0e90a68` passed exact-source Generation Binding Readonly run `40077280027`; job `120823264386` logged `PASS: generation-binding fixture symlink parent rejected before creation` and `Memory OS backup/restore generation binding negative suite PASS`. That result is synthetic CI, not readiness.
+- Why safe: only a negative harness and append-only learning changed; helper symlink fixtures are system-temp, and no production evidence or promotion authority was written.
+- Reusable mechanism: bind both the executable helper source and the fixture parent to checked non-symlink paths; prove each rejection independently before mutation tests.
+- Protected-authority check: GitHub tree retained production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`NO_GO`), strict OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` (`PREREQUISITES_BLOCKED`), and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. Registered generations are not semantic eligibility; preflight needs distinct unsuperseded eligible environments and a current human-approved objective; new evidence requires a current executable reviewed request; final candidates need complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
