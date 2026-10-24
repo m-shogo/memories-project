@@ -187,6 +187,70 @@ def prove_parent_swap_during_mkdir_rejected() -> None:
     print("PASS: admission-chain load parent swap during mkdir stays pinned and fails closed")
 
 
+def prove_ancestor_swap_during_fd_walk_rejected() -> None:
+    # The immediate parent can remain a real directory while a higher
+    # ancestor is substituted between the checked walk and descriptor open.
+    # A pinned walk must compare the opened inode with the current path.
+    with guarded_temporary_directory(
+        prefix=".tmp-admission-chain-ancestor-control-", parent=TMP_PARENT
+    ) as raw:
+        sandbox = Path(raw)
+        checked_ancestor = sandbox / "checked-ancestor"
+        parked_ancestor = sandbox / "parked-ancestor"
+        redirected_ancestor = sandbox / "redirected-ancestor"
+        checked_ancestor.mkdir()
+        redirected_ancestor.mkdir()
+        checked_parent = checked_ancestor / "nested"
+        redirected_parent = redirected_ancestor / "nested"
+        checked_parent.mkdir()
+        redirected_parent.mkdir()
+        with guarded_temporary_directory(
+            prefix=".tmp-admission-chain-ancestor-positive-", parent=checked_parent
+        ):
+            pass
+
+        original_open = os.open
+        swapped = False
+
+        def swap_before_descend(target, flags, *args, **kwargs):
+            nonlocal swapped
+            if not swapped and target == "nested" and kwargs.get("dir_fd") is not None:
+                swapped = True
+                checked_ancestor.rename(parked_ancestor)
+                checked_ancestor.symlink_to(redirected_ancestor, target_is_directory=True)
+            return original_open(target, flags, *args, **kwargs)
+
+        os.open = swap_before_descend
+        try:
+            try:
+                guarded_temporary_directory(
+                    prefix=".tmp-admission-chain-ancestor-race-", parent=checked_parent
+                )
+            except Fail as exc:
+                require(
+                    str(exc) == "admission-chain load temp ancestor identity drift",
+                    f"admission-chain load ancestor swap rejected at wrong boundary: {exc}",
+                )
+            else:
+                raise Fail("admission-chain load ancestor swap accepted")
+        finally:
+            os.open = original_open
+
+        require(swapped, "admission-chain load ancestor swap did not reach FD walk")
+        require(checked_ancestor.is_symlink()
+                and checked_ancestor.resolve() == redirected_ancestor.resolve(),
+                "admission-chain load ancestor swap did not install isolated redirect")
+        require(parked_ancestor.is_dir() and (parked_ancestor / "nested").is_dir(),
+                "admission-chain load ancestor swap lost pinned original")
+        require(not list((parked_ancestor / "nested").iterdir()),
+                "admission-chain load ancestor swap created a child under original")
+        require(not list(redirected_parent.iterdir()),
+                "admission-chain load ancestor swap created a child through redirect")
+        # The outer owned pinned fixture removes both isolated directories and
+        # the substituted symlink; no unconditional cleanup of mutable names.
+    print("PASS: admission-chain load ancestor swap during FD walk fails closed")
+
+
 def prove_child_substitution_before_cleanup_rejected() -> None:
     # An owned temporary child must not be removed after its name is
     # substituted, even if the replacement points at another directory.
@@ -257,6 +321,7 @@ def main() -> int:
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_symlink_parent_rejected()
     prove_parent_swap_during_mkdir_rejected()
+    prove_ancestor_swap_during_fd_walk_rejected()
     prove_child_substitution_before_cleanup_rejected()
     validator = load_validator()
 
