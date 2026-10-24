@@ -599,6 +599,153 @@ def prove_typed_admission_candidate_derivation() -> None:
     print("PASS reject: fourteen typed candidate derivation and coverage-gate substitutions")
 
 
+
+def require_typed_admission_registry_validation(tree: ast.Module) -> None:
+    """Keep writer append validation, historical row checks and counts fail closed."""
+    main = next(node for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    body = main.body
+    expected_try = ast.parse('''try:
+    validated_rows = writer.validate_registry_for_append(registry)
+except Exception as exc:
+    if domain_validation_failure(exc):
+        raise Fail(f"typed writer append authority invalid: {exc}") from exc
+    raise
+''').body[0]
+    tries = [(i, node) for i, node in enumerate(body)
+             if isinstance(node, ast.Try) and any(
+                 isinstance(n, ast.Name) and n.id == "validated_rows"
+                 for n in ast.walk(node))]
+    require(len(tries) == 1 and ast.dump(tries[0][1]) == ast.dump(expected_try),
+            "typed admission writer append try/exception binding drift")
+
+    def exact_require(message: str, expression: str, diagnostic: str) -> int:
+        matches = [(i, node) for i, node in enumerate(body)
+                   if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                   and isinstance(node.value.func, ast.Name) and node.value.func.id == "require"
+                   and len(node.value.args) == 2 and isinstance(node.value.args[1], ast.Constant)
+                   and node.value.args[1].value == message]
+        require(len(matches) == 1 and not matches[0][1].value.keywords
+                and ast.dump(matches[0][1].value.args[0]) == ast.dump(ast.parse(expression, mode="eval").body),
+                diagnostic)
+        return matches[0][0]
+
+    projection_index = exact_require("typed writer append authority row projection drift",
+                                     "validated_rows == rows", "typed admission row projection gate drift")
+    loops = [(i, node) for i, node in enumerate(body)
+             if isinstance(node, ast.For) and isinstance(node.target, ast.Name)
+             and node.target.id == "row"]
+    expected_validation = ast.parse("writer.validate_record(row)").body[0]
+    require(len(loops) == 1 and isinstance(loops[0][1].iter, ast.Name)
+            and loops[0][1].iter.id == "rows" and not loops[0][1].orelse
+            and bool(loops[0][1].body)
+            and ast.dump(loops[0][1].body[0]) == ast.dump(expected_validation),
+            "typed admission historical typed row validation drift")
+    derived = [(i, node) for i, node in enumerate(body)
+               if isinstance(node, ast.Assign) and len(node.targets) == 1
+               and isinstance(node.targets[0], ast.Name)
+               and node.targets[0].id == "derived_complete"]
+    expected_derived = ast.parse('sum(1 for row in rows if row.get("evidenceComplete") is True)', mode="eval").body
+    require(len(derived) == 1 and ast.dump(derived[0][1].value) == ast.dump(expected_derived),
+            "typed admission complete record derivation drift")
+    complete_index = exact_require("completeRecordCount drift", "complete_count == derived_complete",
+                                   "typed admission complete count gate drift")
+    require(tries[0][0] < projection_index < loops[0][0] < derived[0][0] < complete_index,
+            "typed admission registry validation order drift")
+
+
+def prove_typed_admission_registry_validation() -> None:
+    try:
+        canonical = ast.parse(VALIDATOR.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed registry validation source unavailable") from exc
+    require_typed_admission_registry_validation(canonical)
+    cases = (
+        ("missing-writer-try", "typed admission writer append try/exception binding drift"),
+        ("wrong-writer-function", "typed admission writer append try/exception binding drift"),
+        ("wrong-registry-argument", "typed admission writer append try/exception binding drift"),
+        ("swallow-exception", "typed admission writer append try/exception binding drift"),
+        ("missing-rethrow", "typed admission writer append try/exception binding drift"),
+        ("invert-domain-classifier", "typed admission writer append try/exception binding drift"),
+        ("duplicate-writer-try", "typed admission writer append try/exception binding drift"),
+        ("missing-projection", "typed admission row projection gate drift"),
+        ("weaken-projection", "typed admission row projection gate drift"),
+        ("dead-row-loop", "typed admission historical typed row validation drift"),
+        ("skip-row-validation", "typed admission historical typed row validation drift"),
+        ("wrong-complete-derivation", "typed admission complete record derivation drift"),
+        ("missing-complete-gate", "typed admission complete count gate drift"),
+        ("weaken-complete-gate", "typed admission complete count gate drift"),
+        ("late-projection", "typed admission registry validation order drift"),
+    )
+    for label, expected in cases:
+        mutated = copy.deepcopy(canonical)
+        main = next(node for node in mutated.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        body = main.body
+        i, writer_try = next((i, n) for i, n in enumerate(body)
+                             if isinstance(n, ast.Try) and any(
+                                 isinstance(x, ast.Name) and x.id == "validated_rows"
+                                 for x in ast.walk(n)))
+        projection_index = next(i for i, n in enumerate(body)
+                                if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+                                and len(n.value.args) == 2 and isinstance(n.value.args[1], ast.Constant)
+                                and n.value.args[1].value == "typed writer append authority row projection drift")
+        loop_index = next(i for i, n in enumerate(body)
+                          if isinstance(n, ast.For) and isinstance(n.target, ast.Name)
+                          and n.target.id == "row")
+        derived_index = next(i for i, n in enumerate(body)
+                             if isinstance(n, ast.Assign) and len(n.targets) == 1
+                             and isinstance(n.targets[0], ast.Name)
+                             and n.targets[0].id == "derived_complete")
+        complete_index = next(i for i, n in enumerate(body)
+                              if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+                              and len(n.value.args) == 2 and isinstance(n.value.args[1], ast.Constant)
+                              and n.value.args[1].value == "completeRecordCount drift")
+        if label == "missing-writer-try":
+            body[i] = ast.Pass()
+        elif label == "wrong-writer-function":
+            writer_try.body[0].value.func.attr = "validate_record"
+        elif label == "wrong-registry-argument":
+            writer_try.body[0].value.args[0] = ast.Name(id="generation_registry", ctx=ast.Load())
+        elif label == "swallow-exception":
+            writer_try.handlers[0].body = [ast.Pass()]
+        elif label == "missing-rethrow":
+            writer_try.handlers[0].body[-1] = ast.Pass()
+        elif label == "invert-domain-classifier":
+            writer_try.handlers[0].body[0].test = ast.UnaryOp(
+                op=ast.Not(), operand=writer_try.handlers[0].body[0].test)
+        elif label == "duplicate-writer-try":
+            body.insert(i + 1, copy.deepcopy(writer_try))
+        elif label == "missing-projection":
+            body[projection_index] = ast.Pass()
+        elif label == "weaken-projection":
+            body[projection_index].value.args[0] = ast.Constant(value=True)
+        elif label == "dead-row-loop":
+            body[loop_index].iter = ast.List(elts=[], ctx=ast.Load())
+        elif label == "skip-row-validation":
+            body[loop_index].body[0] = ast.Pass()
+        elif label == "wrong-complete-derivation":
+            body[derived_index].value = ast.Constant(value=0)
+        elif label == "missing-complete-gate":
+            body[complete_index] = ast.Pass()
+        elif label == "weaken-complete-gate":
+            body[complete_index].value.args[0] = ast.Constant(value=True)
+        elif label == "late-projection":
+            node = body.pop(projection_index)
+            next_loop = next(j for j, n in enumerate(body)
+                             if isinstance(n, ast.For) and isinstance(n.target, ast.Name)
+                             and n.target.id == "row")
+            body.insert(next_loop + 1, node)
+        try:
+            require_typed_admission_registry_validation(mutated)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"typed registry {label} diagnostic drift: {exc}")
+        else:
+            raise Fail(f"typed registry {label} bypass unexpectedly accepted")
+    print("PASS reject: fifteen typed writer registry validation and count substitutions")
+
+
 def require_no_typed_pre_dispatch_exit(tree: ast.Module) -> None:
     """Reject eager termination before the typed admission CLI dispatch."""
     require_typed_admission_cli_dispatch(tree)
@@ -1046,6 +1193,7 @@ def main() -> int:
     prove_typed_admission_main_reachability()
     prove_typed_admission_child_reachability()
     prove_typed_admission_candidate_derivation()
+    prove_typed_admission_registry_validation()
     prove_typed_pre_dispatch_exit()
     prove_typed_admission_cli_dispatch()
     prove_typed_admission_main_binding()
