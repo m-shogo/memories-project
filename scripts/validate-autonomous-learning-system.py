@@ -129,17 +129,41 @@ def validate(repo_root: Path) -> None:
     except SyntaxError as exc:
         raise ValidationFailure("learning CI entrypoint is not valid Python") from exc
     def module_scope_rebinds(name: str) -> bool:
-        # Inspect live module control flow, but not local function/class or
-        # comprehension scopes. A top-level loop, with-target, except alias,
-        # pattern capture, or nested import can overwrite a protected callable.
-        def binds(node: ast.AST) -> bool:
+        # Deferred function bodies and comprehensions do not run at import
+        # time. Function decorators/defaults and class bodies DO execute, and
+        # can rebind a canonical guard through globals() before main() runs.
+        # Ordinary class-local names are not module bindings.
+        def binds(node: ast.AST, *, class_local: bool = False) -> bool:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                eager = [*node.args.defaults, *(
+                    value for value in node.args.kw_defaults if value is not None
+                )]
+                if not isinstance(node, ast.Lambda):
+                    eager.extend(node.decorator_list)
+                    if any(isinstance(dec, ast.Lambda)
+                           and binds(dec.body, class_local=class_local)
+                           for dec in node.decorator_list):
+                        return True
+                return any(binds(value, class_local=class_local) for value in eager)
+            if isinstance(node, ast.ClassDef):
+                eager = [*node.decorator_list, *node.bases, *(
+                    keyword.value for keyword in node.keywords
+                )]
+                if any(isinstance(dec, ast.Lambda)
+                       and binds(dec.body, class_local=class_local)
+                       for dec in node.decorator_list):
+                    return True
+                return (any(binds(value, class_local=class_local) for value in eager)
+                        or any(binds(child, class_local=True) for child in node.body))
             if isinstance(node, (
-                ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda,
                 ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
             )):
                 return False
+            if isinstance(node, ast.Global):
+                return name in node.names
             if isinstance(node, ast.Name):
-                return node.id == name and isinstance(node.ctx, (ast.Store, ast.Del))
+                return (not class_local and node.id == name
+                        and isinstance(node.ctx, (ast.Store, ast.Del)))
             if (isinstance(node, ast.Subscript)
                     and isinstance(node.ctx, (ast.Store, ast.Del))
                     and isinstance(node.slice, ast.Constant) and node.slice.value == name
@@ -188,14 +212,15 @@ def validate(repo_root: Path) -> None:
                         elif node.args[0].value == name:
                             return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
-                return any(
+                return not class_local and any(
                     (alias.asname or (alias.name.split(".")[0] if isinstance(node, ast.Import) else alias.name))
                     == name for alias in node.names
                 )
             if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
-                if getattr(node, "name", None) == name:
+                if not class_local and getattr(node, "name", None) == name:
                     return True
-            return any(binds(child) for child in ast.iter_child_nodes(node))
+            return any(binds(child, class_local=class_local)
+                       for child in ast.iter_child_nodes(node))
 
         return any(binds(node) for node in entry_tree.body)
 
