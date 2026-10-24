@@ -566,6 +566,38 @@ def main() -> int:
         writer.validate_record(valid)
         print("PASS reject: both reviewers enforce exact eight-domain digest-key coverage")
 
+        # Reviewer identity format is checked independently for each review role,
+        # before an otherwise-valid payload could be accepted by digest comparison.
+        for review_type, state_field in (("SECURITY", "securityReviewer"), ("OPERABILITY", "operabilityReviewer")):
+            canonical_reviewer = state[state_field]
+            for label, invalid in (
+                ("empty", ""),
+                ("short", "ab"),
+                ("uppercase", "ReviewerUpper"),
+                ("whitespace", "reviewer person"),
+                ("boolean", True),
+                ("overlong", "r" * 65),
+            ):
+                case = f"{review_type} invalid reviewer pseudonym: {label}"
+                EXPECTED_DIAGNOSTICS[case] = f"{review_type} reviewerPseudonym invalid"
+                state[state_field] = invalid
+                try:
+                    expect_rejected(case, lambda: writer.validate_record(valid))
+                finally:
+                    state[state_field] = canonical_reviewer
+            writer.validate_record(valid)
+
+        state["reviewTarget"] = "SECURITY"
+        state["reviewTypeOverride"] = "OPERABILITY"
+        EXPECTED_DIAGNOSTICS["security review type mismatch"] = "SECURITY review type mismatch"
+        try:
+            expect_rejected("security review type mismatch", lambda: writer.validate_record(valid))
+        finally:
+            state["reviewTypeOverride"] = None
+            state["reviewTarget"] = "BOTH"
+        writer.validate_record(valid)
+        print("PASS reject: both reviewer pseudonym formats and SECURITY review type are fail-closed")
+
         empty_registry = {
             "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
             "appendOnly": True,
