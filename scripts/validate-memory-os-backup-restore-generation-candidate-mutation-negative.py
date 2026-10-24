@@ -118,6 +118,12 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(payload, encoding="utf-8")
 
 
+def guarded_temporary_directory(prefix: str, parent: Path):
+    # Fail before tempfile creates anything beneath a symlinked repository parent.
+    canonical_parent_identity(parent)
+    return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+
+
 def repo_ref(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
@@ -241,8 +247,28 @@ def main() -> int:
     cleanup: list[Path] = []
 
     try:
-        with tempfile.TemporaryDirectory(prefix=".tmp-memory-os-candidate-mutation-", dir=TMP_PARENT) as tmp:
+        with guarded_temporary_directory(prefix=".tmp-memory-os-candidate-mutation-", parent=TMP_PARENT) as tmp:
             tmp_path = Path(tmp)
+            # Verify the real pre-publication guard rejects a symlink parent.
+            # The link and any potential child remain inside this disposable directory.
+            symlink_parent = tmp_path / "symlinked-temp-parent"
+            symlink_parent.symlink_to(tmp_path, target_is_directory=True)
+            try:
+                before = sorted(child.name for child in tmp_path.iterdir())
+                try:
+                    with guarded_temporary_directory(".tmp-must-not-publish-", symlink_parent):
+                        raise Fail("symlinked temp parent accepted")
+                except Fail as exc:
+                    require(str(exc) == "candidate transient ancestor missing or symlinked",
+                            f"symlinked temp parent rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail("symlinked temp parent accepted")
+                require(sorted(child.name for child in tmp_path.iterdir()) == before,
+                        "symlinked temp parent left a temporary child")
+            finally:
+                symlink_parent.unlink()
+            print("PASS: temporary directory parent symlink rejected before publication")
+
             generation_registry = tmp_path / "generations.json"
             objectives_registry = tmp_path / "objectives.json"
             drill_registry = tmp_path / "drill-requests.json"
