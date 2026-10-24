@@ -142,10 +142,10 @@ def validate_step_key_inventory(
         # Eight-space lines are step properties, not ten-space run/with bodies.
         # A quoted YAML key must not impersonate a comment or disappear from
         # an unquoted-only inventory.
-        lines = re.findall(r"(?m)^        ([^ \\t#\\n][^\\n]*)$", block)
+        lines = re.findall(r"(?m)^        ([^ \t#\n][^\n]*)$", block)
         keys = []
         for line in lines:
-            match = re.fullmatch(r"([a-z][a-z-]*):(?:[ \\t].*)?", line)
+            match = re.fullmatch(r"([a-z][a-z-]*):(?:[ \t].*)?", line)
             require(match is not None, diagnostic)
             keys.append(match.group(1))
         return tuple(keys)
