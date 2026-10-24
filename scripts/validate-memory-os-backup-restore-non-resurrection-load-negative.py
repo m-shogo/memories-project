@@ -282,7 +282,9 @@ def prove_typed_transport_guard_reachability() -> None:
             if label == "missing-parent-proof":
                 body[index] = ast.Pass()
             else:
-                body[index - 1], body[index] = body[index], body[index - 1]
+                # Keep the two transaction probes contiguous: only the parent
+                # proof is moved, so the intended parent-order guard must reject.
+                body.insert(index - 2, body.pop(index))
         elif label == "wrong-final-return":
             body[-1].value = ast.Constant(value=1)
         elif label == "nested-early-return":
