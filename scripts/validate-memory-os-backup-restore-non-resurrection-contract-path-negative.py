@@ -351,6 +351,50 @@ def prove_nested_swap_during_cleanup_preserves_unowned_data() -> None:
     print("PASS: typed contract path nested cleanup race preserves unowned replacement data")
 
 
+def prove_file_swap_before_unlink_rejected() -> None:
+    # A regular-file name can change between the two inode checks. The
+    # replacement must survive; the owned original must not be unlinked.
+    with guarded_temporary_directory(prefix=".tmp-typed-path-unlink-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        replacement = sandbox / "unowned-file.txt"
+        replacement.write_text("preserve unowned", encoding="utf-8")
+        original_stat = os.stat
+        checks = 0
+        swapped = False
+        try:
+            with guarded_temporary_directory(prefix=".tmp-typed-path-unlink-race-", parent=sandbox) as inner:
+                child = Path(inner)
+                owned = child / "owned.txt"
+                parked = child / "parked-owned.txt"
+                owned.write_text("owned fixture", encoding="utf-8")
+
+                def swap_before_second_stat(path, *args, **kwargs):
+                    nonlocal checks, swapped
+                    if (path == "owned.txt" and kwargs.get("dir_fd") is not None
+                            and kwargs.get("follow_symlinks") is False):
+                        checks += 1
+                        if checks == 2:
+                            owned.rename(parked)
+                            replacement.rename(owned)
+                            swapped = True
+                    return original_stat(path, *args, **kwargs)
+
+                os.stat = swap_before_second_stat
+        except Fail as exc:
+            require(str(exc) == "typed contract path nested entry identity drift before unlink",
+                    f"typed file cleanup race rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("typed file cleanup race unexpectedly accepted")
+        finally:
+            os.stat = original_stat
+        require(swapped and checks == 2, "typed file cleanup race never reached second inode check")
+        require(owned.read_text(encoding="utf-8") == "preserve unowned",
+                "typed file cleanup race deleted unowned replacement")
+        require(parked.read_text(encoding="utf-8") == "owned fixture",
+                "typed file cleanup race deleted original owned file")
+    print("PASS: typed contract path file unlink race rejects unowned replacement")
+
+
 def load_validator():
     spec = importlib.util.spec_from_file_location("memory_os_non_resurrection_admission_path_negative", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load typed admission validator")
@@ -453,6 +497,7 @@ def main() -> int:
     prove_child_substitution_before_cleanup_rejected()
     prove_child_swap_during_cleanup_preserves_unowned_data()
     prove_nested_swap_during_cleanup_preserves_unowned_data()
+    prove_file_swap_before_unlink_rejected()
     validator = load_validator()
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
