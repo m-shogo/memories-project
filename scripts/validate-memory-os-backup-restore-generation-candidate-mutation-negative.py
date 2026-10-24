@@ -342,6 +342,42 @@ def main() -> int:
             require(writer.candidate(valid) is True, "fully bound typed evidence must produce isolated test candidate")
             print("PASS candidate: full typed validator accepts intact bundle")
 
+            # Negative proof of the fixture ownership guard itself. Mutate only
+            # the recorded identity, never an actual evidence path or symlink.
+            owned_path = next(iter(domain_paths.values()))
+            owned_identity = OWNED_TRANSIENTS[owned_path]
+            original_bytes = owned_path.read_bytes()
+            for label, offset, diagnostic in (
+                ("parent", 1, "candidate transient parent identity drift"),
+                ("leaf", 3, "candidate transient leaf identity drift"),
+            ):
+                wrong = list(owned_identity)
+                wrong[offset] += 1
+                OWNED_TRANSIENTS[owned_path] = tuple(wrong)
+                try:
+                    try:
+                        write_json(owned_path, {"synthetic": "must not overwrite"})
+                    except Fail as exc:
+                        require(str(exc) == diagnostic,
+                                f"owned fixture {label} drift rejected at wrong boundary: {exc}")
+                    else:
+                        raise Fail(f"owned fixture {label} identity drift accepted")
+                finally:
+                    OWNED_TRANSIENTS[owned_path] = owned_identity
+                require(owned_path.read_bytes() == original_bytes,
+                        f"owned fixture {label} drift modified existing bytes")
+            try:
+                cleanup_owned_transients([tmp_path / "unowned-negative.json"])
+            except Fail as exc:
+                require(str(exc) == "candidate transient cleanup contains an unowned file",
+                        f"unowned fixture cleanup rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("unowned fixture cleanup was accepted")
+            require(writer.candidate(valid) is True,
+                    "candidate did not survive identity guard negative probes")
+            print("PASS: owned fixture parent/leaf substitution and unowned cleanup reject without mutation")
+
+
             original_drill_request_for_record = writer.drill_request_for_record
             try:
                 def reject_drill_request(*args: Any, **kwargs: Any) -> None:
