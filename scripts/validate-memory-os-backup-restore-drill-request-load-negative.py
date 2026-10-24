@@ -198,6 +198,33 @@ def prove_parent_swap_during_mkdir_rejected() -> None:
     print("PASS: drill request parent swap during mkdir stays pinned and fails closed")
 
 
+def prove_child_substitution_before_cleanup_rejected() -> None:
+    # An owned temporary child must not be removed after its name is
+    # substituted, even if the replacement points at another directory.
+    with guarded_temporary_directory(prefix=".tmp-drill-request-child-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        replacement = sandbox / "unowned-replacement"
+        replacement.mkdir()
+        parked = sandbox / "original-owned-child"
+        try:
+            with guarded_temporary_directory(prefix=".tmp-drill-request-child-identity-", parent=sandbox) as inner:
+                child = Path(inner)
+                child.rename(parked)
+                child.symlink_to(replacement, target_is_directory=True)
+        except Fail as exc:
+            require(str(exc) == "drill request temp child identity drift before cleanup",
+                    f"drill request substituted child rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("drill request substituted child cleanup accepted")
+        require(child.is_symlink() and parked.is_dir() and replacement.is_dir(),
+                "drill request substituted child proof did not preserve isolated fixtures")
+        require(not list(replacement.iterdir()),
+                "drill request substituted child cleanup touched unowned replacement")
+        # The outer pinned fixture owns the whole sandbox and safely removes
+        # the intentionally retained substituted link and original child.
+    print("PASS: drill request substituted child inode rejects cleanup without deleting replacement")
+
+
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
     try:
         action()
@@ -277,6 +304,7 @@ def main() -> int:
     require(RECONCILER.is_file(), "drill-request reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_parent_swap_during_mkdir_rejected()
+    prove_child_substitution_before_cleanup_rejected()
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
