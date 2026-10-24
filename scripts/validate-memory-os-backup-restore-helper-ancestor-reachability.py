@@ -328,9 +328,50 @@ def validate_independent_learning_workflow(source: str) -> None:
             "independent learning workflow learning validation drift")
     require(source.count("      - name: Independently enforce helper ancestor runtime workflow reachability\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n") == 1,
             "independent learning workflow ancestor invocation drift")
-    require(source.count("      - name: Enforce append-only learning authority against parent\n        shell: bash\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          from pathlib import Path\n          import subprocess\n\n          authority = \"docs/operations/AUTONOMOUS-OPS-LEARNING.md\"\n          previous = subprocess.check_output(\n              [\"git\", \"show\", f\"HEAD^:{authority}\"]\n          )\n          current = Path(authority).read_bytes()\n          if not current.startswith(previous):\n              raise SystemExit(\n                  \"AUTONOMOUS LEARNING APPEND-ONLY FAILED: previous authority bytes changed\"\n              )\n          print(\"Autonomous learning append-only PASS\")\n          PY\n") == 1,
+    require(source.count("""      - name: Enforce append-only learning authority against parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import re
+
+          authority = "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
+          event_name = "${{ github.event_name }}"
+          before = "${{ github.event.before }}"
+          if event_name == "push":
+              if not re.fullmatch(r"[0-9a-f]{40}", before) or before == "0" * 40:
+                  raise SystemExit(
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid push baseline"
+                  )
+              baseline = before
+          elif event_name == "workflow_dispatch":
+              baseline = "HEAD^"
+          else:
+              raise SystemExit(
+                  "AUTONOMOUS LEARNING APPEND-ONLY FAILED: unreviewed event"
+              )
+          if subprocess.run(
+              ["git", "merge-base", "--is-ancestor", baseline, "HEAD"],
+              check=False,
+          ).returncode:
+              raise SystemExit(
+                  "AUTONOMOUS LEARNING APPEND-ONLY FAILED: baseline is not an ancestor"
+              )
+          previous = subprocess.check_output(
+              ["git", "show", f"{baseline}:{authority}"]
+          )
+          current = Path(authority).read_bytes()
+          if not current.startswith(previous):
+              raise SystemExit(
+                  "AUTONOMOUS LEARNING APPEND-ONLY FAILED: previous authority bytes changed"
+              )
+          print("Autonomous learning append-only PASS")
+          PY
+""") == 1,
             "independent learning workflow append-only drift")
-    require(source.count("      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.sha }}\n          persist-credentials: false\n          fetch-depth: 2\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n") == 1,
+    require(source.count("      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.sha }}\n          persist-credentials: false\n          fetch-depth: 0\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n") == 1,
             "independent learning workflow checkout/setup drift")
     require(source.count("      - name: Confirm exact clean source\n        shell: bash\n        run: |\n          set -euo pipefail\n          test \"$(git rev-parse HEAD)\" = \"${{ github.sha }}\"\n          test -z \"$(git status --porcelain)\"\n") == 1,
             "independent learning workflow exact-source drift")
@@ -1195,6 +1236,18 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "        run: echo synthetic-override\n      - name: Confirm read-only execution\n",
          "independent learning workflow step authority drift"),
     )
+    cases += (
+        ("          baseline = before\n", "          baseline = \"HEAD^\"\n",
+         "independent learning workflow append-only drift"),
+        ("          event_name = \"${{ github.event_name }}\"\n",
+         "          event_name = \"workflow_dispatch\"\n",
+         "independent learning workflow append-only drift"),
+        ("          if subprocess.run(\n",
+         "          if False and subprocess.run(\n",
+         "independent learning workflow append-only drift"),
+        ("          fetch-depth: 0\n", "          fetch-depth: 2\n",
+         "independent learning workflow checkout/setup drift"),
+    )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
                 f"independent workflow negative anchor not unique: {expected}")
@@ -1258,7 +1311,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 116, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 120, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
