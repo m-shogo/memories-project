@@ -187,6 +187,33 @@ def prove_parent_swap_during_mkdir_rejected() -> None:
     print("PASS: admission-chain load parent swap during mkdir stays pinned and fails closed")
 
 
+def prove_child_substitution_before_cleanup_rejected() -> None:
+    # An owned temporary child must not be removed after its name is
+    # substituted, even if the replacement points at another directory.
+    with guarded_temporary_directory(prefix=".tmp-admission-chain-child-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        replacement = sandbox / "unowned-replacement"
+        replacement.mkdir()
+        parked = sandbox / "original-owned-child"
+        try:
+            with guarded_temporary_directory(prefix=".tmp-admission-chain-child-identity-", parent=sandbox) as inner:
+                child = Path(inner)
+                child.rename(parked)
+                child.symlink_to(replacement, target_is_directory=True)
+        except Fail as exc:
+            require(str(exc) == "admission-chain load temp child identity drift before cleanup",
+                    f"admission-chain load substituted child rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("admission-chain load substituted child cleanup accepted")
+        require(child.is_symlink() and parked.is_dir() and replacement.is_dir(),
+                "admission-chain load substituted child proof did not preserve isolated fixtures")
+        require(not list(replacement.iterdir()),
+                "admission-chain load substituted child cleanup touched unowned replacement")
+        # The outer pinned fixture owns the whole sandbox and safely removes
+        # the intentionally retained substituted link and original child.
+    print("PASS: admission-chain load substituted child inode rejects cleanup without deleting replacement")
+
+
 def prove_symlink_parent_rejected() -> None:
     with guarded_temporary_directory(".tmp-admission-chain-load-parent-", TMP_PARENT) as raw:
         sandbox = Path(raw)
@@ -230,6 +257,7 @@ def main() -> int:
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_symlink_parent_rejected()
     prove_parent_swap_during_mkdir_rejected()
+    prove_child_substitution_before_cleanup_rejected()
     validator = load_validator()
 
     with guarded_temporary_directory(".tmp-admission-chain-load-", TMP_PARENT) as tmpdir:
