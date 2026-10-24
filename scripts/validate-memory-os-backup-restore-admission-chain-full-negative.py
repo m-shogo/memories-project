@@ -130,6 +130,124 @@ def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
 
 
 
+
+def require_full_runner_helper_bindings(tree: ast.Module) -> None:
+    """Protect default-captured guard and resolver helpers before run_step/main."""
+    signatures = {
+        "enforce_execution_transport": (["canonical_subprocess_run",
+                                          "canonical_python_executable"], 2),
+        "enforce_runtime_authority": (["canonical_self_rel", "canonical_steps",
+                                       "canonical_transport_guard"], 3),
+        "canonical_script": (["relative"], 0),
+    }
+
+    for symbol, (names, default_count) in signatures.items():
+        definitions = [node for node in tree.body
+                       if isinstance(node, ast.FunctionDef) and node.name == symbol]
+        require(len(definitions) == 1,
+                f"full-chain helper {symbol} must have one synchronous definition")
+        definition = definitions[0]
+        args = definition.args
+        require(not definition.decorator_list and not args.posonlyargs
+                and [arg.arg for arg in args.args] == names
+                and len(args.defaults) == default_count and not args.vararg
+                and not args.kwonlyargs and not args.kwarg and not args.kw_defaults,
+                f"full-chain helper {symbol} signature/decorator drift")
+
+        def rebinds(node: ast.AST) -> bool:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node.name == symbol:
+                    return True
+            if isinstance(node, ast.arg) and node.arg == symbol:
+                return True
+            if isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == symbol:
+                return True
+            if isinstance(node, ast.Name) and node.id == symbol and isinstance(node.ctx, (ast.Store, ast.Del)):
+                return True
+            if (isinstance(node, ast.Subscript)
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and isinstance(node.slice, ast.Constant) and node.slice.value == symbol):
+                target = node.value
+                if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                        and target.func.id in {"globals", "vars", "locals"}
+                        and not target.args and not target.keywords):
+                    return True
+                if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                    return True
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
+                    return True
+                if (isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}
+                        and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
+                        and node.args[1].value == symbol):
+                    return True
+                if (isinstance(node.func, ast.Attribute)
+                        and node.func.attr in {"update", "pop", "popitem", "clear",
+                                               "setdefault", "__setitem__", "__delitem__"}):
+                    target = node.func.value
+                    if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                            and target.func.id in {"globals", "vars", "locals"}
+                            and not target.args and not target.keywords):
+                        return True
+                    if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                        return True
+            return any(rebinds(child) for child in ast.iter_child_nodes(node))
+
+        for statement in tree.body:
+            if statement is not definition:
+                require(not rebinds(statement),
+                        f"full-chain helper {symbol} binding drift")
+
+
+def prove_full_runner_helper_bindings() -> None:
+    try:
+        canonical = ast.parse(TARGET.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("full-chain helper binding source unavailable") from exc
+    require_full_runner_helper_bindings(canonical)
+    symbols = ("enforce_execution_transport", "enforce_runtime_authority",
+               "canonical_script")
+    cases = (
+        ("assignment", lambda name: f"{name} = lambda *args: None"),
+        ("import-alias", lambda name: f"from random import randint as {name}"),
+        ("dead-branch", lambda name: f"if False: {name} = None"),
+        ("globals", lambda name: f"globals()['{name}'] = None"),
+        ("globals-update", lambda name: f"globals().update({name}=None)"),
+        ("module-dict", lambda name: f"sys.modules[__name__].__dict__['{name}'] = None"),
+        ("setattr", lambda name: f"setattr(sys.modules[__name__], '{name}', None)"),
+        ("exec", lambda name: f"exec('{name} = None')"),
+        ("duplicate", lambda name: f"def {name}(): pass"),
+    )
+    for symbol in symbols:
+        for label, source in cases:
+            mutated = copy.deepcopy(canonical)
+            definition_index = next(i for i, node in enumerate(mutated.body)
+                                    if isinstance(node, ast.FunctionDef) and node.name == symbol)
+            mutated.body[definition_index + 1:definition_index + 1] = ast.parse(source(symbol)).body
+            try:
+                require_full_runner_helper_bindings(mutated)
+            except Fail as exc:
+                expected = (f"full-chain helper {symbol} must have one synchronous definition"
+                            if label == "duplicate" else
+                            f"full-chain helper {symbol} binding drift")
+                require(str(exc) == expected,
+                        f"full-chain helper {symbol}/{label} diagnostic drift")
+            else:
+                raise Fail(f"full-chain helper {symbol}/{label} rebinding unexpectedly accepted")
+        decorated = copy.deepcopy(canonical)
+        definition = next(node for node in decorated.body
+                          if isinstance(node, ast.FunctionDef) and node.name == symbol)
+        definition.decorator_list.append(ast.Name(id="wrapper", ctx=ast.Load()))
+        try:
+            require_full_runner_helper_bindings(decorated)
+        except Fail as exc:
+            require(str(exc) == f"full-chain helper {symbol} signature/decorator drift",
+                    f"full-chain helper {symbol} decorator diagnostic drift")
+        else:
+            raise Fail(f"full-chain helper {symbol} decorator unexpectedly accepted")
+    print("PASS reject: thirty full-chain guard/resolver helper binding substitutions")
+
+
 def require_full_runner_main_reachability(tree: ast.Module) -> None:
     """Require live, ordered identity guards and the canonical validation loop."""
     require_full_runner_main_binding(tree)
@@ -711,6 +829,7 @@ def prove_full_step_exit_propagation() -> None:
 
 
 def main() -> int:
+    prove_full_runner_helper_bindings()
     prove_full_runner_main_reachability()
     prove_full_runner_pre_dispatch_exit()
     prove_full_runner_cli_dispatch()
