@@ -45,23 +45,58 @@ def load_reconciler() -> Any:
     return module
 
 
-def load_pinned_fixture_guard(path: Path, name: str):
-    """Pin the checked parent and leaf FDs before executing helper source."""
+def pin_checked_helper_parent(path: Path) -> int:
+    """Walk from a trusted repository/temp anchor, never through a symlinked ancestor."""
     require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
             "drill request fixture guard no-follow directory open unsupported")
+    anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
     try:
-        parent_before = path.parent.lstat()
-        parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        relative = path.parent.relative_to(anchor)
+    except ValueError as exc:
+        raise Fail("drill request fixture guard parent outside trusted roots") from exc
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    require(anchor.is_dir() and not anchor.is_symlink(),
+            "drill request fixture guard trusted anchor missing or symlinked")
+    try:
+        fd = os.open(anchor, flags)
     except OSError as exc:
-        raise Fail("drill request fixture guard parent open failed") from exc
+        raise Fail("drill request fixture guard anchor open failed") from exc
     try:
-        parent_opened = os.fstat(parent_fd)
+        opened = os.fstat(fd)
+        entry = anchor.lstat()
         require(
-            stat.S_ISDIR(parent_before.st_mode)
-            and (parent_before.st_dev, parent_before.st_ino)
-            == (parent_opened.st_dev, parent_opened.st_ino),
-            "drill request fixture guard parent identity drift",
+            stat.S_ISDIR(entry.st_mode)
+            and (entry.st_dev, entry.st_ino) == (opened.st_dev, opened.st_ino),
+            "drill request fixture guard trusted anchor identity drift",
         )
+        cursor = anchor
+        for part in relative.parts:
+            cursor = cursor / part
+            require(cursor.is_dir() and not cursor.is_symlink(),
+                    "drill request fixture guard ancestor missing or symlinked")
+            next_fd = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+            opened = os.fstat(fd)
+            entry = cursor.lstat()
+            require(
+                stat.S_ISDIR(entry.st_mode)
+                and (entry.st_dev, entry.st_ino) == (opened.st_dev, opened.st_ino),
+                "drill request fixture guard ancestor identity drift",
+            )
+        return fd
+    except OSError as exc:
+        os.close(fd)
+        raise Fail("drill request fixture guard parent open failed") from exc
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def load_pinned_fixture_guard(path: Path, name: str):
+    """Pin each checked helper ancestor and source leaf to FDs."""
+    parent_fd = pin_checked_helper_parent(path)
+    try:
         try:
             fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
         except OSError as exc:
@@ -226,6 +261,69 @@ def prove_helper_parent_swap_after_pin_uses_original_source() -> None:
     print("PASS: drill-reconcile helper parent swap preserves pinned source")
 
 
+def prove_helper_ancestor_swap_during_fd_walk_rejected() -> None:
+    # A leaf/parent O_NOFOLLOW alone cannot protect a mutable higher ancestor.
+    # Swap an owned nonterminal directory after it was pinned, before descent.
+    global DRILL_REQUEST_LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="drill-reconcile-helper-ancestor-race-") as raw:
+        sandbox = Path(raw)
+        checked_ancestor = sandbox / "checked"
+        parked_ancestor = sandbox / "parked"
+        redirect_ancestor = sandbox / "redirect"
+        checked_parent = checked_ancestor / "nested"
+        redirect_parent = redirect_ancestor / "nested"
+        checked_parent.mkdir(parents=True)
+        redirect_parent.mkdir(parents=True)
+        (checked_parent / "helper.py").write_text(
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(prefix, parent):\n"
+            "    return ('pinned-ancestor', prefix)\n",
+            encoding="utf-8",
+        )
+        (redirect_parent / "helper.py").write_text(
+            "raise RuntimeError('untrusted ancestor helper executed')\n", encoding="utf-8"
+        )
+        original_path = DRILL_REQUEST_LOAD_NEGATIVE
+        original_open = os.open
+        swapped = False
+        try:
+            DRILL_REQUEST_LOAD_NEGATIVE = checked_parent / "helper.py"
+            require(
+                guarded_temporary_directory(".tmp-positive-", ROOT)
+                == ("pinned-ancestor", ".tmp-positive-"),
+                "drill reconcile ancestor helper positive control failed",
+            )
+
+            def swap_before_descend(target, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and target == "nested" and kwargs.get("dir_fd") is not None:
+                    swapped = True
+                    checked_ancestor.rename(parked_ancestor)
+                    checked_ancestor.symlink_to(redirect_ancestor, target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            os.open = swap_before_descend
+            try:
+                guarded_temporary_directory(".tmp-ancestor-race-", ROOT)
+            except Fail as exc:
+                require(
+                    str(exc) == "drill request fixture guard ancestor identity drift",
+                    f"drill reconcile helper ancestor swap rejected at wrong boundary: {exc}",
+                )
+            else:
+                raise Fail("drill reconcile helper ancestor swap accepted")
+            require(swapped and checked_ancestor.is_symlink()
+                    and (parked_ancestor / "nested/helper.py").is_file(),
+                    "drill reconcile helper ancestor swap did not preserve pinned original")
+            require((redirect_parent / "helper.py").read_text(encoding="utf-8")
+                    == "raise RuntimeError('untrusted ancestor helper executed')\n",
+                    "drill reconcile helper ancestor swap modified untrusted source")
+        finally:
+            os.open = original_open
+            DRILL_REQUEST_LOAD_NEGATIVE = original_path
+    print("PASS: drill reconcile helper ancestor swap fails closed during FD walk")
+
+
 def minify_json(path: Path) -> None:
     value = json.loads(path.read_text(encoding="utf-8"))
     path.write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
@@ -386,6 +484,7 @@ def main() -> int:
     prove_helper_source_symlink_rejected()
     prove_helper_source_swap_during_import_is_pinned()
     prove_helper_parent_swap_after_pin_uses_original_source()
+    prove_helper_ancestor_swap_during_fd_walk_rejected()
     with guarded_temporary_directory(".tmp-drill-reconcile-parent-negative-", ROOT) as raw:
         sandbox = Path(raw)
         link = sandbox / "redirect"
