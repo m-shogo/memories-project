@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import copy
 import importlib.util
 import json
@@ -191,6 +192,113 @@ def exercise_reconciler_transaction_transport() -> None:
 
 
 
+
+def require_unique_validator_runner_binding(tree: ast.Module) -> None:
+    """Reject module-level or deferred rebinding of the admission child runner."""
+    definitions = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == "run_validator"]
+    require(len(definitions) == 1,
+            "typed admission must define exactly one synchronous child runner")
+    definition = definitions[0]
+    args = definition.args
+    require(not definition.decorator_list and not args.posonlyargs
+            and [arg.arg for arg in args.args] == ["path", "label"]
+            and not args.vararg and not args.kwonlyargs and not args.kwarg
+            and not args.defaults and not args.kw_defaults,
+            "typed admission child runner signature/decorator drift")
+
+    def rebinds_runner(node: ast.AST) -> bool:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name == "run_validator":
+                return True
+        if isinstance(node, ast.arg) and node.arg == "run_validator":
+            return True
+        if isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == "run_validator":
+            return True
+        if isinstance(node, ast.Name) and node.id == "run_validator" and isinstance(node.ctx, (ast.Store, ast.Del)):
+            return True
+        if (isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.slice, ast.Constant)
+                and node.slice.value == "run_validator"):
+            target = node.value
+            if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                    and target.func.id in {"globals", "vars", "locals"}
+                    and not target.args and not target.keywords):
+                return True
+            if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
+                return True
+            if (isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}
+                    and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value == "run_validator"):
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"update", "pop", "popitem", "clear",
+                                           "setdefault", "__setitem__", "__delitem__"}):
+                target = node.func.value
+                if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                        and target.func.id in {"globals", "vars", "locals"}
+                        and not target.args and not target.keywords):
+                    return True
+                if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                    return True
+        return any(rebinds_runner(child) for child in ast.iter_child_nodes(node))
+
+    for statement in tree.body:
+        if statement is not definition:
+            require(not rebinds_runner(statement),
+                    "typed admission child runner binding drift")
+
+
+def prove_validator_runner_binding() -> None:
+    try:
+        source = VALIDATOR.read_text(encoding="utf-8")
+        canonical = ast.parse(source)
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed admission child runner source unavailable") from exc
+    require_unique_validator_runner_binding(canonical)
+    cases = (
+        ("assignment", "run_validator = lambda path, label: None"),
+        ("import-alias", "from random import randint as run_validator"),
+        ("dead-branch", "if False: run_validator = None"),
+        ("globals", "globals()['run_validator'] = None"),
+        ("globals-update", "globals().update(run_validator=None)"),
+        ("globals-pop", "globals().pop('run_validator')"),
+        ("module-dict", "sys.modules[__name__].__dict__['run_validator'] = None"),
+        ("setattr", "setattr(sys.modules[__name__], 'run_validator', None)"),
+        ("exec", "exec('run_validator = None')"),
+        ("duplicate", "def run_validator(path, label): pass"),
+    )
+    for label, source_mutation in cases:
+        mutated = copy.deepcopy(canonical)
+        mutated.body.extend(ast.parse(source_mutation).body)
+        try:
+            require_unique_validator_runner_binding(mutated)
+        except Fail as exc:
+            expected = ("typed admission must define exactly one synchronous child runner"
+                        if label == "duplicate" else
+                        "typed admission child runner binding drift")
+            require(str(exc) == expected,
+                    f"typed admission child runner {label} rejection diagnostic drift")
+        else:
+            raise Fail(f"typed admission child runner {label} bypass unexpectedly accepted")
+    decorated = copy.deepcopy(canonical)
+    runner = next(node for node in decorated.body
+                  if isinstance(node, ast.FunctionDef) and node.name == "run_validator")
+    runner.decorator_list.append(ast.Name(id="wrapper", ctx=ast.Load()))
+    try:
+        require_unique_validator_runner_binding(decorated)
+    except Fail as exc:
+        require(str(exc) == "typed admission child runner signature/decorator drift",
+                "typed admission child runner decorator rejection diagnostic drift")
+    else:
+        raise Fail("typed admission child runner decorator bypass unexpectedly accepted")
+    print("PASS reject: eleven typed admission child runner binding/decorator substitutions")
+
+
 def exercise_validator_child_exit_propagation(validator) -> None:
     """Prove child exit status, not a PASS-looking stdout, controls admission."""
     original_run = validator.subprocess.run
@@ -235,6 +343,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
 
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
+    prove_validator_runner_binding()
     validator = load_validator()
     exercise_validator_child_exit_propagation(validator)
 
