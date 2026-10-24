@@ -207,6 +207,9 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
             "ancestor workflow job or permissions drift")
     require(not re.search(r"(?m)^    permissions:", workflow_source),
             "ancestor workflow job-level permissions override")
+    require(not re.search(r"(?m)^    (?:container|services|uses|needs|environment|outputs|secrets):", workflow_source)
+            and "jobs:\n  verify:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n" in workflow_source,
+            "ancestor workflow job execution drift")
     expected_actions = "      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n"
     require(workflow_source.count(expected_actions) == 1,
             "ancestor workflow checkout/setup drift")
@@ -267,6 +270,9 @@ def validate_independent_learning_workflow(source: str) -> None:
             "independent learning workflow job or permissions drift")
     require(not re.search(r"(?m)^    permissions:", source),
             "independent learning workflow job-level permissions override")
+    require(not re.search(r"(?m)^    (?:container|services|uses|needs|environment|outputs|secrets):", source)
+            and "jobs:\n  validate:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n" in source,
+            "independent learning workflow job execution drift")
     require(re.findall(r"(?m)^      - (?:uses|name):[^\n]*", source) == [
         "      - uses: actions/checkout@v4",
         "      - uses: actions/setup-python@v5",
@@ -930,6 +936,13 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         ("  verify:\n    runs-on: ubuntu-latest\n", "  verify:\n    defaults:\n      run:\n        shell: sh\n    runs-on: ubuntu-latest\n", "ancestor workflow execution context override"),
         ("  verify:\n    runs-on: ubuntu-latest\n", "  verify:\n    strategy:\n      fail-fast: false\n    runs-on: ubuntu-latest\n", "ancestor workflow execution context override"),
     )
+    cases += (
+        ("  verify:\n    runs-on: ubuntu-latest\n", "  verify:\n    runs-on: self-hosted\n", "ancestor workflow job execution drift"),
+        ("    timeout-minutes: 5\n", "    timeout-minutes: 120\n", "ancestor workflow job execution drift"),
+        ("    timeout-minutes: 5\n    steps:\n", "    timeout-minutes: 5\n    container: synthetic/unreviewed:latest\n    steps:\n", "ancestor workflow job execution drift"),
+        ("    timeout-minutes: 5\n    steps:\n", "    timeout-minutes: 5\n    services:\n      synthetic:\n        image: synthetic/unreviewed:latest\n    steps:\n", "ancestor workflow job execution drift"),
+        ("    timeout-minutes: 5\n    steps:\n", "    timeout-minutes: 5\n    environment: production\n    steps:\n", "ancestor workflow job execution drift"),
+    )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
                 f"workflow negative anchor not unique: {expected}")
@@ -975,6 +988,13 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("  validate:\n    runs-on: ubuntu-latest\n", "  validate:\n    defaults:\n      run:\n        shell: sh\n    runs-on: ubuntu-latest\n", "independent learning workflow execution context override"),
         ("  validate:\n    runs-on: ubuntu-latest\n", "  validate:\n    strategy:\n      fail-fast: false\n    runs-on: ubuntu-latest\n", "independent learning workflow execution context override"),
     )
+    cases += (
+        ("  validate:\n    runs-on: ubuntu-latest\n", "  validate:\n    runs-on: self-hosted\n", "independent learning workflow job execution drift"),
+        ("    timeout-minutes: 10\n", "    timeout-minutes: 120\n", "independent learning workflow job execution drift"),
+        ("    timeout-minutes: 10\n    steps:\n", "    timeout-minutes: 10\n    container: synthetic/unreviewed:latest\n    steps:\n", "independent learning workflow job execution drift"),
+        ("    timeout-minutes: 10\n    steps:\n", "    timeout-minutes: 10\n    services:\n      synthetic:\n        image: synthetic/unreviewed:latest\n    steps:\n", "independent learning workflow job execution drift"),
+        ("    timeout-minutes: 10\n    steps:\n", "    timeout-minutes: 10\n    environment: production\n    steps:\n", "independent learning workflow job execution drift"),
+    )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
                 f"independent workflow negative anchor not unique: {expected}")
@@ -1011,7 +1031,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 64, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 74, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
