@@ -302,9 +302,9 @@ def validate_independent_learning_workflow(source: str) -> None:
             "independent learning workflow trigger drift")
     event_block = source.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
     require(re.findall(r"(?m)^  ([a-z_]+):", event_block)
-            == ["push", "workflow_dispatch"],
+            == ["push", "pull_request", "workflow_dispatch"],
             "independent learning workflow event inventory drift")
-    push_body = event_block.split("  push:\n", 1)[1].split("  workflow_dispatch:\n", 1)[0]
+    push_body = event_block.split("  push:\n", 1)[1].split("  pull_request:\n", 1)[0]
     require(re.findall(r"(?m)^    ([a-z][a-z-]*):", push_body) == ["branches", "paths"],
             "independent learning workflow push options drift")
     require(not event_block.split("  workflow_dispatch:\n", 1)[1].strip(),
@@ -335,6 +335,16 @@ def validate_independent_learning_workflow(source: str) -> None:
     }
     require(paths - triggered_harnesses == required_authority_paths,
             "independent learning workflow source trigger drift")
+    pr_body = event_block.split("  pull_request:\n", 1)[1].split("  workflow_dispatch:\n", 1)[0]
+    require(re.search(r"(?m)^    branches: \\[so\\]\\n    paths:\\n", pr_body)
+            is not None, "independent learning workflow PR trigger drift")
+    require(re.findall(r"(?m)^    ([a-z][a-z-]*):", pr_body)
+            == ["branches", "paths"], "independent learning workflow PR options drift")
+    pr_match = re.search(r'(?m)^    paths:\\n(?P<paths>(?:      - "[^"]+"\\n)+)', pr_body)
+    require(pr_match is not None, "independent learning workflow PR trigger drift")
+    pr_paths = set(re.findall(r'^      - "([^"]+)"$', pr_match.group("paths"),
+                              flags=re.MULTILINE))
+    require(pr_paths == paths, "independent learning workflow PR source trigger drift")
     require(source.count("      - name: Validate learning contract and executable negatives\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-autonomous-learning-system.py\n          python -B scripts/validate-autonomous-learning-system-negative.py\n          python -B scripts/validate-memory-os-entry-docs.py\n") == 1,
             "independent learning workflow learning validation drift")
     require(source.count("      - name: Independently enforce helper ancestor runtime workflow reachability\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n") == 1,
@@ -357,6 +367,12 @@ def validate_independent_learning_workflow(source: str) -> None:
                       "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid push baseline"
                   )
               baseline = before
+          elif event_name == "pull_request":
+              baseline = "${{ github.event.pull_request.base.sha }}"
+              if not re.fullmatch(r"[0-9a-f]{40}", baseline):
+                  raise SystemExit(
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR base"
+                  )
           elif event_name == "workflow_dispatch":
               baseline = "HEAD^"
           else:
@@ -1237,8 +1253,8 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("  workflow_dispatch:\n", "  schedule:\n    - cron: '0 * * * *'\n  workflow_dispatch:\n", "independent learning workflow event inventory drift"),
     )
     cases += (
-        ("  workflow_dispatch:\n", "    tags: [synthetic]\n  workflow_dispatch:\n", "independent learning workflow push options drift"),
-        ("  workflow_dispatch:\n", "    paths: []\n  workflow_dispatch:\n", "independent learning workflow push options drift"),
+        ("  pull_request:\n", "    tags: [synthetic]\n  pull_request:\n", "independent learning workflow push options drift"),
+        ("  pull_request:\n", "    paths: []\n  pull_request:\n", "independent learning workflow push options drift"),
         ("  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs:\n      synthetic:\n        type: boolean\n", "independent learning workflow dispatch options drift"),
     )
     cases += (
@@ -1274,6 +1290,19 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("      - name: Confirm read-only execution\n",
          "        'working-directory': /tmp\n      - name: Confirm read-only execution\n",
          "independent learning workflow step authority drift"),
+    )
+    cases += (
+        ("  pull_request:\n", "  disabled_pull_request:\n",
+         "independent learning workflow event inventory drift"),
+        ("  pull_request:\n    branches: [so]\n",
+         "  pull_request:\n    branches: [main]\n",
+         "independent learning workflow PR trigger drift"),
+        ("  pull_request:\n    branches: [so]\n    paths:\n      - \".github/workflows/autonomous-learning-guard.yml\"\n",
+         "  pull_request:\n    branches: [so]\n    paths:\n",
+         "independent learning workflow PR source trigger drift"),
+        ("  workflow_dispatch:\n",
+         "    types: [opened]\n  workflow_dispatch:\n",
+         "independent learning workflow PR options drift"),
     )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
@@ -1386,7 +1415,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 125, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 129, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
