@@ -21,6 +21,8 @@ TARGETS = {
         "drill request fixture guard ancestor identity drift",
     "validate-memory-os-backup-restore-admission-chain-reconcile-negative.py":
         "admission-chain fixture guard ancestor identity drift",
+    "validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py":
+        "preflight fixture guard ancestor identity drift",
 }
 PROOF = "prove_helper_ancestor_swap_during_fd_walk_rejected"
 PIN = "pin_checked_helper_parent"
