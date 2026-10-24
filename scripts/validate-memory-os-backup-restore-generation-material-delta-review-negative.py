@@ -76,7 +76,8 @@ def expect_authority_substitution_fail(module, field: str, substitute: Path) -> 
         setattr(module, field, original)
 
 
-def expect_contract_fail(module, mutate, label: str) -> None:
+def expect_contract_fail(module, mutate, label: str, expected: str) -> None:
+    module.validate_contract_authority()
     canonical = json.loads(module.CONTRACT.read_text(encoding="utf-8"))
     mutated = json.loads(json.dumps(canonical))
     mutate(mutated)
@@ -85,11 +86,14 @@ def expect_contract_fail(module, mutate, label: str) -> None:
         module.load_json = lambda path, field: mutated if path == module.CONTRACT else original_load_json(path, field)
         try:
             module.validate_contract_authority()
-        except module.Fail:
-            return
-        raise Fail(f"contract authority negative unexpectedly passed: {label}")
+        except module.Fail as exc:
+            require(str(exc) == expected,
+                    f"material-delta contract rejected at wrong authority ({label}): {exc}")
+        else:
+            raise Fail(f"contract authority negative unexpectedly passed: {label}")
     finally:
         module.load_json = original_load_json
+    module.validate_contract_authority()
 
 
 def base_row() -> dict:
@@ -120,16 +124,20 @@ def base_payload(module) -> dict:
     }
 
 
-def expect_payload_fail(module, mutate, label: str) -> None:
+def expect_payload_fail(module, mutate, label: str, expected: str) -> None:
     row = base_row()
     payload = base_payload(module)
-    mutate(payload)
     fields = json.loads(module.CONTRACT.read_text(encoding="utf-8"))["requiredMaterialDeltaReviewEvidenceFields"]
+    module.validate_material_delta_payload(row, payload, 0, fields)
+    mutate(payload)
     try:
         module.validate_material_delta_payload(row, payload, 0, fields)
-    except module.Fail:
-        return
-    raise Fail(f"typed material-delta negative unexpectedly passed: {label}")
+    except module.Fail as exc:
+        require(str(exc) == f"records[0].materialDeltaReviewRef {expected}",
+                f"material-delta payload rejected at wrong authority ({label}): {exc}")
+    else:
+        raise Fail(f"typed material-delta negative unexpectedly passed: {label}")
+    module.validate_material_delta_payload(row, base_payload(module), 0, fields)
 
 
 def main() -> int:
@@ -159,30 +167,95 @@ def main() -> int:
         "materialDeltaReviewRef": "docs/evidence/backup-restore/../outside.json",
     }, "path traversal")
 
-    expect_payload_fail(module, lambda payload: payload.__setitem__("evidenceId", "brge_wrong_negative"), "evidence id mismatch")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("drillRequestId", "brrq_wrong_negative"), "drill request mismatch")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("recoveryObjectivesId", "ro_wrong_negative"), "recovery objective mismatch")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("sourceEnvironmentGenerationId", "pegen_wrong_source"), "source generation mismatch")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("restoreTargetGenerationId", "pegen_wrong_target"), "restore target generation mismatch")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("reviewResult", "REJECTED"), "review not approved")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("automaticPromotion", True), "automatic promotion claim")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("productionTrafficChanged", True), "production traffic claim")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("productionCredentialsUsed", True), "production credentials claim")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("reviewedAt", "2026-08-15"), "non-canonical review timestamp")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("reviewedAt", "2026-99-99T99:99:99Z"), "invalid calendar review timestamp")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("reviewerPseudonym", "Reviewer Name"), "unsafe reviewer pseudonym")
-    expect_payload_fail(module, lambda payload: payload.__setitem__("unexpectedField", True), "unexpected typed review field")
+    for field, invalid in (
+        ("evidenceId", "brge_wrong_negative"),
+        ("drillRequestId", "brrq_wrong_negative"),
+        ("recoveryObjectivesId", "ro_wrong_negative"),
+        ("sourceEnvironmentGenerationId", "pegen_wrong_source"),
+        ("restoreTargetGenerationId", "pegen_wrong_target"),
+    ):
+        expect_payload_fail(
+            module, lambda payload, field=field, invalid=invalid: payload.__setitem__(field, invalid),
+            f"material-delta provenance mismatch: {field}", f"{field} mismatch",
+        )
+    for field, invalid, expected in (
+        ("reviewResult", "REJECTED", "reviewResult must be APPROVED"),
+        ("automaticPromotion", True, "automaticPromotion must remain false"),
+        ("productionTrafficChanged", True, "productionTrafficChanged must remain false"),
+        ("productionCredentialsUsed", True, "productionCredentialsUsed must remain false"),
+        ("reviewedAt", "2026-08-15", "reviewedAt must be canonical UTC RFC3339 seconds"),
+        ("reviewedAt", "2026-99-99T99:99:99Z", "reviewedAt must be canonical UTC RFC3339 seconds"),
+        ("reviewerPseudonym", "Reviewer Name", "reviewerPseudonym invalid"),
+    ):
+        expect_payload_fail(
+            module, lambda payload, field=field, invalid=invalid: payload.__setitem__(field, invalid),
+            f"material-delta typed boundary: {field} {invalid}", expected,
+        )
+    expect_payload_fail(
+        module, lambda payload: payload.__setitem__("unexpectedField", True),
+        "unexpected typed review field", "typed review fields drift",
+    )
+    expect_payload_fail(
+        module, lambda payload: payload.pop("reviewedAt"),
+        "missing typed review field", "typed review fields drift",
+    )
+    expect_payload_fail(
+        module, lambda payload: payload.__setitem__("schemaVersion", "memory-os-backup-restore-material-delta-review.v0"),
+        "obsolete typed review schema", "schemaVersion drift",
+    )
 
-    expect_contract_fail(module, lambda contract: contract.__setitem__("materialDeltaReviewEvidenceRoot", "docs/evidence/backup-restore"), "material-delta evidence root widened")
-    expect_contract_fail(module, lambda contract: contract.__setitem__("materialDeltaReviewEvidenceSchemaVersion", "memory-os-backup-restore-material-delta-review.v0"), "material-delta schema authority drift")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustRemainInsideMonitoredNamespace", False), "material-delta namespace rule disabled")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustRemainAppendOnlyAfterFirstCommit", False), "material-delta append-only rule disabled")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustBeTyped", False), "material-delta typed rule disabled")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustBindEvidenceId", False), "material-delta evidence binding disabled")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustBeApproved", False), "material-delta approval rule disabled")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("candidateDerivationMustUseTypedMaterialDeltaReviewAuthority", False), "candidate material-delta authority delegation disabled")
-    expect_contract_fail(module, lambda contract: contract["promotionBoundary"].__setitem__("completeReviewedRecordAlsoRequiresTypedAppendOnlyMaterialDeltaReviewForCrossGenerationRestore", False), "material-delta promotion boundary disabled")
-    expect_contract_fail(module, lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"), "material-delta validator substituted")
+    expect_contract_fail(
+        module, lambda contract: contract.__setitem__("materialDeltaReviewEvidenceRoot", "docs/evidence/backup-restore"),
+        "material-delta evidence root widened", "material-delta review evidence root authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract.__setitem__("materialDeltaReviewEvidenceSchemaVersion", "memory-os-backup-restore-material-delta-review.v0"),
+        "material-delta schema authority drift", "material-delta review evidence schema authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"),
+        "material-delta validator substituted", "material-delta review validator authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract.__setitem__("materialDeltaReviewNegativeValidator", "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"),
+        "material-delta negative validator substituted", "material-delta review negative validator authority drift",
+    )
+    for mutation, label in (
+        (lambda fields: fields.pop(), "required field removed"),
+        (lambda fields: fields.append("reviewedAt"), "required field duplicated"),
+        (lambda fields: fields.append("unexpectedField"), "required field added"),
+    ):
+        expect_contract_fail(
+            module, lambda contract, mutation=mutation: mutation(contract["requiredMaterialDeltaReviewEvidenceFields"]),
+            f"material-delta {label}", "material-delta review required fields authority drift",
+        )
+    mandatory_rules = (
+        "crossGenerationRestoreRequiresMaterialDeltaReview",
+        "sameGenerationRestoreMayUseNullMaterialDeltaReview",
+        "crossGenerationMaterialDeltaReviewMustRemainInsideMonitoredNamespace",
+        "crossGenerationMaterialDeltaReviewMustRemainAppendOnlyAfterFirstCommit",
+        "crossGenerationMaterialDeltaReviewMustBeTyped",
+        "crossGenerationMaterialDeltaReviewMustBindEvidenceId",
+        "crossGenerationMaterialDeltaReviewMustBindDrillRequestId",
+        "crossGenerationMaterialDeltaReviewMustBindRecoveryObjectivesId",
+        "crossGenerationMaterialDeltaReviewMustBindSourceGenerationId",
+        "crossGenerationMaterialDeltaReviewMustBindRestoreTargetGenerationId",
+        "crossGenerationMaterialDeltaReviewMustBeApproved",
+        "crossGenerationMaterialDeltaReviewCannotAuthorizeAutomaticPromotion",
+        "candidateDerivationMustUseTypedMaterialDeltaReviewAuthority",
+    )
+    for rule in mandatory_rules:
+        expect_contract_fail(
+            module, lambda contract, rule=rule: contract["recordRules"].__setitem__(rule, False),
+            f"mandatory material-delta review rule disabled: {rule}",
+            f"material-delta review contract rule drift: {rule}",
+        )
+    expect_contract_fail(
+        module, lambda contract: contract["promotionBoundary"].__setitem__(
+            "completeReviewedRecordAlsoRequiresTypedAppendOnlyMaterialDeltaReviewForCrossGenerationRestore", False
+        ),
+        "material-delta promotion boundary disabled", "material-delta promotion boundary drift",
+    )
 
     original_history = module.git_history
     try:
