@@ -5,7 +5,12 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
+import secrets
+import shutil
+import stat
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
 
@@ -33,22 +38,135 @@ def load_module(path: Path, name: str):
     return module
 
 
+@contextmanager
 def guarded_temporary_directory(prefix: str, parent: Path):
-    # Fail closed before creating a repository-local synthetic fixture.
+    # Pin every ancestor by descriptor: the checked pathname may be swapped
+    # before mkdir, but the new child must stay beneath the opened directory.
     try:
         relative = parent.relative_to(ROOT)
     except ValueError as exc:
         raise Fail("drill request temp parent escapes repository") from exc
     require(ROOT.is_dir() and not ROOT.is_symlink(),
             "drill request repository root missing or symlinked")
-    cursor = ROOT
-    for part in relative.parts:
-        cursor = cursor / part
-        require(cursor.is_dir() and not cursor.is_symlink(),
-                "drill request temp ancestor missing or symlinked")
-    require(parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
-            "drill request temp parent canonical resolution drift")
-    return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+    require(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")
+        and shutil.rmtree.avoids_symlink_attacks,
+        "drill request pinned fixture directory unsupported",
+    )
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        fd = os.open(ROOT, flags)
+    except OSError as exc:
+        raise Fail(f"drill request cannot pin repository root: {exc}") from exc
+    try:
+        root_entry = ROOT.lstat()
+        root_open = os.fstat(fd)
+        require(
+            stat.S_ISDIR(root_entry.st_mode)
+            and (root_entry.st_dev, root_entry.st_ino) == (root_open.st_dev, root_open.st_ino),
+            "drill request repository root identity drift",
+        )
+        cursor = ROOT
+        for part in relative.parts:
+            cursor = cursor / part
+            require(cursor.is_dir() and not cursor.is_symlink(),
+                    "drill request temp ancestor missing or symlinked")
+            next_fd = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+            entry = cursor.lstat()
+            opened = os.fstat(fd)
+            require(
+                stat.S_ISDIR(entry.st_mode)
+                and (entry.st_dev, entry.st_ino) == (opened.st_dev, opened.st_ino),
+                "drill request temp ancestor identity drift",
+            )
+        require(
+            parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
+            "drill request temp parent canonical resolution drift",
+        )
+        pinned = os.fstat(fd)
+        for _ in range(8):
+            name = prefix + secrets.token_hex(8)
+            try:
+                os.mkdir(name, mode=0o700, dir_fd=fd)
+            except FileExistsError:
+                continue
+            break
+        else:
+            raise Fail("drill request temp child exclusive creation exhausted")
+        created = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        try:
+            current = parent.lstat()
+            require(
+                stat.S_ISDIR(current.st_mode)
+                and (current.st_dev, current.st_ino) == (pinned.st_dev, pinned.st_ino),
+                "drill request temp parent identity drift after creation",
+            )
+            require(stat.S_ISDIR(created.st_mode),
+                    "drill request temp child is not a directory")
+            yield str(parent / name)
+        finally:
+            current_child = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            require(
+                stat.S_ISDIR(current_child.st_mode)
+                and (current_child.st_dev, current_child.st_ino) == (created.st_dev, created.st_ino),
+                "drill request temp child identity drift before cleanup",
+            )
+            # Descriptor-relative, symlink-resistant cleanup cannot traverse a
+            # substituted parent pathname. Child inode drift fails closed.
+            shutil.rmtree(name, dir_fd=fd)
+    except OSError as exc:
+        raise Fail(f"drill request pinned fixture operation failed: {exc}") from exc
+    finally:
+        os.close(fd)
+
+
+def prove_parent_swap_during_mkdir_rejected() -> None:
+    # Deterministically substitute only an exclusively owned sandbox parent
+    # after descriptor pinning and before the actual mkdir operation.
+    with guarded_temporary_directory(prefix=".tmp-drill-request-race-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        checked = sandbox / "checked"
+        escaped = sandbox / "escaped"
+        parked = sandbox / "parked"
+        checked.mkdir()
+        escaped.mkdir()
+        original_identity = (checked.stat().st_dev, checked.stat().st_ino)
+        original_mkdir = os.mkdir
+        switched = False
+
+        def swap_before_mkdir(name: str, mode: int = 0o777, *, dir_fd: int | None = None) -> None:
+            nonlocal switched
+            if not switched and str(name).startswith(".tmp-drill-request-race-") and dir_fd is not None:
+                switched = True
+                checked.rename(parked)
+                checked.symlink_to(escaped, target_is_directory=True)
+            original_mkdir(name, mode=mode, dir_fd=dir_fd)
+
+        os.mkdir = swap_before_mkdir
+        try:
+            try:
+                with guarded_temporary_directory(prefix=".tmp-drill-request-race-", parent=checked):
+                    raise Fail("drill request parent swap accepted")
+            except Fail as exc:
+                require(str(exc) == "drill request temp parent identity drift after creation",
+                        f"drill request parent swap rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("drill request parent swap accepted")
+        finally:
+            os.mkdir = original_mkdir
+
+        require(switched, "drill request parent swap probe did not reach pinned mkdir")
+        require(checked.is_symlink() and checked.resolve() == escaped.resolve(),
+                "drill request parent swap did not install isolated redirect")
+        require((parked.stat().st_dev, parked.stat().st_ino) == original_identity,
+                "drill request parent swap changed pinned directory identity")
+        require(not list(escaped.iterdir()), "drill request parent swap published through redirect")
+        require(not list(parked.iterdir()), "drill request parent swap left pinned child")
+        # The enclosing owned context removes all synthetic children; no
+        # unconditional unlink or rename of mutable fixture paths is needed.
+    print("PASS: drill request parent swap during mkdir stays pinned and fails closed")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -129,6 +247,7 @@ def main() -> int:
     require(VALIDATOR.is_file(), "drill-request validator missing")
     require(RECONCILER.is_file(), "drill-request reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_parent_swap_during_mkdir_rejected()
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
