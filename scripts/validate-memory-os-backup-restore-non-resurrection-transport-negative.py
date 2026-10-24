@@ -1246,7 +1246,6 @@ def prove_typed_transport_fixture_parent_guard() -> None:
 
 
 def main() -> int:
-    prove_helper_source_symlink_rejected()
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
     prove_typed_admission_main_reachability()
     prove_typed_admission_child_reachability()
@@ -1258,6 +1257,7 @@ def main() -> int:
     prove_validator_runner_binding()
     validator = load_validator()
     exercise_validator_child_exit_propagation(validator)
+    prove_helper_source_symlink_rejected()
 
     original_subprocess_run = validator.subprocess.run
     original_spec_from_file_location = validator.importlib.util.spec_from_file_location
