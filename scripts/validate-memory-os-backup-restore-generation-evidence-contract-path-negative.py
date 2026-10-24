@@ -72,8 +72,15 @@ def main() -> int:
         escaped_target = Path(temporary_directory) / "outside-generation-evidence-contract-ref.py"
         escaped_target.write_text("# outside\n", encoding="utf-8")
         link_path = ROOT / ".memory-os-generation-evidence-contract-ref"
-        require(not link_path.exists() and not link_path.is_symlink(), "temporary contract-ref symlink path already exists")
+        require(ROOT.is_dir() and not ROOT.is_symlink(),
+                "generation-evidence contract-ref fixture root missing or symlinked")
+        parent_stat = ROOT.stat()
+        parent_identity = (parent_stat.st_dev, parent_stat.st_ino)
+        require(not link_path.exists() and not link_path.is_symlink(),
+                "temporary contract-ref symlink path already exists")
         link_path.symlink_to(escaped_target)
+        created_stat = link_path.lstat()
+        created_identity = (created_stat.st_dev, created_stat.st_ino)
         try:
             expect_rejected(
                 module,
@@ -81,7 +88,17 @@ def main() -> int:
                 lambda: module.canonical_contract_ref(str(link_path.relative_to(ROOT)), "validator"),
             )
         finally:
-            link_path.unlink(missing_ok=True)
+            require(ROOT.is_dir() and not ROOT.is_symlink(),
+                    "generation-evidence contract-ref fixture parent substituted before cleanup")
+            current_parent = ROOT.stat()
+            require((current_parent.st_dev, current_parent.st_ino) == parent_identity,
+                    "generation-evidence contract-ref fixture parent inode drift before cleanup")
+            current_link = link_path.lstat()
+            require((current_link.st_dev, current_link.st_ino) == created_identity,
+                    "generation-evidence contract-ref fixture inode drift before cleanup")
+            require(link_path.is_symlink() and link_path.resolve() == escaped_target.resolve(),
+                    "generation-evidence contract-ref fixture target drift before cleanup")
+            link_path.unlink()
 
     reject_writer_substitution(
         module,
