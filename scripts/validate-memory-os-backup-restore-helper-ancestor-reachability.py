@@ -403,6 +403,36 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
                 for keyword in walk_loop.body[2].value.keywords),
         "ancestor pin descriptor open not live",
     )
+    # The checked leaf FD must supply the executed bytes; merely opening a
+    # pinned FD before a later pathname read does not prevent import TOCTOU.
+    loader_try = live_statements[1]
+    read_try = loader_try.body[1] if len(loader_try.body) > 1 else None
+    require(
+        isinstance(read_try, ast.Try)
+        and len(read_try.body) >= 5
+        and ast.dump(read_try.body[3], include_attributes=False)
+        == ast.dump(ast.parse(
+            "with os.fdopen(os.dup(fd), 'rb') as stream:\n"
+            "    source = stream.read()\n"
+        ).body[0], include_attributes=False)
+        and ast.dump(read_try.body[-2], include_attributes=False)
+        == ast.dump(ast.parse(
+            "exec(compile(source, str(path), 'exec'), module.__dict__)"
+        ).body[0], include_attributes=False)
+        and isinstance(read_try.body[-1], ast.Return)
+        and isinstance(read_try.body[-1].value, ast.Name)
+        and read_try.body[-1].value.id == "module",
+        "loader source execution not pinned to FD",
+    )
+    require(
+        len(read_try.finalbody) == 1
+        and ast.dump(read_try.finalbody[0], include_attributes=False)
+        == ast.dump(ast.parse("os.close(fd)").body[0], include_attributes=False)
+        and len(loader_try.finalbody) == 1
+        and ast.dump(loader_try.finalbody[0], include_attributes=False)
+        == ast.dump(ast.parse("os.close(parent_fd)").body[0], include_attributes=False),
+        "loader FD cleanup not guaranteed",
+    )
     require(
         has_method(proof, "rename") and has_method(proof, "symlink_to"),
         "ancestor proof missing deterministic substitution",
@@ -544,6 +574,26 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "        return -1  # synthetic unbound return\n",
          "ancestor pin missing live relative-parts walk"),
     )
+    replacements += (
+        ("                source = stream.read()\n",
+         "                source = path.read_bytes()\n",
+         "loader source execution not pinned to FD"),
+        ('            with os.fdopen(os.dup(fd), "rb") as stream:\n',
+         '            with open(path, "rb") as stream:\n',
+         "loader source execution not pinned to FD"),
+        ('            exec(compile(source, str(path), "exec"), module.__dict__)\n',
+         '            exec(compile(path.read_bytes(), str(path), "exec"), module.__dict__)\n',
+         "loader source execution not pinned to FD"),
+        ('            exec(compile(source, str(path), "exec"), module.__dict__)\n',
+         '            exec(compile(source, str(path), "exec"), globals())\n',
+         "loader source execution not pinned to FD"),
+        ("        finally:\n            os.close(fd)\n    finally:\n",
+         "        finally:\n            pass  # synthetic leaked leaf FD\n    finally:\n",
+         "loader FD cleanup not guaranteed"),
+        ("    finally:\n        os.close(parent_fd)\n",
+         "    finally:\n        pass  # synthetic leaked parent FD\n",
+         "loader FD cleanup not guaranteed"),
+    )
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
@@ -581,7 +631,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 40 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
