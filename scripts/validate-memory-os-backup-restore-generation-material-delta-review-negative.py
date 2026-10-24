@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -252,20 +254,47 @@ def main() -> int:
     )
 
     original_history = module.git_history
+    original_transport = module.subprocess.run
     try:
+        review_ref = "docs/evidence/backup-restore/material-delta/synthetic.json"
         module.git_history = lambda _ref, _field: ["a" * 40, "b" * 40]
         try:
             module.require_append_only_review(
-                "docs/evidence/backup-restore/material-delta/synthetic.json",
-                Path("/tmp/not-read-after-history-rejection"),
-                "materialDeltaReviewRef",
+                review_ref, Path("/tmp/not-read-after-history-rejection"), "materialDeltaReviewRef",
             )
-        except module.Fail:
-            pass
+        except module.Fail as exc:
+            require(str(exc) == "materialDeltaReviewRef must remain append-only after its first committed version",
+                    f"material-delta multi-commit negative wrong diagnostic: {exc}")
         else:
-            raise Fail("post-commit material-delta review edit was accepted")
+            raise Fail("material-delta review with multiple committed versions was accepted")
+
+        with tempfile.TemporaryDirectory(prefix="material-delta-review-immutability-negative-") as tmp:
+            path = Path(tmp) / "synthetic-review.json"
+            creation_bytes = b'{"reviewResult":"APPROVED"}\n'
+            path.write_bytes(creation_bytes)
+            module.git_history = lambda _ref, _field: ["a" * 40]
+
+            def synthetic_git_show(args, **_kwargs):
+                require(args == ["git", "show", f"{'a' * 40}:{review_ref}"],
+                        f"unexpected synthetic material-delta history transport: {args}")
+                return subprocess.CompletedProcess(args, 0, stdout=creation_bytes, stderr=b"")
+
+            module.subprocess.run = synthetic_git_show
+            module.require_append_only_review(review_ref, path, "materialDeltaReviewRef")
+            path.write_bytes(b'{"reviewResult":"REJECTED"}\n')
+            try:
+                module.require_append_only_review(review_ref, path, "materialDeltaReviewRef")
+            except module.Fail as exc:
+                require(str(exc) == "materialDeltaReviewRef bytes drift from initial committed material-delta review evidence",
+                        f"material-delta review byte mutation wrong diagnostic: {exc}")
+            else:
+                raise Fail("material-delta review changed after creation was accepted")
+            path.write_bytes(creation_bytes)
+            module.require_append_only_review(review_ref, path, "materialDeltaReviewRef")
     finally:
         module.git_history = original_history
+        module.subprocess.run = original_transport
+    print("PASS: material-delta append-only history and creation-blob immutability positive/negative controls")
 
     print("PASS: material-delta review negatives reject runtime authority substitution, generic refs, semantic binding drift, candidate/promotion drift, unsafe claims, contract drift, and post-commit edits")
     print("runtime data/executable authority substitution accepted: false")
