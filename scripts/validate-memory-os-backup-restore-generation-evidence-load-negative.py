@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
@@ -31,6 +32,24 @@ def load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(*, prefix: str, parent: Path):
+    # Reuse the tested sibling negative-harness parent guard; never create
+    # repository-local fixtures through an unchecked symlinked ancestor.
+    require(RECONCILE_NEGATIVE.is_file(), "generation reconcile fixture guard missing")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_generation_reconcile_fixture_guard_load", RECONCILE_NEGATIVE
+    )
+    require(spec is not None and spec.loader is not None, "cannot load generation reconcile fixture guard")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "generation reconcile fixture guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix=prefix, parent=parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -142,7 +161,7 @@ def exercise_writer_registry_append_guard(writer) -> None:
 
 
 def exercise_writer_rollback_diagnostics(writer) -> None:
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-writer-rollback-diagnostics-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-writer-rollback-diagnostics-", parent=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         registry = tmp / writer.CANONICAL_REGISTRY.name
         registry.write_bytes(writer.CANONICAL_REGISTRY.read_bytes())
@@ -188,7 +207,7 @@ def exercise_writer_rollback_diagnostics(writer) -> None:
 def exercise_reconciler_transaction_rollback(reconciler) -> None:
     output_names = ("REGISTRY", "CONTRACT", "BINDING", "STATUS")
     for fail_index in (2, 3, 4):
-        with tempfile.TemporaryDirectory(prefix=f".tmp-generation-evidence-transaction-{fail_index}-", dir=TMP_PARENT) as tmpdir:
+        with guarded_temporary_directory(prefix=f".tmp-generation-evidence-transaction-{fail_index}-", parent=TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
             originals = {name: getattr(reconciler, name) for name in output_names}
             copies: dict[str, Path] = {}
@@ -240,7 +259,7 @@ def exercise_reconciler_transaction_rollback(reconciler) -> None:
 
 def exercise_reconciler_rollback_diagnostics(reconciler) -> None:
     output_names = ("REGISTRY", "CONTRACT", "BINDING", "STATUS")
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-rollback-diagnostics-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-rollback-diagnostics-", parent=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         originals = {name: getattr(reconciler, name) for name in output_names}
         copies: dict[str, Path] = {}
@@ -295,6 +314,22 @@ def main() -> int:
     require(VALIDATOR.is_file(), "generation evidence validator missing")
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    with guarded_temporary_directory(prefix=".tmp-generation-load-parent-negative-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(prefix=".tmp-must-not-create-", parent=link):
+                raise Fail("generation load symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "reconcile negative temp ancestor missing or symlinked",
+                    f"generation load symlinked parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("generation load symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "generation load symlinked temp parent published a child")
+    print("PASS: generation load fixture reuses reconcile pre-publication parent guard")
     writer = load_module(WRITER, "memory_os_generation_evidence_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_generation_evidence_validator_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_generation_evidence_reconciler_load_negative")
@@ -304,7 +339,7 @@ def main() -> int:
     exercise_writer_registry_append_guard(writer)
     exercise_writer_rollback_diagnostics(writer)
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-load-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-load-", parent=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         with tempfile.TemporaryDirectory(prefix="memory-os-generation-evidence-outside-") as outside_dirname:
             outside_dir = Path(outside_dirname)
