@@ -35,17 +35,62 @@ def load_authority_validator(name: str):
     return module
 
 
+OWNED_TEMP_MODULES: dict[Path, tuple[tuple[int, int], tuple[int, int]]] = {}
+
+
+def require_temp_parent_canonical() -> tuple[int, int]:
+    require(ROOT.is_dir() and not ROOT.is_symlink(),
+            "drill writer temp root missing or symlinked")
+    cursor = ROOT
+    for part in ("docs", "fixtures", "memory-os-operability"):
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "drill writer temp parent missing or symlinked")
+    require(TMP_PARENT == cursor and TMP_PARENT.resolve(strict=True) ==
+            ROOT.resolve(strict=True) / "docs/fixtures/memory-os-operability",
+            "drill writer temp parent canonical path drift")
+    stat = TMP_PARENT.stat()
+    return stat.st_dev, stat.st_ino
+
+
+def require_owned_temp_cleanup(path: Path) -> None:
+    identities = OWNED_TEMP_MODULES.get(path)
+    require(identities is not None, "drill writer temp module not owned by this negative run")
+    parent_identity, created_identity = identities
+    require(require_temp_parent_canonical() == parent_identity,
+            "drill writer temp parent inode drift before cleanup")
+    require(path.is_file() and not path.is_symlink(),
+            "drill writer temp module substituted before cleanup")
+    current = path.stat()
+    require((current.st_dev, current.st_ino) == created_identity,
+            "drill writer temp module inode drift before cleanup")
+    path.unlink()
+    del OWNED_TEMP_MODULES[path]
+
+
 def repo_temp_module(prefix: str, content: str) -> Path:
+    parent_identity = require_temp_parent_canonical()
     fd, raw_path = tempfile.mkstemp(prefix=prefix, suffix=".py", dir=TMP_PARENT)
-    os.close(fd)
     path = Path(raw_path)
-    path.write_text(content, encoding="utf-8")
+    created_stat = os.fstat(fd)
+    created_identity = (created_stat.st_dev, created_stat.st_ino)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as owned:
+            owned.write(content)
+    except BaseException:
+        if path.is_file() and not path.is_symlink():
+            current = path.stat()
+            if (current.st_dev, current.st_ino) == created_identity:
+                path.unlink()
+        raise
+    OWNED_TEMP_MODULES[path] = (parent_identity, created_identity)
     return path
 
 
 def expect_rejection(label: str, configure, expected_message: str) -> None:
     module = load_authority_validator(f"drill_writer_authority_negative_{label}")
     cleanup: list[Path] = []
+    owned_before = set(OWNED_TEMP_MODULES)
     try:
         configure(module, cleanup)
         try:
@@ -55,8 +100,11 @@ def expect_rejection(label: str, configure, expected_message: str) -> None:
         else:
             raise Fail(f"{label}: substituted authority was accepted")
     finally:
-        for path in cleanup:
-            path.unlink(missing_ok=True)
+        created_paths = set(OWNED_TEMP_MODULES) - owned_before
+        for path in sorted(created_paths):
+            require_owned_temp_cleanup(path)
+        require(set(cleanup) == created_paths,
+                f"{label}: drill writer temp cleanup registration drift")
 
 
 def canonical_writer_module(
