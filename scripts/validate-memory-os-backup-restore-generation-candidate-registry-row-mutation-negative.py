@@ -67,7 +67,7 @@ def main() -> int:
     cleanup: list[Path] = []
 
     try:
-        with tempfile.TemporaryDirectory(prefix=".tmp-memory-os-candidate-row-mutation-", dir=TMP_PARENT) as tmp:
+        with candidate_helpers.guarded_temporary_directory(prefix=".tmp-memory-os-candidate-row-mutation-", parent=TMP_PARENT) as tmp:
             tmp_path = Path(tmp)
             generation_registry = tmp_path / "generations.json"
             objectives_registry = tmp_path / "objectives.json"
