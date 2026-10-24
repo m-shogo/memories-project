@@ -52,6 +52,31 @@ def guarded_temporary_directory(prefix: str, parent: Path):
         raise Fail(str(exc)) from exc
 
 
+
+def prove_helper_source_symlink_rejected() -> None:
+    # Test the import boundary independently of the symlink-parent fixture.
+    global DRILL_REQUEST_LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="preflight-fixture-helper-source-") as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real-helper.py"
+        real.touch()
+        link = sandbox / "helper.py"
+        link.symlink_to(real)
+        original = DRILL_REQUEST_LOAD_NEGATIVE
+        try:
+            DRILL_REQUEST_LOAD_NEGATIVE = link
+            try:
+                guarded_temporary_directory(".tmp-must-not-create-", TMP_PARENT)
+            except Fail as exc:
+                require(str(exc) == "drill request fixture parent guard source missing or symlinked",
+                        f"preflight helper source rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("preflight symlinked fixture helper accepted")
+        finally:
+            DRILL_REQUEST_LOAD_NEGATIVE = original
+    print("PASS: preflight fixture helper symlink rejected before import")
+
+
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
     try:
         action()
@@ -267,6 +292,7 @@ def main() -> int:
     require(CANONICAL_CONTRACT.is_file(), "preflight contract missing")
     require(CANONICAL_STATUS.is_file(), "production status missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_helper_source_symlink_rejected()
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
 
