@@ -4679,3 +4679,25 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check
 - Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Preflight still requires distinct unsuperseded semantically eligible environments and a human-approved current objective; new generation evidence still requires a current executable reviewed drill request; final candidates still require complete typed eight-domain non-resurrection coverage and independent review; human production promotion remains separate and non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Full-chain CLI main binding rejects module-level shadowing
+
+### Material success: outcome and observed evidence
+- Code commit `d19096069e9042ecf2ed048db2dfadf94b653b57` extends the existing CI-reachable `scripts/validate-memory-os-backup-restore-admission-chain-full-negative.py` with a canonical AST positive control and fourteen diagnostic-specific main replacement/decorator negatives.
+- Exact-source Backup Restore Admission Chain run `40053728104` (job `120751915026`) completed SUCCESS at that code SHA. Its log explicitly reports `PASS reject: fourteen full-chain main rebinding/decorator substitutions`, `Admission-chain full runner negative validation PASS`, and `production decision: NO_GO`.
+- Only the existing synthetic negative harness was modified. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO, OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains PREREQUISITES_BLOCKED with zero eligible generations, approved objectives and final candidates, and learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+
+### Symptom/risk, verified coverage gap and failed approach to avoid
+- Risk: a later module-level `main` assignment, import alias, decorator or namespace mutation could replace the guarded CLI entrypoint while leaving the original function text intact. No production incident or actual bypass was observed.
+- Verified gap: the existing full-chain negative harness protected `run_step` pre-main binding and tested runtime `main` guard substitution, but did not verify that the module-level `main` symbol remained uniquely bound and undecorated.
+- Failed approach to avoid: treating `main(canonical_authority_guard=...)` runtime identity defaults or presence of a guarded function as sufficient proof of the CLI symbol's module-level binding.
+
+### Correction, executable recurrence guard and retry condition
+- Parse the canonical full runner, require one synchronous undecorated `main` with the expected two default-bound authority arguments, and reject static/dynamic rebinding, dead-branch assignments, import aliases, duplicate/async/class definitions, `globals()` mutation, module `__dict__`, `setattr` and `exec`. Require exact rejection diagnostics for each synthetic mutation.
+- Reuse the existing transitive CI execution path rather than adding a competing workflow or production authority.
+- Retry only on exact-source CI regression, a reviewed legitimate main architecture change, or a newly demonstrated main-binding bypass. Do not retry unchanged clean-worktree, external dependency or workflow-write blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- All mutation cases operate on in-memory AST copies. No production writer, generation, recovery objective, reviewed drill request, evidence, typed domain record, credential, traffic, readiness or promotion authority was changed.
+- Strict OPS-P0-007 preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current objective. New generation evidence requires a current executable reviewed request; final candidates require all existing gates, complete typed eight-domain non-resurrection coverage and independent review. Human production promotion remains separate and non-automatic.
+- This learning and CI proof cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
