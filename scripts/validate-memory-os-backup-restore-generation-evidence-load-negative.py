@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -34,17 +36,43 @@ def load_module(path: Path, name: str):
     return module
 
 
+def load_pinned_fixture_guard(path: Path, name: str):
+    """Execute the checked fixture-helper bytes from a no-follow descriptor."""
+    require(hasattr(os, "O_NOFOLLOW"),
+            "generation-evidence fixture guard no-follow open unsupported")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise Fail("generation-evidence fixture guard source open failed") from exc
+    try:
+        opened = os.fstat(fd)
+        entry = path.lstat()
+        require(
+            stat.S_ISREG(opened.st_mode) and stat.S_ISREG(entry.st_mode)
+            and (opened.st_dev, opened.st_ino) == (entry.st_dev, entry.st_ino),
+            "generation-evidence fixture guard source identity drift",
+        )
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            source = stream.read()
+        spec = importlib.util.spec_from_file_location(name, path)
+        require(spec is not None and spec.loader is not None,
+                "generation-evidence fixture guard cannot load")
+        module = importlib.util.module_from_spec(spec)
+        exec(compile(source, str(path), "exec"), module.__dict__)
+        return module
+    except OSError as exc:
+        raise Fail("generation-evidence fixture guard pinned source read failed") from exc
+    finally:
+        os.close(fd)
+
+
 def guarded_temporary_directory(*, prefix: str, parent: Path):
     # Reuse the tested sibling negative-harness parent guard; never create
     # repository-local fixtures through an unchecked symlinked ancestor.
     require(RECONCILE_NEGATIVE.is_file() and not RECONCILE_NEGATIVE.is_symlink(),
             "generation reconcile fixture guard source missing or symlinked")
-    spec = importlib.util.spec_from_file_location(
-        "memory_os_generation_reconcile_fixture_guard_load", RECONCILE_NEGATIVE
-    )
-    require(spec is not None and spec.loader is not None, "cannot load generation reconcile fixture guard")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = load_pinned_fixture_guard(
+        RECONCILE_NEGATIVE, "memory_os_generation_reconcile_fixture_guard_load")
     require(callable(getattr(module, "guarded_temporary_directory", None)),
             "generation reconcile fixture guard callable missing")
     try:
@@ -75,6 +103,54 @@ def prove_helper_source_symlink_rejected() -> None:
         finally:
             RECONCILE_NEGATIVE = original
     print("PASS: generation-evidence fixture helper symlink rejected before import")
+
+
+def prove_helper_source_swap_during_import_is_pinned() -> None:
+    # Establish valid helper behavior before swapping its name after FD pinning.
+    global RECONCILE_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="generation-evidence-helper-import-race-") as raw:
+        sandbox = Path(raw)
+        trusted = sandbox / "helper.py"
+        parked = sandbox / "original-helper.py"
+        untrusted = sandbox / "untrusted.py"
+        trusted.write_text(
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(*, prefix, parent):\n"
+            "    return ('pinned-source', prefix)\n",
+            encoding="utf-8",
+        )
+        untrusted.write_text("raise RuntimeError('untrusted helper executed')\n", encoding="utf-8")
+        original_path = RECONCILE_NEGATIVE
+        original_spec = importlib.util.spec_from_file_location
+        swapped = False
+        try:
+            RECONCILE_NEGATIVE = trusted
+            require(
+                guarded_temporary_directory(prefix=".tmp-positive-", parent=TMP_PARENT)
+                == ("pinned-source", ".tmp-positive-"),
+                "generation-evidence helper pinned import positive control failed",
+            )
+
+            def swap_before_spec(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == trusted:
+                    swapped = True
+                    trusted.rename(parked)
+                    trusted.symlink_to(untrusted)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_before_spec
+            require(
+                guarded_temporary_directory(prefix=".tmp-race-", parent=TMP_PARENT)
+                == ("pinned-source", ".tmp-race-"),
+                "generation-evidence helper import executed substituted source",
+            )
+            require(swapped and trusted.is_symlink() and parked.is_file(),
+                    "generation-evidence helper race probe did not substitute checked source")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            RECONCILE_NEGATIVE = original_path
+    print("PASS: generation-evidence load helper import uses pinned source after pathname substitution")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -356,6 +432,7 @@ def main() -> int:
         require(sorted(p.name for p in sandbox.iterdir()) == before,
                 "generation load symlinked temp parent published a child")
     print("PASS: generation load fixture reuses reconcile pre-publication parent guard")
+    prove_helper_source_swap_during_import_is_pinned()
     writer = load_module(WRITER, "memory_os_generation_evidence_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_generation_evidence_validator_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_generation_evidence_reconciler_load_negative")
