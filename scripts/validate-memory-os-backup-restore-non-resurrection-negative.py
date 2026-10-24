@@ -280,6 +280,8 @@ def main() -> int:
             "reviewResult": "APPROVED",
             "reviewProductionField": None,
             "reviewFieldMutation": None,
+            "reviewRefsMutation": None,
+            "reviewDigestValueMutation": None,
             "reviewTypeOverride": None,
             "reviewTarget": "BOTH",
         }
@@ -323,6 +325,10 @@ def main() -> int:
                     mutate_review = state["reviewTarget"] in ("BOTH", review_type)
                     reviewed = ([ref for ref in refs if ref != (state["reviewRefsDropDomain"] or refs[-1])]
                                 if mutate_review and state["reviewRefsDropOne"] else refs)
+                    if mutate_review and state["reviewRefsMutation"] == "DUPLICATE":
+                        reviewed = refs + [refs[0]]
+                    if mutate_review and state["reviewRefsMutation"] == "NON_LIST":
+                        reviewed = "not-a-list"
                     reviewer = state["securityReviewer"] if review_type == "SECURITY" else state["operabilityReviewer"]
                     digests = dict(expected_digests)
                     if mutate_review and state["reviewDigestMismatch"]:
@@ -331,6 +337,10 @@ def main() -> int:
                         digests.pop(state["reviewDigestTarget"] or refs[0])
                     if mutate_review and state["reviewDigestCoverageMutation"] == "EXTRA":
                         digests["synthetic-unreviewed-domain.json"] = "0" * 64
+                    if mutate_review and state["reviewDigestValueMutation"] == "BAD_HEX":
+                        digests[refs[0]] = "G" * 64
+                    if mutate_review and state["reviewDigestValueMutation"] == "BOOLEAN":
+                        digests[refs[0]] = True
                     payload = review_payload(
                         generation=state["reviewGeneration"] if mutate_review else "brge_negative_generation",
                         source_sha=state["reviewSha"] if mutate_review else SHA,
@@ -636,6 +646,31 @@ def main() -> int:
         state["reviewTarget"] = "BOTH"
         writer.validate_record(valid)
         print("PASS reject: all eight typed domains and both reviews enforce exact payload field sets")
+
+        # The exact bundle/digest checks must reject malformed types and duplicate
+        # refs before a superficially approved review can reach candidate admission.
+        for review_type in ("SECURITY", "OPERABILITY"):
+            state["reviewTarget"] = review_type
+            for mutation in ("DUPLICATE", "NON_LIST"):
+                case = f"{review_type} malformed reviewed refs: {mutation.lower()}"
+                EXPECTED_DIAGNOSTICS[case] = f"{review_type} reviewedDomainEvidenceRefs invalid"
+                state["reviewRefsMutation"] = mutation
+                try:
+                    expect_rejected(case, lambda: writer.validate_record(valid))
+                finally:
+                    state["reviewRefsMutation"] = None
+            for mutation in ("BAD_HEX", "BOOLEAN"):
+                case = f"{review_type} malformed reviewed digest: {mutation.lower()}"
+                EXPECTED_DIAGNOSTICS[case] = f"{review_type} reviewedDomainEvidenceSha256 invalid"
+                state["reviewDigestValueMutation"] = mutation
+                try:
+                    expect_rejected(case, lambda: writer.validate_record(valid))
+                finally:
+                    state["reviewDigestValueMutation"] = None
+            writer.validate_record(valid)
+        state["reviewTarget"] = "BOTH"
+        writer.validate_record(valid)
+        print("PASS reject: both reviews reject duplicate/nonlist refs and invalid digest value types")
 
         empty_registry = {
             "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
