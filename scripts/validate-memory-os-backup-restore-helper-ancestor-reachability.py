@@ -203,6 +203,8 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
             and re.findall(r"(?m)^  [A-Za-z][\w-]*:$", job_sections[1]) == ["  verify:"]
             and "\npermissions:\n  contents: read\n\njobs:\n" in workflow_source,
             "ancestor workflow job or permissions drift")
+    require(not re.search(r"(?m)^    permissions:", workflow_source),
+            "ancestor workflow job-level permissions override")
     expected_actions = "      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n"
     require(workflow_source.count(expected_actions) == 1,
             "ancestor workflow checkout/setup drift")
@@ -259,6 +261,8 @@ def validate_independent_learning_workflow(source: str) -> None:
             and re.findall(r"(?m)^  [A-Za-z][\w-]*:$", jobs[1]) == ["  validate:"]
             and "\npermissions:\n  contents: read\n" in source,
             "independent learning workflow job or permissions drift")
+    require(not re.search(r"(?m)^    permissions:", source),
+            "independent learning workflow job-level permissions override")
     require(re.findall(r"(?m)^      - (?:uses|name):[^\n]*", source) == [
         "      - uses: actions/checkout@v4",
         "      - uses: actions/setup-python@v5",
@@ -912,6 +916,7 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         ("      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          git diff --exit-code\n          test -z \"$(git status --porcelain)\"\n",
          "      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          echo synthetic-readonly-bypass\n          test -z \"$(git status --porcelain)\"\n",
          "ancestor read-only workflow postcondition drift"),
+        ("  verify:\n    runs-on: ubuntu-latest\n", "  verify:\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n", "ancestor workflow job-level permissions override"),
     )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
@@ -948,6 +953,7 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("      - \"scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py\"\n", "", "independent learning workflow target trigger drift"),
         ("      - \"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\"\n", "", "independent learning workflow target trigger drift"),
         ("      - \"scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py\"\n", "      - \"scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py\"\n      - \"scripts/validate-memory-os-backup-restore-synthetic-negative.py\"\n", "independent learning workflow target trigger drift"),
+        ("  validate:\n    runs-on: ubuntu-latest\n", "  validate:\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n", "independent learning workflow job-level permissions override"),
     )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
@@ -985,7 +991,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 50, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 52, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
