@@ -251,6 +251,39 @@ def validate_setup_python_input_inventory(source: str, diagnostic: str) -> None:
             diagnostic)
 
 
+
+FINAL_READONLY_LINE = '          test -z "$(git status --porcelain)"\n'
+ANCESTOR_RUN_BOUNDARIES = (
+    (FINAL_READONLY_LINE,
+     "      - name: Prove seven canonical ancestor negatives remain reachable\n"),
+    ("          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n",
+     "      - name: Prove every canonical helper ancestor race from the validator target set\n"),
+    ("          PY\n",
+     "      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n"),
+    ("          PY\n",
+     "      - name: Verify read-only postcondition\n"),
+)
+LEARNING_RUN_BOUNDARIES = (
+    (FINAL_READONLY_LINE,
+     "      - name: Enforce append-only learning authority against parent\n"),
+    ("          PY\n",
+     "      - name: Validate learning contract and executable negatives\n"),
+    ("          python -B scripts/validate-memory-os-entry-docs.py\n",
+     "      - name: Independently enforce helper ancestor runtime workflow reachability\n"),
+    ("          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n",
+     "      - name: Confirm read-only execution\n"),
+)
+
+
+def validate_run_step_boundaries(
+    source: str, boundaries: tuple[tuple[str, str], ...], diagnostic: str
+) -> None:
+    """No unreviewed shell commands may follow a canonical run-body prefix."""
+    require(all(source.count(last + next_step) == 1
+                for last, next_step in boundaries), diagnostic)
+    require(source.endswith(FINAL_READONLY_LINE), diagnostic)
+
+
 def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
@@ -407,6 +440,12 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
 
     validate_setup_python_input_inventory(
         workflow_source, "ancestor workflow setup-python input inventory drift",
+    )
+
+
+    validate_run_step_boundaries(
+        workflow_source, ANCESTOR_RUN_BOUNDARIES,
+        "ancestor workflow run boundary drift",
     )
 
 
@@ -593,6 +632,12 @@ def validate_independent_learning_workflow(source: str) -> None:
 
     validate_setup_python_input_inventory(
         source, "independent learning workflow setup-python input inventory drift",
+    )
+
+
+    validate_run_step_boundaries(
+        source, LEARNING_RUN_BOUNDARIES,
+        "independent learning workflow run boundary drift",
     )
 
 
@@ -1376,6 +1421,20 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor workflow step authority drift"),
         (workflow_source + "\n      - 'uses': synthetic/unreviewed@v1\n",
          "ancestor workflow step authority drift"),
+    duplicate_root_cases += tuple(
+        (workflow_source.replace(last + next_step,
+                                 last + "          echo synthetic bypass\n" + next_step, 1),
+         "ancestor workflow run boundary drift")
+        for last, next_step in (
+            ANCESTOR_RUN_BOUNDARIES[0],
+            ANCESTOR_RUN_BOUNDARIES[1],
+            ANCESTOR_RUN_BOUNDARIES[3],
+        )
+    )
+    duplicate_root_cases += (
+        (workflow_source + "          echo synthetic bypass\n",
+         "ancestor workflow run boundary drift"),
+    )
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1577,6 +1636,16 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "independent learning workflow step authority drift"),
         (source + "\n      - 'uses': synthetic/unreviewed@v1\n",
          "independent learning workflow step authority drift"),
+    duplicate_root_cases += tuple(
+        (source.replace(last + next_step,
+                        last + "          echo synthetic bypass\n" + next_step, 1),
+         "independent learning workflow run boundary drift")
+        for last, next_step in LEARNING_RUN_BOUNDARIES
+    )
+    duplicate_root_cases += (
+        (source + "          echo synthetic bypass\n",
+         "independent learning workflow run boundary drift"),
+    )
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1741,7 +1810,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 160, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 169, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
