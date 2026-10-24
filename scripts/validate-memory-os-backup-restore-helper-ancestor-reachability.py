@@ -82,6 +82,31 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         and node.name in {"load_pinned_fixture_helper", "load_pinned_fixture_guard"}
     ]
     require(len(loaders) == 1, "missing or duplicate pinned fixture loader")
+    # A later module-level assignment can replace an otherwise valid checked
+    # function before the canonical __main__ dispatcher executes.
+    for guarded_name in ("main", PROOF, PIN, loaders[0].name):
+        shadowed = any(
+            (isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+             and any(
+                 isinstance(target, ast.Name) and target.id == guarded_name
+                 for target in (
+                     node.targets if isinstance(node, ast.Assign) else [node.target]
+                 )
+             ))
+            or (isinstance(node, ast.Delete)
+                and any(isinstance(target, ast.Name) and target.id == guarded_name
+                        for target in node.targets))
+            or (isinstance(node, ast.AsyncFunctionDef) and node.name == guarded_name)
+            or (isinstance(node, (ast.Import, ast.ImportFrom))
+                and any(
+                    (alias.asname or
+                     (alias.name.split(".")[0] if isinstance(node, ast.Import)
+                      else alias.name)) == guarded_name
+                    for alias in node.names
+                ))
+            for node in tree.body
+        )
+        require(not shadowed, f"module binding shadowed: {guarded_name}")
     require(direct_call_count(main, PROOF) == 1, "main missing direct ancestor proof")
     proof_index = next(
         index for index, statement in enumerate(main.body)
@@ -250,6 +275,15 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ("            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)\n",
          "            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)\n",
          "loader leaf open not bound to checked parent FD"),
+        ('if __name__ == "__main__":',
+         'main = lambda: 0  # synthetic shadowed main\n\nif __name__ == "__main__":',
+         "module binding shadowed: main"),
+        ('if __name__ == "__main__":',
+         'prove_helper_ancestor_swap_during_fd_walk_rejected = lambda: None\n\nif __name__ == "__main__":',
+         "module binding shadowed: prove_helper_ancestor_swap_during_fd_walk_rejected"),
+        ('if __name__ == "__main__":',
+         'pin_checked_helper_parent = lambda path: -1\n\nif __name__ == "__main__":',
+         "module binding shadowed: pin_checked_helper_parent"),
     )
     count = 0
     for original, mutation, expected in replacements:
@@ -281,7 +315,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 10 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 13 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
