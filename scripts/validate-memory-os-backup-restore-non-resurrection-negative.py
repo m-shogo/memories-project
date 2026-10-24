@@ -275,6 +275,7 @@ def main() -> int:
             "reviewRefsDropDomain": None,
             "reviewDigestMismatch": False,
             "reviewDigestTarget": None,
+            "reviewDigestCoverageMutation": None,
             "reviewResult": "APPROVED",
             "reviewProductionField": None,
             "reviewTypeOverride": None,
@@ -320,6 +321,10 @@ def main() -> int:
                     digests = dict(expected_digests)
                     if mutate_review and state["reviewDigestMismatch"]:
                         digests[state["reviewDigestTarget"] or refs[0]] = "0" * 64
+                    if mutate_review and state["reviewDigestCoverageMutation"] == "MISSING":
+                        digests.pop(state["reviewDigestTarget"] or refs[0])
+                    if mutate_review and state["reviewDigestCoverageMutation"] == "EXTRA":
+                        digests["synthetic-unreviewed-domain.json"] = "0" * 64
                     payload = review_payload(
                         generation=state["reviewGeneration"] if mutate_review else "brge_negative_generation",
                         source_sha=state["reviewSha"] if mutate_review else SHA,
@@ -534,6 +539,32 @@ def main() -> int:
         state["reviewTarget"] = "BOTH"
         writer.validate_record(valid)
         print("PASS reject: both independent reviews bind all eight domain members and payload digests")
+
+        # Digest-key coverage is a separate gate from digest-value equality.
+        # Prove all eight missing keys per reviewer and an unreviewed extra key.
+        for review_type in ("SECURITY", "OPERABILITY"):
+            state["reviewTarget"] = review_type
+            for domain in contract["requiredDomains"]:
+                case = f"{review_type} review missing domain digest key: {domain}"
+                EXPECTED_DIAGNOSTICS[case] = f"{review_type} reviewedDomainEvidenceSha256 coverage mismatch"
+                state["reviewDigestTarget"] = valid["domains"][domain]["evidenceRef"]
+                state["reviewDigestCoverageMutation"] = "MISSING"
+                try:
+                    expect_rejected(case, lambda: writer.validate_record(valid))
+                finally:
+                    state["reviewDigestCoverageMutation"] = None
+                    state["reviewDigestTarget"] = None
+            case = f"{review_type} review extra unreviewed domain digest key"
+            EXPECTED_DIAGNOSTICS[case] = f"{review_type} reviewedDomainEvidenceSha256 coverage mismatch"
+            state["reviewDigestCoverageMutation"] = "EXTRA"
+            try:
+                expect_rejected(case, lambda: writer.validate_record(valid))
+            finally:
+                state["reviewDigestCoverageMutation"] = None
+            writer.validate_record(valid)
+        state["reviewTarget"] = "BOTH"
+        writer.validate_record(valid)
+        print("PASS reject: both reviewers enforce exact eight-domain digest-key coverage")
 
         empty_registry = {
             "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
