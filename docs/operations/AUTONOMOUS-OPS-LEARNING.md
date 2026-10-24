@@ -6099,3 +6099,17 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only an existing synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered and semantically eligible generations remain distinct; preflight requires two distinct unsuperseded eligible environments and current human-approved objective; new recovery evidence requires current executable reviewed request; final candidates need complete typed eight-domain coverage and independent review. Human promotion is separate/non-automatic. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Exact-source drill reconcile rollback CI proves guarded fixture execution
+
+### Material success: outcome and observed evidence
+- Exact-source Backup Restore Drill Request Reconcile Rollback run `40076016469` completed SUCCESS for code `33d519769b0432946809d720d3ee78cbab680b20`. Job `120819396460` logged `PASS: drill request reconcile fixtures reuse checked parent guard` and `Memory OS backup/restore drill request reconcile rollback negative suite PASS`, followed by `production evidence created: false` and `production decision: NO_GO`.
+- This is runtime evidence for the synthetic fixture parent guard and rollback negative suite only, not production recovery readiness or human promotion.
+
+### Failure, correction, recurrence guard and retry condition
+- The earlier source-level gap was four unguarded root-local temporary-directory creation sites; root cause was an independent negative harness not reusing the checked-parent helper. The correction is now proven by exact-source CI, with a real symlink-parent negative and preserved rollback checks.
+- Do not return to direct `TemporaryDirectory(dir=ROOT)` for synthetic drill reconcile fixtures without a reviewed guard. Revisit only on observed CI regression, helper/path changes or demonstrated bypass; a parent precheck is not atomic race freedom. Unchanged clean-worktree and external-evidence blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only synthetic negative fixtures and append-only learning changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, current executable reviewed request for new evidence, typed eight-domain non-resurrection coverage, independent review and separate human promotion remain mandatory. Learning, synthetic fixtures and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
