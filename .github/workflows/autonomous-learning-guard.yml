@@ -5,6 +5,8 @@ on:
     branches: [so]
     paths:
       - ".github/workflows/autonomous-learning-guard.yml"
+      - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
+      - "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
       - "contracts/operations/autonomous-learning-system.json"
       - "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
       - "scripts/validate-autonomous-learning-system.py"
@@ -66,6 +68,14 @@ jobs:
           python -B scripts/validate-autonomous-learning-system.py
           python -B scripts/validate-autonomous-learning-system-negative.py
           python -B scripts/validate-memory-os-entry-docs.py
+      - name: Independently enforce helper ancestor runtime workflow reachability
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
+          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative
       - name: Confirm read-only execution
         shell: bash
         run: |
