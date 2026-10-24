@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1314,6 +1316,52 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
     return len(cases) + len(duplicate_root_cases) + len(duplicate_job_cases)
 
 
+def prove_push_baseline_append_only_negative() -> None:
+    """A final append cannot hide a rewrite earlier in one pushed commit range."""
+    with tempfile.TemporaryDirectory(prefix="learning-push-range-negative-") as tmp:
+        root = Path(tmp)
+        authority = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
+        target = root / authority
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        def git(*args: str) -> bytes:
+            return subprocess.check_output(
+                ["git", *args], cwd=root, stderr=subprocess.STDOUT
+            ).strip()
+
+        def commit(message: str) -> None:
+            git("add", str(authority))
+            git("-c", "user.name=Synthetic Test",
+                "-c", "user.email=synthetic@example.invalid",
+                "commit", "-qm", message)
+
+        git("init", "-q")
+        target.write_bytes(b"original\\n")
+        commit("baseline")
+        before = git("rev-parse", "HEAD").decode("ascii")
+        require(bool(re.fullmatch(r"[0-9a-f]{40}", before)),
+                "push-baseline synthetic commit invalid")
+
+        target.write_bytes(b"rewritten\\n")
+        commit("rewrite earlier in push")
+        target.write_bytes(b"rewritten\\nappended\\n")
+        commit("append at final push commit")
+
+        current = target.read_bytes()
+        parent = git("show", f"HEAD^:{authority}")
+        baseline = git("show", f"{before}:{authority}")
+        require(current.startswith(parent),
+                "push-baseline control did not reproduce HEAD-parent bypass")
+        git("merge-base", "--is-ancestor", before, "HEAD")
+        require(not current.startswith(baseline),
+                "push-baseline failed to reject earlier rewrite")
+
+        # Positive control: a genuine extension of the pre-push bytes is safe.
+        target.write_bytes(b"original\\nsafe extension\\n")
+        require(target.read_bytes().startswith(baseline),
+                "push-baseline rejected genuine append-only extension")
+
+
 def main() -> int:
     workflow_source = (
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
@@ -1334,9 +1382,11 @@ def main() -> int:
         total += target_matrix_negative_cases(workflow_source)
         total += workflow_runtime_negative_cases(workflow_source)
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
+        prove_push_baseline_append_only_negative()
+        total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 124, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 125, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
