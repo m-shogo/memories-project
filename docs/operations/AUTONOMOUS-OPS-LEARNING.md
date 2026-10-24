@@ -4595,3 +4595,25 @@ a promotion decision, a recovery objective, or drill evidence.
 - The change touches only a synthetic negative validator. No production writer, environment generation, human-approved objective, reviewed drill request, generation recovery evidence, typed domain record, credential, traffic, readiness or promotion authority was written.
 - Post-change canonical blobs were unchanged: Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` (`NO_GO`), OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` (prerequisites blocked, zero registered/eligible generations and final candidates), and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`.
 - Strict semantic eligibility across distinct unsuperseded environments, an explicitly human-approved current objective, a current executable reviewed request for new generation evidence, typed eight-domain coverage, independent review, and separate non-automatic human promotion remain mandatory. This learning and its CI result cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Canonical typed child runner must not be rebound after source validation
+
+### Material success: outcome and observed evidence
+- Commit `c428b65448bf3729647425085ebe8e8a8f577628` extends the existing CI-invoked typed non-resurrection transport-negative suite with AST source-binding proof for the canonical admission `run_validator` function.
+- A canonical positive source control is followed by eleven exact-diagnostic mutations: duplicate definition, decorator, assignment, import alias, dead-branch assignment, `globals()` subscript/update/pop, module `__dict__` mutation, `setattr`, and dynamic `exec`. The guard also rejects signature drift and other namespace mutators.
+- Exact-source Non-Resurrection Readonly run `40049054856` completed SUCCESS. Job `120737344136` explicitly logged `PASS reject: eleven typed admission child runner binding/decorator substitutions` and `Typed non-resurrection execution/registry/reconcile transport negative suite PASS`.
+- GitHub compare `8359ae36..c428b654` changed only the existing transport-negative validator (109 additions, zero deletions).
+
+### Symptom/risk, verified gap, and failed approach to avoid
+- Risk: the admission source can retain a correct-looking `run_validator` function and its direct calls while a later module assignment or dynamic namespace mutation replaces that callable with a no-op. No production incident or actual bypass was observed.
+- Verified coverage gap: the previous child-exit propagation probe executed the canonical function in isolation but did not prove the imported module's `run_validator` name could not be rebound before the admission `main` calls it.
+- Failed approach to avoid: treating source presence or direct-call text as sufficient runtime authority without checking definition uniqueness, callable binding, decorators and module namespace mutation.
+
+### Correction, recurrence guard, and retry condition
+- Reusable mechanism: parse the actual canonical admission module, require a unique undecorated synchronous `run_validator(path, label)` definition, reject direct/dynamic rebinding, then run exact-diagnostic AST mutation negatives before transport tests. Reuse the existing CI path; do not add a competing validator authority.
+- Retry only after a reviewed change to the admission module's legitimate function architecture, an exact-source CI regression, or a demonstrated new binding bypass. Do not repeat unchanged external workflow-write or source-binding clean-worktree blockers.
+
+### Why safe and protected-authority check
+- Only a synthetic, CI-bound negative suite changed. No production writer, environment generation, recovery objective, reviewed drill request, recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion authority was modified.
+- Post-change Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, strict OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisites blocked, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current objective; new generation evidence requires a current executable reviewed request; final candidates require complete typed eight-domain coverage and independent review; human production promotion is separate and non-automatic. Learning and CI do not satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
