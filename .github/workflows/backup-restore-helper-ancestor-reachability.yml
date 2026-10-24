@@ -1,0 +1,59 @@
+name: Backup Restore Helper Ancestor Reachability
+
+on:
+  push:
+    branches: [so]
+    paths:
+      - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
+      - "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
+      - "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Prove six canonical ancestor negatives remain reachable
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
+          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
+          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative
+      - name: Verify read-only postcondition
+        run: |
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
