@@ -24,6 +24,25 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
 
+def guarded_temporary_directory(prefix: str, parent: Path):
+    # Reject repository fixture ancestor symlinks before any temporary child
+    # is created; the system-temp outside-repository fixture is unaffected.
+    try:
+        relative = parent.relative_to(ROOT)
+    except ValueError as exc:
+        raise Fail("typed contract path temp parent escapes repository") from exc
+    require(ROOT.is_dir() and not ROOT.is_symlink(),
+            "typed contract path repository root missing or symlinked")
+    cursor = ROOT
+    for part in relative.parts:
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "typed contract path temp ancestor missing or symlinked")
+    require(parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
+            "typed contract path temp parent canonical resolution drift")
+    return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+
+
 def load_validator():
     spec = importlib.util.spec_from_file_location("memory_os_non_resurrection_admission_path_negative", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load typed admission validator")
@@ -106,6 +125,22 @@ def reject_typed_writer_substitution(validator: Any) -> None:
 
 def main() -> int:
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    with guarded_temporary_directory(".tmp-typed-path-parent-negative-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("typed contract path symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "typed contract path temp ancestor missing or symlinked",
+                    f"typed contract path parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("typed contract path symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "typed contract path symlinked temp parent published a child")
+    print("PASS: typed contract path fixture parent symlink rejected before creation")
     validator = load_validator()
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
@@ -115,7 +150,7 @@ def main() -> int:
     expect_rejected(validator, "absolute in-repository authority ref", lambda: validator.canonical_repo_file_ref(str(ROOT / canonical), "negative.absolute"))
     expect_rejected(validator, "parent traversal authority ref", lambda: validator.canonical_repo_file_ref("scripts/../scripts/validate-memory-os-backup-restore-non-resurrection-admission.py", "negative.parent"))
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-non-resurrection-path-negative-", dir=TMP_PARENT) as fixture_tmp:
+    with guarded_temporary_directory(".tmp-non-resurrection-path-negative-", TMP_PARENT) as fixture_tmp:
         fixture_dir = Path(fixture_tmp)
         with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-path-negative-") as outside_tmp:
             outside = Path(outside_tmp) / "outside.json"
