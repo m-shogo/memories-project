@@ -7,6 +7,8 @@ import ast
 import copy
 import importlib.util
 import json
+import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -553,10 +555,106 @@ def prove_candidate_pair_source_binding() -> None:
     print(f"PASS: candidate pair direct source binding rejects {len(mutations)} validation/distinctness bypasses")
 
 
+
+def prove_runtime_review_pair_controls() -> None:
+    """Use a disposable Git repository to reach real source-order and pair validators."""
+    paths = (
+        "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+        "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+        "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+        "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+        "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py",
+        "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    )
+    with tempfile.TemporaryDirectory(prefix="generation-review-pair-runtime-negative-") as tmp:
+        root = Path(tmp)
+        for relative in paths:
+            source = ROOT / relative
+            require(source.is_file() and not source.is_symlink(),
+                    f"synthetic review pair source missing or substituted: {relative}")
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+
+        def git(*args: str, commit_time: str | None = None) -> str:
+            env = os.environ.copy()
+            if commit_time is not None:
+                env["GIT_AUTHOR_DATE"] = commit_time
+                env["GIT_COMMITTER_DATE"] = commit_time
+            result = subprocess.run(["git", *args], cwd=root, env=env,
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            require(result.returncode == 0,
+                    f"synthetic review pair Git command failed: {args}: {result.stderr.strip()}")
+            return result.stdout.strip()
+
+        git("init", "-q")
+        git("add", "--", *paths)
+        git("-c", "user.name=CI Fixture", "-c", "user.email=fixture@example.invalid",
+            "commit", "-qm", "synthetic source authority", commit_time="2026-08-01T00:00:00+00:00")
+        source_sha = git("rev-parse", "HEAD")
+        row = base_row()
+        row["sourceCommitSha"] = source_sha
+        row["restoreTargetGenerationId"] = row["sourceEnvironmentGenerationId"]
+        row["materialDeltaReviewRef"] = None
+
+        security_ref = "docs/evidence/backup-restore/security/negative-pair-security.json"
+        operability_ref = "docs/evidence/backup-restore/operability/negative-pair-operability.json"
+        reused_reviewer_ref = "docs/evidence/backup-restore/operability/negative-pair-reused-reviewer.json"
+        row["securityReviewRef"] = security_ref
+        row["operabilityReviewRef"] = operability_ref
+        for relative, role, reviewer in (
+            (security_ref, "SECURITY", "reviewer-security"),
+            (operability_ref, "OPERABILITY", "reviewer-operability"),
+            (reused_reviewer_ref, "OPERABILITY", "reviewer-security"),
+        ):
+            payload = typed_payload(row, role)
+            payload["reviewedAt"] = "2026-08-01T00:01:00Z"
+            payload["reviewerPseudonym"] = reviewer
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+        git("add", "--", security_ref, operability_ref, reused_reviewer_ref)
+        git("-c", "user.name=CI Fixture", "-c", "user.email=fixture@example.invalid",
+            "commit", "-qm", "synthetic post-source reviews", commit_time="2026-08-01T00:02:00+00:00")
+
+        validator_path = root / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+        spec = importlib.util.spec_from_file_location("isolated_generation_review_pair_runtime", validator_path)
+        require(spec is not None and spec.loader is not None,
+                "cannot load isolated generation review pair validator")
+        isolated = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(isolated)
+        require(isolated.candidate_reviews_approved(row) is True,
+                "valid synthetic independent Security/Operability review pair not approved")
+
+        same_reviewer = dict(row)
+        same_reviewer["operabilityReviewRef"] = reused_reviewer_ref
+        try:
+            isolated.candidate_reviews_approved(same_reviewer)
+        except isolated.Fail as exc:
+            require(str(exc) == "Security and Operability reviewers must remain distinct",
+                    f"reused reviewer rejected before canonical distinctness guard: {exc}")
+        else:
+            raise Fail("candidate accepted a reused independent reviewer")
+
+        same_ref = dict(row)
+        same_ref["operabilityReviewRef"] = security_ref
+        try:
+            isolated.candidate_reviews_approved(same_ref)
+        except isolated.Fail as exc:
+            require(str(exc) == "operabilityReviewRef reviewRole mismatch",
+                    f"reused review ref rejected at wrong typed-role guard: {exc}")
+        else:
+            raise Fail("candidate accepted a reused Security review as Operability evidence")
+        require(isolated.candidate_reviews_approved(row) is True,
+                "valid independent review pair drifted after rejected reuse cases")
+    print("PASS: isolated Git source-order positive pair and exact reviewer/ref reuse runtime negatives")
+
+
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
     module = load_validator()
+    prove_runtime_review_pair_controls()
     expect_source_order_execution(module)
 
     for field, substitute in (
