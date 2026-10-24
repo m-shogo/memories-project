@@ -1327,7 +1327,7 @@ def prove_push_baseline_append_only_negative() -> None:
         def git(*args: str) -> bytes:
             return subprocess.check_output(
                 ["git", *args], cwd=root, stderr=subprocess.STDOUT
-            ).strip()
+            )
 
         def commit(message: str) -> None:
             git("add", str(authority))
@@ -1336,15 +1336,15 @@ def prove_push_baseline_append_only_negative() -> None:
                 "commit", "-qm", message)
 
         git("init", "-q")
-        target.write_bytes(b"original\\n")
+        target.write_bytes(b"original\n")
         commit("baseline")
-        before = git("rev-parse", "HEAD").decode("ascii")
+        before = git("rev-parse", "HEAD").decode("ascii").strip()
         require(bool(re.fullmatch(r"[0-9a-f]{40}", before)),
                 "push-baseline synthetic commit invalid")
 
-        target.write_bytes(b"rewritten\\n")
+        target.write_bytes(b"rewritten\n")
         commit("rewrite earlier in push")
-        target.write_bytes(b"rewritten\\nappended\\n")
+        target.write_bytes(b"rewritten\nappended\n")
         commit("append at final push commit")
 
         current = target.read_bytes()
@@ -1357,7 +1357,7 @@ def prove_push_baseline_append_only_negative() -> None:
                 "push-baseline failed to reject earlier rewrite")
 
         # Positive control: a genuine extension of the pre-push bytes is safe.
-        target.write_bytes(b"original\\nsafe extension\\n")
+        target.write_bytes(b"original\nsafe extension\n")
         require(target.read_bytes().startswith(baseline),
                 "push-baseline rejected genuine append-only extension")
 
