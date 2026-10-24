@@ -5289,3 +5289,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the synthetic full-chain negative suite changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Preflight still requires unsuperseded semantically eligible generations from distinct environments and a human-approved current recovery objective; new recovery evidence requires a current executable reviewed request. Final candidates require all existing generation/objective gates plus complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Generation-binding symlink cleanup requires original inode identity
+
+### Material success: observed outcome and evidence
+- Code commit `69ef9e05d6a4906650804fc09fd38593173da540` hardens the existing generation-binding negative suite's fixed repository-root symlink fixture. The fixture still refuses occupied leaves; cleanup now requires the original non-symlinked repository parent device/inode, the symlink's original device/inode and its expected external target before unlinking.
+- Exact-source Backup Restore Generation Binding run `40062120867` (job `120777689247`) completed SUCCESS, explicitly logging `PASS reject: local foundation evidence symlink escapes repository root`, `Memory OS backup/restore generation binding negative suite PASS` and `production decision: NO_GO`. Generation Binding Readonly run `40062120922` also completed SUCCESS.
+- During learning persistence, `so` advanced to bot diagnostic commit `351e33c`; the stale-head write was aborted. A fresh comparison showed only the operability inventory diagnostic fixture changed, and this append uses the current target blob.
+
+### Symptom/risk, verified root cause and failed approach
+- Risk: the previous fixture checked vacancy before creating the symlink but unconditionally called `unlink(missing_ok=True)` during cleanup; if the path or parent were substituted, cleanup could delete an object it did not create. No replacement or deletion incident was observed.
+- Verified gap: cleanup was not bound to the created symlink or its parent, unlike the existing hardened typed non-resurrection fixture pattern.
+- Failed approach to avoid: treating a one-time vacancy check as permanent ownership throughout a negative test.
+
+### Correction, executable recurrence guard and retry condition
+- Reuse the existing parent/leaf identity-bound cleanup mechanism. Refuse to unlink if the root becomes a symlink, its inode changes, the leaf inode changes or the leaf no longer resolves to the expected temporary target.
+- Retry only after exact-source CI regression, reviewed fixture-path change or demonstrated ownership bypass. Unchanged workflow-write, clean-worktree and external-evidence blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the CI-reachable synthetic generation-binding negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Preflight still requires unsuperseded semantically eligible generations from distinct environments and an explicitly human-approved current recovery objective. New recovery evidence requires a current executable reviewed request; final candidates require all generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
