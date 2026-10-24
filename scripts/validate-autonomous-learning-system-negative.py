@@ -564,6 +564,14 @@ def main() -> int:
             ("globals-dict", f"globals().update({{'{symbol}': None}})"),
             ("setattr", f"setattr(sys.modules[__name__], '{symbol}', None)"),
             ("exec", f"exec('{symbol} = None')"),
+            # Class bodies, function defaults and decorators execute eagerly.
+            # Their module-namespace side effects must not bypass a live call.
+            ("class-body", f"class Eager:\n    globals()['{symbol}'] = None"),
+            ("class-global", f"class Eager:\n    global {symbol}\n    {symbol} = None"),
+            ("function-default", f"def eager(value=globals().__setitem__('{symbol}', None)):\n    pass"),
+            ("function-decorator", f"@lambda fn: (globals().__setitem__('{symbol}', None), fn)[1]\ndef eager():\n    pass"),
+            ("class-base", f"class Eager(globals().__setitem__('{symbol}', None) or object):\n    pass"),
+            ("class-decorator", f"@lambda cls: (globals().__setitem__('{symbol}', None), cls)[1]\nclass Eager:\n    pass"),
         ):
             cases.append((
                 f"dynamic {label} {kind}",
