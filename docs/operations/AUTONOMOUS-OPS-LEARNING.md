@@ -4550,3 +4550,26 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check and retry condition
 - Protected authorities did not drift in the observed compare; the autonomous-learning contract blob remains `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. Learning remains append-only and separate from production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness and promotion gates.
 - Retry only on observed exact-source CI failure, reviewed legitimate import-time architecture change or demonstrated new eager-execution bypass. Do not retry the unchanged source-binding clean-worktree or scoped external permission blockers.
+
+## 2026-10-24 — Writer negative admission must not return success before its validator call
+
+### Outcome
+- Commit `0b80efea9c9646d4604c008f27702deea008bb40` extends the existing CI-bound typed non-resurrection negative suite. It now rejects five AST mutations that retain the required direct `run_validator(WRITER_AUTHORITY_NEGATIVE, ...)` call but insert a preceding return, conditional return, `sys.exit(0)`, `raise SystemExit(0)` or `finally` return.
+- The original source-path and single direct-call guards remain intact. The negative suite uses in-memory AST mutation rather than modifying canonical admission source.
+
+### Evidence
+- A local Python AST positive control accepted an unconditional direct writer-authority call and rejected all five early-success substitutions. The committed source was re-read and the five cases and exact-diagnostic guard were observed.
+- GitHub compare from `c14ae1c5` to `0b80efe` changed only the existing writer-authority negative, typed non-resurrection negative and append-only learning authority. GitHub commit workflow-run discovery for `0b80efe` returned no exact-source runs, so CI success remains unverified.
+- Workflow source audit found that the dedicated non-resurrection readonly workflow triggers on `scripts/validate-memory-os-backup-restore-non-resurrection-*.py` and calls the canonical admission validator; Backup and Restore Contracts explicitly includes the writer-authority negative path in PR/push triggers. The dedicated admission workflow's own path filter does not include the writer-authority negative, but this is not evidence of a global CI reachability gap.
+
+### Why safe
+- Only synthetic AST-based negative tests were changed. No actual writer, typed evidence, environment generation, objective, reviewed drill request, recovery evidence, registry, production status, snapshot, credential, traffic, readiness or promotion authority was written.
+- `productionDecision=NO_GO` remains mandatory; strict OPS-P0-007 semantic eligibility, distinct environments, current human-approved objective, current executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain enforced.
+
+### Reusable mechanism
+- A direct AST call in an admission function does not prove reachability when an earlier successful return or interpreter exit can bypass it. Require both unique direct-call binding and fail-closed prefix control flow, with a positive control and diagnostic-specific negative mutations.
+- Verify all relevant workflow triggers and transitive invocation edges before claiming CI reachability is absent; a single workflow missing a path can be covered by another canonical workflow. Static reachability and observed exact-source CI success remain separate proof layers.
+
+### Protected-authority check and retry condition
+- The autonomous-learning contract blob remains `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. No protected authority path changed in the observed compare. Learning history remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+- Retry only after observed exact-source CI regression, legitimate reviewed admission control-flow changes or a newly demonstrated early-success bypass. Do not repeat unchanged source-binding clean-worktree or scoped workflow-write blockers.
