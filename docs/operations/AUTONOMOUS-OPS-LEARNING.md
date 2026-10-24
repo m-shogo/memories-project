@@ -5882,3 +5882,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the existing synthetic generation negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, two distinct unsuperseded eligible environments, a current human-approved objective, current executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate non-automatic human promotion remain mandatory. Learning, CI and synthetic fixtures cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed contract path negative must guard its repository temp parent
+
+### Material success: outcome and observed evidence
+- Code commit `558c37c99f633b27249ce9b5911fe659aed60be4` adds a pre-creation canonical non-symlink ancestor guard to the existing typed non-resurrection contract-path negative harness. Its repository-local temporary-directory call now uses that guard; the separate system-temp outside-repository fixture is unchanged.
+- A disposable symlink-parent negative requires the exact ancestor rejection and unchanged sandbox contents before the contract-path tests run. GitHub post-write source inspection confirms the guard and runtime test call. Exact-source Non-Resurrection Path Negative/Readonly/Admission CI for this code commit was not complete at this learning-write time.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified fixture safety gap, not an observed filesystem incident: the typed contract-path negative suite previously checked `TMP_PARENT.is_dir()` and then called `tempfile.TemporaryDirectory(dir=TMP_PARENT)`. Because `is_dir()` follows symlinks, this did not reject an already symlinked repository fixture parent before creation.
+- Root cause: the harness's canonical *authority reference* checks did not cover the separate filesystem parent used for its synthetic fixture.
+- Failed approach to avoid: treating strict authority path validation as implicit protection of the test harness's own temporary directory path.
+
+### Correction, executable recurrence guard and retry condition
+- Verify every repository ancestor is a real directory and canonical before creating a temporary child; require a real symlink-negative diagnostic and no child publication. Keep the test in the existing canonical negative suite and let the enclosing temporary context clean its own link.
+- Retry exact-source CI validation once this SHA's workflow completes. Revisit only on observed failure, reviewed fixture path changes or demonstrated guard bypass. A precheck is not an atomic check/use race guarantee. Do not retry unchanged clean-worktree, external-evidence or workflow-permission blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only a synthetic typed contract-path negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered and semantically eligible generations remain distinct; preflight needs two distinct unsuperseded eligible environments and a current explicitly human-approved objective; new evidence requires a current executable reviewed request; final candidates need complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
