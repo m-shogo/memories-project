@@ -329,11 +329,7 @@ def main() -> int:
         print("production decision: NO_GO")
         return 0
     finally:
-        for path in cleanup:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+        candidate_helpers.cleanup_owned_transients(cleanup)
 
 
 if __name__ == "__main__":
