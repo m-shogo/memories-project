@@ -5921,3 +5921,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the synthetic typed load negative suite and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, distinct unsuperseded eligible environments, current human-approved objective, current executable reviewed request, complete typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning, synthetic fixtures and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed registry aggregate negative must not create through contracts symlink
+
+### Material success: outcome and observed evidence
+- Code commit `f1b483fa2c1efc0f72075f901a222da9b2ee1dc8` routes the existing typed non-resurrection registry-aggregate negative suite's temporary registry creation under `contracts/operations` through the tested typed contract-path fixture parent guard. A synthetic symlink-parent negative requires exact rejection and no unexpected child publication.
+- Post-write GitHub source reads confirm the guarded creation site and test. Exact-source CI for this commit was still running at this record's creation; no new runtime PASS is asserted. The reused typed contract-path guard had already passed exact-source Non-Resurrection Path Negative run `40075115148`.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified safety risk, not a production incident: the aggregate negative suite previously called `tempfile.TemporaryDirectory(dir=TEMP_PARENT)` with `TEMP_PARENT=contracts/operations` after only `TEMP_PARENT.is_dir()`. That directory contains protected contract/registry authority, so a symlinked ancestor before fixture creation is particularly undesirable.
+- Root cause: the synthetic aggregate harness had not adopted the existing typed path pre-publication parent check.
+- Failed approach to avoid: treating an `is_dir()` check as non-symlink proof, or introducing a weaker duplicate safety guard instead of reusing the tested canonical same-domain helper.
+
+### Correction, executable recurrence guard and retry condition
+- Dynamically load the existing checked helper, preserve the aggregate harness's domain `Fail` diagnostics, and route both its positive/symlink-negative fixture and actual aggregate fixture through that helper. The external system-temp fixture is unaffected.
+- Retry exact-source CI verification after this SHA's Readonly/Admission workflows complete. Revisit only on observed CI failure, reviewed helper/path changes or demonstrated bypass. A precheck is not a guarantee against concurrent path replacement. Do not retry unchanged external-evidence, workflow-permission or clean-worktree blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic registry-aggregate negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered and semantically eligible generations remain distinct; preflight needs two distinct unsuperseded eligible environments and a current human-approved objective; new evidence needs a current executable reviewed request; final candidates need complete typed eight-domain coverage and independent review. Human production promotion remains separate/non-automatic. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
