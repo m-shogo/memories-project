@@ -126,6 +126,115 @@ def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
 
 
 
+
+def require_full_runner_main_binding(tree: ast.Module) -> None:
+    """Bind the CLI entrypoint before its runtime identity defaults are captured."""
+    definitions = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == "main"]
+    require(len(definitions) == 1,
+            "full-chain runner must define exactly one synchronous main")
+    definition = definitions[0]
+    args = definition.args
+    require(not definition.decorator_list and not args.posonlyargs
+            and [arg.arg for arg in args.args] ==
+            ["canonical_authority_guard", "canonical_run_step"]
+            and len(args.defaults) == 2 and not args.vararg
+            and not args.kwonlyargs and not args.kwarg and not args.kw_defaults,
+            "full-chain runner main signature/decorator drift")
+
+    def rebinds(node: ast.AST) -> bool:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name == "main":
+                return True
+        if isinstance(node, ast.arg) and node.arg == "main":
+            return True
+        if isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == "main":
+            return True
+        if isinstance(node, ast.Name) and node.id == "main" and isinstance(node.ctx, (ast.Store, ast.Del)):
+            return True
+        if (isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.slice, ast.Constant) and node.slice.value == "main"):
+            target = node.value
+            if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                    and target.func.id in {"globals", "vars", "locals"}
+                    and not target.args and not target.keywords):
+                return True
+            if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
+                return True
+            if (isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}
+                    and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value == "main"):
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"update", "pop", "popitem", "clear",
+                                           "setdefault", "__setitem__", "__delitem__"}):
+                target = node.func.value
+                if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                        and target.func.id in {"globals", "vars", "locals"}
+                        and not target.args and not target.keywords):
+                    return True
+                if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                    return True
+        return any(rebinds(child) for child in ast.iter_child_nodes(node))
+
+    for statement in tree.body:
+        if statement is not definition:
+            require(not rebinds(statement), "full-chain runner main binding drift")
+
+
+def prove_full_runner_main_binding() -> None:
+    try:
+        canonical = ast.parse(TARGET.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("full-chain runner main source unavailable") from exc
+    require_full_runner_main_binding(canonical)
+    cases = (
+        ("assignment", "main = lambda: 0"),
+        ("tuple", "main, unused = (lambda: 0), None"),
+        ("import-alias", "from random import randint as main"),
+        ("dead-branch", "if False: main = None"),
+        ("globals", "globals()['main'] = None"),
+        ("globals-update", "globals().update(main=None)"),
+        ("globals-pop", "globals().pop('main')"),
+        ("module-dict", "sys.modules[__name__].__dict__['main'] = None"),
+        ("setattr", "setattr(sys.modules[__name__], 'main', None)"),
+        ("exec", "exec('main = None')"),
+        ("class", "class main: pass"),
+        ("duplicate", "def main(): pass"),
+        ("async", "async def main(): pass"),
+    )
+    for label, mutation in cases:
+        mutated = copy.deepcopy(canonical)
+        main_index = next(i for i, node in enumerate(mutated.body)
+                          if isinstance(node, ast.FunctionDef) and node.name == "main")
+        mutated.body[main_index:main_index] = ast.parse(mutation).body
+        try:
+            require_full_runner_main_binding(mutated)
+        except Fail as exc:
+            expected = ("full-chain runner must define exactly one synchronous main"
+                        if label == "duplicate" else "full-chain runner main binding drift")
+            require(str(exc) == expected,
+                    f"full-chain main {label} rejection diagnostic drift")
+        else:
+            raise Fail(f"full-chain main {label} pre-dispatch replacement unexpectedly accepted")
+    decorated = copy.deepcopy(canonical)
+    main = next(node for node in decorated.body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    main.decorator_list.append(ast.Name(id="wrapper", ctx=ast.Load()))
+    try:
+        require_full_runner_main_binding(decorated)
+    except Fail as exc:
+        require(str(exc) == "full-chain runner main signature/decorator drift",
+                "full-chain main decorator rejection diagnostic drift")
+    else:
+        raise Fail("full-chain main decorator unexpectedly accepted")
+    print("PASS reject: fourteen full-chain main rebinding/decorator substitutions")
+
+
 def require_full_runner_step_binding(tree: ast.Module) -> None:
     """Reject rebinding the step function before main captures its default."""
     definitions = [node for node in tree.body
@@ -287,6 +396,7 @@ def prove_full_step_exit_propagation() -> None:
 
 
 def main() -> int:
+    prove_full_runner_main_binding()
     prove_full_runner_step_binding()
     prove_full_step_exit_propagation()
     expect_fail(
