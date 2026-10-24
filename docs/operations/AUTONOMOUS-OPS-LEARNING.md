@@ -6168,3 +6168,18 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Exact-source middle, append and digest fixture probes reached runtime
+
+### Material successes: observed outcome and evidence
+- Drill middle-replace: exact-source Backup Restore Drill Request Reconcile Rollback run `40076120569` completed SUCCESS for code `52cd7e42e10d794ddde3364fadf0a305f023e16d`, logging `PASS: drill request middle replace fixture reuses checked parent guard`.
+- Drill append rollback: exact-source Drill Request Admission run `40076085596` logged `PASS: drill request append rollback fixtures reuse checked parent guard` for code `03af150f574549583909b0f648d5b419e16228b0`, then failed with exit 75 because branch HEAD changed before derived-authority reconciliation. This is not overall admission success.
+- Drill approval digest: exact-source Drill Request Admission run `40076163561` logged `PASS: drill approval digest fixture reuses checked parent guard` for code `9e36a06ec513a273d084517ee47ad40ef3b86ad0`, then failed with the same source-HEAD exit 75. This is not overall admission success.
+
+### Failure reuse, correction, recurrence guard and retry condition
+- The scoped exit-75 source-binding failures are the previously recorded fail-closed concurrent branch movement condition; no new production-evidence root cause was discovered. The failed approach to avoid is treating isolated fixture PASS lines or a stale diagnostic as completed drill admission.
+- Reusable guard: checked non-symlink ancestor before synthetic creation, real symlink-negative and exact diagnostic; run independent fixture proofs before potentially blocked authority checks. Do not retry unchanged source-HEAD or clean-worktree blockers; retry overall admission only on a stable source head under the recorded conditions.
+
+### Why safe and protected-authority check
+- These are synthetic negative tests, not production or promotion evidence. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, distinct unsuperseded environments, current explicitly human-approved objective, current executable reviewed request for new recovery evidence, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
