@@ -5901,3 +5901,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic typed contract-path negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered and semantically eligible generations remain distinct; preflight needs two distinct unsuperseded eligible environments and a current explicitly human-approved objective; new evidence requires a current executable reviewed request; final candidates need complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed load and rollback negatives reuse the contract-path parent guard
+
+### Material success: outcome and observed evidence
+- Code commit `99486cafc7e92c25580e0f4597120d68cd564a84` routes both repository-local temporary-directory sites in the existing typed non-resurrection load negative suite through the canonical contract-path negative harness's `guarded_temporary_directory`. Its outside-repository system-temp fixture remains unchanged.
+- A synthetic symlink-parent negative requires the exact ancestor diagnostic and no unexpected child before the other typed load/reconcile rollback checks execute. Post-write GitHub source inspection confirms both call sites and the negative. Exact-source CI for this code commit was still running at learning-write time.
+- The reused helper's earlier exact-source Non-Resurrection Path Negative run `40075115148` completed SUCCESS and logged `PASS: typed contract path fixture parent symlink rejected before creation`; this proves the helper's prior runtime behavior, not the new load caller until its own CI runs.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified fixture safety gap, not a production incident: typed load and reconcile rollback negatives used two direct `TemporaryDirectory(dir=TMP_PARENT)` calls after only `TMP_PARENT.is_dir()`, which follows symlinks.
+- Root cause: the load suite did not reuse the existing typed contract-path negative harness's checked parent creation mechanism.
+- Failed approach to avoid: assuming canonical evidence/authority reference validation also protects the harness's own temporary directory creation, or duplicating a weaker guard instead of reusing the tested same-domain helper.
+
+### Correction, executable recurrence guard and retry condition
+- Load the checked helper from the existing canonical typed path negative suite, require a callable interface, translate its domain `Fail` to the load harness's own domain `Fail`, and use it at both local creation sites. Exercise a real symlink-negative before further fixture writes.
+- Retry exact-source CI validation when this SHA's Unreadable Authority/Non-Resurrection workflows complete. Revisit only on observed failure, reviewed helper/path changes or demonstrated bypass. Precheck is not an atomic race-freedom guarantee. Do not retry unchanged clean-worktree, external-evidence or workflow-permission blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic typed load negative suite and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, distinct unsuperseded eligible environments, current human-approved objective, current executable reviewed request, complete typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning, synthetic fixtures and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
