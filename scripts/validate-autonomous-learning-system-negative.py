@@ -343,6 +343,23 @@ def main() -> int:
             print(result.stderr, file=sys.stderr)
             return 1
 
+    # Generator bodies are deferred and comprehension targets are local.
+    # Prove the eager-effects guard does not reject these safe controls.
+    for label, snippet in (
+        ("deferred generator body", "(globals().__setitem__('main', None) for _ in (0,))\n"),
+        ("comprehension-local target", "[0 for main in (0,)]\n"),
+    ):
+        with tempfile.TemporaryDirectory(prefix="learning-comprehension-positive-") as tmp:
+            root = Path(tmp)
+            seed(source_root, root)
+            module_guard = 'if __name__ == "__main__":' + chr(10) + "    raise SystemExit(main())" + chr(10)
+            replace_in_entrypoint(root, module_guard, snippet + module_guard)
+            result = run(source_root, root)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"learning eager-expression positive control rejected {label}: {result.stderr}"
+                )
+
     # A no-op mutation must be rejected before running the canonical guard;
     # otherwise a broken positive fixture could masquerade as negative proof.
     try:
@@ -572,6 +589,12 @@ def main() -> int:
             ("function-decorator", f"@lambda fn: (globals().__setitem__('{symbol}', None), fn)[1]\ndef eager():\n    pass"),
             ("class-base", f"class Eager(globals().__setitem__('{symbol}', None) or object):\n    pass"),
             ("class-decorator", f"@lambda cls: (globals().__setitem__('{symbol}', None), cls)[1]\nclass Eager:\n    pass"),
+            # Eager comprehension effects and the first generator iterable
+            # run before the canonical main() dispatch.
+            ("list-comprehension", f"[globals().__setitem__('{symbol}', None) for _ in (0,)]"),
+            ("set-comprehension", f"{{globals().__setitem__('{symbol}', None) for _ in (0,)}}"),
+            ("dict-comprehension", f"{{_: globals().__setitem__('{symbol}', None) for _ in (0,)}}"),
+            ("generator-iterable", f"(None for _ in (globals().__setitem__('{symbol}', None) or (0,)))"),
         ):
             cases.append((
                 f"dynamic {label} {kind}",
