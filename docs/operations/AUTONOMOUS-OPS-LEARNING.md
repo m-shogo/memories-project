@@ -4827,3 +4827,24 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the existing synthetic negative harness and append-only learning were changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, objectives, executable requests, generation evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Distinct unsuperseded semantically eligible environments, explicitly human-approved current objectives, current executable reviewed requests for new evidence, typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Learning CI guard calls cannot be hidden behind nested early exits
+
+### Material success: outcome and observed evidence
+- Commits `f566e10b6d387515fd0bca65eb2646d1aa4b86d0` and `33eb238cb46a6f5ebbc140a7fa5e311eeafd2a47` extend the canonical learning validator and existing negative suite to reject eleven early-termination mutations before `validate_learning_guards(failures)`: nested return/raise, direct process exit, dead branch, try/finally, dynamic exec, eager function default and eager class body.
+- Commit `d18ed4a5f212b549bccf343f22f97f5ccf7bbff8` raises the entry-docs CI minimum from 84 to 95 fail-closed cases. Exact-source Operability Contracts run `40054920766` (job `120755680392`) completed SUCCESS and logged `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (95 fail-closed cases)` and `Memory OS entrypoint document validation PASS`.
+- This is synthetic CI reachability proof, not a production readiness or recovery result.
+
+### Symptom/risk, verified gap and failed approach to avoid
+- Risk: a learning CI entrypoint can retain a direct AST call to the bound guard but return/exit from a preceding nested statement or eager definition before that call. No actual production incident or successful bypass was observed.
+- Verified gap: the prior learning validator rejected only direct `Return` and `Raise` statements before the call, not nested control flow or explicit process exits.
+- Failed approach to avoid: treating a direct call's textual or AST presence as proof of execution without inspecting preceding reachable termination paths.
+
+### Correction, executable recurrence guard and retry condition
+- Traverse statements before the bound learning guard call, checking nested returns/raises, explicit process termination, dynamic execution and eager class/default evaluation while excluding deferred function bodies. Require exact canonical rejection diagnostics for eleven independent synthetic mutations.
+- The CI entrypoint minimum is bound to the expanded suite count; use `chr(10)` for multi-line mutation fixtures to avoid the previously recorded double-escape failure.
+- Retry only on exact-source CI regression, reviewed legitimate control-flow refactoring or a demonstrated new early-termination bypass. Do not retry unchanged external evidence, workflow-write or source-binding clean-worktree blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only learning and entry-docs validators plus append-only learning were modified. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, recovery evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Preflight still requires unsuperseded semantically eligible generations from distinct environments plus a human-approved current objective; new evidence requires a current executable reviewed request; final candidates require complete typed eight-domain non-resurrection coverage and independent review; human promotion remains separate and non-automatic. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
