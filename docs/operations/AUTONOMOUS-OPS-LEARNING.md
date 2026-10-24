@@ -4573,3 +4573,25 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Protected-authority check and retry condition
 - The autonomous-learning contract blob remains `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. No protected authority path changed in the observed compare. Learning history remains append-only and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
 - Retry only after observed exact-source CI regression, legitimate reviewed admission control-flow changes or a newly demonstrated early-success bypass. Do not repeat unchanged source-binding clean-worktree or scoped workflow-write blockers.
+
+## 2026-10-24 — Typed admission child failures cannot be overridden by PASS-looking stdout
+
+### Material success: outcome and observed evidence
+- Commit `85db0bd4d1ee8b5e8eff79269f5b82556ea24edd` extends the existing CI-invoked `scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py` with an executable child-exit propagation guard.
+- The isolated subprocess stub checks three cases against the actual canonical admission `run_validator`: exit 0 succeeds, exit 7 with contradictory PASS-looking stdout rejects with the exact combined diagnostic, and signal-style exit -9 rejects. It also checks exact interpreter, script, cwd, capture, text and `check=False` invocation arguments and restores the original subprocess function after each case.
+- Exact-source Non-Resurrection Readonly run `40048927528` completed SUCCESS at code HEAD `85db0bd4`. Job `120736951051` explicitly logged `PASS boundary: typed child nonzero/signal exits reject even with PASS stdout` and `Typed non-resurrection execution/registry/reconcile transport negative suite PASS`. This is synthetic validator/CI proof, not production recovery evidence.
+- GitHub compare `0ccad4e6..85db0bd4` showed only the existing transport-negative suite changed (45 additions, zero deletions).
+
+### Symptom/risk, cause, and failed approach to avoid
+- Risk: a future admission runner could accept a child validator that prints a PASS marker but exits nonzero, or could silently stop checking the child return code. No actual production incident or observed bypass occurred.
+- Verified coverage gap: existing transport negatives tested monkeypatch rejection at `main` entry but did not exercise the child `run_validator` success/failure result boundary directly.
+- Failed approach to avoid: inferring child failure propagation solely from a successful parent CI run or from static presence of `subprocess.run` without injecting a contradictory child result.
+
+### Correction, recurrence guard, and retry condition
+- Reusable mechanism: execute the real canonical child-runner function with bounded synthetic `CompletedProcess` results, require diagnostic-specific nonzero rejection even when stdout resembles success, and assert exact subprocess invocation and cleanup/restoration. Reuse the existing CI-reachable transport negative instead of introducing a parallel authority.
+- Retry only after an exact-source CI regression, a reviewed legitimate change to the canonical subprocess invocation contract, or a demonstrated new child-result bypass. Do not repeat unchanged source-binding clean-worktree or workflow-write blockers.
+
+### Why safe and protected-authority check
+- The change touches only a synthetic negative validator. No production writer, environment generation, human-approved objective, reviewed drill request, generation recovery evidence, typed domain record, credential, traffic, readiness or promotion authority was written.
+- Post-change canonical blobs were unchanged: Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` (`NO_GO`), OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` (prerequisites blocked, zero registered/eligible generations and final candidates), and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`.
+- Strict semantic eligibility across distinct unsuperseded environments, an explicitly human-approved current objective, a current executable reviewed request for new generation evidence, typed eight-domain coverage, independent review, and separate non-automatic human promotion remain mandatory. This learning and its CI result cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
