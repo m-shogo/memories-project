@@ -272,7 +272,9 @@ def main() -> int:
             "reviewSha": SHA,
             "reviewRecordId": "brnr_negative_base",
             "reviewRefsDropOne": False,
+            "reviewRefsDropDomain": None,
             "reviewDigestMismatch": False,
+            "reviewDigestTarget": None,
             "reviewResult": "APPROVED",
             "reviewProductionField": None,
             "reviewTypeOverride": None,
@@ -312,11 +314,12 @@ def main() -> int:
             for review_type, prefix in review_prefixes.items():
                 if ref.startswith(prefix):
                     mutate_review = state["reviewTarget"] in ("BOTH", review_type)
-                    reviewed = refs[:-1] if mutate_review and state["reviewRefsDropOne"] else refs
+                    reviewed = ([ref for ref in refs if ref != (state["reviewRefsDropDomain"] or refs[-1])]
+                                if mutate_review and state["reviewRefsDropOne"] else refs)
                     reviewer = state["securityReviewer"] if review_type == "SECURITY" else state["operabilityReviewer"]
                     digests = dict(expected_digests)
                     if mutate_review and state["reviewDigestMismatch"]:
-                        digests[refs[0]] = "0" * 64
+                        digests[state["reviewDigestTarget"] or refs[0]] = "0" * 64
                     payload = review_payload(
                         generation=state["reviewGeneration"] if mutate_review else "brge_negative_generation",
                         source_sha=state["reviewSha"] if mutate_review else SHA,
@@ -502,6 +505,35 @@ def main() -> int:
         state["reviewTarget"] = "BOTH"
         writer.validate_record(valid)
         print("PASS accept: independent OPERABILITY review negative probes restore valid review state")
+
+        # Bind each review independently to every typed bundle member and digest.
+        for review_type in ("SECURITY", "OPERABILITY"):
+            state["reviewTarget"] = review_type
+            for domain in contract["requiredDomains"]:
+                target_ref = valid["domains"][domain]["evidenceRef"]
+                missing_case = f"{review_type} review missing domain bundle member: {domain}"
+                EXPECTED_DIAGNOSTICS[missing_case] = f"{review_type} review does not bind exact typed domain bundle"
+                state["reviewRefsDropDomain"] = target_ref
+                state["reviewRefsDropOne"] = True
+                try:
+                    expect_rejected(missing_case, lambda: writer.validate_record(valid))
+                finally:
+                    state["reviewRefsDropOne"] = False
+                    state["reviewRefsDropDomain"] = None
+
+                digest_case = f"{review_type} review domain digest mismatch: {domain}"
+                EXPECTED_DIAGNOSTICS[digest_case] = f"{review_type} review domain evidence digest binding mismatch"
+                state["reviewDigestTarget"] = target_ref
+                state["reviewDigestMismatch"] = True
+                try:
+                    expect_rejected(digest_case, lambda: writer.validate_record(valid))
+                finally:
+                    state["reviewDigestMismatch"] = False
+                    state["reviewDigestTarget"] = None
+            writer.validate_record(valid)
+        state["reviewTarget"] = "BOTH"
+        writer.validate_record(valid)
+        print("PASS reject: both independent reviews bind all eight domain members and payload digests")
 
         empty_registry = {
             "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
