@@ -5049,3 +5049,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - The code commit changes only the negative validator. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` still states `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, evidence, complete typed records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Preflight requires distinct unsuperseded semantically eligible environments plus explicit human-approved current objectives; new recovery evidence requires a current executable reviewed request; final candidates require all upstream gates plus complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed reviewer pseudonym format and role identity remain fail-closed
+
+### Material success: observed outcome and evidence
+- Code commit `21dbf9ac08113834dccc654fc5e06763db81ca95` adds thirteen isolated exact-diagnostic negative probes to the canonical typed admission negative suite. SECURITY and OPERABILITY reviewers each reject six malformed pseudonym variants (empty, too short, uppercase, whitespace, boolean and overlong), and a SECURITY review cannot claim the OPERABILITY role.
+- Exact-source Non-Resurrection Readonly run `40058155785`, Reconcile Negative run `40058155784`, and Generation Binding run `40058155767` completed SUCCESS at that SHA. The Readonly workflow's canonical admission path returned PASS and preserved `production decision: NO_GO`; individual child-negative stdout is suppressed on success, so those case messages were not independently visible in the workflow log.
+- The existing writer validates reviewer pseudonyms against its canonical strict pattern and enforces exact reviewType before accepting the review digest; the synthetic valid eight-domain record is revalidated after each reviewer batch.
+
+### Symptom/risk, verified gap, failed approach
+- Risk: a future review payload refactor could accept malformed reviewer identities or role substitution while two different-looking pseudonyms still pass a superficial independence check. No actual production bypass or incident was observed.
+- Verified gap: prior tests checked identical reviewer pseudonyms and OPERABILITY role substitution, but not reviewer pseudonym syntax for both roles or SECURITY role substitution independently.
+- Failed approach to avoid: treating `security != operability` alone as proof that both reviewer identities are well-formed and both review types are bound.
+
+### Correction, executable recurrence guard and retry condition
+- Use the existing `fake_load` review payload seam, exact `expect_rejected` diagnostic classifier and `finally` state restoration. Exercise both reviewers without creating a new authority; validate the unchanged complete record between batches.
+- Retry only after exact-source CI regression, reviewed legitimate reviewer schema change or demonstrated new identity/role bypass. Do not retry unchanged source-binding clean-worktree, workflow-write or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only synthetic negative tests changed. Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. No production-equivalent generation, approved objective, executable reviewed request, recovery evidence, typed production record, credential, traffic, readiness or promotion authority was created.
+- Preflight remains restricted to unsuperseded semantically eligible generations from distinct environments plus a human-approved current objective; new generation recovery evidence requires a current executable reviewed request; final candidates require all upstream gates, typed eight-domain coverage and independent review. Human promotion remains separate and non-automatic. Learning/CI never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
