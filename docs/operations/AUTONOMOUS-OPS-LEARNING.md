@@ -5823,3 +5823,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the synthetic reconcile negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered generations remain distinct from unsuperseded semantically eligible environments; preflight requires two distinct eligible environments and a current explicitly human-approved objective; new evidence needs a current executable reviewed request; final candidates need complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Rollback diagnostics fixture reuses the reconcile parent guard
+
+### Material success: outcome and observed evidence
+- Code commit `d65a39fbe99c8e62bd807e8c4bc0aa9b4c544a2f` makes the generation-evidence rollback-diagnostics negative suite load the existing generation reconcile negative harness's `guarded_temporary_directory` and route its repository-local rollback fixture through that guard. It translates the guard's domain `Fail` into the rollback harness's own `Fail` without weakening the diagnostic.
+- An isolated symlink-parent negative requires the exact canonical-ancestor rejection before publication and unchanged sandbox contents. Post-write GitHub source inspection confirms both the actual rollback fixture call and its negative proof. Exact-source Rollback Diagnostics Negative and Admission Chain CI for this commit were still running at this record's creation.
+- The reused helper's own earlier exact-source Generation Evidence Reconcile Negative run `40074623635` completed SUCCESS and logged `PASS: reconcile negative temp parent symlink rejected before creation`.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified safety coverage gap, not a reported filesystem incident: the rollback-diagnostics suite previously checked only `TMP_PARENT.is_dir()` and then created a temporary directory through that potentially symlinked path. The sibling reconcile suite already had a canonical ancestor guard.
+- Root cause: an independent negative harness did not reuse the existing pre-publication fixture parent safety mechanism.
+- Failed approach to avoid: accepting `is_dir()` as non-symlink proof or duplicating a second, divergent implementation when a tested same-domain guard is available.
+
+### Correction, executable recurrence guard and retry condition
+- Dynamically load the existing guard from its canonical sibling negative harness, require the expected callable, exercise a real symlink-parent rejection, then use the same guarded creation path for rollback tests. Do not create a new production authority or change the reconciler.
+- Retry runtime validation only after this exact code SHA's CI finishes, or on reviewed sibling guard changes/demonstrated bypass. Do not retry unchanged external-evidence, clean-worktree or workflow-permission blockers. Precheck does not claim atomic check/use race elimination.
+
+### Why safe, reusable mechanism and protected-authority check
+- All test files remain synthetic and disposable. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered and semantically eligible generations remain distinct; preflight requires two distinct unsuperseded eligible environments and an explicitly human-approved current objective; new evidence needs a current executable reviewed request; final candidates require complete typed eight-domain non-resurrection coverage and independent review. Human promotion is separate/non-automatic. Learning, synthetic fixtures and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
