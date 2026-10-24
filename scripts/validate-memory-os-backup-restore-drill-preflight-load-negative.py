@@ -271,13 +271,13 @@ def prove_helper_ancestor_swap_during_fd_walk_rejected() -> None:
         checked_parent.mkdir(parents=True)
         redirect_parent.mkdir(parents=True)
         (checked_parent / "helper.py").write_text(
-            "class Fail(RuntimeError):\\n    pass\\n\\n"
-            "def guarded_temporary_directory(prefix, parent):\\n"
-            "    return ('pinned-ancestor', prefix)\\n",
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(prefix, parent):\n"
+            "    return ('pinned-ancestor', prefix)\n",
             encoding="utf-8",
         )
         (redirect_parent / "helper.py").write_text(
-            "raise RuntimeError('untrusted ancestor helper executed')\\n", encoding="utf-8"
+            "raise RuntimeError('untrusted ancestor helper executed')\n", encoding="utf-8"
         )
         original_path = DRILL_REQUEST_LOAD_NEGATIVE
         original_open = os.open
@@ -312,7 +312,7 @@ def prove_helper_ancestor_swap_during_fd_walk_rejected() -> None:
                     and (parked_ancestor / "nested/helper.py").is_file(),
                     "preflight helper ancestor swap did not preserve pinned original")
             require((redirect_parent / "helper.py").read_text(encoding="utf-8")
-                    == "raise RuntimeError('untrusted ancestor helper executed')\\n",
+                    == "raise RuntimeError('untrusted ancestor helper executed')\n",
                     "preflight helper ancestor swap modified untrusted source")
         finally:
             os.open = original_open
