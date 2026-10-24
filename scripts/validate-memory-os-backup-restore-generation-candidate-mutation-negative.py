@@ -14,6 +14,7 @@ import copy
 import importlib.util
 import json
 import os
+import secrets
 import stat
 import tempfile
 from pathlib import Path
@@ -151,30 +152,64 @@ def repo_ref(path: Path) -> str:
 
 def transient_path(prefix: str, suffix: str) -> Path:
     prefix_path = ROOT / prefix
-    # Do not mkdir through an unchecked symlinked evidence ancestor.
+    # Existing or newly created evidence parents must be canonical before
+    # publication; pin the actual parent inode through the exclusive leaf open.
     expected_parent = ensure_transient_parent(prefix_path.parent)
-    handle = tempfile.NamedTemporaryFile(
-        mode="w",
-        prefix=prefix_path.name,
-        suffix=suffix,
-        dir=prefix_path.parent,
-        delete=False,
-        encoding="utf-8",
-    )
-    path = Path(handle.name)
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+            "candidate transient descriptor publication unsupported")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
-        parent_identity = canonical_parent_identity(path.parent)
-        require(parent_identity == expected_parent,
-                "candidate transient parent changed after publication")
-        leaf = os.fstat(handle.fileno())
-        require_owned = path.lstat()
-        require(stat.S_ISREG(require_owned.st_mode)
-                and (leaf.st_dev, leaf.st_ino) == (require_owned.st_dev, require_owned.st_ino),
-                "candidate transient descriptor/leaf identity drift")
-        OWNED_TRANSIENTS[path] = (*parent_identity, leaf.st_dev, leaf.st_ino)
+        parent_fd = os.open(prefix_path.parent, flags)
+    except OSError as exc:
+        raise Fail(f"candidate transient cannot pin publication parent: {exc}") from exc
+    try:
+        parent_stat = os.fstat(parent_fd)
+        require((parent_stat.st_dev, parent_stat.st_ino) == expected_parent,
+                "candidate transient publication parent descriptor drift")
+        for _ in range(8):
+            name = prefix_path.name + secrets.token_hex(8) + suffix
+            try:
+                leaf_fd = os.open(
+                    name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    0o600, dir_fd=parent_fd,
+                )
+            except FileExistsError:
+                continue
+            break
+        else:
+            raise Fail("candidate transient exclusive publication exhausted")
+        path = prefix_path.parent / name
+        try:
+            leaf = os.fstat(leaf_fd)
+            parent_entry = path.parent.lstat()
+            require(
+                stat.S_ISDIR(parent_entry.st_mode)
+                and (parent_entry.st_dev, parent_entry.st_ino) == expected_parent,
+                "candidate transient parent changed after publication",
+            )
+            require(canonical_parent_identity(path.parent) == expected_parent,
+                    "candidate transient parent changed after publication")
+            entry = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            require(
+                stat.S_ISREG(entry.st_mode)
+                and (leaf.st_dev, leaf.st_ino) == (entry.st_dev, entry.st_ino),
+                "candidate transient descriptor/leaf identity drift",
+            )
+            OWNED_TRANSIENTS[path] = (*expected_parent, leaf.st_dev, leaf.st_ino)
+        except BaseException:
+            # A renamed/symlinked parent cannot redirect rollback: unlink only
+            # the just-created inode through the pinned original parent fd.
+            current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            leaf = os.fstat(leaf_fd)
+            require((current.st_dev, current.st_ino) == (leaf.st_dev, leaf.st_ino),
+                    "candidate transient rollback leaf identity drift")
+            os.unlink(name, dir_fd=parent_fd)
+            raise
+        finally:
+            os.close(leaf_fd)
+        return path
     finally:
-        handle.close()
-    return path
+        os.close(parent_fd)
 
 
 def build_typed_overlay(
@@ -332,6 +367,48 @@ def main() -> int:
             finally:
                 globals()["ensure_transient_parent"] = original_parent_guard
             print("PASS: transient leaf publication invokes parent guard before side effect")
+
+            # Swap an exclusively owned parent between descriptor pinning and
+            # exclusive evidence leaf publication. No redirected or pinned child
+            # may survive the exact post-publication rejection.
+            checked = tmp_path / "publication-parent"
+            escaped = tmp_path / "publication-redirect"
+            parked = tmp_path / "publication-original"
+            checked.mkdir()
+            escaped.mkdir()
+            checked_identity = (checked.stat().st_dev, checked.stat().st_ino)
+            original_open = os.open
+            swapped = False
+
+            def swap_before_leaf_open(name: str, flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
+                nonlocal swapped
+                if not swapped and (flags & os.O_CREAT) and dir_fd is not None:
+                    swapped = True
+                    checked.rename(parked)
+                    checked.symlink_to(escaped, target_is_directory=True)
+                return original_open(name, flags, mode, dir_fd=dir_fd)
+
+            os.open = swap_before_leaf_open
+            try:
+                try:
+                    transient_path(repo_ref(checked / "must-not-publish-"), ".json")
+                except Fail as exc:
+                    require(str(exc) == "candidate transient parent changed after publication",
+                            f"candidate pinned leaf race rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail("candidate pinned leaf race unexpectedly accepted")
+            finally:
+                os.open = original_open
+            require(swapped, "candidate pinned leaf race never reached exclusive publication")
+            require(checked.is_symlink() and checked.resolve() == escaped.resolve(),
+                    "candidate pinned leaf race did not substitute isolated parent")
+            require((parked.stat().st_dev, parked.stat().st_ino) == checked_identity,
+                    "candidate pinned leaf race changed original parent inode")
+            require(not list(escaped.iterdir()),
+                    "candidate pinned leaf race published through symlink redirect")
+            require(not list(parked.iterdir()),
+                    "candidate pinned leaf race failed to roll back pinned leaf")
+            print("PASS: transient leaf publication pins parent through exclusive open and rollback")
 
             generation_registry = tmp_path / "generations.json"
             objectives_registry = tmp_path / "objectives.json"
