@@ -128,7 +128,7 @@ def expected_diagnostic(name: str) -> str:
         "drop CI guard timeout authority": "learning CI entrypoint lost executable guard invocation: LEARNING_GUARD_TIMEOUT_SECONDS = 120",
         "drop CI guard timeout binding": "learning CI entrypoint lost executable guard invocation: timeout=LEARNING_GUARD_TIMEOUT_SECONDS",
         "drop CI guard timeout handling": "learning CI entrypoint lost executable guard invocation: except subprocess.TimeoutExpired:",
-        "drop anti-regression lesson": "learning authority lost invariant: Repeating a known failed approach",
+        "drop anti-regression lesson": "learning authority lost invariant: Repeating a known failed approach without changed preconditions is a regression",
         "invalid contract JSON": "invalid JSON:",
         "non-object contract root": "root must be an object:",
         "downgrade schema version": "unsupported schemaVersion",
@@ -180,7 +180,13 @@ def require_expected_rejection(name: str, result: subprocess.CompletedProcess[st
     # A case's diagnostic must be the single canonical failure line, not
     # an expected substring hidden after an unrelated error or traceback.
     observed = result.stderr.removesuffix("\n")
-    if "\n" in observed or "\r" in observed or not observed.startswith(expected):
+    # Variable canonical diagnostics end with a colon and must include a detail.
+    # Every other diagnostic is an exact authority string: a matching prefix
+    # with an unrelated same-line suffix is not proof of the intended guard.
+    variable_detail = expected_diagnostic(name).endswith(":")
+    matched = (observed.startswith(expected + " ") and len(observed) > len(expected) + 1
+               if variable_detail else observed == expected)
+    if "\n" in observed or "\r" in observed or not matched:
         raise RuntimeError(
             f"negative case rejected for the wrong reason: {name}: "
             f"expected {expected!r}; observed {result.stderr!r}"
@@ -273,6 +279,39 @@ def main() -> int:
             pass
         else:
             raise RuntimeError(f"negative diagnostic classifier accepted multiple errors: {index}")
+
+    # A same-line suffix previously passed startswith(expected), making a
+    # different diagnostic look like proof of the intended negative boundary.
+    for label, name, suffix in (
+        ("same-line suffix", "weaken mandatory rule", " injected"),
+        ("same-line prefix collision", "weaken mandatory rule", "Extra"),
+        ("anti-regression prefix collision", "drop anti-regression lesson", " changed"),
+    ):
+        forged = "AUTONOMOUS LEARNING VALIDATION FAILED: " + expected_diagnostic(name) + suffix + "\n"
+        try:
+            require_expected_rejection(name, subprocess.CompletedProcess([], 1, "", forged))
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError(f"negative diagnostic classifier accepted {label}")
+
+    # Canonical variable-detail diagnostics still require a nonempty detail.
+    require_expected_rejection(
+        "invalid contract JSON",
+        subprocess.CompletedProcess([], 1, "",
+            "AUTONOMOUS LEARNING VALIDATION FAILED: invalid JSON: fixture: malformed JSON\n"),
+    )
+    for malformed in ("", " "):
+        try:
+            require_expected_rejection(
+                "invalid contract JSON",
+                subprocess.CompletedProcess([], 1, "",
+                    "AUTONOMOUS LEARNING VALIDATION FAILED: invalid JSON:" + malformed + "\n"),
+            )
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("negative diagnostic classifier accepted empty variable detail")
 
     require_expected_rejection(
         "weaken mandatory rule",
