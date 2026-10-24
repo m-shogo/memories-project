@@ -84,17 +84,31 @@ def require_owned_transient(path: Path) -> None:
 def cleanup_owned_transients(cleanup: list[Path]) -> None:
     require(set(cleanup).issubset(OWNED_TRANSIENTS),
             "candidate transient cleanup contains an unowned file")
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+            "candidate transient descriptor cleanup unsupported")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     for path in reversed(tuple(OWNED_TRANSIENTS)):
         parent_dev, parent_ino, leaf_dev, leaf_ino = OWNED_TRANSIENTS[path]
         require(canonical_parent_identity(path.parent) == (parent_dev, parent_ino),
                 "candidate transient cleanup parent identity drift")
         try:
-            leaf = path.lstat()
-        except FileNotFoundError:
-            continue
-        require(stat.S_ISREG(leaf.st_mode) and (leaf.st_dev, leaf.st_ino) == (leaf_dev, leaf_ino),
-                "candidate transient cleanup leaf identity drift")
-        path.unlink()
+            parent_fd = os.open(path.parent, flags)
+        except OSError as exc:
+            raise Fail(f"candidate transient cleanup cannot pin parent: {exc}") from exc
+        try:
+            actual = os.fstat(parent_fd)
+            require((actual.st_dev, actual.st_ino) == (parent_dev, parent_ino),
+                    "candidate transient cleanup parent descriptor drift")
+            try:
+                leaf = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            require(stat.S_ISREG(leaf.st_mode) and (leaf.st_dev, leaf.st_ino) == (leaf_dev, leaf_ino),
+                    "candidate transient cleanup leaf identity drift")
+            # A parent swapped after this check cannot redirect the unlink.
+            os.unlink(path.name, dir_fd=parent_fd)
+        finally:
+            os.close(parent_fd)
     OWNED_TRANSIENTS.clear()
 
 
@@ -409,6 +423,42 @@ def main() -> int:
             require(not list(parked.iterdir()),
                     "candidate pinned leaf race failed to roll back pinned leaf")
             print("PASS: transient leaf publication pins parent through exclusive open and rollback")
+
+            # Verify cleanup itself is pinned, not merely the publication
+            # path. Swap only a disposable parent at the exact unlink call.
+            cleanup_parent = tmp_path / "cleanup-parent"
+            cleanup_parent.mkdir()
+            cleanup_redirect = tmp_path / "cleanup-redirect"
+            cleanup_redirect.mkdir()
+            cleanup_original = tmp_path / "cleanup-original"
+            cleanup_leaf = transient_path(repo_ref(cleanup_parent / "owned-"), ".json")
+            sentinel = cleanup_redirect / cleanup_leaf.name
+            sentinel.write_text("must survive pinned cleanup", encoding="utf-8")
+            original_unlink = os.unlink
+            cleanup_swapped = False
+
+            def swap_before_unlink(name: str, *, dir_fd: int | None = None) -> None:
+                nonlocal cleanup_swapped
+                if not cleanup_swapped and name == cleanup_leaf.name and dir_fd is not None:
+                    cleanup_swapped = True
+                    cleanup_parent.rename(cleanup_original)
+                    cleanup_parent.symlink_to(cleanup_redirect, target_is_directory=True)
+                original_unlink(name, dir_fd=dir_fd)
+
+            os.unlink = swap_before_unlink
+            try:
+                cleanup_owned_transients([cleanup_leaf])
+            finally:
+                os.unlink = original_unlink
+            require(cleanup_swapped, "candidate pinned cleanup probe did not reach unlink")
+            require(cleanup_parent.is_symlink() and cleanup_parent.resolve() == cleanup_redirect.resolve(),
+                    "candidate pinned cleanup probe did not substitute parent")
+            require(sentinel.read_text(encoding="utf-8") == "must survive pinned cleanup",
+                    "candidate pinned cleanup deleted a redirected unowned file")
+            require(not list(cleanup_original.iterdir()),
+                    "candidate pinned cleanup left the originally owned leaf")
+            require(not OWNED_TRANSIENTS, "candidate pinned cleanup retained stale ownership")
+            print("PASS: transient cleanup pins parent through unlink and preserves redirected files")
 
             generation_registry = tmp_path / "generations.json"
             objectives_registry = tmp_path / "objectives.json"
