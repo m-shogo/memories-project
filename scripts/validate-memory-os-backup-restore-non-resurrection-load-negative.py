@@ -21,6 +21,7 @@ REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admissio
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 TRANSPORT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
+PATH_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
 
 
 class Fail(RuntimeError):
@@ -38,6 +39,17 @@ def load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    require(PATH_NEGATIVE.is_file(), "typed contract path fixture guard missing")
+    module = load_module(PATH_NEGATIVE, "memory_os_typed_path_fixture_guard_load")
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "typed contract path fixture guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -104,7 +116,7 @@ def prove_reconcile_runtime_authorities() -> None:
 def prove_reconcile_operability_rollback() -> None:
     require(RECONCILER.is_file(), "typed non-resurrection reconciler missing")
     reconciler = load_module(RECONCILER, "memory_os_typed_non_resurrection_reconcile_rollback_negative")
-    with tempfile.TemporaryDirectory(prefix=".tmp-typed-reconcile-rollback-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-typed-reconcile-rollback-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         paths: dict[str, Path] = {}
         for attr in ("REGISTRY", "GEN_REGISTRY", "CONTRACT", "STATUS"):
@@ -275,6 +287,22 @@ def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    with guarded_temporary_directory(".tmp-typed-load-parent-negative-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("typed load symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "typed contract path temp ancestor missing or symlinked",
+                    f"typed load symlinked parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("typed load symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "typed load symlinked temp parent published a child")
+    print("PASS: typed load fixtures reuse contract path parent guard")
     prove_typed_transport_guard_reachability()
     writer = load_module(WRITER, "memory_os_typed_non_resurrection_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_typed_non_resurrection_load_negative")
@@ -296,7 +324,7 @@ def main() -> int:
         writer.LOCK = original_lock
         validator.load_module = original_validator_loader
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-typed-load-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-typed-load-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
 
         invalid_utf8 = tmp / "invalid-utf8.json"
