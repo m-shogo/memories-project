@@ -6131,3 +6131,21 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Drill request middle-replace negative guards repository fixture parent
+
+### Material success: outcome and observed evidence
+- Code commit `52cd7e42e10d794ddde3364fadf0a305f023e16d` replaces the existing middle-replace rollback negative's direct repository-local `TemporaryDirectory(dir=TMP_PARENT)` with the checked drill-request fixture parent helper. A real disposable symlink-parent negative runs before the synthetic transaction and requires exact rejection and unchanged sandbox entries.
+- Post-write GitHub source inspection confirms the checked fixture site, helper binding and negative proof. Exact-source runtime PASS was not yet observed at learning-write time.
+
+### Symptom, evidence, root cause or unknown, failed approach
+- Verified synthetic fixture safety gap, not a production incident: the middle-replace negative previously checked only `TMP_PARENT.is_dir()` and created through it; this follows symlinks.
+- Root cause: independent middle-replace harness did not reuse the existing drill-request checked-parent guard. Failed approach: equating a directory-existence check with canonical non-symlink ancestor safety.
+
+### Correction, executable recurrence guard, retry condition
+- Load the related checked-parent helper, verify callable, translate its domain `Fail`, and use it for the actual fixture plus an isolated symlink-parent negative. Do not individually unlink the symlink leaf. Precheck is not atomic race freedom.
+- Retry exact-source Drill Request Reconcile Rollback CI when complete; revisit on observed failure, reviewed helper/path change or demonstrated bypass. Do not retry unchanged clean-worktree, permission or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only a synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
