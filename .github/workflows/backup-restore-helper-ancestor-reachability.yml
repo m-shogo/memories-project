@@ -5,6 +5,7 @@ on:
     branches: [so]
     paths:
       - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
+      - ".github/workflows/autonomous-learning-guard.yml"
       - "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
+      - ".github/workflows/autonomous-learning-guard.yml"
       - "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
