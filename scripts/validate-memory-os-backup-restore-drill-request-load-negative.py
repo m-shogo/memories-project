@@ -33,6 +33,24 @@ def load_module(path: Path, name: str):
     return module
 
 
+def guarded_temporary_directory(prefix: str, parent: Path):
+    # Fail closed before creating a repository-local synthetic fixture.
+    try:
+        relative = parent.relative_to(ROOT)
+    except ValueError as exc:
+        raise Fail("drill request temp parent escapes repository") from exc
+    require(ROOT.is_dir() and not ROOT.is_symlink(),
+            "drill request repository root missing or symlinked")
+    cursor = ROOT
+    for part in relative.parts:
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "drill request temp ancestor missing or symlinked")
+    require(parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
+            "drill request temp parent canonical resolution drift")
+    return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+
+
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
     try:
         action()
@@ -118,7 +136,7 @@ def main() -> int:
     exercise_registry_corruption(writer)
     exercise_validator_execution_transport(validator)
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-drill-request-load-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-drill-request-load-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         with tempfile.TemporaryDirectory(prefix="memory-os-drill-request-outside-") as outside_dirname:
             outside_dir = Path(outside_dirname)
@@ -175,6 +193,23 @@ def main() -> int:
                     lambda field=field: writer.require_canonical_runtime_authority(loop_authority, loop_authority, field),
                     writer.Fail,
                 )
+
+    with guarded_temporary_directory(".tmp-drill-request-parent-negative-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("drill request symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "drill request temp ancestor missing or symlinked",
+                    f"drill request temp parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("drill request symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "drill request symlinked temp parent published a child")
+    print("PASS: drill request fixture temp symlink parent rejected before creation")
 
     print("Drill-request unreadable/escaped-authority negative suite PASS")
     print("drill-request append registry corruption rejection: enforced")
