@@ -12,6 +12,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
+LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
 PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
@@ -41,6 +42,36 @@ def load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path = TMP_PARENT):
+    # Reuse the existing admission-chain load fixture's checked parent policy.
+    helper = load_module(LOAD_NEGATIVE, "memory_os_admission_chain_checked_fixture_parent")
+    guard = getattr(helper, "guarded_temporary_directory", None)
+    require(callable(guard), "admission-chain checked fixture parent helper missing")
+    try:
+        return guard(prefix, parent)
+    except helper.Fail as exc:
+        raise Fail(str(exc)) from exc
+
+
+def prove_symlink_parent_rejected() -> None:
+    with guarded_temporary_directory(".tmp-admission-chain-reconcile-parent-") as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(path.name for path in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("admission-chain reconcile symlink parent accepted")
+        except Fail as exc:
+            require(str(exc) == "admission-chain load temp ancestor missing or symlinked",
+                    f"admission-chain reconcile parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("admission-chain reconcile symlink parent accepted")
+        require(sorted(path.name for path in sandbox.iterdir()) == before,
+                "admission-chain reconcile symlink parent published a child")
+    print("PASS: admission-chain reconcile fixture symlink parent rejected before creation")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -184,7 +215,7 @@ def prove_atomic_write_failure(reconciler: object) -> None:
 
 
 def prove_mode_preserving_write(reconciler: object) -> None:
-    with tempfile.TemporaryDirectory(prefix=".tmp-admission-chain-mode-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-admission-chain-mode-") as tmpdir:
         target = Path(tmpdir) / "mode-preservation.json"
         target.write_text("{}\n", encoding="utf-8")
         target.chmod(0o640)
@@ -284,13 +315,14 @@ def main() -> int:
     require(RECONCILER.is_file(), "admission-chain reconciler missing")
     require(STATUS.is_file(), "production operability status missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_symlink_parent_rejected()
     validator = load_module(VALIDATOR, "memory_os_admission_chain_validator_negative")
     reconciler = load_module(RECONCILER, "memory_os_admission_chain_reconcile_negative")
 
     prove_direct_authority_identity(reconciler)
     prove_shared_registry_fail_closed(reconciler)
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-admission-chain-reconcile-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-admission-chain-reconcile-") as tmpdir:
         tmp = Path(tmpdir)
         invalid_utf8 = tmp / "invalid-utf8.json"
         invalid_utf8.write_bytes(b"{\xff}")
