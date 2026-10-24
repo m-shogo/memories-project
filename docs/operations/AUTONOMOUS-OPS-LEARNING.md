@@ -6774,3 +6774,29 @@ a promotion decision, a recovery objective, or drill evidence.
 - Why safe: only the existing synthetic generation-binding negative harness was modified; untrusted helper fixtures are disposable system temporary files and do not mutate production authorities.
 - Reusable mechanism: bind source bytes to a no-follow FD and checked inode; test substitution after pinning instead of trusting an earlier path check.
 - Protected-authority check: production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered and semantically eligible generations remain distinct; preflight requires unsuperseded eligible generations from distinct environments and a current human-approved objective; new recovery evidence requires a current executable reviewed request; final candidates require complete typed eight-domain coverage and independent review; human promotion is separate. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, or promotion gates.
+
+## 2026-10-24 — Generation-binding pinned helper import reaches exact-source CI
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: generation-binding code head `03aeec1d606d0d5aee968c18fd5b4a47db23c511` reached Backup Restore Generation Binding Readonly run `40089004376`, job `120857646885`, which completed SUCCESS. The job log explicitly printed `PASS: generation-binding helper import uses pinned source after pathname substitution` and `Memory OS backup/restore generation binding negative suite PASS`. This upgrades the prior static-only observation to exact-source negative execution proof, not production evidence.
+- Why safe: the check executed in the existing negative suite with disposable synthetic helper sources; canonical production authorities were unchanged.
+- Reusable mechanism: retain exact-source run/job IDs and required PASS markers separately from the existence of a validator, source binding, or unrelated workflow success.
+- Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` is `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` is `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. The distinct-environment, semantic eligibility, human-approved objective, executable reviewed request, typed eight-domain, independent review, and human promotion gates remain strict. CI and learning are not readiness evidence.
+
+## 2026-10-24 — Generation-evidence load fixture import pins checked source bytes
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach
+- Symptom: the generation-evidence load negative harness checked its shared reconcile helper source as a non-symlink file, then imported that mutable pathname with `spec.loader.exec_module`. A rename/symlink substitution between check and import could execute unchecked code. No production attack was observed.
+- Evidence: original blob `254b26f40ff174dd4daeaedd7c08ef63a6d08239` contained the separated check and dynamic path import. Root cause: the checked helper inode/source bytes were not bound through import. Failed approach: treating a pre-import non-symlink check as proof of later source integrity.
+
+### Correction, executable recurrence guard, retry condition
+- Code `28c0596c2dd5bd39116f87cf8034a4a0c298cb41` adds `load_pinned_fixture_guard` with `O_NOFOLLOW`, regular-file `fstat/lstat` identity, FD-read bytes, and pinned-byte execution. Canonical writer/validator/reconciler loading is unchanged.
+- The new negative establishes a valid synthetic helper, swaps its pathname to an untrusted symlink at `spec_from_file_location`, and requires the original helper result plus observed substitution. It runs after the existing symlink-parent control and before the canonical writer load.
+- The new code and main invocation were confirmed on `so` by static source inspection; exact-source workflow completion was **not observed** at the time of this entry. Do not claim CI success until the direct workflow and PASS marker are observed.
+- Recurrence guard: positive control plus deterministic import-boundary swap, exact rejection/result marker, and verified CI invocation. Retry condition: observe the pending exact-source workflow; change code only on verified regression, reviewed helper interface change, or demonstrated bypass. Unchanged clean-worktree/external-evidence blockers are not retried.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: code commit and source-level guard binding were observed, while runtime CI remains pending/unverified.
+- Why safe: only the existing synthetic generation-evidence load negative harness changed; helper replacements exist inside disposable system-temp fixtures, and no production registry/evidence was written.
+- Reusable mechanism: reuse a no-follow FD/inode/source-byte binding and test the exact import interval, rather than trusting an earlier path check.
+- Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered versus semantically eligible generations, distinct environments, current human-approved objective, executable reviewed request, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
