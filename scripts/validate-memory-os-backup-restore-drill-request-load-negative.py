@@ -10,6 +10,7 @@ import secrets
 import shutil
 import stat
 import tempfile
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
@@ -39,7 +40,7 @@ def load_module(path: Path, name: str):
 
 
 @contextmanager
-def guarded_temporary_directory(prefix: str, parent: Path):
+def _pinned_temporary_directory(prefix: str, parent: Path):
     # Pin every ancestor by descriptor: the checked pathname may be swapped
     # before mkdir, but the new child must stay beneath the opened directory.
     try:
@@ -120,6 +121,34 @@ def guarded_temporary_directory(prefix: str, parent: Path):
         raise Fail(f"drill request pinned fixture operation failed: {exc}") from exc
     finally:
         os.close(fd)
+
+
+class _EagerFixtureDirectory:
+    """Retain TemporaryDirectory's call-time creation/error and cleanup contract."""
+
+    def __init__(self, manager):
+        self._manager = manager
+        self.name = manager.__enter__()
+        self._finalizer = weakref.finalize(self, manager.__exit__, None, None, None)
+
+    def __enter__(self):
+        require(self._finalizer.alive, "drill request pinned fixture already closed")
+        return self.name
+
+    def __exit__(self, exc_type, exc, traceback):
+        if self._finalizer.alive:
+            self._finalizer.detach()
+            return self._manager.__exit__(exc_type, exc, traceback)
+        return False
+
+    def cleanup(self):
+        if self._finalizer.alive:
+            self._finalizer()
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    # Dependent negative wrappers translate domain Fail at call time.
+    return _EagerFixtureDirectory(_pinned_temporary_directory(prefix, parent))
 
 
 def prove_parent_swap_during_mkdir_rejected() -> None:
@@ -319,8 +348,8 @@ def main() -> int:
         link.symlink_to(sandbox, target_is_directory=True)
         before = sorted(p.name for p in sandbox.iterdir())
         try:
-            with guarded_temporary_directory(".tmp-must-not-create-", link):
-                raise Fail("drill request symlinked temp parent accepted")
+            # Call-time rejection is required by dependent domain wrappers.
+            guarded_temporary_directory(".tmp-must-not-create-", link)
         except Fail as exc:
             require(str(exc) == "drill request temp ancestor missing or symlinked",
                     f"drill request temp parent rejected at wrong boundary: {exc}")
