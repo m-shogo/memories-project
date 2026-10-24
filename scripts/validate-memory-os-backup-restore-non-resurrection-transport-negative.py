@@ -237,7 +237,7 @@ def prove_helper_ancestor_swap_during_fd_walk_rejected() -> None:
         try:
             PATH_NEGATIVE = checked_parent / "helper.py"
             require(
-                guarded_temporary_directory(".tmp-positive-", TMP_PARENT)
+                guarded_temporary_directory(".tmp-positive-", TEMP_PARENT)
                 == ("pinned-ancestor", ".tmp-positive-"),
                 "typed transport ancestor helper positive control failed",
             )
@@ -252,7 +252,7 @@ def prove_helper_ancestor_swap_during_fd_walk_rejected() -> None:
 
             os.open = swap_before_descend
             try:
-                guarded_temporary_directory(".tmp-ancestor-race-", TMP_PARENT)
+                guarded_temporary_directory(".tmp-ancestor-race-", TEMP_PARENT)
             except Fail as exc:
                 require(
                     str(exc) == "typed contract path fixture guard ancestor identity drift",
