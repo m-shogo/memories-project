@@ -1306,8 +1306,20 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "independent learning workflow PR options drift"),
     )
     for original, replacement, expected in cases:
-        require(source.count(original) == 1,
-                f"independent workflow negative anchor not unique: {expected}")
+        # Push and PR now share several trigger paths and the so branch
+        # filter. Preserve one occurrence in each event, then mutate the
+        # push occurrence; independent PR cases exercise PR-only drift.
+        occurrences = source.count(original)
+        if occurrences == 2:
+            push_body = source.split("  push:\n", 1)[1].split("  pull_request:\n", 1)[0]
+            pr_body = source.split("  pull_request:\n", 1)[1].split(
+                "  workflow_dispatch:\n", 1
+            )[0]
+            require(push_body.count(original) == 1 and pr_body.count(original) == 1,
+                    f"independent workflow negative anchor not unique: {expected}")
+        else:
+            require(occurrences == 1,
+                    f"independent workflow negative anchor not unique: {expected}")
         mutated = source.replace(original, replacement, 1)
         try:
             validate_independent_learning_workflow(mutated)
