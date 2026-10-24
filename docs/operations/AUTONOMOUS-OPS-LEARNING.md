@@ -7166,3 +7166,19 @@ a promotion decision, a recovery objective, or drill evidence.
 - Why safe: only the synthetic learning negative diagnostic mapping changed; no production evidence, recovery objective, credential or readiness authority was written.
 - Reusable mechanism: use exact-source CI to reveal old prefix-dependent test oracles, correct the specific canonical expectation, and preserve strict diagnostic classification rather than weakening it.
 - Protected-authority check: production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Distinct semantically eligible generations, current human-approved objective, executable reviewed request, typed eight-domain coverage and independent review, and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Fixed canonical diagnostics may end with a colon
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach
+- Symptom: exact-source Autonomous Learning Guard run `40093471152`, job `120870764212`, failed after the positive validator passed; negative `drop CI guard timeout handling` rejected for a wrong expected diagnostic classification.
+- Evidence: actual and expected canonical stderr were identical: `AUTONOMOUS LEARNING VALIDATION FAILED: learning CI entrypoint lost executable guard invocation: except subprocess.TimeoutExpired:`. The newly tightened classifier treated any expected string ending in `:` as requiring an extra variable-detail suffix, so it rejected the correct fixed diagnostic. Verified root cause: punctuation-based classification of fixed versus variable-detail diagnostics. Failed approach: inferring variable detail from a trailing colon.
+
+### Correction, executable recurrence guard, retry condition
+- Code commit `a5ac7e6cca56262ca46f25c97d9a35f1a8f190a6` explicitly allowlists variable-detail case families (invalid JSON, non-object root, missing required field, symlinked authority/parent). All other expected diagnostics, including those ending with a colon, require exact equality.
+- Executable recurrence guard: a fixed-colon positive classifier control plus an injected-suffix negative, in addition to the existing fixed-reason and variable-detail controls. Source readback confirmed the allowlist and controls. Retry condition: inspect exact-source CI for this corrected commit; only change on a newly observed case-specific failure. Do not weaken exact matching or repeat the known punctuation heuristic.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: CI exposed the punctuation-classification error and the corrected classifier was committed; corrected exact-source CI remains unverified at this lesson entry.
+- Why safe: only the learning negative classifier and its synthetic self-tests changed, with no production evidence/authority mutation.
+- Reusable mechanism: use explicit case semantics rather than output punctuation to distinguish structured variable diagnostics from fixed error reasons.
+- Protected-authority check: production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Distinct semantically eligible generations, human-approved current objective, executable reviewed request, complete typed eight-domain non-resurrection and independent review, and separate human promotion remain mandatory. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
