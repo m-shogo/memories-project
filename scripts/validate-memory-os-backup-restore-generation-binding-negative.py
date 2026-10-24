@@ -37,6 +37,8 @@ def load_target(path: Path, name: str):
 
 def guarded_temporary_directory(prefix: str, parent: Path = TMP_PARENT):
     # Reuse the generation-evidence negative harness's canonical parent check.
+    require(RECONCILE_NEGATIVE.is_file() and not RECONCILE_NEGATIVE.is_symlink(),
+            "generation-binding fixture guard source missing or symlinked")
     helper = load_target(RECONCILE_NEGATIVE, "memory_os_generation_binding_checked_fixture_parent")
     guard = getattr(helper, "guarded_temporary_directory", None)
     require(callable(guard), "generation-binding checked fixture parent helper missing")
@@ -63,6 +65,30 @@ def prove_symlink_parent_rejected() -> None:
         require(sorted(path.name for path in sandbox.iterdir()) == before,
                 "generation-binding symlink parent published a child")
     print("PASS: generation-binding fixture symlink parent rejected before creation")
+
+
+def prove_helper_source_symlink_rejected() -> None:
+    global RECONCILE_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="generation-binding-helper-source-") as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real-helper.py"
+        real.touch()
+        link = sandbox / "helper.py"
+        link.symlink_to(real)
+        original = RECONCILE_NEGATIVE
+        try:
+            RECONCILE_NEGATIVE = link
+            try:
+                with guarded_temporary_directory(".tmp-must-not-create-"):
+                    raise Fail("generation-binding symlinked fixture helper accepted")
+            except Fail as exc:
+                require(str(exc) == "generation-binding fixture guard source missing or symlinked",
+                        f"generation-binding fixture helper rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("generation-binding symlinked fixture helper accepted")
+        finally:
+            RECONCILE_NEGATIVE = original
+    print("PASS: generation-binding fixture helper symlink rejected before import")
 
 
 def load_module():
@@ -241,6 +267,7 @@ def prove_status_reconcile_boundaries() -> None:
 
 def main() -> int:
     prove_symlink_parent_rejected()
+    prove_helper_source_symlink_rejected()
     module = load_module()
     state = candidate_state(module)
 
