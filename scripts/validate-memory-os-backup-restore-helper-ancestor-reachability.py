@@ -142,6 +142,44 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
             "ancestor target matrix workflow trigger drift")
 
 
+def validate_workflow_runtime_reachability(workflow_source: str) -> None:
+    """Bind the independent workflow to its real validator and runtime proofs."""
+    static_step = """      - name: Prove seven canonical ancestor negatives remain reachable
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
+          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
+          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative
+"""
+    require(workflow_source.count(static_step) == 1,
+            "ancestor validator workflow invocation drift")
+    step_name = "Prove every canonical helper ancestor race from the validator target set"
+    pattern = (
+        r"(?m)^      - name: " + re.escape(step_name)
+        + r"\n        run: \|\n(?P<body>(?:          [^\n]*\n)+)"
+    )
+    matches = list(re.finditer(pattern, workflow_source))
+    require(len(matches) == 1, "ancestor runtime workflow step missing or duplicate")
+    expected_body = """          set -euo pipefail
+          python - <<'PY'
+          import runpy
+          targets = runpy.run_path(
+              "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
+          )["TARGETS"]
+          for filename in targets:
+              proof = runpy.run_path(f"scripts/{filename}")
+              proof["prove_helper_ancestor_swap_during_fd_walk_rejected"]()
+          PY
+"""
+    require(matches[0].group("body") == expected_body,
+            "ancestor runtime workflow proof invocation drift")
+    require(
+        workflow_source.index(static_step) < matches[0].start()
+        < workflow_source.index("      - name: Verify read-only postcondition\n"),
+        "ancestor runtime workflow step order drift",
+    )
+
+
 def validate_source(source: str, expected_diagnostic: str) -> None:
     tree = ast.parse(source)
     main = named_function(tree, "main")
@@ -666,11 +704,61 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
     return len(cases)
 
 
+def workflow_runtime_negative_cases(workflow_source: str) -> int:
+    """Mutate workflow invocation, not just the Python harness AST."""
+    validate_workflow_runtime_reachability(workflow_source)
+    pattern = (
+        r"(?m)^      - name: Prove every canonical helper ancestor race from the validator target set"
+        r"\n        run: \|\n(?:          [^\n]*\n)+"
+    )
+    match = re.search(pattern, workflow_source)
+    require(match is not None, "runtime workflow negative anchor absent")
+    step = match.group(0)
+    cases = (
+        (step, "", "ancestor runtime workflow step missing or duplicate"),
+        (step, step + step, "ancestor runtime workflow step missing or duplicate"),
+        ("          for filename in targets:\n",
+         "          for filename in ():\n",
+         "ancestor runtime workflow proof invocation drift"),
+        ("          targets = runpy.run_path(\n",
+         "          targets = dict(\n",
+         "ancestor runtime workflow proof invocation drift"),
+        ('              "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"\n',
+         '              "scripts/synthetic-wrong-targets.py"\n',
+         "ancestor runtime workflow proof invocation drift"),
+        ('          proof = runpy.run_path(f"scripts/{filename}")\n',
+         '          proof = {}\n',
+         "ancestor runtime workflow proof invocation drift"),
+        ('          proof["prove_helper_ancestor_swap_during_fd_walk_rejected"]()\n',
+         '          pass\n',
+         "ancestor runtime workflow proof invocation drift"),
+        ("          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n",
+         "          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py\n",
+         "ancestor validator workflow invocation drift"),
+        ("      - name: Prove seven canonical ancestor negatives remain reachable\n",
+         "      - name: Disabled ancestor negatives\n",
+         "ancestor validator workflow invocation drift"),
+    )
+    for original, replacement, expected in cases:
+        require(workflow_source.count(original) == 1,
+                f"workflow negative anchor not unique: {expected}")
+        mutated = workflow_source.replace(original, replacement, 1)
+        try:
+            validate_workflow_runtime_reachability(mutated)
+        except GuardFailure as exc:
+            require(str(exc) == expected,
+                    f"workflow negative rejected at wrong boundary: {exc}")
+        else:
+            raise GuardFailure(f"workflow runtime negative accepted: {expected}")
+    return len(cases)
+
+
 def main() -> int:
     workflow_source = (
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
     ).read_text(encoding="utf-8")
     validate_target_matrix(TARGETS, workflow_source)
+    validate_workflow_runtime_reachability(workflow_source)
     total = 0
     for filename, diagnostic in TARGETS.items():
         source = (ROOT / "scripts" / filename).read_text(encoding="utf-8")
@@ -679,9 +767,10 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     if "--negative" in sys.argv[1:]:
         total += target_matrix_negative_cases(workflow_source)
+        total += workflow_runtime_negative_cases(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 3, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 12, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
