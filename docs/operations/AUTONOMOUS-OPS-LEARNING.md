@@ -5646,3 +5646,22 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only the existing CI-reachable synthetic negative suite changed. The new fixture writes solely to an exclusively owned temporary registry and restores it; no canonical evidence/registry or production authority is modified.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` still declares `NO_GO`, OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, and learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered generations remain distinct from unsuperseded semantically eligible environments. Preflight requires two distinct eligible environments and a current explicitly human-approved objective. New generation evidence requires a current executable reviewed request. Final candidates require all generation/objective gates plus complete typed eight-domain non-resurrection coverage and independent review. Human production promotion remains separate and non-automatic. Learning, synthetic tests and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Candidate negative-case inventory must match its recorded count
+
+### Material success: outcome and evidence
+- Code commit `732e4a1d229a28025d13f08a7abb916a96fa576b` adds two independent synthetic final-candidate negatives to the same disposable cross-generation fixture: missing Operability review and an undeclared ninth typed domain.
+- The complete case inventory is now exactly 24: 16 per-domain missing/FAIL probes (eight domains each), plus eight distinct overlay review/completeness/provenance/production-boundary probes. GitHub source blob `0925ec67f7d9f62ac017011ce2e022644c4d71df` contains both additional cases. No exact-source CI result has yet been observed.
+
+### Symptom, evidence, verified root cause and failed approach
+- The preceding learning entry described 24 probes although the initial commit contained only 22 (16 domain probes plus six overlay probes).
+- Root cause: the narrative case count was not reconciled against the actual test-call inventory before recording it.
+- Failed approach: trusting a manually estimated probe count without a deterministic source inventory.
+
+### Correction, recurrence guard and retry condition
+- Two independently useful cases close the count gap while strengthening the cross-generation candidate boundary. The helper continues to assert base eligibility remains true, final candidacy becomes false, temporary bytes restore, and the positive candidate recovers after every mutation.
+- Future claims of negative-probe totals must be calculated from the source's actual loop cardinality plus explicit calls, not from a planned count. Retry runtime validation only after an executable exact-source checkout or corresponding workflow run becomes available; no CI success is inferred.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic negative fixture changed. Production Status remains `NO_GO` at blob `ce67e9353d6583e4eaf792470563cad25a7396b3`; OPS-P0-007 remains `PREREQUISITES_BLOCKED` at blob `dbaa36b082366737dca2461d15748103b9740ef6`; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Synthetic fixtures and learning cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates. Distinct semantically eligible unsuperseded environments, a current human-approved objective, a current executable reviewed drill request, complete typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory.
