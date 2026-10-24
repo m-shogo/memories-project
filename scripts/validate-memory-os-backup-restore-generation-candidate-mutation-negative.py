@@ -253,20 +253,19 @@ def main() -> int:
             # The link and any potential child remain inside this disposable directory.
             symlink_parent = tmp_path / "symlinked-temp-parent"
             symlink_parent.symlink_to(tmp_path, target_is_directory=True)
+            # The enclosing exclusively owned TemporaryDirectory removes this link;
+            # never unlink a mutable fixture path independently of its parent.
+            before = sorted(child.name for child in tmp_path.iterdir())
             try:
-                before = sorted(child.name for child in tmp_path.iterdir())
-                try:
-                    with guarded_temporary_directory(".tmp-must-not-publish-", symlink_parent):
-                        raise Fail("symlinked temp parent accepted")
-                except Fail as exc:
-                    require(str(exc) == "candidate transient ancestor missing or symlinked",
-                            f"symlinked temp parent rejected at wrong boundary: {exc}")
-                else:
+                with guarded_temporary_directory(".tmp-must-not-publish-", symlink_parent):
                     raise Fail("symlinked temp parent accepted")
-                require(sorted(child.name for child in tmp_path.iterdir()) == before,
-                        "symlinked temp parent left a temporary child")
-            finally:
-                symlink_parent.unlink()
+            except Fail as exc:
+                require(str(exc) == "candidate transient ancestor missing or symlinked",
+                        f"symlinked temp parent rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("symlinked temp parent accepted")
+            require(sorted(child.name for child in tmp_path.iterdir()) == before,
+                    "symlinked temp parent left a temporary child")
             print("PASS: temporary directory parent symlink rejected before publication")
 
             generation_registry = tmp_path / "generations.json"
