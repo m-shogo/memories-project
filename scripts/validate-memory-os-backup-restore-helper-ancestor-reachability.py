@@ -161,6 +161,8 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     """Bind the independent workflow to its real validator and runtime proofs."""
     require(not re.search(r"(?m)^\s*(?:if|continue-on-error):", workflow_source),
             "ancestor workflow conditional bypass")
+    require(not re.search(r"(?m)^(?:env|defaults|strategy):|^    (?:env|defaults|strategy):", workflow_source),
+            "ancestor workflow execution context override")
     static_step = """      - name: Prove seven canonical ancestor negatives remain reachable
         run: |
           set -euo pipefail
@@ -227,6 +229,8 @@ def validate_independent_learning_workflow(source: str) -> None:
     """Guard independent learning CI from the ancestor validator."""
     require(not re.search(r"(?m)^\s*(?:if|continue-on-error):", source),
             "independent learning workflow conditional bypass")
+    require(not re.search(r"(?m)^(?:env|defaults|strategy):|^    (?:env|defaults|strategy):", source),
+            "independent learning workflow execution context override")
     require(re.search(r"(?m)^on:\n  push:\n    branches: \[so\]\n    paths:\n", source)
             is not None and "\n  workflow_dispatch:\n" in source,
             "independent learning workflow trigger drift")
@@ -918,6 +922,14 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor read-only workflow postcondition drift"),
         ("  verify:\n    runs-on: ubuntu-latest\n", "  verify:\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n", "ancestor workflow job-level permissions override"),
     )
+    cases += (
+        ("permissions:\n", "env:\n  BASH_ENV: /tmp/synthetic-env\npermissions:\n", "ancestor workflow execution context override"),
+        ("permissions:\n", "defaults:\n  run:\n    shell: sh\npermissions:\n", "ancestor workflow execution context override"),
+        ("permissions:\n", "strategy:\n  fail-fast: false\npermissions:\n", "ancestor workflow execution context override"),
+        ("  verify:\n    runs-on: ubuntu-latest\n", "  verify:\n    env:\n      BASH_ENV: /tmp/synthetic-env\n    runs-on: ubuntu-latest\n", "ancestor workflow execution context override"),
+        ("  verify:\n    runs-on: ubuntu-latest\n", "  verify:\n    defaults:\n      run:\n        shell: sh\n    runs-on: ubuntu-latest\n", "ancestor workflow execution context override"),
+        ("  verify:\n    runs-on: ubuntu-latest\n", "  verify:\n    strategy:\n      fail-fast: false\n    runs-on: ubuntu-latest\n", "ancestor workflow execution context override"),
+    )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
                 f"workflow negative anchor not unique: {expected}")
@@ -955,6 +967,14 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("      - \"scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py\"\n", "      - \"scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py\"\n      - \"scripts/validate-memory-os-backup-restore-synthetic-negative.py\"\n", "independent learning workflow target trigger drift"),
         ("  validate:\n    runs-on: ubuntu-latest\n", "  validate:\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n", "independent learning workflow job-level permissions override"),
     )
+    cases += (
+        ("permissions:\n", "env:\n  BASH_ENV: /tmp/synthetic-env\npermissions:\n", "independent learning workflow execution context override"),
+        ("permissions:\n", "defaults:\n  run:\n    shell: sh\npermissions:\n", "independent learning workflow execution context override"),
+        ("permissions:\n", "strategy:\n  fail-fast: false\npermissions:\n", "independent learning workflow execution context override"),
+        ("  validate:\n    runs-on: ubuntu-latest\n", "  validate:\n    env:\n      BASH_ENV: /tmp/synthetic-env\n    runs-on: ubuntu-latest\n", "independent learning workflow execution context override"),
+        ("  validate:\n    runs-on: ubuntu-latest\n", "  validate:\n    defaults:\n      run:\n        shell: sh\n    runs-on: ubuntu-latest\n", "independent learning workflow execution context override"),
+        ("  validate:\n    runs-on: ubuntu-latest\n", "  validate:\n    strategy:\n      fail-fast: false\n    runs-on: ubuntu-latest\n", "independent learning workflow execution context override"),
+    )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
                 f"independent workflow negative anchor not unique: {expected}")
@@ -991,7 +1011,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 52, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 64, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
