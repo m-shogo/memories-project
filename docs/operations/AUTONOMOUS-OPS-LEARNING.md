@@ -6029,3 +6029,21 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic negative harness and append-only learning history changed in this correction. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered generations are not semantically preflight-eligible by registration alone; preflight requires distinct unsuperseded eligible environments and a current human-approved objective; new evidence needs a current executable reviewed request; final candidates need typed eight-domain coverage and independent review. Human promotion is separate/non-automatic. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Preflight reconcile rollback fixtures need checked parent creation
+
+### Material success: outcome and observed evidence
+- Code commit `901641a4b6759c66b1b536a7407812df063c6b02` replaces the existing preflight reconcile negative suite's repository-local direct `TemporaryDirectory(dir=TMP_PARENT)` with the checked drill-request fixture parent guard. A real disposable symlink-parent negative requires exact ancestor rejection and unchanged sandbox entries.
+- Post-write source inspection confirms the guarded creation site, checked helper binding and actual symlink-negative. Exact-source runtime PASS was not yet confirmed when recorded.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified fixture safety gap, not a production incident: preflight reconcile rollback negatives previously checked only `TMP_PARENT.is_dir()`, which follows symlinks, then created a repository-local temporary child.
+- Root cause: independent preflight reconcile harness had not reused the related drill-request checked-parent mechanism. Failed approach: assuming production authority path checks or `is_dir()` prove the safety of synthetic fixture creation.
+
+### Correction, executable recurrence guard, retry condition
+- Load the related checked-parent guard through a verified callable interface, translate its `Fail` to preflight reconcile domain `Fail`, and use the same guarded path for the real fixture and a symlink-parent negative. Do not unlink the symlink leaf independently; the owned temporary context cleans it. This precheck is not an atomic check/use race guarantee.
+- Retry exact-source Preflight Reconcile/Admission Chain CI validation on completion; revisit only on observed failure, reviewed helper/path changes or demonstrated bypass. Do not retry unchanged clean-worktree, external-evidence or permission blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only an existing synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered and semantically eligible generations remain distinct; preflight needs two distinct unsuperseded eligible environments and a current human-approved objective; new evidence needs a current executable reviewed request; final candidates require typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning, CI and synthetic fixtures cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
