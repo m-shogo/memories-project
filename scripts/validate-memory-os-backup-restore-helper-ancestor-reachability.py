@@ -258,13 +258,13 @@ def validate_independent_learning_workflow(source: str) -> None:
     require(len(re.findall(r"(?m)^on:", source)) == 1
             and len(re.findall(r"(?m)^permissions:", source)) == 1,
             "independent learning workflow duplicate root authority")
+    require(re.search(r"(?m)^on:\n  push:\n    branches: \[so\]\n    paths:\n", source)
+            is not None and "\n  workflow_dispatch:\n" in source,
+            "independent learning workflow trigger drift")
     event_block = source.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
     require(re.findall(r"(?m)^  ([a-z_]+):", event_block)
             == ["push", "workflow_dispatch"],
             "independent learning workflow event inventory drift")
-    require(re.search(r"(?m)^on:\n  push:\n    branches: \[so\]\n    paths:\n", source)
-            is not None and "\n  workflow_dispatch:\n" in source,
-            "independent learning workflow trigger drift")
     match = re.search(r'(?m)^    paths:\n(?P<paths>(?:      - "[^"]+"\n)+)', source)
     require(match is not None, "independent learning workflow trigger drift")
     paths = set(re.findall(r'^      - "([^"]+)"$', match.group("paths"),
