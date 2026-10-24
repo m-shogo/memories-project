@@ -122,12 +122,12 @@ def prove_helper_source_swap_during_import_is_pinned() -> None:
         parked = sandbox / "original-helper.py"
         untrusted = sandbox / "untrusted.py"
         trusted.write_text(
-            "class Fail(RuntimeError):\\n    pass\\n\\n"
-            "def guarded_temporary_directory(prefix, parent):\\n"
-            "    return ('pinned-source', prefix)\\n",
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(prefix, parent):\n"
+            "    return ('pinned-source', prefix)\n",
             encoding="utf-8",
         )
-        untrusted.write_text("raise RuntimeError('untrusted helper executed')\\n", encoding="utf-8")
+        untrusted.write_text("raise RuntimeError('untrusted helper executed')\n", encoding="utf-8")
         original_path = PATH_NEGATIVE
         original_spec = importlib.util.spec_from_file_location
         swapped = False
