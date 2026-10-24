@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-request.py"
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -41,6 +42,23 @@ def load_reconciler() -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    require(DRILL_REQUEST_LOAD_NEGATIVE.is_file() and not DRILL_REQUEST_LOAD_NEGATIVE.is_symlink(),
+            "drill request fixture parent guard source missing or symlinked")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_drill_fixture_guard_reconcile", DRILL_REQUEST_LOAD_NEGATIVE)
+    require(spec is not None and spec.loader is not None,
+            "drill request fixture parent guard cannot load")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "drill request fixture parent guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
 
 
 def minify_json(path: Path) -> None:
@@ -78,7 +96,7 @@ def expect_direct_authority_rejected(
 
 
 def prove_atomic_write_failure(reconciler: Any, contract_before: bytes, registry_before: bytes, status_before: bytes) -> None:
-    with tempfile.TemporaryDirectory(prefix=".memory-os-drill-request-atomic-", dir=ROOT) as tmp:
+    with guarded_temporary_directory(".memory-os-drill-request-atomic-", ROOT) as tmp:
         fixture = Path(tmp) / CONTRACT.name
         shutil.copy2(CONTRACT, fixture)
         fixture.chmod(0o640)
@@ -116,7 +134,7 @@ def prove_atomic_write_failure(reconciler: Any, contract_before: bytes, registry
 
 
 def prove_rollback_attempts_all_restores(reconciler: Any) -> None:
-    with tempfile.TemporaryDirectory(prefix=".memory-os-drill-request-restore-failure-", dir=ROOT) as tmp:
+    with guarded_temporary_directory(".memory-os-drill-request-restore-failure-", ROOT) as tmp:
         tmp_path = Path(tmp)
         originals = {
             tmp_path / "registry.json": "registry\n",
@@ -200,6 +218,22 @@ def prove_primary_and_rollback_diagnostics(reconciler: Any) -> None:
 
 def main() -> int:
     require(RECONCILER.is_file(), "drill request reconciler missing")
+    with guarded_temporary_directory(".tmp-drill-reconcile-parent-negative-", ROOT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("drill reconcile symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "drill request temp ancestor missing or symlinked",
+                    f"drill reconcile temp parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("drill reconcile symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "drill reconcile symlinked temp parent published a child")
+    print("PASS: drill request reconcile fixtures reuse checked parent guard")
     for path in (CONTRACT, REGISTRY, GEN_REGISTRY, OBJECTIVES, STATUS):
         require(path.is_file(), f"canonical authority missing: {path.name}")
 
@@ -258,7 +292,7 @@ def main() -> int:
 
         # A corrupt recovery-objective authority must fail before any derived drill
         # contract, request registry or production status mutation can occur.
-        with tempfile.TemporaryDirectory(prefix=".memory-os-drill-objective-corruption-", dir=ROOT) as tmp:
+        with guarded_temporary_directory(".memory-os-drill-objective-corruption-", ROOT) as tmp:
             tmp_path = Path(tmp)
             contract = tmp_path / CONTRACT.name
             registry = tmp_path / REGISTRY.name
@@ -303,7 +337,7 @@ def main() -> int:
                 require(registry.read_bytes() == original_registry, f"request registry mutated while rejecting {name}")
                 require(status.read_bytes() == original_status, f"production status mutated while rejecting {name}")
 
-        with tempfile.TemporaryDirectory(prefix=".memory-os-drill-request-rollback-", dir=ROOT) as tmp:
+        with guarded_temporary_directory(".memory-os-drill-request-rollback-", ROOT) as tmp:
             tmp_path = Path(tmp)
             contract = tmp_path / CONTRACT.name
             registry = tmp_path / REGISTRY.name
