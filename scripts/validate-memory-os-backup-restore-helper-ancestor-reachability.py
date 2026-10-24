@@ -138,6 +138,11 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         and node.name in {"load_pinned_fixture_helper", "load_pinned_fixture_guard"}
     ]
     require(len(loaders) == 1, "missing or duplicate pinned fixture loader")
+    # Decorators execute while the module is initialized and may replace the
+    # checked callable without a later assignment or explicit namespace write.
+    for guarded_function in (main, proof, pin, loaders[0]):
+        require(not guarded_function.decorator_list,
+                f"decorated guarded function: {guarded_function.name}")
     # A later module-level assignment can replace an otherwise valid checked
     # function before the canonical __main__ dispatcher executes.
     for guarded_name in ("main", PROOF, PIN, loaders[0].name):
@@ -398,6 +403,21 @@ def negative_cases(source: str, diagnostic: str) -> int:
             'setattr(sys.modules[__name__], "prove_helper_ancestor_swap_during_fd_walk_rejected", lambda: None)',
         )
     )
+    loader_definition = (
+        "def load_pinned_fixture_helper(path: Path, name: str):"
+        if "def load_pinned_fixture_helper(path: Path, name: str):" in source
+        else "def load_pinned_fixture_guard(path: Path, name: str):"
+    )
+    replacements += tuple(
+        (definition, "@property\n" + definition,
+         "decorated guarded function: " + name)
+        for definition, name in (
+            ("def main() -> int:", "main"),
+            ("def prove_helper_ancestor_swap_during_fd_walk_rejected() -> None:", PROOF),
+            ("def pin_checked_helper_parent(path: Path) -> int:", PIN),
+            (loader_definition, loader_definition.split("(")[0].removeprefix("def ")),
+        )
+    )
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
@@ -428,7 +448,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 26 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 30 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
