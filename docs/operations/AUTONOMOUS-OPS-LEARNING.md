@@ -5249,3 +5249,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the CI-reachable generation evidence negative harness changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Preflight requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current recovery objective. New generation evidence requires a current executable reviewed drill request; final candidates require all existing generation/objective gates plus complete typed eight-domain non-resurrection coverage and independent review. Human promotion is separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — External harness binds source-order AST guard execution
+
+### Material success: observed outcome and evidence
+- Code commit `cef108e2d0b7e86885f501f7972f2fd41f0853ce` extends the existing CI-reachable generation independent-review negative suite with an external AST harness. It requires the separate independent-review execution-negative executable to define its source-order AST guard, retain its positive/negative mutation loop and call that guard as the first direct step of its canonical `main`.
+- Seven in-memory AST negatives reject omission, reordering, dead-branching, duplicate invocation, missing guard definition, missing mutation loop and shadowing of the execution-negative `main`.
+- Exact-source GitHub Actions run `40061872914` (job `120776941112`) completed SUCCESS for `cef108e`; the log explicitly reports `PASS: source-order main AST execution binding rejects 11 review bypass mutations`, `PASS: external source-order AST guard reachability rejects 7 mutations`, generation candidate review negative suite PASS and canonical generation evidence authority mutation false.
+
+### Symptom/risk, verified gap and failed approach
+- Risk: the eleven-mutation source-order AST guard could remain in a source file but be removed or dead-branched from its own negative suite's `main`, allowing a superficial workflow success without executing the proof. No production bypass or incident was observed.
+- Verified gap: the previous workflow executed the independent-review execution-negative file, but no separate executable bound the newly introduced internal source-order AST guard to that file's direct main path.
+- Failed approach to avoid: equating function presence or workflow-level invocation of a negative suite with proof that its internal guard is executed.
+
+### Correction, executable recurrence guard and retry condition
+- Reuse the existing sibling generation independent-review negative suite as an immutable external source-level harness; parse the actual execution-negative source as positive control and mutate in-memory AST copies with exact rejection diagnostics. No workflow mutation or parallel authority was introduced.
+- Retry only after exact-source CI regression, reviewed legitimate execution-negative refactor or demonstrated guard-reachability bypass. Unchanged workflow-write, clean-worktree and external-evidence blockers are not retried.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only a synthetic CI-reachable negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Preflight requires distinct unsuperseded semantically eligible environments and a human-approved current recovery objective; new recovery evidence requires a current executable reviewed request. Final candidates require all generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion is separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
