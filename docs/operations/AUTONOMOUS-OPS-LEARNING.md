@@ -4787,3 +4787,24 @@ a promotion decision, a recovery objective, or drill evidence.
 - No canonical runner, environment generation, human-approved objective, executable reviewed request, generation recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion authority was changed.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains PREREQUISITES_BLOCKED with zero registered/eligible generations, objectives, requests, evidence, typed records and candidates, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Distinct unsuperseded semantically eligible environments, an explicitly human-approved current objective, current executable reviewed drill request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate human production promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Dynamic learning CI guard rebinding must be rejected by executable negatives
+
+### Material success: outcome and observed evidence
+- Commits `2e9cce93ca763e4a6292080ac5f270d00224e3e4` and `12982ac53f29dafc86cf8018a42d72d1a21009dd` extend the existing autonomous-learning positive and negative validators to reject module-level dynamic replacement of `main` and `validate_learning_guards` through `globals()` subscript/update, module `setattr` and literal `exec`. The ten isolated mutations have symbol-specific canonical diagnostics.
+- Commit `23fd243fb37674ed602a3b272b0607f919d5dd08` raises the existing entry-docs CI minimum from 74 to 84 negative cases. Exact-source Operability Contracts run `40054584618` (job `120754611691`) completed SUCCESS and logged `Autonomous improvement/learning contract validation PASS`, `Autonomous learning negative validation PASS (84 fail-closed cases)`, and `Memory OS entrypoint document validation PASS`.
+- The first two code commits alone did not trigger this path-filtered CI. The legitimate entry-docs minimum-case binding supplied the CI-reachable execution proof; a mere source-shape inspection was not counted as CI success.
+
+### Symptom/risk, verified gap and failed approach to avoid
+- Risk: a module-level `globals().update`, `globals()['main']`, `setattr` or `exec` can replace a correctly defined CI learning guard after static definition checks, allowing an apparent entrypoint to skip real learning validation. No production incident or observed successful bypass occurred.
+- Verified gap: the existing learning validator's module-scope rebinding analysis covered direct assignments, imports and loop/exception aliases but not dynamic namespace writes.
+- Failed approach to avoid: treating the presence of one synchronous `main` or `validate_learning_guards` definition and a direct call as sufficient binding authority without checking module-level dynamic writes; treating non-triggered code commits as exact-source CI proof.
+
+### Correction, recurrence guard and retry condition
+- Extend the canonical AST binding detector with symbol-scoped subscript, update/pop, `setattr` and `exec` checks, conservatively rejecting unknown dynamic keys. Add ten isolated negative cases and bind the expanded case count to the existing CI classifier's minimum.
+- Retry only after exact-source regression, reviewed legitimate learning-entrypoint architecture changes, or a demonstrated new dynamic rebinding bypass. Do not repeat unchanged workflow-write or source-binding clean-worktree blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only learning/entry-docs validators and append-only learning changed; no production writer, recovery generation, approved objective, reviewed request, generation evidence, typed eight-domain record, credential, traffic, readiness or promotion authority was modified.
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, evidence, typed records and final candidates, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Strict preflight requires unsuperseded semantically eligible generations from distinct environments plus explicit human-approved current objectives; new generation evidence requires a current executable reviewed request; final candidates require complete typed eight-domain coverage and independent review; promotion remains a separate non-automatic human decision. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
