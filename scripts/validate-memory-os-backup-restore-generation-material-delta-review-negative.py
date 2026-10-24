@@ -52,21 +52,35 @@ def expect_registry_fail(module, row: dict, label: str, expected: str) -> None:
 
 
 def expect_authority_substitution_fail(module, field: str, substitute: Path) -> None:
+    # The unchanged canonical path set must pass before and after each mutation.
+    module.enforce_execution_authority()
+    module.enforce_runtime_authorities()
     canonical_contract = (ROOT / module.CONTRACT_REL).read_bytes()
     canonical_registry = (ROOT / module.REGISTRY_REL).read_bytes()
+    expected = {
+        "CONTRACT": "generation evidence contract authority drift",
+        "REGISTRY": "generation evidence registry authority drift",
+        "VALIDATOR": "material-delta review validator authority drift",
+        "NEGATIVE": "material-delta review negative validator authority drift",
+    }[field]
     original = getattr(module, field)
     setattr(module, field, substitute)
     try:
         try:
             module.main()
-        except module.Fail:
-            pass
+        except module.Fail as exc:
+            require(str(exc) == expected,
+                    f"material-delta runtime authority substitution rejected at wrong boundary ({field}): {exc}")
         else:
             raise Fail(f"runtime authority substitution unexpectedly accepted: {field}")
-        require((ROOT / module.CONTRACT_REL).read_bytes() == canonical_contract, f"canonical contract mutated while rejecting {field}")
-        require((ROOT / module.REGISTRY_REL).read_bytes() == canonical_registry, f"canonical registry mutated while rejecting {field}")
+        require((ROOT / module.CONTRACT_REL).read_bytes() == canonical_contract,
+                f"canonical contract mutated while rejecting {field}")
+        require((ROOT / module.REGISTRY_REL).read_bytes() == canonical_registry,
+                f"canonical registry mutated while rejecting {field}")
     finally:
         setattr(module, field, original)
+    module.enforce_execution_authority()
+    module.enforce_runtime_authorities()
 
 
 def expect_contract_fail(module, mutate, label: str, expected: str) -> None:
