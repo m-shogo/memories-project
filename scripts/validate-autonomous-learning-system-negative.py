@@ -185,7 +185,9 @@ def require_expected_rejection(name: str, result: subprocess.CompletedProcess[st
     # Variable canonical diagnostics end with a colon and must include a detail.
     # Every other diagnostic is an exact authority string: a matching prefix
     # with an unrelated same-line suffix is not proof of the intended guard.
-    variable_detail = expected_diagnostic(name).endswith(":")
+    variable_detail = (name in {"invalid contract JSON", "non-object contract root"}
+                       or name.startswith(("drop required failure ", "drop required success ",
+                                           "symlinked ")))
     matched = (observed.startswith(expected + " ") and len(observed) > len(expected) + 1
                if variable_detail else observed == expected)
     if "\n" in observed or "\r" in observed or not matched:
@@ -288,6 +290,7 @@ def main() -> int:
         ("same-line suffix", "weaken mandatory rule", " injected"),
         ("same-line prefix collision", "weaken mandatory rule", "Extra"),
         ("anti-regression prefix collision", "drop anti-regression lesson", " changed"),
+        ("fixed-colon diagnostic suffix", "drop CI guard timeout handling", " injected"),
     ):
         forged = "AUTONOMOUS LEARNING VALIDATION FAILED: " + expected_diagnostic(name) + suffix + "\n"
         try:
@@ -296,6 +299,14 @@ def main() -> int:
             pass
         else:
             raise RuntimeError(f"negative diagnostic classifier accepted {label}")
+
+    # A fixed diagnostic may itself end with a colon; it must still match exactly.
+    require_expected_rejection(
+        "drop CI guard timeout handling",
+        subprocess.CompletedProcess([], 1, "",
+            "AUTONOMOUS LEARNING VALIDATION FAILED: "
+            + expected_diagnostic("drop CI guard timeout handling") + "\n"),
+    )
 
     # Canonical variable-detail diagnostics still require a nonempty detail.
     require_expected_rejection(
