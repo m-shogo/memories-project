@@ -61,6 +61,31 @@ def guarded_temporary_directory(prefix: str, parent: Path):
         raise Fail(str(exc)) from exc
 
 
+
+def prove_helper_source_symlink_rejected() -> None:
+    # Import-source integrity must be exercised independently of parent-path safety.
+    global DRILL_REQUEST_LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="drill-reconcile-helper-source-") as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real-helper.py"
+        real.touch()
+        link = sandbox / "helper.py"
+        link.symlink_to(real)
+        original = DRILL_REQUEST_LOAD_NEGATIVE
+        try:
+            DRILL_REQUEST_LOAD_NEGATIVE = link
+            try:
+                guarded_temporary_directory(".tmp-must-not-create-", ROOT)
+            except Fail as exc:
+                require(str(exc) == "drill request fixture parent guard source missing or symlinked",
+                        f"drill reconcile helper rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("drill reconcile symlinked fixture helper accepted")
+        finally:
+            DRILL_REQUEST_LOAD_NEGATIVE = original
+    print("PASS: drill reconcile fixture helper symlink rejected before import")
+
+
 def minify_json(path: Path) -> None:
     value = json.loads(path.read_text(encoding="utf-8"))
     path.write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
@@ -218,6 +243,7 @@ def prove_primary_and_rollback_diagnostics(reconciler: Any) -> None:
 
 def main() -> int:
     require(RECONCILER.is_file(), "drill request reconciler missing")
+    prove_helper_source_symlink_rejected()
     with guarded_temporary_directory(".tmp-drill-reconcile-parent-negative-", ROOT) as raw:
         sandbox = Path(raw)
         link = sandbox / "redirect"
