@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
+DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 
 
 class Fail(RuntimeError):
@@ -35,6 +36,23 @@ def load_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    require(DRILL_REQUEST_LOAD_NEGATIVE.is_file() and not DRILL_REQUEST_LOAD_NEGATIVE.is_symlink(),
+            "drill request fixture parent guard source missing or symlinked")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_drill_fixture_guard_preflight_reconcile", DRILL_REQUEST_LOAD_NEGATIVE)
+    require(spec is not None and spec.loader is not None,
+            "drill request fixture parent guard cannot load")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "drill request fixture parent guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
 
 
 def fixture_authorities(module, tmp: Path, label: str) -> tuple[Path, Path]:
@@ -230,13 +248,30 @@ def main() -> int:
         module.CONTRACT: module.CONTRACT.read_bytes(),
         module.STATUS: module.STATUS.read_bytes(),
     }
-    with tempfile.TemporaryDirectory(prefix=".tmp-preflight-reconcile-negative-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-preflight-reconcile-negative-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         prove_second_replace_rollback(module, tmp)
         prove_rollback_attempts_all_authorities(module)
         prove_post_validator_rollback(module, tmp)
     for path, payload in canonical_before.items():
         require(path.read_bytes() == payload, f"canonical authority mutated by rollback negative: {path.name}")
+    with guarded_temporary_directory(".tmp-preflight-reconcile-parent-negative-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("preflight reconcile symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "drill request temp ancestor missing or symlinked",
+                    f"preflight reconcile temp parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("preflight reconcile symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "preflight reconcile symlinked temp parent published a child")
+    print("PASS: preflight reconcile fixture reuses checked drill parent guard")
+
     print("Restore drill preflight reconcile negative suite PASS")
     print("partial preflight/status publication accepted: false")
     print("rollback skips later authority after earlier restore failure: false")
