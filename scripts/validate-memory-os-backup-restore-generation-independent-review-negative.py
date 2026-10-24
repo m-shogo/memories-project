@@ -600,20 +600,25 @@ def prove_runtime_review_pair_controls() -> None:
         security_ref = "docs/evidence/backup-restore/security/negative-pair-security.json"
         operability_ref = "docs/evidence/backup-restore/operability/negative-pair-operability.json"
         reused_reviewer_ref = "docs/evidence/backup-restore/operability/negative-pair-reused-reviewer.json"
+        stale_timestamp_ref = "docs/evidence/backup-restore/operability/negative-pair-stale-timestamp.json"
+        future_timestamp_ref = "docs/evidence/backup-restore/operability/negative-pair-future-timestamp.json"
         row["securityReviewRef"] = security_ref
         row["operabilityReviewRef"] = operability_ref
-        for relative, role, reviewer in (
-            (security_ref, "SECURITY", "reviewer-security"),
-            (operability_ref, "OPERABILITY", "reviewer-operability"),
-            (reused_reviewer_ref, "OPERABILITY", "reviewer-security"),
-        ):
+        review_fixtures = (
+            (security_ref, "SECURITY", "reviewer-security", "2026-08-01T00:01:00Z"),
+            (operability_ref, "OPERABILITY", "reviewer-operability", "2026-08-01T00:01:00Z"),
+            (reused_reviewer_ref, "OPERABILITY", "reviewer-security", "2026-08-01T00:01:00Z"),
+            (stale_timestamp_ref, "OPERABILITY", "reviewer-operability", "2026-07-31T23:59:00Z"),
+            (future_timestamp_ref, "OPERABILITY", "reviewer-operability", "2026-08-01T00:03:00Z"),
+        )
+        for relative, role, reviewer, reviewed_at in review_fixtures:
             payload = typed_payload(row, role)
-            payload["reviewedAt"] = "2026-08-01T00:01:00Z"
+            payload["reviewedAt"] = reviewed_at
             payload["reviewerPseudonym"] = reviewer
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
-        git("add", "--", security_ref, operability_ref, reused_reviewer_ref)
+        git("add", "--", *(relative for relative, *_ in review_fixtures))
         git("-c", "user.name=CI Fixture", "-c", "user.email=fixture@example.invalid",
             "commit", "-qm", "synthetic post-source reviews", commit_time="2026-08-01T00:02:00+00:00")
 
@@ -645,9 +650,25 @@ def prove_runtime_review_pair_controls() -> None:
                     f"reused review ref rejected at wrong typed-role guard: {exc}")
         else:
             raise Fail("candidate accepted a reused Security review as Operability evidence")
+        same_commit = dict(row)
+        same_commit["sourceCommitSha"] = git("rev-parse", "HEAD")
+        for label, mutated, expected in (
+            ("same-commit review", same_commit,
+             "review source-order authority invalid: records[-1].securityReviewRef review must be created strictly after sourceCommitSha"),
+            ("reviewedAt before source", {**row, "operabilityReviewRef": stale_timestamp_ref},
+             "review source-order authority invalid: records[-1].operabilityReviewRef.reviewedAt predates sourceCommitSha"),
+            ("reviewedAt after creation", {**row, "operabilityReviewRef": future_timestamp_ref},
+             "review source-order authority invalid: records[-1].operabilityReviewRef.reviewedAt is later than review evidence commit"),
+        ):
+            try:
+                isolated.candidate_reviews_approved(mutated)
+            except isolated.Fail as exc:
+                require(str(exc) == expected, f"real Git chronology negative wrong boundary ({label}): {exc}")
+            else:
+                raise Fail(f"real Git chronology negative unexpectedly accepted: {label}")
         require(isolated.candidate_reviews_approved(row) is True,
-                "valid independent review pair drifted after rejected reuse cases")
-    print("PASS: isolated Git source-order positive pair and exact reviewer/ref reuse runtime negatives")
+                "valid independent review pair drifted after rejected reuse/chronology cases")
+    print("PASS: isolated Git positive pair and exact reviewer/ref reuse plus three source-order runtime negatives")
 
 
 def main() -> int:
