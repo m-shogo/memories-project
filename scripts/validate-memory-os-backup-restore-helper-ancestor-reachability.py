@@ -144,7 +144,7 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
 
 def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     """Bind the independent workflow to its real validator and runtime proofs."""
-    require(not re.search(r"(?m)^\\s*(?:if|continue-on-error):", workflow_source),
+    require(not re.search(r"(?m)^\s*(?:if|continue-on-error):", workflow_source),
             "ancestor workflow conditional bypass")
     static_step = """      - name: Prove seven canonical ancestor negatives remain reachable
         run: |
@@ -737,14 +737,14 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         ("          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n",
          "          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py\n",
          "ancestor validator workflow invocation drift"),
-        ("      - name: Prove seven canonical ancestor negatives remain reachable\\n",
-         "      - name: Disabled ancestor negatives\\n",
+        ("      - name: Prove seven canonical ancestor negatives remain reachable\n",
+         "      - name: Disabled ancestor negatives\n",
          "ancestor validator workflow invocation drift"),
-        ("  verify:\\n    runs-on: ubuntu-latest\\n",
-         "  verify:\\n    if: false\\n    runs-on: ubuntu-latest\\n",
+        ("  verify:\n    runs-on: ubuntu-latest\n",
+         "  verify:\n    if: false\n    runs-on: ubuntu-latest\n",
          "ancestor workflow conditional bypass"),
-        ("      - name: Verify read-only postcondition\\n",
-         "      - name: Verify read-only postcondition\\n        continue-on-error: true\\n",
+        ("      - name: Verify read-only postcondition\n",
+         "      - name: Verify read-only postcondition\n        continue-on-error: true\n",
          "ancestor workflow conditional bypass"),
     )
     for original, replacement, expected in cases:
