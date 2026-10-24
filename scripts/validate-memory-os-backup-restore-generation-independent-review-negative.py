@@ -741,7 +741,7 @@ def main() -> int:
 
         with tempfile.TemporaryDirectory(prefix="generation-review-immutability-negative-") as tmp:
             path = Path(tmp) / "synthetic-review.json"
-            creation_bytes = b'{"reviewResult":"APPROVED"}\\n'.replace(b"\\\\n", b"\\n")
+            creation_bytes = b'{"reviewResult":"APPROVED"}\n'
             path.write_bytes(creation_bytes)
             module.git_history = lambda _ref, _field: ["a" * 40]
 
@@ -752,7 +752,7 @@ def main() -> int:
 
             module.subprocess.run = synthetic_git_show
             module.require_append_only_review(review_ref, path, "securityReviewRef")
-            path.write_bytes(b'{"reviewResult":"REJECTED"}\\n'.replace(b"\\\\n", b"\\n"))
+            path.write_bytes(b'{"reviewResult":"REJECTED"}\n')
             try:
                 module.require_append_only_review(review_ref, path, "securityReviewRef")
             except module.Fail as exc:
