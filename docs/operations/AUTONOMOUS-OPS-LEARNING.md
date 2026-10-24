@@ -5775,3 +5775,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - The workflow exercised only synthetic negative fixtures. A valid positive candidate fixture was observed before the symlink negatives and the row suite also completed, so the rejection is not merely an unrelated early failure. Reuse this exact-source log-binding pattern before claiming runtime enforcement for future fixture safety changes.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. No production evidence, objective, reviewed executable request, credentials, traffic, readiness or human promotion authority was created. The existing generation, objective, eight-domain, independent-review and separate human-promotion gates remain mandatory.
+
+## 2026-10-24 — Parent safety helper requires actual publisher execution binding
+
+### Material success: outcome and observed evidence
+- Code commit `770e13cfdb400af9f0573f9ebe91ac8f78b27531` extends the existing CI-reachable candidate mutation harness with a direct runtime negative for the `transient_path` publisher. It temporarily replaces `ensure_transient_parent` with a synthetic rejecting guard, invokes the real publisher against a disposable prefix, requires the exact synthetic guard diagnostic, and verifies that no leaf was published before rejection. The original helper is restored in `finally`.
+- GitHub source read after the write confirms the negative call and exact diagnostic. At this record's creation, exact-source CI for this new code commit was queued/in progress; runtime PASS is not asserted. The prior exact-source `17dfac7` Generation Binding `40074013200`, Admission Chain `40074012984`, and Non-Resurrection Admission `40074013042` completed SUCCESS, proving the earlier positive/symlink parent controls but not this new call-binding probe.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified coverage gap, not a production incident: direct positive/negative calls to `ensure_transient_parent` can pass even if a future refactor removes the helper call from `transient_path`. A helper's existence is not evidence that the actual leaf publisher invokes it.
+- Root cause: the first guard tests exercised helper behavior independently of the publishing caller.
+- Failed approach to avoid: counting helper-only positive/negative tests as proof of the production-path call order.
+
+### Correction, executable recurrence guard and retry condition
+- Use a temporary in-memory guard substitution at the actual publisher entrypoint, require exact rejection, require unchanged disposable-directory contents, and restore the original helper in `finally`. Keep this in the existing canonical negative harness, not a parallel authority.
+- Retry exact-source CI validation after the new code SHA's workflow completes, or on a reviewed caller change/demonstrated bypass. Do not retry unchanged clean-worktree, external-evidence or workflow-permission blockers. A filesystem check/use race remains a separate limitation, not a solved claim.
+
+### Why safe, reusable mechanism and protected-authority check
+- The test is confined to a disposable synthetic fixture and restores its module-level substitution. No production generation, objective, request, evidence, credential, traffic, readiness or promotion authority was written.
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Preflight still requires two distinct unsuperseded semantically eligible environments and a current explicitly human-approved objective; new evidence requires a current executable reviewed request; final candidates need complete typed eight-domain coverage and independent review; human production promotion is separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
