@@ -46,6 +46,8 @@ def load_module(path: Path, name: str):
 
 def guarded_temporary_directory(prefix: str, parent: Path = TMP_PARENT):
     # Reuse the existing admission-chain load fixture's checked parent policy.
+    require(LOAD_NEGATIVE.is_file() and not LOAD_NEGATIVE.is_symlink(),
+            "admission-chain fixture guard source missing or symlinked")
     helper = load_module(LOAD_NEGATIVE, "memory_os_admission_chain_checked_fixture_parent")
     guard = getattr(helper, "guarded_temporary_directory", None)
     require(callable(guard), "admission-chain checked fixture parent helper missing")
@@ -72,6 +74,31 @@ def prove_symlink_parent_rejected() -> None:
         require(sorted(path.name for path in sandbox.iterdir()) == before,
                 "admission-chain reconcile symlink parent published a child")
     print("PASS: admission-chain reconcile fixture symlink parent rejected before creation")
+
+
+def prove_helper_source_symlink_rejected() -> None:
+    # A symlinked executable helper must fail before import or fixture creation.
+    global LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="admission-chain-helper-source-") as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real-helper.py"
+        real.write_text("VALUE = 1\\n", encoding="utf-8")
+        link = sandbox / "helper.py"
+        link.symlink_to(real)
+        original = LOAD_NEGATIVE
+        try:
+            LOAD_NEGATIVE = link
+            try:
+                with guarded_temporary_directory(".tmp-must-not-create-"):
+                    raise Fail("admission-chain symlinked fixture helper accepted")
+            except Fail as exc:
+                require(str(exc) == "admission-chain fixture guard source missing or symlinked",
+                        f"admission-chain fixture helper rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("admission-chain symlinked fixture helper accepted")
+        finally:
+            LOAD_NEGATIVE = original
+    print("PASS: admission-chain fixture helper symlink rejected before import")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -316,6 +343,7 @@ def main() -> int:
     require(STATUS.is_file(), "production operability status missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_symlink_parent_rejected()
+    prove_helper_source_symlink_rejected()
     validator = load_module(VALIDATOR, "memory_os_admission_chain_validator_negative")
     reconciler = load_module(RECONCILER, "memory_os_admission_chain_reconcile_negative")
 
