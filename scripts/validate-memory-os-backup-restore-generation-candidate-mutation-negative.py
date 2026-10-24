@@ -125,6 +125,8 @@ def repo_ref(path: Path) -> str:
 def transient_path(prefix: str, suffix: str) -> Path:
     prefix_path = ROOT / prefix
     prefix_path.parent.mkdir(parents=True, exist_ok=True)
+    # Reject symlinked evidence ancestors before publishing any temporary leaf.
+    canonical_parent_identity(prefix_path.parent)
     handle = tempfile.NamedTemporaryFile(
         mode="w",
         prefix=prefix_path.name,
