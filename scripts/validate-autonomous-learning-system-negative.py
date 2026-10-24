@@ -155,6 +155,8 @@ def expected_diagnostic(name: str) -> str:
     }
     if name in fixed:
         return fixed[name]
+    if name.startswith("module early "):
+        return "learning CI entrypoint module terminates before live main guard"
     if name.startswith("early learning guard "):
         return "learning CI entrypoint guard call follows unconditional return or raise"
     if name.startswith("dynamic main "):
@@ -496,6 +498,23 @@ def main() -> int:
             'if __name__ == "__main__":\n    pass  # raise SystemExit(main())\n',
         )),
     ))
+    # A canonical module guard is not execution proof if module startup
+    # terminates before the guarded main() call. Every mutation retains the
+    # canonical guard text and AST so only reachability can reject it.
+    module_guard = 'if __name__ == "__main__":' + chr(10) + "    raise SystemExit(main())" + chr(10)
+    for label, prefix in (
+        ("sys-exit", "sys.exit(0)" + chr(10) + chr(10)),
+        ("raise", "raise SystemExit(0)" + chr(10) + chr(10)),
+        ("nested-sys-exit", "if True:" + chr(10) + "    sys.exit(0)" + chr(10) + chr(10)),
+        ("eager-default", "def eager(value=sys.exit(0)):" + chr(10)
+         + "    pass" + chr(10) + chr(10)),
+    ):
+        cases.append((
+            f"module early {label}",
+            lambda root, injected=prefix: replace_in_entrypoint(
+                root, module_guard, injected + module_guard
+            ),
+        ))
     # The guard must remain reachable through nested branches, eager
     # definitions and termination calls, not just direct Return/Raise nodes.
     newline = chr(10)
