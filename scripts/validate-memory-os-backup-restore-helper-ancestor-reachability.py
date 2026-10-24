@@ -253,6 +253,32 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         ),
         "canonical __main__ dispatch does not execute main",
     )
+    # A syntactically present main() call does not prove fail-closed dispatch
+    # when a preceding statement or broad exception handler can swallow it.
+    dispatch_body = dispatches[0].body
+    require(
+        len(dispatch_body) == 1
+        and isinstance(dispatch_body[0], ast.Try)
+        and len(dispatch_body[0].body) == 1,
+        "canonical __main__ dispatch shape drift",
+    )
+    dispatch_try = dispatch_body[0]
+    require(
+        len(dispatch_try.handlers) == 1
+        and isinstance(dispatch_try.handlers[0].type, ast.Name)
+        and dispatch_try.handlers[0].type.id == "Fail"
+        and not dispatch_try.orelse
+        and not dispatch_try.finalbody
+        and bool(dispatch_try.handlers[0].body)
+        and isinstance(dispatch_try.handlers[0].body[-1], ast.Raise)
+        and isinstance(dispatch_try.handlers[0].body[-1].exc, ast.Call)
+        and isinstance(dispatch_try.handlers[0].body[-1].exc.func, ast.Name)
+        and dispatch_try.handlers[0].body[-1].exc.func.id == "SystemExit"
+        and len(dispatch_try.handlers[0].body[-1].exc.args) == 1
+        and isinstance(dispatch_try.handlers[0].body[-1].exc.args[0], ast.Constant)
+        and dispatch_try.handlers[0].body[-1].exc.args[0].value == 1,
+        "canonical __main__ dispatch handler drift",
+    )
     require(
         any(isinstance(node, ast.Constant) and node.value == expected_diagnostic for node in ast.walk(proof)),
         "ancestor proof missing exact diagnostic",
@@ -418,10 +444,43 @@ def negative_cases(source: str, diagnostic: str) -> int:
             (loader_definition, loader_definition.split("(")[0].removeprefix("def ")),
         )
     )
+    dispatch_anchor = (
+        'if __name__ == "__main__":\n'
+        '    try:\n'
+        '        raise SystemExit(main())\n'
+        '    except Fail as exc:\n'
+    )
+    replacements += (
+        (dispatch_anchor,
+         dispatch_anchor.replace('    try:\n', '    pass\n    try:\n'),
+         "canonical __main__ dispatch shape drift"),
+        (dispatch_anchor,
+         dispatch_anchor.replace('    except Fail as exc:\n',
+                                 '    except BaseException as exc:\n'),
+         "canonical __main__ dispatch handler drift"),
+        (dispatch_anchor,
+         dispatch_anchor.replace('    except Fail as exc:\n',
+                                 '    except BaseException:\n        pass\n    except Fail as exc:\n'),
+         "canonical __main__ dispatch handler drift"),
+        (dispatch_anchor,
+         dispatch_anchor.replace('        raise SystemExit(main())\n',
+                                 '        print("synthetic bypass")\n        raise SystemExit(main())\n'),
+         "canonical __main__ dispatch shape drift"),
+        ("        raise SystemExit(1)\n",
+         "        pass  # synthetic swallowed failure\n",
+         "canonical __main__ dispatch handler drift"),
+    )
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
-        if expected == "ancestor proof missing exact diagnostic":
+        if (expected == "canonical __main__ dispatch handler drift"
+                and original == "        raise SystemExit(1)\n"):
+            # A harness may contain earlier SystemExit(1) calls; mutate only
+            # the final canonical dispatch handler.
+            position = source.rfind(original)
+            require(position >= 0, "dispatch handler mutation anchor absent")
+            mutated = source[:position] + mutation + source[position + len(original):]
+        elif expected == "ancestor proof missing exact diagnostic":
             # The loader guard also contains this diagnostic; mutate the proof,
             # not the earlier guard declaration, to test the intended boundary.
             position = source.rfind(original)
@@ -448,7 +507,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 30 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 35 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
