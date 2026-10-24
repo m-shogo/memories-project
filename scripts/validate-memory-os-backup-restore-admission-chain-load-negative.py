@@ -22,6 +22,43 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def guarded_temporary_directory(prefix: str, parent: Path):
+    # Synthetic repository-local fixtures must not follow a symlinked ancestor.
+    try:
+        relative = parent.relative_to(ROOT)
+    except ValueError as exc:
+        raise Fail("admission-chain load temp parent escapes repository") from exc
+    require(ROOT.is_dir() and not ROOT.is_symlink(),
+            "admission-chain load repository root missing or symlinked")
+    cursor = ROOT
+    for part in relative.parts:
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "admission-chain load temp ancestor missing or symlinked")
+    require(parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
+            "admission-chain load temp parent canonical resolution drift")
+    return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+
+
+def prove_symlink_parent_rejected() -> None:
+    with guarded_temporary_directory(".tmp-admission-chain-load-parent-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(path.name for path in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("admission-chain load symlink parent accepted")
+        except Fail as exc:
+            require(str(exc) == "admission-chain load temp ancestor missing or symlinked",
+                    f"admission-chain load parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("admission-chain load symlink parent accepted")
+        require(sorted(path.name for path in sandbox.iterdir()) == before,
+                "admission-chain load symlink parent published a child")
+    print("PASS: admission-chain load fixture symlink parent rejected before creation")
+
+
 def load_validator():
     spec = importlib.util.spec_from_file_location("memory_os_admission_chain_load_negative", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load admission-chain validator")
@@ -44,9 +81,10 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
 def main() -> int:
     require(VALIDATOR.is_file(), "admission-chain validator missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_symlink_parent_rejected()
     validator = load_validator()
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-admission-chain-load-", dir=TMP_PARENT) as tmpdir:
+    with guarded_temporary_directory(".tmp-admission-chain-load-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
 
         invalid_utf8 = tmp / "invalid-utf8.json"
