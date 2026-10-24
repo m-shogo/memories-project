@@ -6047,3 +6047,21 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only an existing synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered and semantically eligible generations remain distinct; preflight needs two distinct unsuperseded eligible environments and a current human-approved objective; new evidence needs a current executable reviewed request; final candidates require typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning, CI and synthetic fixtures cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Preflight fixture safety probe should precede known blocked validation
+
+### Material success: outcome and observed evidence
+- Code commit `7b3025463a79134cd598beace2f2cb0c60c4f256` moves the existing real symlink-parent negative in the preflight reconcile harness before the downstream runtime-authority validation and repository-local fixture creation. Post-write source inspection confirms the same exact diagnostic and checked helper remain, with one proof call before the known blocked step.
+- Earlier exact-source Preflight Reconcile Negative run `40075869392` failed on the previously recorded clean canonical source worktree blocker before reaching the appended symlink proof. The moved proof's new exact-source runtime output was not yet observed at learning-write time.
+
+### Symptom, evidence, root cause or unknown, failed approach
+- Verified test reachability gap, not a production incident: the new fixture-parent safety probe was after rollback checks that invoke a downstream environment-generation validator, which currently fails because the canonical source worktree is not clean. A negative probe located after that step cannot establish its own observed runtime rejection.
+- Root cause: ordering the independent fixture safety proof after a known scoped blocker. Failed approach: treating post-write source presence or a blocked suite's failure as proof that a later negative probe executed.
+
+### Correction, executable recurrence guard, retry condition
+- Run the isolated symlink-parent proof immediately after the fixture parent precondition and before runtime validation, preserving all existing rollback and production-authority checks. Require exact rejection and unchanged sandbox entries.
+- Retry the new proof's runtime verification when exact-source workflow output is available; leave the unrelated clean-worktree blocker unchanged until its recorded retry condition changes. This precheck does not claim atomic race elimination.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only an existing synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain coverage, independent review and separate non-automatic human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
