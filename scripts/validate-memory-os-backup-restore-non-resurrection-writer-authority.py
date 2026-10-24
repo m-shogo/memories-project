@@ -493,8 +493,20 @@ def require_no_pre_dispatch_exit(source: str) -> None:
     tree = ast.parse(source)
 
     def exits_before_dispatch(node: ast.AST) -> bool:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            return False
+        # Function bodies are deferred, but decorators and defaults execute at definition.
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            eager = [*node.decorator_list, *node.args.defaults,
+                     *(value for value in node.args.kw_defaults if value is not None)]
+            return any(exits_before_dispatch(value) for value in eager)
+        if isinstance(node, ast.Lambda):
+            eager = [*node.args.defaults,
+                     *(value for value in node.args.kw_defaults if value is not None)]
+            return any(exits_before_dispatch(value) for value in eager)
+        # Class bodies, bases, keywords and decorators execute during module import.
+        if isinstance(node, ast.ClassDef):
+            eager = [*node.decorator_list, *node.bases,
+                     *(keyword.value for keyword in node.keywords), *node.body]
+            return any(exits_before_dispatch(value) for value in eager)
         if isinstance(node, ast.Raise):
             return True
         if isinstance(node, ast.Call):
@@ -535,6 +547,12 @@ def prove_pre_dispatch_exit_classifier() -> None:
         ("try", "try:\n    sys.exit(0)\nexcept Exception:\n    pass\n"),
         ("exec", "exec('raise SystemExit(0)')\n"),
         ("eval", "eval('exit(0)')\n"),
+        ("class-exit", "class Early:\n    sys.exit(0)\n"),
+        ("class-raise", "class Early:\n    raise SystemExit(0)\n"),
+        ("decorator-exit", "@exit(0)\ndef helper():\n    pass\n"),
+        ("default-exit", "def helper(value=exit(0)):\n    pass\n"),
+        ("class-base-exit", "class Early(exit(0)):\n    pass\n"),
+        ("lambda-default-exit", "helper = lambda value=exit(0): value\n"),
     )
     for label, prelude in mutations:
         mutated = positive.replace(guard, prelude + guard, 1)
@@ -545,7 +563,7 @@ def prove_pre_dispatch_exit_classifier() -> None:
                     f"writer pre-dispatch {label} diagnostic drift")
         else:
             raise NegativeFailure(f"writer pre-dispatch {label} exit unexpectedly accepted")
-    print("PASS reject: nine module-scope early termination substitutes")
+    print("PASS reject: fifteen module-scope and eager-definition termination substitutes")
 
 
 def prove_guard_source_classifier() -> None:
