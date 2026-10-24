@@ -228,6 +228,9 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     require(not re.search(r"(?m)^    (?:container|services|uses|needs|environment|outputs|secrets|concurrency):", workflow_source)
             and "jobs:\n  verify:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n" in workflow_source,
             "ancestor workflow job execution drift")
+    require(all(len(re.findall(r"(?m)^    " + key + ":", workflow_source)) == 1
+                for key in ("runs-on", "timeout-minutes", "steps")),
+            "ancestor workflow duplicate job authority")
     expected_actions = "      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n"
     require(workflow_source.count(expected_actions) == 1,
             "ancestor workflow checkout/setup drift")
@@ -313,6 +316,9 @@ def validate_independent_learning_workflow(source: str) -> None:
     require(not re.search(r"(?m)^    (?:container|services|uses|needs|environment|outputs|secrets|concurrency):", source)
             and "jobs:\n  validate:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n" in source,
             "independent learning workflow job execution drift")
+    require(all(len(re.findall(r"(?m)^    " + key + ":", source)) == 1
+                for key in ("runs-on", "timeout-minutes", "steps")),
+            "independent learning workflow duplicate job authority")
     require(re.findall(r"(?m)^      - (?:uses|name):[^\n]*", source) == [
         "      - uses: actions/checkout@v4",
         "      - uses: actions/setup-python@v5",
@@ -1030,7 +1036,20 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
                     f"ancestor duplicate-root mutation rejected at wrong boundary: {exc}")
         else:
             raise GuardFailure(f"ancestor duplicate-root mutation accepted: {expected}")
-    return len(cases) + len(duplicate_root_cases)
+    duplicate_job_cases = (
+        (workflow_source + "\n    runs-on: self-hosted\n", "ancestor workflow duplicate job authority"),
+        (workflow_source + "\n    timeout-minutes: 120\n", "ancestor workflow duplicate job authority"),
+        (workflow_source + "\n    steps: []\n", "ancestor workflow duplicate job authority"),
+    )
+    for mutated, expected in duplicate_job_cases:
+        try:
+            validate_workflow_runtime_reachability(mutated)
+        except GuardFailure as exc:
+            require(str(exc) == expected,
+                    f"duplicate-job mutation rejected at wrong boundary: {exc}")
+        else:
+            raise GuardFailure(f"duplicate-job mutation accepted: {expected}")
+    return len(cases) + len(duplicate_root_cases) + len(duplicate_job_cases)
 
 
 
@@ -1110,7 +1129,20 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
                     f"independent duplicate-root mutation rejected at wrong boundary: {exc}")
         else:
             raise GuardFailure(f"independent duplicate-root mutation accepted: {expected}")
-    return len(cases) + len(duplicate_root_cases)
+    duplicate_job_cases = (
+        (source + "\n    runs-on: self-hosted\n", "independent learning workflow duplicate job authority"),
+        (source + "\n    timeout-minutes: 120\n", "independent learning workflow duplicate job authority"),
+        (source + "\n    steps: []\n", "independent learning workflow duplicate job authority"),
+    )
+    for mutated, expected in duplicate_job_cases:
+        try:
+            validate_independent_learning_workflow(mutated)
+        except GuardFailure as exc:
+            require(str(exc) == expected,
+                    f"duplicate-job mutation rejected at wrong boundary: {exc}")
+        else:
+            raise GuardFailure(f"duplicate-job mutation accepted: {expected}")
+    return len(cases) + len(duplicate_root_cases) + len(duplicate_job_cases)
 
 
 def main() -> int:
@@ -1135,7 +1167,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 93, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 99, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
