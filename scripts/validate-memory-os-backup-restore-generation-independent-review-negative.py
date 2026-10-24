@@ -618,7 +618,45 @@ def prove_runtime_review_pair_controls() -> None:
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
-        git("add", "--", *(relative for relative, *_ in review_fixtures))
+        cross_row = base_row()
+        cross_row["sourceCommitSha"] = source_sha
+        cross_security_ref = "docs/evidence/backup-restore/security/negative-cross-security.json"
+        cross_operability_ref = "docs/evidence/backup-restore/operability/negative-cross-operability.json"
+        cross_delta_ref = "docs/evidence/backup-restore/material-delta/negative-cross-delta.json"
+        cross_bad_delta_ref = "docs/evidence/backup-restore/material-delta/negative-cross-wrong-target.json"
+        cross_row["securityReviewRef"] = cross_security_ref
+        cross_row["operabilityReviewRef"] = cross_operability_ref
+        cross_row["materialDeltaReviewRef"] = cross_delta_ref
+        for relative, role in ((cross_security_ref, "SECURITY"), (cross_operability_ref, "OPERABILITY")):
+            payload = typed_payload(cross_row, role)
+            payload["reviewedAt"] = "2026-08-01T00:01:00Z"
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+        delta_payload = {
+            "schemaVersion": "memory-os-backup-restore-material-delta-review.v1",
+            "evidenceId": cross_row["evidenceId"],
+            "drillRequestId": cross_row["drillRequestId"],
+            "recoveryObjectivesId": cross_row["recoveryObjectivesId"],
+            "sourceEnvironmentGenerationId": cross_row["sourceEnvironmentGenerationId"],
+            "restoreTargetGenerationId": cross_row["restoreTargetGenerationId"],
+            "reviewResult": "APPROVED",
+            "reviewedAt": "2026-08-01T00:01:00Z",
+            "reviewerPseudonym": "reviewer-delta",
+            "productionTrafficChanged": False,
+            "productionCredentialsUsed": False,
+            "automaticPromotion": False,
+        }
+        for relative, wrong_target in ((cross_delta_ref, False), (cross_bad_delta_ref, True)):
+            payload = dict(delta_payload)
+            if wrong_target:
+                payload["restoreTargetGenerationId"] = "pegen_unrelated_target"
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+        git("add", "--", *(relative for relative, *_ in review_fixtures),
+            cross_security_ref, cross_operability_ref, cross_delta_ref, cross_bad_delta_ref)
         git("-c", "user.name=CI Fixture", "-c", "user.email=fixture@example.invalid",
             "commit", "-qm", "synthetic post-source reviews", commit_time="2026-08-01T00:02:00+00:00")
 
@@ -666,9 +704,27 @@ def prove_runtime_review_pair_controls() -> None:
                 require(str(exc) == expected, f"real Git chronology negative wrong boundary ({label}): {exc}")
             else:
                 raise Fail(f"real Git chronology negative unexpectedly accepted: {label}")
+        require(isolated.candidate_reviews_approved(cross_row) is True,
+                "valid synthetic cross-generation material-delta and independent review pair not approved")
+        for label, mutated, expected in (
+            ("cross-generation missing material delta", {**cross_row, "materialDeltaReviewRef": None},
+             "review source-order authority invalid: records[-1].materialDeltaReviewRef required"),
+            ("same-generation forbidden material delta", {**row, "materialDeltaReviewRef": cross_delta_ref},
+             "review source-order authority invalid: records[-1].materialDeltaReviewRef must remain null for same-generation restore"),
+            ("cross-generation wrong target binding", {**cross_row, "materialDeltaReviewRef": cross_bad_delta_ref},
+             "material-delta review authority invalid: records[0].materialDeltaReviewRef restoreTargetGenerationId mismatch"),
+        ):
+            try:
+                isolated.candidate_reviews_approved(mutated)
+            except isolated.Fail as exc:
+                require(str(exc) == expected, f"real Git material-delta negative wrong boundary ({label}): {exc}")
+            else:
+                raise Fail(f"real Git material-delta negative unexpectedly accepted: {label}")
         require(isolated.candidate_reviews_approved(row) is True,
-                "valid independent review pair drifted after rejected reuse/chronology cases")
-    print("PASS: isolated Git positive pair and exact reviewer/ref reuse plus three source-order runtime negatives")
+                "valid same-generation review pair drifted after rejected reuse/chronology/delta cases")
+        require(isolated.candidate_reviews_approved(cross_row) is True,
+                "valid cross-generation review pair drifted after rejected material-delta cases")
+    print("PASS: isolated Git same/cross-generation positive pairs and exact reviewer/ref, chronology and material-delta runtime negatives")
 
 
 def main() -> int:
