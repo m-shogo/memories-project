@@ -129,6 +129,133 @@ def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
 
 
 
+
+def require_full_runner_main_reachability(tree: ast.Module) -> None:
+    """Require live, ordered identity guards and the canonical validation loop."""
+    require_full_runner_main_binding(tree)
+    main = next(node for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    body = main.body
+    require(len(body) >= 4, "full-chain main direct authority sequence missing")
+
+    def identity_guard(node: ast.AST, left: str, right: str) -> bool:
+        if not isinstance(node, ast.If) or node.orelse or len(node.body) != 1:
+            return False
+        test = node.test
+        if not (isinstance(test, ast.Compare)
+                and isinstance(test.left, ast.Name) and test.left.id == left
+                and len(test.ops) == 1 and isinstance(test.ops[0], ast.IsNot)
+                and len(test.comparators) == 1
+                and isinstance(test.comparators[0], ast.Name)
+                and test.comparators[0].id == right):
+            return False
+        rejection = node.body[0]
+        return (isinstance(rejection, ast.Raise)
+                and isinstance(rejection.exc, ast.Call)
+                and isinstance(rejection.exc.func, ast.Name)
+                and rejection.exc.func.id == "Fail"
+                and len(rejection.exc.args) == 1
+                and isinstance(rejection.exc.args[0], ast.Constant)
+                and isinstance(rejection.exc.args[0].value, str))
+
+    def direct_call(node: ast.AST, name: str, arguments: tuple[str, ...]) -> bool:
+        return (isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == name
+                and not node.value.keywords
+                and len(node.value.args) == len(arguments)
+                and all(isinstance(arg, ast.Name) and arg.id == expected
+                        for arg, expected in zip(node.value.args, arguments)))
+
+    require(identity_guard(body[0], "enforce_runtime_authority",
+                           "canonical_authority_guard"),
+            "full-chain main must reject authority identity drift first")
+    require(direct_call(body[1], "enforce_runtime_authority", ()),
+            "full-chain main must execute direct runtime authority guard second")
+    require(identity_guard(body[2], "run_step", "canonical_run_step"),
+            "full-chain main must reject step identity drift before execution")
+    loop = body[3]
+    require(isinstance(loop, ast.For) and not loop.orelse
+            and isinstance(loop.target, ast.Tuple)
+            and [node.id for node in loop.target.elts if isinstance(node, ast.Name)]
+            == ["relative", "label"]
+            and len(loop.target.elts) == 2
+            and isinstance(loop.iter, ast.Name) and loop.iter.id == "STEPS"
+            and len(loop.body) == 1
+            and direct_call(loop.body[0], "run_step", ("relative", "label")),
+            "full-chain main must directly execute every canonical step")
+
+
+def prove_full_runner_main_reachability() -> None:
+    try:
+        canonical = ast.parse(TARGET.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("full-chain main reachability source unavailable") from exc
+    require_full_runner_main_reachability(canonical)
+    cases = (
+        ("authority-removed", "full-chain main must reject authority identity drift first"),
+        ("authority-inverted", "full-chain main must reject authority identity drift first"),
+        ("authority-dead", "full-chain main must reject authority identity drift first"),
+        ("authority-swallowed", "full-chain main must reject authority identity drift first"),
+        ("guard-removed", "full-chain main must execute direct runtime authority guard second"),
+        ("guard-dead", "full-chain main must execute direct runtime authority guard second"),
+        ("step-identity-removed", "full-chain main must reject step identity drift before execution"),
+        ("step-identity-inverted", "full-chain main must reject step identity drift before execution"),
+        ("loop-removed", "full-chain main must directly execute every canonical step"),
+        ("loop-empty", "full-chain main must directly execute every canonical step"),
+        ("loop-swapped", "full-chain main must directly execute every canonical step"),
+        ("loop-dead", "full-chain main must directly execute every canonical step"),
+        ("loop-noop", "full-chain main must directly execute every canonical step"),
+        ("loop-wrapped", "full-chain main must directly execute every canonical step"),
+        ("early-return", "full-chain main must reject authority identity drift first"),
+    )
+    for label, expected in cases:
+        mutated = copy.deepcopy(canonical)
+        main = next(node for node in mutated.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        body = main.body
+        if label == "authority-removed":
+            body[0] = ast.Pass()
+        elif label == "authority-inverted":
+            body[0].test.ops = [ast.Is()]
+        elif label == "authority-dead":
+            body[0].test = ast.Constant(value=False)
+        elif label == "authority-swallowed":
+            body[0].body = [ast.Pass()]
+        elif label == "guard-removed":
+            body[1] = ast.Pass()
+        elif label == "guard-dead":
+            body[1] = ast.If(test=ast.Constant(value=False), body=[body[1]], orelse=[])
+        elif label == "step-identity-removed":
+            body[2] = ast.Pass()
+        elif label == "step-identity-inverted":
+            body[2].test.ops = [ast.Is()]
+        elif label == "loop-removed":
+            body[3] = ast.Pass()
+        elif label == "loop-empty":
+            body[3].iter = ast.Tuple(elts=[], ctx=ast.Load())
+        elif label == "loop-swapped":
+            body[3].body[0].value.args.reverse()
+        elif label == "loop-dead":
+            body[3] = ast.If(test=ast.Constant(value=False), body=[body[3]], orelse=[])
+        elif label == "loop-noop":
+            body[3].body = [ast.Pass()]
+        elif label == "loop-wrapped":
+            body[3] = ast.Try(body=[body[3]], handlers=[], orelse=[],
+                              finalbody=[ast.Pass()])
+        elif label == "early-return":
+            body.insert(0, ast.Return(value=ast.Constant(value=0)))
+        try:
+            require_full_runner_main_reachability(mutated)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"full-chain main {label} reachability diagnostic drift")
+        else:
+            raise Fail(f"full-chain main {label} guard bypass unexpectedly accepted")
+    print("PASS reject: fifteen full-chain main guard/step reachability substitutions")
+
+
 def require_no_full_runner_pre_dispatch_exit(tree: ast.Module) -> None:
     """Reject eager module termination before the canonical CLI entrypoint."""
     require_full_runner_cli_dispatch(tree)
@@ -584,6 +711,7 @@ def prove_full_step_exit_propagation() -> None:
 
 
 def main() -> int:
+    prove_full_runner_main_reachability()
     prove_full_runner_pre_dispatch_exit()
     prove_full_runner_cli_dispatch()
     prove_full_runner_main_binding()
