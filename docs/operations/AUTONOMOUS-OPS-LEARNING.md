@@ -5604,3 +5604,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Synthetic Git commits, review files and candidate rows remain entirely within a disposable directory; they are not production or recovery evidence. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - No production-equivalent generations, objectives, drill/recovery evidence, credentials, traffic, readiness or promotion were created. Preflight still requires distinct unsuperseded semantically eligible environments and a current human-approved objective; new generation evidence needs a current executable reviewed request; final candidates require all generation/objective gates, typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Cross-generation material-delta review must pass real Git positive control before negatives
+
+### Material success: outcome and observed evidence
+- Code commit `6686fd53f06a46cab4c25e334f054de5f8be965b` extends the disposable Git candidate-review fixture with a genuinely typed, post-source synthetic cross-generation material-delta review and matching independent Security/Operability reviews. The real canonical `candidate_reviews_approved` accepts both same-generation and cross-generation synthetic positive controls.
+- Three cross-generation/same-generation negative mutations must fail at exact authorities: missing cross-generation material-delta reference, forbidden same-generation material-delta reference, and cross-generation material-delta payload bound to an unrelated restore target generation. Both positive controls remain accepted after negative cases.
+- Exact-source Backup Restore Generation Independent Review Negative run `40066090816` (job `120789546736`) completed SUCCESS and explicitly logged `PASS: isolated Git same/cross-generation positive pairs and exact reviewer/ref, chronology and material-delta runtime negatives`.
+
+### Symptom, evidence, verified root cause and failed approach
+- Verified coverage gap, not a production incident: previous end-to-end Git candidate review tests exercised the same-generation branch only; separate material-delta unit/negative tests did not prove a valid cross-generation reviewed candidate reaches all three canonical review authorities together.
+- Root cause: lack of a complete synthetic positive cross-generation evidence/reference set in the isolated runtime fixture.
+- Failed approach to avoid: treating material-delta payload unit tests or early missing-ref rejection as equivalent to real source-order, typed material-delta and independent review integration.
+
+### Correction, executable recurrence guard and retry condition
+- In the same disposable Git repository, commit all synthetic typed review files once after the source commit with deterministic UTC times. Exercise positive same/cross-generation paths, mutate one material-delta authority dimension per negative, require exact rejection and recheck both positive paths.
+- Retry only after exact-source CI regression, reviewed canonical cross-generation semantics changes or demonstrated bypass. Unchanged external-evidence, workflow-permission and clean-worktree blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- All synthetic records, commits and review payloads remain inside a temporary test repository and cannot satisfy actual production evidence or promotion gates. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered generations remain distinct from unsuperseded semantically eligible generations. Preflight requires distinct eligible environments and an explicitly human-approved current objective; new recovery evidence requires a current executable reviewed request. Final candidates require all generation/objective gates plus complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
