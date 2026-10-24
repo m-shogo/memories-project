@@ -311,6 +311,28 @@ def main() -> int:
                     "symlinked evidence mkdir created a child outside its declared parent")
             print("PASS: evidence parent mkdir rejects symlinked ancestor before side effect")
 
+            # Prove transient_path actually invokes the parent guard before
+            # NamedTemporaryFile publication, not merely that the helper exists.
+            original_parent_guard = ensure_transient_parent
+            try:
+                def reject_parent_before_publish(parent: Path) -> tuple[int, int]:
+                    raise Fail("synthetic evidence parent guard reached")
+
+                globals()["ensure_transient_parent"] = reject_parent_before_publish
+                before = sorted(child.name for child in tmp_path.iterdir())
+                try:
+                    transient_path(repo_ref(tmp_path / "guard-binding-"), ".json")
+                except Fail as exc:
+                    require(str(exc) == "synthetic evidence parent guard reached",
+                            f"transient leaf parent guard rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail("transient leaf creation bypassed the parent guard")
+                require(sorted(child.name for child in tmp_path.iterdir()) == before,
+                        "transient leaf was published before parent guard rejection")
+            finally:
+                globals()["ensure_transient_parent"] = original_parent_guard
+            print("PASS: transient leaf publication invokes parent guard before side effect")
+
             generation_registry = tmp_path / "generations.json"
             objectives_registry = tmp_path / "objectives.json"
             drill_registry = tmp_path / "drill-requests.json"
