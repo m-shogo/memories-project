@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,32 +29,24 @@ def load_validator():
     return module
 
 
-def expect_registry_fail(module, row: dict, label: str) -> None:
-    registry = {
-        "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
-        "appendOnly": True,
-        "records": [row],
-        "productionEvidence": False,
-        "productionReady": False,
+def expect_registry_fail(module, row: dict, label: str, expected: str) -> None:
+    # The canonical main's execution guard rejects monkeypatched runtime helpers
+    # before registry rows are inspected. Test the actual row validator directly.
+    fields = module.validate_contract_authority()["requiredMaterialDeltaReviewEvidenceFields"]
+    same_generation = {
+        "sourceEnvironmentGenerationId": "pegen_same_negative",
+        "restoreTargetGenerationId": "pegen_same_negative",
+        "materialDeltaReviewRef": None,
     }
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as handle:
-        path = Path(handle.name)
-        json.dump(registry, handle)
-        handle.write("\n")
-    original_registry = module.REGISTRY
-    original_enforcer = module.enforce_runtime_authorities
+    module.validate_row(same_generation, 0, fields)
     try:
-        module.REGISTRY = path
-        module.enforce_runtime_authorities = lambda: None
-        try:
-            module.main()
-        except module.Fail:
-            return
-        raise Fail(f"negative case unexpectedly passed: {label}")
-    finally:
-        module.enforce_runtime_authorities = original_enforcer
-        module.REGISTRY = original_registry
-        path.unlink(missing_ok=True)
+        module.validate_row(row, 0, fields)
+    except module.Fail as exc:
+        require(str(exc) == expected,
+                f"material-delta registry row rejected at wrong boundary ({label}): {exc}")
+    else:
+        raise Fail(f"material-delta registry row unexpectedly passed: {label}")
+    module.validate_row(same_generation, 0, fields)
 
 
 def expect_authority_substitution_fail(module, field: str, substitute: Path) -> None:
@@ -155,17 +146,20 @@ def main() -> int:
         "sourceEnvironmentGenerationId": "pegen_source_negative",
         "restoreTargetGenerationId": "pegen_target_negative",
         "materialDeltaReviewRef": "SECURITY.md",
-    }, "generic repository file")
+    }, "generic repository file",
+       "records[0].materialDeltaReviewRef must remain inside docs/evidence/backup-restore/material-delta/")
     expect_registry_fail(module, {
         "sourceEnvironmentGenerationId": "pegen_same_negative",
         "restoreTargetGenerationId": "pegen_same_negative",
         "materialDeltaReviewRef": "docs/evidence/backup-restore/material-delta/review.json",
-    }, "same-generation material delta review")
+    }, "same-generation material delta review",
+       "records[0] same-generation restore must not declare materialDeltaReviewRef")
     expect_registry_fail(module, {
         "sourceEnvironmentGenerationId": "pegen_source_negative",
         "restoreTargetGenerationId": "pegen_target_negative",
         "materialDeltaReviewRef": "docs/evidence/backup-restore/../outside.json",
-    }, "path traversal")
+    }, "path traversal",
+       "records[0].materialDeltaReviewRef must be canonical repository-relative path")
 
     for field, invalid in (
         ("evidenceId", "brge_wrong_negative"),
