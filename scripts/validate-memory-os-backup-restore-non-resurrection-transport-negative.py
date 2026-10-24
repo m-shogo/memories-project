@@ -473,6 +473,132 @@ def prove_typed_admission_child_reachability() -> None:
     print("PASS reject: twenty typed admission child validation reachability substitutions")
 
 
+
+def require_typed_admission_candidate_derivation(tree: ast.Module) -> None:
+    """Bind final recovery candidates to base eligibility AND complete typed coverage."""
+    main = next(node for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    body = main.body
+    expressions = (
+        ("base_candidate_ids", '{row.get("evidenceId") for row in generation_rows if generation_writer.base_candidate(row)}'),
+        ("final_candidate_ids", '{row.get("evidenceId") for row in generation_rows if generation_writer.candidate(row)}'),
+        ("complete_typed_ids", '{row.get("generationEvidenceId") for row in rows if row.get("evidenceComplete") is True}'),
+        ("covered_base_ids", 'base_candidate_ids & complete_typed_ids'),
+        ("pending_typed_ids", 'base_candidate_ids - complete_typed_ids'),
+        ("generation_candidate_count", 'generation_registry.get("productionEquivalentRecoveryCandidateCount")'),
+    )
+    gate_expressions = (
+        ("final candidate derivation bypasses typed non-resurrection coverage", "final_candidate_ids == covered_base_ids"),
+        ("candidateCoveredCount drift", "covered_count == len(covered_base_ids)"),
+        ("generation registry final candidate count drift", "generation_candidate_count == len(final_candidate_ids)"),
+    )
+    locations = {}
+    for name, source in expressions:
+        matches = [(index, stmt) for index, stmt in enumerate(body)
+                   if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1
+                   and isinstance(stmt.targets[0], ast.Name)
+                   and stmt.targets[0].id == name]
+        require(len(matches) == 1 and ast.dump(matches[0][1].value) == ast.dump(ast.parse(source, mode="eval").body),
+                f"typed candidate derivation {name} drift")
+        locations[name] = matches[0][0]
+    for message, source in gate_expressions:
+        matches = [(index, stmt) for index, stmt in enumerate(body)
+                   if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                   and isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == "require"
+                   and len(stmt.value.args) == 2 and isinstance(stmt.value.args[1], ast.Constant)
+                   and stmt.value.args[1].value == message]
+        require(len(matches) == 1 and not matches[0][1].value.keywords
+                and ast.dump(matches[0][1].value.args[0]) == ast.dump(ast.parse(source, mode="eval").body),
+                f"typed candidate gate {message} drift")
+        locations[message] = matches[0][0]
+    ordered = (
+        "base_candidate_ids", "final_candidate_ids", "complete_typed_ids",
+        "covered_base_ids", "pending_typed_ids",
+        "final candidate derivation bypasses typed non-resurrection coverage",
+        "candidateCoveredCount drift", "generation_candidate_count",
+        "generation registry final candidate count drift",
+    )
+    require(all(locations[a] < locations[b] for a, b in zip(ordered, ordered[1:])),
+            "typed candidate derivation and coverage gates must retain canonical order")
+
+
+def prove_typed_admission_candidate_derivation() -> None:
+    try:
+        canonical = ast.parse(VALIDATOR.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed candidate derivation source unavailable") from exc
+    require_typed_admission_candidate_derivation(canonical)
+    cases = (
+        ("base-bypass", "typed candidate derivation base_candidate_ids drift"),
+        ("final-bypass", "typed candidate derivation final_candidate_ids drift"),
+        ("typed-completeness-bypass", "typed candidate derivation complete_typed_ids drift"),
+        ("coverage-union", "typed candidate derivation covered_base_ids drift"),
+        ("pending-coverage-bypass", "typed candidate derivation pending_typed_ids drift"),
+        ("candidate-count-bypass", "typed candidate derivation generation_candidate_count drift"),
+        ("missing-final-gate", "typed candidate gate final candidate derivation bypasses typed non-resurrection coverage drift"),
+        ("weakened-final-gate", "typed candidate gate final candidate derivation bypasses typed non-resurrection coverage drift"),
+        ("missing-coverage-count-gate", "typed candidate gate candidateCoveredCount drift drift"),
+        ("weakened-coverage-count-gate", "typed candidate gate candidateCoveredCount drift drift"),
+        ("missing-generation-count-gate", "typed candidate gate generation registry final candidate count drift drift"),
+        ("weakened-generation-count-gate", "typed candidate gate generation registry final candidate count drift drift"),
+        ("duplicate-final-gate", "typed candidate gate final candidate derivation bypasses typed non-resurrection coverage drift"),
+        ("late-final-gate", "typed candidate derivation and coverage gates must retain canonical order"),
+    )
+    for label, expected in cases:
+        mutated = copy.deepcopy(canonical)
+        main = next(node for node in mutated.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        body = main.body
+        assignments = {stmt.targets[0].id: (i, stmt)
+                       for i, stmt in enumerate(body)
+                       if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1
+                       and isinstance(stmt.targets[0], ast.Name)}
+        gates = {stmt.value.args[1].value: (i, stmt)
+                 for i, stmt in enumerate(body)
+                 if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                 and isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == "require"
+                 and len(stmt.value.args) == 2 and isinstance(stmt.value.args[1], ast.Constant)
+                 and isinstance(stmt.value.args[1].value, str)}
+        assignment_targets = {
+            "base-bypass": "base_candidate_ids", "final-bypass": "final_candidate_ids",
+            "typed-completeness-bypass": "complete_typed_ids", "coverage-union": "covered_base_ids",
+            "pending-coverage-bypass": "pending_typed_ids", "candidate-count-bypass": "generation_candidate_count",
+        }
+        gate_targets = {
+            "final": "final candidate derivation bypasses typed non-resurrection coverage",
+            "coverage": "candidateCoveredCount drift",
+            "generation": "generation registry final candidate count drift",
+        }
+        if label in assignment_targets:
+            assignments[assignment_targets[label]][1].value = ast.Constant(value=0)
+        elif label.startswith("missing-") or label.startswith("weakened-"):
+            key = "final" if "final-gate" in label else "coverage" if "coverage-count" in label else "generation"
+            i, stmt = gates[gate_targets[key]]
+            if label.startswith("missing-"):
+                body[i] = ast.Pass()
+            else:
+                stmt.value.args[0] = ast.Constant(value=True)
+        elif label == "duplicate-final-gate":
+            i, stmt = gates[gate_targets["final"]]
+            body.insert(i + 1, copy.deepcopy(stmt))
+        elif label == "late-final-gate":
+            i, stmt = gates[gate_targets["final"]]
+            body.pop(i)
+            after = next(j for j, n in enumerate(body)
+                         if isinstance(n, ast.Assign) and len(n.targets) == 1
+                         and isinstance(n.targets[0], ast.Name)
+                         and n.targets[0].id == "generation_candidate_count")
+            body.insert(after + 1, stmt)
+        try:
+            require_typed_admission_candidate_derivation(mutated)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"typed candidate {label} diagnostic drift: {exc}")
+        else:
+            raise Fail(f"typed candidate {label} bypass unexpectedly accepted")
+    print("PASS reject: fourteen typed candidate derivation and coverage-gate substitutions")
+
+
 def require_no_typed_pre_dispatch_exit(tree: ast.Module) -> None:
     """Reject eager termination before the typed admission CLI dispatch."""
     require_typed_admission_cli_dispatch(tree)
@@ -919,6 +1045,7 @@ def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
     prove_typed_admission_main_reachability()
     prove_typed_admission_child_reachability()
+    prove_typed_admission_candidate_derivation()
     prove_typed_pre_dispatch_exit()
     prove_typed_admission_cli_dispatch()
     prove_typed_admission_main_binding()
