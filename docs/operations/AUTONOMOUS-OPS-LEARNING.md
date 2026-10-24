@@ -4808,3 +4808,22 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only learning/entry-docs validators and append-only learning changed; no production writer, recovery generation, approved objective, reviewed request, generation evidence, typed eight-domain record, credential, traffic, readiness or promotion authority was modified.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable requests, evidence, typed records and final candidates, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Strict preflight requires unsuperseded semantically eligible generations from distinct environments plus explicit human-approved current objectives; new generation evidence requires a current executable reviewed request; final candidates require complete typed eight-domain coverage and independent review; promotion remains a separate non-automatic human decision. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Full-chain synthetic fixture syntax is a separate fail-closed boundary
+
+### Material success: outcome and observed evidence
+- Commit `4413653e90342921b1245646682e09f56faec32f` adds `parse_checked_negative_fixture` and two diagnostic-specific synthetic controls to the existing full-chain negative suite. Multi-line pre-dispatch AST mutations now pass through an explicit literal-backslash-n check and a caught syntax preflight before any security rejection is evaluated.
+- Exact-source Backup Restore Admission Chain run `40054725078` (job `120755057943`) completed SUCCESS. The job explicitly logged `PASS reject: two malformed full-chain negative fixture syntax controls`, `PASS reject: fifteen full-chain pre-dispatch eager termination substitutions`, and `Admission-chain full runner negative validation PASS`.
+- The change closes a recorded fixture-generation recurrence gap; it is not production recovery evidence.
+
+### Symptom/risk, prior verified cause and failed approach
+- Previously recorded run `40053956572` failed when a multi-line negative source was double-escaped, producing `SyntaxError: unexpected character after line continuation character` instead of the intended guard rejection. The corrected suite passed in `40053988293`.
+- Failed approach to avoid: introducing or adapting multi-line synthetic AST strings without checking literal escape depth and syntax before interpreting a negative result.
+
+### Correction, executable recurrence guard and retry condition
+- Use `chr(92) + "n"` to detect a literal backslash-n and `ast.parse` with an explicit `Fail` diagnostic for malformed Python. A positive multiline fixture and two negative controls verify both failure classes; real security negatives still require their own exact rejection diagnostics.
+- Retry only after a new fixture parsing regression, reviewed fixture representation change or a demonstrated case where malformed test input is misclassified as a valid security rejection.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the existing synthetic negative harness and append-only learning were changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, objectives, executable requests, generation evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Distinct unsuperseded semantically eligible environments, explicitly human-approved current objectives, current executable reviewed requests for new evidence, typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
