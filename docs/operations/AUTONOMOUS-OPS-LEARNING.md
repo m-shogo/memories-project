@@ -5704,3 +5704,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - All negative mutations are confined to the synthetic harness's in-memory identity registry. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Registered and semantically eligible environments remain distinct, preflight needs two distinct unsuperseded eligible environments and a current human-approved objective, new evidence needs a current executable reviewed request, and final candidates need complete typed eight-domain coverage and independent review. Human production promotion remains separate/non-automatic. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Validate fixture parent before exclusive leaf publication
+
+### Material success: outcome and evidence
+- Code commit `33f884170f11114affcaa29072c5e63f96ba76c9` adds a canonical non-symlinked parent/ancestor check before `NamedTemporaryFile` creates any typed evidence leaf in the candidate mutation harness. The same parent is checked again and bound to the created file identity after exclusive creation.
+- GitHub source read confirms the pre-publication guard at blob `093ca012eb2d87b8733594bcb9e6c642b85095e5`. No exact-source CI/validator execution has yet been observed.
+
+### Symptom, evidence, root cause and failed approach
+- Verified code-order risk, not a reported filesystem incident: the initial ownership hardening checked parent identity after the temporary file had already been created, leaving the creation step itself exposed to a pre-existing symlinked evidence parent.
+- Root cause: safety validation was placed after, rather than before, the filesystem side effect.
+- Failed approach to avoid: considering a post-creation identity check sufficient protection against a malicious parent present before file creation.
+
+### Correction, executable recurrence guard and retry condition
+- Call the existing canonical parent validator immediately before the exclusive file-creation operation; retain the post-creation parent and leaf identity checks and non-destructive cleanup guards.
+- Retry exact-source runtime validation when a corresponding workflow run or executable checkout becomes available. Revisit if canonical fixture directories change, CI regresses or a demonstrated ancestor substitution bypass remains. Do not retry unchanged permission, clean-worktree or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the existing synthetic candidate mutation harness changed. Production Status remains `NO_GO` at blob `ce67e9353d6583e4eaf792470563cad25a7396b3`; OPS-P0-007 remains `PREREQUISITES_BLOCKED` at blob `dbaa36b082366737dca2461d15748103b9740ef6`; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Distinct unsuperseded semantically eligible environments, a current human-approved objective, a current executable reviewed drill request, typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
