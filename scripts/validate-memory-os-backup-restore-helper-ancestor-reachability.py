@@ -138,6 +138,14 @@ def validate_step_key_inventory(
     headers = re.findall(r"(?m)^      - ([a-z][a-z-]*):", source)
     require(headers == ["uses", "uses", *(["name"] * (len(expected) - 2))],
             diagnostic)
+    # A quoted YAML mapping key on a new step is executable even though
+    # the unquoted-only header extractor would silently ignore that step.
+    job_source = source.split("\njobs:\n", 1)[1]
+    raw_headers = re.findall(r"(?m)^      - ([^\n]+)$", job_source)
+    require(len(raw_headers) == len(expected)
+            and all(re.fullmatch(r"(?:uses|name): .+", header)
+                    for header in raw_headers),
+            diagnostic)
     blocks = re.split(r"(?m)(?=^      - (?:uses|name): )", source)
     step_blocks = [block for block in blocks if block.startswith("      - ")]
     def keys_for_step(block: str) -> tuple[str, ...]:
@@ -1364,6 +1372,10 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
              '          python-version: "3.12"\n',
              '          python-version: "3.12"\n          cache: pip\n', 1),
          "ancestor workflow setup-python input inventory drift"),
+        (workflow_source + '\n      - "uses": synthetic/unreviewed@v1\n',
+         "ancestor workflow step authority drift"),
+        (workflow_source + "\n      - 'uses': synthetic/unreviewed@v1\n",
+         "ancestor workflow step authority drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1561,6 +1573,10 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
              '          python-version: "3.12"\n',
              '          python-version: "3.12"\n          cache: pip\n', 1),
          "independent learning workflow setup-python input inventory drift"),
+        (source + '\n      - "uses": synthetic/unreviewed@v1\n',
+         "independent learning workflow step authority drift"),
+        (source + "\n      - 'uses': synthetic/unreviewed@v1\n",
+         "independent learning workflow step authority drift"),
     )
     for mutated, expected in duplicate_root_cases:
         try:
@@ -1725,7 +1741,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 156, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 160, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
