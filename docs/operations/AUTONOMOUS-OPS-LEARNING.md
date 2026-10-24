@@ -4868,3 +4868,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only an existing synthetic negative harness and append-only learning were modified. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, objectives, executable requests, generation evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Distinct unsuperseded semantically eligible environments, a human-approved current objective, current executable reviewed request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed non-resurrection CLI dispatch must preserve failure exit
+
+### Material success: outcome and observed evidence
+- Commit `2a38dfc120fc0f28dfe17695906be505a48a55b5` adds an AST positive control and thirteen negative probes to the existing typed admission transport-negative suite. The probes reject removed/duplicated/nonterminal `__main__` guards, dead/no-op dispatch, zero exit, unexpected main arguments, alternate exception handlers, swallowed failures and finally branches.
+- Exact-source Backup Restore Non-Resurrection Readonly run `40055157780` (job `120756418636`) completed SUCCESS. Logs explicitly show `PASS reject: thirteen typed admission CLI dispatch/failure-exit substitutions`, `Typed non-resurrection execution/registry/reconcile transport negative suite PASS` and `production decision: NO_GO`.
+- The synthetic proof is CI-reachable through the existing typed admission validation path; it does not create operational recovery evidence.
+
+### Symptom/risk, verified gap and failed approach
+- Risk: a valid typed admission `main` function may exist but not be invoked by the executable script, or its `Fail` exception may be converted to a successful exit. No production incident or observed successful bypass occurred.
+- Verified gap: prior typed transport negatives protected child runner and main symbol bindings but did not inspect the live `if __name__ == "__main__"` dispatch or nonzero Fail exit mapping.
+- Failed approach to avoid: inferring CLI execution and error propagation from function presence or import-time validation alone.
+
+### Correction, executable recurrence guard and retry condition
+- Require one terminal canonical `__main__` guard with direct `try: raise SystemExit(main())` and `except Fail` ending in nonzero `SystemExit`; prove thirteen exact-diagnostic AST mutation rejections.
+- Retry only after exact-source CI regression, reviewed CLI architecture changes or a demonstrated new dispatch bypass. Do not retry unchanged clean-worktree, workflow-write or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the existing synthetic negative validator and append-only learning were modified. Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, objectives, executable requests, evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Distinct unsuperseded semantically eligible environments, human-approved current recovery objective, current executable reviewed request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
