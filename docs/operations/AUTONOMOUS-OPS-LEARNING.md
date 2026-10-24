@@ -6113,3 +6113,21 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only synthetic negative fixtures and append-only learning changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, current executable reviewed request for new evidence, typed eight-domain non-resurrection coverage, independent review and separate human promotion remain mandatory. Learning, synthetic fixtures and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Drill request append rollback uses checked root-local transaction fixture
+
+### Material success: outcome and observed evidence
+- Code commit `03af150f574549583909b0f648d5b419e16228b0` replaces the two-iteration drill request append/reconcile rollback negative's direct root-local `TemporaryDirectory(dir=ROOT)` transaction fixture with the existing checked drill-request parent helper. An isolated real symlink-parent negative runs before writer/contract checks and requires exact rejection and unchanged sandbox entries.
+- Post-write GitHub source inspection confirms the guarded transaction fixture, helper binding and negative proof. Exact-source runtime PASS was not yet observed at learning-write time.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified synthetic fixture safety gap, not a production incident: the append/rollback harness created root-local temporary children directly, despite an existing checked-parent mechanism in its drill-request sibling.
+- Root cause: independent append/rollback negative harness had not adopted the reusable fixture parent guard. Failed approach to avoid: assuming the main writer's lock/rollback authority checks protect the test harness's own separate filesystem parent, or using direct `TemporaryDirectory(dir=ROOT)` without checking ancestor identity.
+
+### Correction, executable recurrence guard, retry condition
+- Load the related checked helper through a callable interface, translate domain `Fail`, and guard both actual transaction iterations plus a symlink-parent negative. System-temp fixtures without repository-local `dir` are unaffected. The precheck is not an atomic check/use race guarantee.
+- Retry exact-source Drill Request Admission/Admission Chain validation after workflows complete; revisit on observed failure, reviewed helper/path changes or demonstrated bypass. Do not retry unchanged clean-worktree, external-evidence or permission blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only a synthetic negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
