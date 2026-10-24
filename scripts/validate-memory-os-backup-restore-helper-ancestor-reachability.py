@@ -164,6 +164,9 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
         require(all_paths - {f"scripts/{filename}" for filename in targets}
                 == required_authority_paths,
                 "ancestor workflow authority trigger drift")
+        event_options = re.findall(r"(?m)^    ([a-z][a-z-]*):", section.group("body"))
+        require(event_options == (["branches", "paths"] if event == "push" else ["paths"]),
+                "ancestor workflow event options drift")
 
 
 def validate_workflow_runtime_reachability(workflow_source: str) -> None:
@@ -181,6 +184,8 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     require(re.findall(r"(?m)^  ([a-z_]+):", event_block)
             == ["push", "pull_request", "workflow_dispatch"],
             "ancestor workflow event inventory drift")
+    require(not event_block.split("  workflow_dispatch:\n", 1)[1].strip(),
+            "ancestor workflow dispatch options drift")
     static_step = """      - name: Prove seven canonical ancestor negatives remain reachable
         run: |
           set -euo pipefail
@@ -268,6 +273,11 @@ def validate_independent_learning_workflow(source: str) -> None:
     require(re.findall(r"(?m)^  ([a-z_]+):", event_block)
             == ["push", "workflow_dispatch"],
             "independent learning workflow event inventory drift")
+    push_body = event_block.split("  push:\n", 1)[1].split("  workflow_dispatch:\n", 1)[0]
+    require(re.findall(r"(?m)^    ([a-z][a-z-]*):", push_body) == ["branches", "paths"],
+            "independent learning workflow push options drift")
+    require(not event_block.split("  workflow_dispatch:\n", 1)[1].strip(),
+            "independent learning workflow dispatch options drift")
     match = re.search(r'(?m)^    paths:\n(?P<paths>(?:      - "[^"]+"\n)+)', source)
     require(match is not None, "independent learning workflow trigger drift")
     paths = set(re.findall(r'^      - "([^"]+)"$', match.group("paths"),
@@ -886,6 +896,17 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
          authority_path + '      - "scripts/synthetic-unreviewed-trigger.py"\n', 1),
          "ancestor workflow authority trigger drift"),
     )
+    cases += (
+        (TARGETS, workflow_source.replace("    branches: [so]\n    paths:\n",
+         "    branches: [so]\n    types: [created]\n    paths:\n", 1),
+         "ancestor workflow event options drift"),
+        (TARGETS, workflow_source.replace("  pull_request:\n    paths:\n",
+         "  pull_request:\n    types: [opened]\n    paths:\n", 1),
+         "ancestor workflow event options drift"),
+        (TARGETS, workflow_source.replace("  pull_request:\n    paths:\n",
+         "  pull_request:\n    paths: []\n    paths:\n", 1),
+         "ancestor workflow event options drift"),
+    )
     for targets, workflow, expected in cases:
         try:
             validate_target_matrix(targets, workflow)
@@ -1011,6 +1032,9 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         ("  workflow_dispatch:\n", "  pull_request_target:\n  workflow_dispatch:\n", "ancestor workflow event inventory drift"),
         ("  workflow_dispatch:\n", "  schedule:\n    - cron: '0 * * * *'\n  workflow_dispatch:\n", "ancestor workflow event inventory drift"),
     )
+    cases += (
+        ("  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs:\n      synthetic:\n        type: boolean\n", "ancestor workflow dispatch options drift"),
+    )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
                 f"workflow negative anchor not unique: {expected}")
@@ -1104,6 +1128,11 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("  workflow_dispatch:\n", "  pull_request_target:\n  workflow_dispatch:\n", "independent learning workflow event inventory drift"),
         ("  workflow_dispatch:\n", "  schedule:\n    - cron: '0 * * * *'\n  workflow_dispatch:\n", "independent learning workflow event inventory drift"),
     )
+    cases += (
+        ("    branches: [so]\n    paths:\n", "    branches: [so]\n    tags: [synthetic]\n    paths:\n", "independent learning workflow push options drift"),
+        ("    branches: [so]\n    paths:\n", "    branches: [so]\n    paths: []\n    paths:\n", "independent learning workflow push options drift"),
+        ("  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs:\n      synthetic:\n        type: boolean\n", "independent learning workflow dispatch options drift"),
+    )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
                 f"independent workflow negative anchor not unique: {expected}")
@@ -1167,7 +1196,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 99, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 106, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
