@@ -555,6 +555,66 @@ def main() -> int:
         require(writer.candidate(valid) is True, "complete typed overlay must unlock current candidate predicate")
         print("PASS candidate: current request + generation evidence + typed coverage")
 
+        # Exercise the final candidate predicate itself, not only the typed row
+        # validator. This is a disposable cross-generation fixture, never real
+        # recovery evidence or production readiness.
+        original_overlay_bytes = overlay_registry.read_bytes()
+        original_overlay = load(overlay_registry)
+
+        def expect_typed_candidate_blocked(name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
+            changed = copy.deepcopy(original_overlay)
+            mutate(changed)
+            write_json(overlay_registry, changed)
+            try:
+                require(writer.base_candidate(valid) is True,
+                        f"pre-overlay candidate gates unexpectedly failed during {name}")
+                require(writer.candidate(valid) is False,
+                        f"final candidate accepted invalid typed coverage: {name}")
+            finally:
+                overlay_registry.write_bytes(original_overlay_bytes)
+            require(writer.candidate(valid) is True,
+                    f"valid cross-generation candidate did not recover after {name}")
+            print(f"PASS reject final candidate: {name}")
+
+        for domain in load(NON_RESURRECTION_CONTRACT)["requiredDomains"]:
+            expect_typed_candidate_blocked(
+                f"missing typed domain {domain}",
+                lambda registry, name=domain: registry["records"][0]["domains"].pop(name),
+            )
+            expect_typed_candidate_blocked(
+                f"failed typed domain {domain}",
+                lambda registry, name=domain: registry["records"][0]["domains"][name].update(result="FAIL"),
+            )
+        expect_typed_candidate_blocked(
+            "unreviewed typed overlay",
+            lambda registry: registry["records"][0].update(securityReviewRef=None),
+        )
+        expect_typed_candidate_blocked(
+            "reused typed review reference",
+            lambda registry: registry["records"][0].update(
+                operabilityReviewRef=registry["records"][0]["securityReviewRef"]),
+        )
+        expect_typed_candidate_blocked(
+            "incomplete typed overlay",
+            lambda registry: registry["records"][0].update(evidenceComplete=False),
+        )
+        expect_typed_candidate_blocked(
+            "typed overlay production evidence relabel",
+            lambda registry: registry["records"][0].update(productionEvidence=True),
+        )
+        expect_typed_candidate_blocked(
+            "duplicate typed overlay for generation",
+            lambda registry: registry["records"].append(copy.deepcopy(registry["records"][0])),
+        )
+        expect_typed_candidate_blocked(
+            "typed overlay bound to another generation",
+            lambda registry: registry["records"][0].update(generationEvidenceId="brge_other_generation"),
+        )
+        require(overlay_registry.read_bytes() == original_overlay_bytes,
+                "cross-generation typed negative fixture was not restored byte-for-byte")
+        print("PASS: cross-generation final candidate rejects all eight missing/failed domains and typed review/binding bypasses")
+
+
         bad_request_id = copy.deepcopy(valid)
         bad_request_id["evidenceId"] = "brge_missing_request"
         bad_request_id["drillRequestId"] = "brrq_missing_request"
