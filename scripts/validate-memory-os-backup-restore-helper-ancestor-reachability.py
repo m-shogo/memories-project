@@ -138,10 +138,19 @@ def validate_step_key_inventory(
             diagnostic)
     blocks = re.split(r"(?m)(?=^      - (?:uses|name): )", source)
     step_blocks = [block for block in blocks if block.startswith("      - ")]
-    actual = tuple(
-        tuple(re.findall(r"(?m)^        ([a-z][a-z-]*):", block))
-        for block in step_blocks
-    )
+    def keys_for_step(block: str) -> tuple[str, ...]:
+        # Eight-space lines are step properties, not ten-space run/with bodies.
+        # A quoted YAML key must not impersonate a comment or disappear from
+        # an unquoted-only inventory.
+        lines = re.findall(r"(?m)^        ([^ \\t#\\n][^\\n]*)$", block)
+        keys = []
+        for line in lines:
+            match = re.fullmatch(r"([a-z][a-z-]*):(?:[ \\t].*)?", line)
+            require(match is not None, diagnostic)
+            keys.append(match.group(1))
+        return tuple(keys)
+
+    actual = tuple(keys_for_step(block) for block in step_blocks)
     require(actual == expected, diagnostic)
 
 
@@ -1124,6 +1133,14 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "        run: echo synthetic-override\n      - name: Verify read-only postcondition\n",
          "ancestor workflow step authority drift"),
     )
+    cases += (
+        ("      - name: Verify read-only postcondition\n",
+         "        \"env\":\n          BASH_ENV: /tmp/synthetic\n      - name: Verify read-only postcondition\n",
+         "ancestor workflow step authority drift"),
+        ("      - name: Verify read-only postcondition\n",
+         "        'working-directory': /tmp\n      - name: Verify read-only postcondition\n",
+         "ancestor workflow step authority drift"),
+    )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
                 f"workflow negative anchor not unique: {expected}")
@@ -1248,6 +1265,14 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("          fetch-depth: 0\n", "          fetch-depth: 2\n",
          "independent learning workflow checkout/setup drift"),
     )
+    cases += (
+        ("      - name: Confirm read-only execution\n",
+         "        \"env\":\n          BASH_ENV: /tmp/synthetic\n      - name: Confirm read-only execution\n",
+         "independent learning workflow step authority drift"),
+        ("      - name: Confirm read-only execution\n",
+         "        'working-directory': /tmp\n      - name: Confirm read-only execution\n",
+         "independent learning workflow step authority drift"),
+    )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
                 f"independent workflow negative anchor not unique: {expected}")
@@ -1311,7 +1336,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 120, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 124, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
