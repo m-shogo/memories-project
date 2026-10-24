@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-request.py"
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
@@ -34,6 +35,18 @@ def load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    require(DRILL_REQUEST_LOAD_NEGATIVE.is_file() and not DRILL_REQUEST_LOAD_NEGATIVE.is_symlink(),
+            "drill request fixture parent guard source missing or symlinked")
+    module = load_module(DRILL_REQUEST_LOAD_NEGATIVE, "memory_os_drill_fixture_guard_append_rollback")
+    require(callable(getattr(module, "guarded_temporary_directory", None)),
+            "drill request fixture parent guard callable missing")
+    try:
+        return module.guarded_temporary_directory(prefix, parent)
+    except module.Fail as exc:
+        raise Fail(str(exc)) from exc
 
 
 def load_writer():
@@ -151,7 +164,7 @@ def prove_reconciler_transaction_rollback() -> None:
     output_names = ("REGISTRY", "CONTRACT", "STATUS")
 
     for fail_index in (2, 3):
-        with tempfile.TemporaryDirectory(prefix=f".memory-os-drill-request-reconcile-transaction-{fail_index}-", dir=ROOT) as tmp:
+        with guarded_temporary_directory(f".memory-os-drill-request-reconcile-transaction-{fail_index}-", ROOT) as tmp:
             tmp_path = Path(tmp)
             originals = {name: getattr(reconciler, name) for name in output_names}
             copies: dict[str, Path] = {}
@@ -212,6 +225,22 @@ def prove_reconciler_transaction_rollback() -> None:
 
 def main() -> int:
     require(WRITER.is_file() and RECONCILER.is_file() and CONTRACT.is_file(), "drill request append authority missing")
+    with guarded_temporary_directory(".tmp-drill-append-parent-negative-", ROOT) as raw:
+        sandbox = Path(raw)
+        link = sandbox / "redirect"
+        link.symlink_to(sandbox, target_is_directory=True)
+        before = sorted(p.name for p in sandbox.iterdir())
+        try:
+            with guarded_temporary_directory(".tmp-must-not-create-", link):
+                raise Fail("drill append symlinked temp parent accepted")
+        except Fail as exc:
+            require(str(exc) == "drill request temp ancestor missing or symlinked",
+                    f"drill append temp parent rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("drill append symlinked temp parent accepted")
+        require(sorted(p.name for p in sandbox.iterdir()) == before,
+                "drill append symlinked temp parent published a child")
+    print("PASS: drill request append rollback fixtures reuse checked parent guard")
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
     require(
         contract.get("admissionRules", {}).get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
