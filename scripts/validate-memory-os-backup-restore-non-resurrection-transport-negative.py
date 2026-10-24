@@ -193,6 +193,111 @@ def exercise_reconciler_transaction_transport() -> None:
 
 
 
+
+def require_typed_admission_main_binding(tree: ast.Module) -> None:
+    """Reject rebinding the actual typed admission CLI entrypoint."""
+    definitions = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == "main"]
+    require(len(definitions) == 1,
+            "typed admission must define exactly one synchronous main")
+    definition = definitions[0]
+    args = definition.args
+    require(not definition.decorator_list and not args.posonlyargs
+            and [arg.arg for arg in args.args] == ["canonical_execution_guard"]
+            and len(args.defaults) == 1 and not args.vararg
+            and not args.kwonlyargs and not args.kwarg and not args.kw_defaults,
+            "typed admission main signature/decorator drift")
+
+    def rebinds(node: ast.AST) -> bool:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name == "main":
+                return True
+        if isinstance(node, ast.arg) and node.arg == "main":
+            return True
+        if isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == "main":
+            return True
+        if isinstance(node, ast.Name) and node.id == "main" and isinstance(node.ctx, (ast.Store, ast.Del)):
+            return True
+        if (isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.slice, ast.Constant) and node.slice.value == "main"):
+            target = node.value
+            if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                    and target.func.id in {"globals", "vars", "locals"}
+                    and not target.args and not target.keywords):
+                return True
+            if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
+                return True
+            if (isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}
+                    and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value == "main"):
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"update", "pop", "popitem", "clear",
+                                           "setdefault", "__setitem__", "__delitem__"}):
+                target = node.func.value
+                if (isinstance(target, ast.Call) and isinstance(target.func, ast.Name)
+                        and target.func.id in {"globals", "vars", "locals"}
+                        and not target.args and not target.keywords):
+                    return True
+                if isinstance(target, ast.Attribute) and target.attr == "__dict__":
+                    return True
+        return any(rebinds(child) for child in ast.iter_child_nodes(node))
+
+    for statement in tree.body:
+        if statement is not definition:
+            require(not rebinds(statement), "typed admission main binding drift")
+
+
+def prove_typed_admission_main_binding() -> None:
+    try:
+        canonical = ast.parse(VALIDATOR.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed admission main source unavailable") from exc
+    require_typed_admission_main_binding(canonical)
+    cases = (
+        ("assignment", "main = lambda: 0"),
+        ("tuple", "main, unused = (lambda: 0), None"),
+        ("import-alias", "from random import randint as main"),
+        ("dead-branch", "if False: main = None"),
+        ("globals", "globals()['main'] = None"),
+        ("globals-update", "globals().update(main=None)"),
+        ("module-dict", "sys.modules[__name__].__dict__['main'] = None"),
+        ("setattr", "setattr(sys.modules[__name__], 'main', None)"),
+        ("exec", "exec('main = None')"),
+        ("class", "class main: pass"),
+        ("duplicate", "def main(): pass"),
+        ("async", "async def main(): pass"),
+    )
+    for label, source in cases:
+        mutated = copy.deepcopy(canonical)
+        mutated.body[-1:-1] = ast.parse(source).body
+        try:
+            require_typed_admission_main_binding(mutated)
+        except Fail as exc:
+            expected = ("typed admission must define exactly one synchronous main"
+                        if label == "duplicate" else "typed admission main binding drift")
+            require(str(exc) == expected,
+                    f"typed admission main {label} rejection diagnostic drift")
+        else:
+            raise Fail(f"typed admission main {label} replacement unexpectedly accepted")
+    decorated = copy.deepcopy(canonical)
+    main = next(node for node in decorated.body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    main.decorator_list.append(ast.Name(id="wrapper", ctx=ast.Load()))
+    try:
+        require_typed_admission_main_binding(decorated)
+    except Fail as exc:
+        require(str(exc) == "typed admission main signature/decorator drift",
+                "typed admission main decorator diagnostic drift")
+    else:
+        raise Fail("typed admission main decorator unexpectedly accepted")
+    print("PASS reject: thirteen typed admission main rebinding/decorator substitutions")
+
+
 def require_unique_validator_runner_binding(tree: ast.Module) -> None:
     """Reject module-level or deferred rebinding of the admission child runner."""
     definitions = [node for node in tree.body
@@ -343,6 +448,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
 
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
+    prove_typed_admission_main_binding()
     prove_validator_runner_binding()
     validator = load_validator()
     exercise_validator_child_exit_propagation(validator)
