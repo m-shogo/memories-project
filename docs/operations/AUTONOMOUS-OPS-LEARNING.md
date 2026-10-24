@@ -7080,3 +7080,20 @@ a promotion decision, a recovery objective, or drill evidence.
 - Why safe: only the existing preflight reconcile synthetic negative harness changed; helper substitutions are disposable system-temp fixtures, with no production evidence/registry writes.
 - Reusable mechanism: bind checked parent and leaf FDs and independently test the parent swap while keeping downstream workflow conclusions separate.
 - Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, current executable reviewed request, complete typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Preflight reconcile parent-FD negative passes before known downstream blocker
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach
+- Symptom: Preflight Reconcile Negative run `40090179103`, job `120861076593`, completed FAILURE after the new parent-FD negative printed PASS.
+- Evidence: the exact-source job log printed `PASS: preflight-reconcile helper parent swap preserves pinned source` followed by `ENVIRONMENT GENERATION SOURCE-BINDING NEGATIVE FAILED: source-binding negative requires clean canonical source worktree`. The same clean-canonical-worktree blocker is already recorded. Root cause of the downstream failure is the unchanged source-binding clean-worktree precondition; no new root cause is inferred. Failed approach: equating a direct new negative PASS marker with whole-workflow success, or retrying the unchanged blocker.
+
+### Correction, executable recurrence guard, retry condition
+- Correction: preserve the exact new parent-swap PASS marker as *partial execution proof* only, while keeping the whole Preflight Reconcile workflow conclusion FAILURE. Do not modify production authorities or retry the unchanged clean-worktree failure.
+- Recurrence guard: report exact-source marker and workflow conclusion separately, and require a full successful workflow only after its clean-source precondition is met.
+- Retry condition: a verified change to the clean canonical source-worktree precondition, or a newly observed independent regression; not the passage of time or another identical workflow rerun.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: the new parent-FD race negative executed and passed at code head `35a000a7058c0b012df78426193589902020c3ce`; the downstream workflow did not pass.
+- Why safe: the race used disposable synthetic helper-parent fixtures, with no canonical production authority mutation.
+- Reusable mechanism: bind partial exact-source CI evidence to the specific PASS marker, but never promote it to whole-workflow or production readiness.
+- Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Semantic generation eligibility, distinct environments, current human-approved objective, executable reviewed request, complete typed eight-domain non-resurrection, independent review and human promotion gates remain separate and strict. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
