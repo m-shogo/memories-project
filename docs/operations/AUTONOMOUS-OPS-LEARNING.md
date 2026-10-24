@@ -4908,3 +4908,24 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic negative suite and append-only learning changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, recovery evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Distinct unsuperseded semantically eligible environments, a human-approved current objective, current executable reviewed request for new generation evidence, typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed admission main guard and registry load order have executable reachability proof
+
+### Material success: outcome and observed evidence
+- Code commit `f905fef40cd06cf9c91bc404df6f4f559a1b5f76` extended the existing CI-reachable typed non-resurrection transport-negative suite with a canonical AST positive control and fourteen diagnostic-specific mutations. The new guard requires the execution-transport identity check, execution transport validation, runtime authority validation, and exact ordered loads of the typed and generation contracts/registries at the start of `main`.
+- Exact-source Backup Restore Non-Resurrection Readonly run `40055360132` at that SHA completed SUCCESS. Job `120757043568` explicitly logged `PASS reject: fourteen typed admission main guard/registry reachability substitutions`, `Typed non-resurrection execution/registry/reconcile transport negative suite PASS`, and `production decision: NO_GO`.
+- The code commit changed only `scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py`; it did not modify the canonical validator or production/recovery authorities.
+
+### Symptom/risk, root cause or explicit unknown, failed approach
+- Risk: the typed admission validator could retain correctly named guards while bypassing them through an early success return, dead/inverted condition, or reordered/missing registry load. No production incident or actual bypass was observed.
+- Verified coverage gap: prior main-binding, CLI-dispatch and import-time early-exit checks did not establish the order and direct reachability of the first live `main` statements.
+- Failed approach to avoid: assuming source-level presence of named guards and registry references proves their execution before admission.
+
+### Correction, executable recurrence guard and retry condition
+- Parse the canonical validator's AST, enforce the exact first seven statements, and require precise failure diagnostics for fourteen isolated AST mutations; reuse the existing CI-transitive negative suite instead of creating a parallel authority.
+- Retry only after an exact-source CI regression, reviewed legitimate typed admission entrypoint refactor, or demonstrated new reachability bypass. Do not retry unchanged clean-worktree, workflow-write or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only synthetic AST mutations are exercised; no generation, approved objective, executable reviewed request, recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion authority is created or changed.
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. The previously verified strict OPS-P0-007 snapshot remains blocked; this run did not use learning or CI as evidence for any operational gate.
+- Preflight requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current objective; new evidence requires a current executable reviewed drill request; final candidates require complete typed eight-domain coverage and independent review; human promotion remains separate and non-automatic.
