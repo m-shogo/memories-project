@@ -196,6 +196,132 @@ def exercise_reconciler_transaction_transport() -> None:
 
 
 
+
+def require_typed_admission_main_reachability(tree: ast.Module) -> None:
+    """Bind typed admission's first live guards and canonical registry loads."""
+    require_typed_admission_main_binding(tree)
+    main = next(node for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    body = main.body
+    require(len(body) >= 7, "typed admission main authority sequence missing")
+    first = body[0]
+    require(isinstance(first, ast.If) and not first.orelse
+            and isinstance(first.test, ast.Compare)
+            and isinstance(first.test.left, ast.Name)
+            and first.test.left.id == "enforce_execution_transport"
+            and len(first.test.ops) == 1 and isinstance(first.test.ops[0], ast.IsNot)
+            and len(first.test.comparators) == 1
+            and isinstance(first.test.comparators[0], ast.Name)
+            and first.test.comparators[0].id == "canonical_execution_guard"
+            and len(first.body) == 1 and isinstance(first.body[0], ast.Raise)
+            and isinstance(first.body[0].exc, ast.Call)
+            and isinstance(first.body[0].exc.func, ast.Name)
+            and first.body[0].exc.func.id == "Fail",
+            "typed admission main must reject execution guard drift first")
+
+    def direct_call(node: ast.AST, name: str) -> bool:
+        return (isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == name
+                and not node.value.args and not node.value.keywords)
+
+    require(direct_call(body[1], "enforce_execution_transport"),
+            "typed admission main must execute transport guard second")
+    require(direct_call(body[2], "enforce_runtime_authorities"),
+            "typed admission main must execute runtime authorities third")
+
+    def direct_load(node: ast.AST, target: str, source: str) -> bool:
+        return (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == target
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "load"
+                and len(node.value.args) == 1
+                and isinstance(node.value.args[0], ast.Name)
+                and node.value.args[0].id == source
+                and not node.value.keywords)
+
+    for index, target, source in (
+        (3, "contract", "CONTRACT"),
+        (4, "registry", "REGISTRY"),
+        (5, "generation_contract", "GEN_CONTRACT"),
+        (6, "generation_registry", "GEN_REGISTRY"),
+    ):
+        require(direct_load(body[index], target, source),
+                f"typed admission main must directly load {source} in canonical order")
+
+
+def prove_typed_admission_main_reachability() -> None:
+    try:
+        canonical = ast.parse(VALIDATOR.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("typed admission main reachability source unavailable") from exc
+    require_typed_admission_main_reachability(canonical)
+    cases = (
+        ("guard-removed", "typed admission main must reject execution guard drift first"),
+        ("guard-inverted", "typed admission main must reject execution guard drift first"),
+        ("guard-dead", "typed admission main must reject execution guard drift first"),
+        ("guard-swallowed", "typed admission main must reject execution guard drift first"),
+        ("transport-removed", "typed admission main must execute transport guard second"),
+        ("transport-dead", "typed admission main must execute transport guard second"),
+        ("runtime-removed", "typed admission main must execute runtime authorities third"),
+        ("runtime-dead", "typed admission main must execute runtime authorities third"),
+        ("contract-removed", "typed admission main must directly load CONTRACT in canonical order"),
+        ("registry-removed", "typed admission main must directly load REGISTRY in canonical order"),
+        ("generation-contract-removed",
+         "typed admission main must directly load GEN_CONTRACT in canonical order"),
+        ("generation-registry-removed",
+         "typed admission main must directly load GEN_REGISTRY in canonical order"),
+        ("early-return", "typed admission main must reject execution guard drift first"),
+        ("early-exit", "typed admission main must reject execution guard drift first"),
+    )
+    for label, expected in cases:
+        mutated = copy.deepcopy(canonical)
+        main = next(node for node in mutated.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        body = main.body
+        if label == "guard-removed":
+            body[0] = ast.Pass()
+        elif label == "guard-inverted":
+            body[0].test.ops = [ast.Is()]
+        elif label == "guard-dead":
+            body[0].test = ast.Constant(value=False)
+        elif label == "guard-swallowed":
+            body[0].body = [ast.Pass()]
+        elif label == "transport-removed":
+            body[1] = ast.Pass()
+        elif label == "transport-dead":
+            body[1] = ast.If(test=ast.Constant(value=False), body=[body[1]], orelse=[])
+        elif label == "runtime-removed":
+            body[2] = ast.Pass()
+        elif label == "runtime-dead":
+            body[2] = ast.If(test=ast.Constant(value=False), body=[body[2]], orelse=[])
+        elif label == "contract-removed":
+            body[3] = ast.Pass()
+        elif label == "registry-removed":
+            body[4] = ast.Pass()
+        elif label == "generation-contract-removed":
+            body[5] = ast.Pass()
+        elif label == "generation-registry-removed":
+            body[6] = ast.Pass()
+        elif label == "early-return":
+            body.insert(0, ast.Return(value=ast.Constant(value=0)))
+        elif label == "early-exit":
+            body.insert(0, ast.Expr(value=ast.Call(
+                func=ast.Attribute(value=ast.Name(id="sys", ctx=ast.Load()),
+                                   attr="exit", ctx=ast.Load()),
+                args=[ast.Constant(value=0)], keywords=[])))
+        try:
+            require_typed_admission_main_reachability(mutated)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"typed admission main {label} reachability diagnostic drift")
+        else:
+            raise Fail(f"typed admission main {label} bypass unexpectedly accepted")
+    print("PASS reject: fourteen typed admission main guard/registry reachability substitutions")
+
+
 def require_no_typed_pre_dispatch_exit(tree: ast.Module) -> None:
     """Reject eager termination before the typed admission CLI dispatch."""
     require_typed_admission_cli_dispatch(tree)
@@ -640,6 +766,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
 
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
+    prove_typed_admission_main_reachability()
     prove_typed_pre_dispatch_exit()
     prove_typed_admission_cli_dispatch()
     prove_typed_admission_main_binding()
