@@ -5269,3 +5269,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic CI-reachable negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Preflight requires distinct unsuperseded semantically eligible environments and a human-approved current recovery objective; new recovery evidence requires a current executable reviewed request. Final candidates require all generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion is separate/non-automatic. Learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Full-chain external self-symlink fixture uses exclusive ownership
+
+### Material success: observed outcome and evidence
+- Code commit `06449ef2f13d594693b8a4a687897c49c2fe8a69` replaces the full admission-chain negative suite's derived sibling `/tmp` path and unconditional `unlink(missing_ok=True)` with an exclusively created `NamedTemporaryFile` external symlink target. Cleanup is conditional on this invocation owning the file, and checks regular-file type plus the original device/inode before unlinking.
+- Exact-source Backup Restore Admission Chain run `40061966819` (job `120777313102`) completed SUCCESS. Its log explicitly reports `PASS negative: self symlink substitution`, `PASS negative: broken self symlink`, `PASS negative: escaping self symlink`, `Admission-chain full runner negative validation PASS` and `production decision: NO_GO`.
+- A separate local temporary-directory control verified that the new relative link target resolves to the exclusively created external file.
+
+### Symptom/risk, verified root cause and failed approach
+- Risk: the previous self-symlink negative computed an outside path from the temporary directory name, wrote to it without exclusive creation, and unconditionally unlinked that path even for non-escaping cases. A collision could overwrite/delete an unrelated file. No collision or deletion incident was observed.
+- Verified root cause: the sibling path was not acquired through exclusive creation, and cleanup was not bound to the file's identity.
+- Failed approach to avoid: treating a path derived from a random temporary directory name as equivalent to an exclusively owned artifact or using unconditional cleanup on an unowned path.
+
+### Correction, executable recurrence guard and retry condition
+- Use `NamedTemporaryFile(delete=False)` to acquire a unique outside target, retain its original inode identity and refuse cleanup after substitution. The existing negative suite still verifies the three canonical self-symlink failure modes, now without unowned path deletion.
+- Retry only after exact-source CI regression, reviewed legitimate fixture topology change or demonstrated external-fixture ownership bypass. Unchanged workflow-write, source-binding clean-worktree and external-evidence blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic full-chain negative suite changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Preflight still requires unsuperseded semantically eligible generations from distinct environments and a human-approved current recovery objective; new recovery evidence requires a current executable reviewed request. Final candidates require all existing generation/objective gates plus complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
