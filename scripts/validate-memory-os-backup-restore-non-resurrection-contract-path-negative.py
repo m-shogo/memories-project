@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import os
+import secrets
+import shutil
+import stat
 import tempfile
+import weakref
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -24,23 +30,190 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
 
-def guarded_temporary_directory(prefix: str, parent: Path):
-    # Reject repository fixture ancestor symlinks before any temporary child
-    # is created; the system-temp outside-repository fixture is unaffected.
+@contextmanager
+def _pinned_temporary_directory(prefix: str, parent: Path):
+    # Pin every ancestor by descriptor: the checked pathname may be swapped
+    # before mkdir, but the new child must stay beneath the opened directory.
     try:
         relative = parent.relative_to(ROOT)
     except ValueError as exc:
         raise Fail("typed contract path temp parent escapes repository") from exc
     require(ROOT.is_dir() and not ROOT.is_symlink(),
             "typed contract path repository root missing or symlinked")
-    cursor = ROOT
-    for part in relative.parts:
-        cursor = cursor / part
-        require(cursor.is_dir() and not cursor.is_symlink(),
-                "typed contract path temp ancestor missing or symlinked")
-    require(parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
-            "typed contract path temp parent canonical resolution drift")
-    return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+    require(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")
+        and shutil.rmtree.avoids_symlink_attacks,
+        "typed contract path pinned fixture directory unsupported",
+    )
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        fd = os.open(ROOT, flags)
+    except OSError as exc:
+        raise Fail(f"typed contract path cannot pin repository root: {exc}") from exc
+    try:
+        root_entry = ROOT.lstat()
+        root_open = os.fstat(fd)
+        require(
+            stat.S_ISDIR(root_entry.st_mode)
+            and (root_entry.st_dev, root_entry.st_ino) == (root_open.st_dev, root_open.st_ino),
+            "typed contract path repository root identity drift",
+        )
+        cursor = ROOT
+        for part in relative.parts:
+            cursor = cursor / part
+            require(cursor.is_dir() and not cursor.is_symlink(),
+                    "typed contract path temp ancestor missing or symlinked")
+            next_fd = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+            entry = cursor.lstat()
+            opened = os.fstat(fd)
+            require(
+                stat.S_ISDIR(entry.st_mode)
+                and (entry.st_dev, entry.st_ino) == (opened.st_dev, opened.st_ino),
+                "typed contract path temp ancestor identity drift",
+            )
+        require(
+            parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
+            "typed contract path temp parent canonical resolution drift",
+        )
+        pinned = os.fstat(fd)
+        for _ in range(8):
+            name = prefix + secrets.token_hex(8)
+            try:
+                os.mkdir(name, mode=0o700, dir_fd=fd)
+            except FileExistsError:
+                continue
+            break
+        else:
+            raise Fail("typed contract path temp child exclusive creation exhausted")
+        created = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        try:
+            current = parent.lstat()
+            require(
+                stat.S_ISDIR(current.st_mode)
+                and (current.st_dev, current.st_ino) == (pinned.st_dev, pinned.st_ino),
+                "typed contract path temp parent identity drift after creation",
+            )
+            require(stat.S_ISDIR(created.st_mode),
+                    "typed contract path temp child is not a directory")
+            yield str(parent / name)
+        finally:
+            current_child = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            require(
+                stat.S_ISDIR(current_child.st_mode)
+                and (current_child.st_dev, current_child.st_ino) == (created.st_dev, created.st_ino),
+                "typed contract path temp child identity drift before cleanup",
+            )
+            # Descriptor-relative, symlink-resistant cleanup cannot traverse a
+            # substituted parent pathname. Child inode drift fails closed.
+            shutil.rmtree(name, dir_fd=fd)
+    except OSError as exc:
+        raise Fail(f"typed contract path pinned fixture operation failed: {exc}") from exc
+    finally:
+        os.close(fd)
+
+
+class _EagerFixtureDirectory:
+    """Retain TemporaryDirectory's call-time creation/error and cleanup contract."""
+
+    def __init__(self, manager):
+        self._manager = manager
+        self.name = manager.__enter__()
+        self._finalizer = weakref.finalize(self, manager.__exit__, None, None, None)
+
+    def __enter__(self):
+        require(self._finalizer.alive, "typed contract path pinned fixture already closed")
+        return self.name
+
+    def __exit__(self, exc_type, exc, traceback):
+        if self._finalizer.alive:
+            self._finalizer.detach()
+            return self._manager.__exit__(exc_type, exc, traceback)
+        return False
+
+    def cleanup(self):
+        if self._finalizer.alive:
+            self._finalizer()
+
+
+def guarded_temporary_directory(prefix: str, parent: Path):
+    # Dependent negative wrappers translate domain Fail at call time.
+    return _EagerFixtureDirectory(_pinned_temporary_directory(prefix, parent))
+
+
+def prove_parent_swap_during_mkdir_rejected() -> None:
+    # Deterministically substitute only an exclusively owned sandbox parent
+    # after descriptor pinning and before the actual mkdir operation.
+    with guarded_temporary_directory(prefix=".tmp-typed-path-race-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        checked = sandbox / "checked"
+        escaped = sandbox / "escaped"
+        parked = sandbox / "parked"
+        checked.mkdir()
+        escaped.mkdir()
+        original_identity = (checked.stat().st_dev, checked.stat().st_ino)
+        original_mkdir = os.mkdir
+        switched = False
+
+        def swap_before_mkdir(name: str, mode: int = 0o777, *, dir_fd: int | None = None) -> None:
+            nonlocal switched
+            if not switched and str(name).startswith(".tmp-typed-path-race-") and dir_fd is not None:
+                switched = True
+                checked.rename(parked)
+                checked.symlink_to(escaped, target_is_directory=True)
+            original_mkdir(name, mode=mode, dir_fd=dir_fd)
+
+        os.mkdir = swap_before_mkdir
+        try:
+            try:
+                with guarded_temporary_directory(prefix=".tmp-typed-path-race-", parent=checked):
+                    raise Fail("typed contract path parent swap accepted")
+            except Fail as exc:
+                require(str(exc) == "typed contract path temp parent identity drift after creation",
+                        f"typed contract path parent swap rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("typed contract path parent swap accepted")
+        finally:
+            os.mkdir = original_mkdir
+
+        require(switched, "typed contract path parent swap probe did not reach pinned mkdir")
+        require(checked.is_symlink() and checked.resolve() == escaped.resolve(),
+                "typed contract path parent swap did not install isolated redirect")
+        require((parked.stat().st_dev, parked.stat().st_ino) == original_identity,
+                "typed contract path parent swap changed pinned directory identity")
+        require(not list(escaped.iterdir()), "typed contract path parent swap published through redirect")
+        require(not list(parked.iterdir()), "typed contract path parent swap left pinned child")
+        # The enclosing owned context removes all synthetic children; no
+        # unconditional unlink or rename of mutable fixture paths is needed.
+    print("PASS: typed contract path parent swap during mkdir stays pinned and fails closed")
+
+
+def prove_child_substitution_before_cleanup_rejected() -> None:
+    # An owned temporary child must not be removed after its name is
+    # substituted, even if the replacement points at another directory.
+    with guarded_temporary_directory(prefix=".tmp-typed-path-child-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        replacement = sandbox / "unowned-replacement"
+        replacement.mkdir()
+        parked = sandbox / "original-owned-child"
+        try:
+            with guarded_temporary_directory(prefix=".tmp-typed-path-child-identity-", parent=sandbox) as inner:
+                child = Path(inner)
+                child.rename(parked)
+                child.symlink_to(replacement, target_is_directory=True)
+        except Fail as exc:
+            require(str(exc) == "typed contract path temp child identity drift before cleanup",
+                    f"typed contract path substituted child rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("typed contract path substituted child cleanup accepted")
+        require(child.is_symlink() and parked.is_dir() and replacement.is_dir(),
+                "typed contract path substituted child proof did not preserve isolated fixtures")
+        require(not list(replacement.iterdir()),
+                "typed contract path substituted child cleanup touched unowned replacement")
+        # The outer pinned fixture owns the whole sandbox and safely removes
+        # the intentionally retained substituted link and original child.
+    print("PASS: typed contract path substituted child inode rejects cleanup without deleting replacement")
 
 
 def load_validator():
@@ -141,6 +314,8 @@ def main() -> int:
         require(sorted(p.name for p in sandbox.iterdir()) == before,
                 "typed contract path symlinked temp parent published a child")
     print("PASS: typed contract path fixture parent symlink rejected before creation")
+    prove_parent_swap_during_mkdir_rejected()
+    prove_child_substitution_before_cleanup_rejected()
     validator = load_validator()
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
