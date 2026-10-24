@@ -5940,3 +5940,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only the synthetic registry-aggregate negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered and semantically eligible generations remain distinct; preflight needs two distinct unsuperseded eligible environments and a current human-approved objective; new evidence needs a current executable reviewed request; final candidates need complete typed eight-domain coverage and independent review. Human production promotion remains separate/non-automatic. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed transport and reconcile transaction fixtures need checked parents
+
+### Material success: outcome and observed evidence
+- Code commit `65d2bf70064db90f334020353a23589608d92c7e` routes both repository-local temporary-directory sites in the existing typed non-resurrection transport negative suite through the tested typed contract-path parent guard. This covers both registry transaction and reconcile transaction fixtures.
+- An isolated symlink-parent negative requires the exact canonical-ancestor rejection and unchanged sandbox contents before the transport tests execute. Post-write GitHub source reads confirm both converted call sites and the negative. Exact-source CI for this code commit was not complete at the time of this record.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified fixture safety risk, not a production incident: the transport suite previously created two temporary directories under `docs/fixtures/memory-os-operability` after only checking `TEMP_PARENT.is_dir()`, which follows symlinks.
+- Root cause: the transport suite's strong execution and registry rollback guards did not extend to the parent path used to create their own synthetic fixtures.
+- Failed approach to avoid: inferring filesystem creation safety from transport/reconcile correctness, or duplicating a weaker parent check instead of reusing the existing typed path guard.
+
+### Correction, executable recurrence guard and retry condition
+- Load the existing checked helper from the typed contract-path negative harness, require the callable, preserve domain `Fail` semantics, and route both actual fixture sites plus a real symlink-negative through the same helper.
+- Retry exact-source runtime validation after this SHA's Readonly/Reconcile Negative workflows complete; revisit only on observed CI failure, reviewed helper/path change or demonstrated bypass. The precheck does not claim atomic check/use race elimination. Do not retry unchanged clean-worktree, workflow-permission or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic transport negative harness and append-only learning history changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered and semantically eligible generations remain distinct; preflight requires two distinct unsuperseded eligible environments and a current explicitly human-approved objective; new evidence needs a current executable reviewed request; final candidates need complete typed eight-domain coverage and independent review. Human promotion is separate/non-automatic. Learning, synthetic fixtures and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
