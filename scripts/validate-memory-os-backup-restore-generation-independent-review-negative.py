@@ -447,8 +447,100 @@ def require_external_source_order_guard_negative_proof() -> None:
     print(f"PASS: external source-order AST guard reachability rejects {len(cases)} mutations")
 
 
+
+def require_candidate_pair_source_binding(tree: ast.Module) -> None:
+    """Verify the real candidate path binds two validated, distinct review authorities."""
+    candidates = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                  and node.name == "candidate_reviews_approved"]
+    require(len(candidates) == 1, "candidate pair source function authority drift")
+    body = candidates[0].body
+
+    def direct_index(statement: str, label: str) -> int:
+        expected = ast.parse(statement).body[0]
+        indices = [index for index, node in enumerate(body)
+                   if ast.dump(node, include_attributes=False) ==
+                   ast.dump(expected, include_attributes=False)]
+        require(len(indices) == 1, f"candidate pair {label} direct execution authority drift")
+        return indices[0]
+
+    security = direct_index(
+        'security_ref, security_reviewer = validate_review(row, "securityReviewRef", ROLE_BY_REF["securityReviewRef"])',
+        "security review validation",
+    )
+    operability = direct_index(
+        'operability_ref, operability_reviewer = validate_review(row, "operabilityReviewRef", ROLE_BY_REF["operabilityReviewRef"])',
+        "operability review validation",
+    )
+    distinct_refs = direct_index(
+        'require(security_ref != operability_ref, "Security and Operability review refs must remain distinct")',
+        "distinct review refs",
+    )
+    distinct_reviewers = direct_index(
+        'require(security_reviewer != operability_reviewer, "Security and Operability reviewers must remain distinct")',
+        "distinct reviewer identities",
+    )
+    approved = direct_index("return True", "positive candidate return")
+    require(security < operability < distinct_refs < distinct_reviewers < approved,
+            "candidate pair validation and distinctness execution order drift")
+
+
+def prove_candidate_pair_source_binding() -> None:
+    tree = ast.parse(VALIDATOR.read_text(encoding="utf-8"))
+    require_candidate_pair_source_binding(tree)
+
+    def candidate(mutant):
+        return next(node for node in mutant.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "candidate_reviews_approved")
+
+    mutations = (
+        ("remove security validation", 0, "remove", "candidate pair security review validation direct execution authority drift"),
+        ("remove operability validation", 1, "remove", "candidate pair operability review validation direct execution authority drift"),
+        ("remove distinct refs", 2, "remove", "candidate pair distinct review refs direct execution authority drift"),
+        ("remove distinct reviewers", 3, "remove", "candidate pair distinct reviewer identities direct execution authority drift"),
+        ("weaken distinct refs", 2, "weaken", "candidate pair distinct review refs direct execution authority drift"),
+        ("weaken distinct reviewers", 3, "weaken", "candidate pair distinct reviewer identities direct execution authority drift"),
+        ("hide distinct refs in dead branch", 2, "dead", "candidate pair distinct review refs direct execution authority drift"),
+        ("hide distinct reviewers in dead branch", 3, "dead", "candidate pair distinct reviewer identities direct execution authority drift"),
+        ("premature distinct refs", 2, "early", "candidate pair validation and distinctness execution order drift"),
+        ("remove candidate return", 4, "remove", "candidate pair positive candidate return direct execution authority drift"),
+    )
+    statements = (
+        'security_ref, security_reviewer = validate_review(row, "securityReviewRef", ROLE_BY_REF["securityReviewRef"])',
+        'operability_ref, operability_reviewer = validate_review(row, "operabilityReviewRef", ROLE_BY_REF["operabilityReviewRef"])',
+        'require(security_ref != operability_ref, "Security and Operability review refs must remain distinct")',
+        'require(security_reviewer != operability_reviewer, "Security and Operability reviewers must remain distinct")',
+        "return True",
+    )
+    for label, index, operation, expected in mutations:
+        mutant = copy.deepcopy(tree)
+        body = candidate(mutant).body
+        expected_node = ast.parse(statements[index]).body[0]
+        matching = [i for i, node in enumerate(body)
+                    if ast.dump(node, include_attributes=False) ==
+                    ast.dump(expected_node, include_attributes=False)]
+        require(len(matching) == 1, f"candidate pair mutation fixture missing: {label}")
+        at = matching[0]
+        if operation == "remove":
+            body.pop(at)
+        elif operation == "weaken":
+            body[at].value.args[0].ops[0] = ast.Eq()
+        elif operation == "dead":
+            body[at] = ast.If(test=ast.Constant(value=False), body=[body[at]], orelse=[])
+        elif operation == "early":
+            statement = body.pop(at)
+            body.insert(0, statement)
+        try:
+            require_candidate_pair_source_binding(mutant)
+        except Fail as exc:
+            require(str(exc) == expected, f"candidate pair mutation wrong diagnostic ({label}): {exc}")
+        else:
+            raise Fail(f"candidate pair mutation accepted: {label}")
+    print(f"PASS: candidate pair direct source binding rejects {len(mutations)} validation/distinctness bypasses")
+
+
 def main() -> int:
     require_external_source_order_guard_negative_proof()
+    prove_candidate_pair_source_binding()
     module = load_validator()
     expect_source_order_execution(module)
 
@@ -493,12 +585,14 @@ def main() -> int:
     operability_only["operabilityReviewRef"] = "docs/evidence/backup-restore/operability/synthetic-review.json"
     expect_fail(module, registry(operability_only), "operability-only partial review pair", "must provide Security and Operability reviews together")
 
-    expect_fail(module, registry(base_row()), "generic repository review refs")
+    expect_fail(module, registry(base_row()), "generic repository review refs",
+                "review source-order authority invalid: records[-1].securityReviewRef must remain inside docs/evidence/backup-restore/")
 
-    same_ref = base_row()
-    same_ref["securityReviewRef"] = "docs/evidence/backup-restore/README.md"
-    same_ref["operabilityReviewRef"] = "docs/evidence/backup-restore/README.md"
-    expect_fail(module, registry(same_ref), "security/operability ref reuse")
+    missing_ref = base_row()
+    missing_ref["securityReviewRef"] = "docs/evidence/backup-restore/README.md"
+    missing_ref["operabilityReviewRef"] = "docs/evidence/backup-restore/README.md"
+    expect_fail(module, registry(missing_ref), "missing in-namespace review evidence",
+                "review source-order authority invalid: records[-1].securityReviewRef missing or escapes repository")
 
     for field in ("productionEvidence", "productionReady"):
         production_boundary = registry(base_row())
@@ -645,7 +739,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, source-order authority substitution, partial review pairs, generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, unsafe production boundaries, wrong roles, non-approved reviews, chronology/candidate/promotion contract drift, post-commit edits, and production promotion while preserving unreviewed non-candidate evidence")
+    print("PASS: generation candidate review negatives reject runtime data/executable/helper substitution, source-order authority substitution, partial review pairs, generic refs, missing review evidence, candidate pair source binding, authority mismatch, malformed timestamps, unsafe reviewer identities, unsafe production boundaries, wrong roles, non-approved reviews, chronology/candidate/promotion contract drift, post-commit edits, and production promotion while preserving unreviewed non-candidate evidence")
     print("runtime data/executable authority substitution accepted: false")
     print("runtime execution helper substitution accepted: false")
     print("review source-order authority substitution accepted: false")
