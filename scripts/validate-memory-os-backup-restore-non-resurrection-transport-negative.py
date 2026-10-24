@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import stat
 import tempfile
 from pathlib import Path
@@ -189,9 +190,53 @@ def exercise_reconciler_transaction_transport() -> None:
     print("PASS rollback: typed 4-authority reconcile restores exact bytes+mode after middle/last replace failures")
 
 
+
+def exercise_validator_child_exit_propagation(validator) -> None:
+    """Prove child exit status, not a PASS-looking stdout, controls admission."""
+    original_run = validator.subprocess.run
+
+    def check_case(code: int, stdout: str, stderr: str) -> None:
+        calls = []
+
+        def controlled_run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return subprocess.CompletedProcess(argv, code, stdout, stderr)
+
+        validator.subprocess.run = controlled_run
+        try:
+            label = "controlled typed child"
+            if code == 0:
+                require(validator.run_validator(VALIDATOR, label) is None,
+                        "typed child success result drift")
+            else:
+                try:
+                    validator.run_validator(VALIDATOR, label)
+                except validator.Fail as exc:
+                    expected = f"{label} failed:\n{stdout[-3000:]}{stderr[-3000:]}"
+                    require(str(exc) == expected,
+                            "typed child nonzero exit diagnostic drift")
+                else:
+                    raise Fail("typed child nonzero exit was accepted")
+            require(len(calls) == 1, "typed child subprocess invocation count drift")
+            argv, kwargs = calls[0]
+            require(argv == [validator.sys.executable, str(VALIDATOR)],
+                    "typed child executable/argument binding drift")
+            require(kwargs == {
+                "cwd": ROOT, "text": True, "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE, "check": False,
+            }, "typed child subprocess capture or execution mode drift")
+        finally:
+            validator.subprocess.run = original_run
+
+    check_case(0, "canonical child PASS\n", "")
+    check_case(7, "canonical child PASS\n", "controlled failure\n")
+    check_case(-9, "", "controlled signal termination\n")
+    print("PASS boundary: typed child nonzero/signal exits reject even with PASS stdout")
+
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
     validator = load_validator()
+    exercise_validator_child_exit_propagation(validator)
 
     original_subprocess_run = validator.subprocess.run
     original_spec_from_file_location = validator.importlib.util.spec_from_file_location
