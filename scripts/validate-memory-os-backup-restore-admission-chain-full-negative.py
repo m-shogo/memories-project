@@ -22,6 +22,11 @@ class Fail(RuntimeError):
     pass
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
 def load_target():
     spec = importlib.util.spec_from_file_location("admission_chain_full_negative_target", TARGET)
     if spec is None or spec.loader is None:
