@@ -234,6 +234,14 @@ def validate_independent_learning_workflow(source: str) -> None:
                            flags=re.MULTILINE))
     require({".github/workflows/autonomous-learning-guard.yml", ".github/workflows/backup-restore-helper-ancestor-reachability.yml", "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py", "contracts/operations/autonomous-learning-system.json", "docs/operations/AUTONOMOUS-OPS-LEARNING.md"} <= paths,
             "independent learning workflow trigger drift")
+    triggered_harnesses = {
+        item for item in paths
+        if item.startswith("scripts/validate-memory-os-backup-restore-")
+        and item.endswith("-negative.py")
+    }
+    expected_harnesses = {f"scripts/{filename}" for filename in TARGETS}
+    require(triggered_harnesses == expected_harnesses,
+            "independent learning workflow target trigger drift")
     require(source.count("      - name: Validate learning contract and executable negatives\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-autonomous-learning-system.py\n          python -B scripts/validate-autonomous-learning-system-negative.py\n          python -B scripts/validate-memory-os-entry-docs.py\n") == 1,
             "independent learning workflow learning validation drift")
     require(source.count("      - name: Independently enforce helper ancestor runtime workflow reachability\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n") == 1,
@@ -937,6 +945,9 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("      - name: Confirm read-only execution\n", "      - name: Extra command\n        run: echo bypass\n      - name: Confirm read-only execution\n", "independent learning workflow step allowlist drift"),
         ("          test \"$(git rev-parse HEAD)\" = \"${{ github.sha }}\"\n", "          echo bypass\n", "independent learning workflow exact-source drift"),
         ("          git diff --exit-code\n", "          echo bypass\n", "independent learning workflow read-only drift"),
+        ("      - \"scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py\"\n", "", "independent learning workflow target trigger drift"),
+        ("      - \"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\"\n", "", "independent learning workflow target trigger drift"),
+        ("      - \"scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py\"\n", "      - \"scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py\"\n      - \"scripts/validate-memory-os-backup-restore-synthetic-negative.py\"\n", "independent learning workflow target trigger drift"),
     )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
@@ -974,7 +985,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 47, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 50, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
