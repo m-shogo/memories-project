@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -44,11 +46,41 @@ def load_module(path: Path, name: str):
     return module
 
 
+def load_pinned_fixture_guard(path: Path, name: str):
+    """Execute only the checked helper's descriptor-pinned source bytes."""
+    require(hasattr(os, "O_NOFOLLOW"),
+            "admission-chain fixture guard no-follow open unsupported")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise Fail("admission-chain fixture guard source open failed") from exc
+    try:
+        opened = os.fstat(fd)
+        entry = path.lstat()
+        require(
+            stat.S_ISREG(opened.st_mode) and stat.S_ISREG(entry.st_mode)
+            and (opened.st_dev, opened.st_ino) == (entry.st_dev, entry.st_ino),
+            "admission-chain fixture guard source identity drift",
+        )
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            source = stream.read()
+        spec = importlib.util.spec_from_file_location(name, path)
+        require(spec is not None and spec.loader is not None,
+                "admission-chain fixture guard cannot load")
+        module = importlib.util.module_from_spec(spec)
+        exec(compile(source, str(path), "exec"), module.__dict__)
+        return module
+    except OSError as exc:
+        raise Fail("admission-chain fixture guard pinned source read failed") from exc
+    finally:
+        os.close(fd)
+
+
 def guarded_temporary_directory(prefix: str, parent: Path = TMP_PARENT):
     # Reuse the existing admission-chain load fixture's checked parent policy.
     require(LOAD_NEGATIVE.is_file() and not LOAD_NEGATIVE.is_symlink(),
             "admission-chain fixture guard source missing or symlinked")
-    helper = load_module(LOAD_NEGATIVE, "memory_os_admission_chain_checked_fixture_parent")
+    helper = load_pinned_fixture_guard(LOAD_NEGATIVE, "memory_os_admission_chain_checked_fixture_parent")
     guard = getattr(helper, "guarded_temporary_directory", None)
     require(callable(guard), "admission-chain checked fixture parent helper missing")
     try:
@@ -99,6 +131,54 @@ def prove_helper_source_symlink_rejected() -> None:
         finally:
             LOAD_NEGATIVE = original
     print("PASS: admission-chain fixture helper symlink rejected before import")
+
+
+def prove_helper_source_swap_during_import_is_pinned() -> None:
+    # The valid source is checked and opened before a deterministic name swap.
+    global LOAD_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="admission-chain-helper-import-race-") as raw:
+        sandbox = Path(raw)
+        trusted = sandbox / "helper.py"
+        parked = sandbox / "original-helper.py"
+        untrusted = sandbox / "untrusted.py"
+        trusted.write_text(
+            "class Fail(RuntimeError):\n    pass\n\n"
+            "def guarded_temporary_directory(prefix, parent):\n"
+            "    return ('pinned-source', prefix)\n",
+            encoding="utf-8",
+        )
+        untrusted.write_text("raise RuntimeError('untrusted helper executed')\n", encoding="utf-8")
+        original_path = LOAD_NEGATIVE
+        original_spec = importlib.util.spec_from_file_location
+        swapped = False
+        try:
+            LOAD_NEGATIVE = trusted
+            require(
+                guarded_temporary_directory(".tmp-positive-", TMP_PARENT)
+                == ("pinned-source", ".tmp-positive-"),
+                "admission-chain helper pinned import positive control failed",
+            )
+
+            def swap_before_spec(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == trusted:
+                    swapped = True
+                    trusted.rename(parked)
+                    trusted.symlink_to(untrusted)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_before_spec
+            require(
+                guarded_temporary_directory(".tmp-race-", TMP_PARENT)
+                == ("pinned-source", ".tmp-race-"),
+                "admission-chain helper import executed substituted source",
+            )
+            require(swapped and trusted.is_symlink() and parked.is_file(),
+                    "admission-chain helper race probe did not substitute checked source")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            LOAD_NEGATIVE = original_path
+    print("PASS: admission-chain reconcile helper import uses pinned source after pathname substitution")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -344,6 +424,7 @@ def main() -> int:
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_symlink_parent_rejected()
     prove_helper_source_symlink_rejected()
+    prove_helper_source_swap_during_import_is_pinned()
     validator = load_module(VALIDATOR, "memory_os_admission_chain_validator_negative")
     reconciler = load_module(RECONCILER, "memory_os_admission_chain_reconcile_negative")
 
