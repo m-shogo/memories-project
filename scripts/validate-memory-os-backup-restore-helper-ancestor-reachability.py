@@ -334,6 +334,21 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         ),
         "loader leaf open not bound to checked parent FD",
     )
+    descriptor_open = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "os"
+        and node.func.attr == "open"
+        and node.args
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "part"
+        and any(key.arg == "dir_fd" for key in node.keywords)
+        for node in ast.walk(pin)
+    )
+    require(descriptor_open, "ancestor walk missing descriptor-relative open")
+    require(has_method(pin, "fstat") and has_method(pin, "lstat"), "ancestor walk missing identity check")
+    require(has_method(pin, "close"), "ancestor walk missing FD cleanup")
     # AST presence of an os.open(part, dir_fd=fd) call is insufficient:
     # a preceding return or a dead branch can leave the walk unreachable.
     pin_body = [
@@ -388,21 +403,6 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
                 for keyword in walk_loop.body[2].value.keywords),
         "ancestor pin descriptor open not live",
     )
-    descriptor_open = any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "os"
-        and node.func.attr == "open"
-        and node.args
-        and isinstance(node.args[0], ast.Name)
-        and node.args[0].id == "part"
-        and any(key.arg == "dir_fd" for key in node.keywords)
-        for node in ast.walk(pin)
-    )
-    require(descriptor_open, "ancestor walk missing descriptor-relative open")
-    require(has_method(pin, "fstat") and has_method(pin, "lstat"), "ancestor walk missing identity check")
-    require(has_method(pin, "close"), "ancestor walk missing FD cleanup")
     require(
         has_method(proof, "rename") and has_method(proof, "symlink_to"),
         "ancestor proof missing deterministic substitution",
