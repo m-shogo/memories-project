@@ -198,6 +198,33 @@ def prove_parent_swap_during_mkdir_rejected() -> None:
     print("PASS: reconcile negative parent swap during mkdir stays pinned and fails closed")
 
 
+def prove_child_substitution_before_cleanup_rejected() -> None:
+    # An owned temporary child must not be removed after its name is
+    # substituted, even if the replacement points at another directory.
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-child-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        replacement = sandbox / "unowned-replacement"
+        replacement.mkdir()
+        parked = sandbox / "original-owned-child"
+        try:
+            with guarded_temporary_directory(prefix=".tmp-generation-evidence-child-identity-", parent=sandbox) as inner:
+                child = Path(inner)
+                child.rename(parked)
+                child.symlink_to(replacement, target_is_directory=True)
+        except Fail as exc:
+            require(str(exc) == "reconcile negative temp child identity drift before cleanup",
+                    f"reconcile negative substituted child rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("reconcile negative substituted child cleanup accepted")
+        require(child.is_symlink() and parked.is_dir() and replacement.is_dir(),
+                "reconcile negative substituted child proof did not preserve isolated fixtures")
+        require(not list(replacement.iterdir()),
+                "reconcile negative substituted child cleanup touched unowned replacement")
+        # The outer pinned fixture owns the whole sandbox and safely removes
+        # the intentionally retained substituted link and original child.
+    print("PASS: reconcile negative substituted child inode rejects cleanup without deleting replacement")
+
+
 def mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
 
@@ -377,6 +404,7 @@ def main() -> int:
                 "reconcile negative symlinked parent created a child")
     print("PASS: reconcile negative temp parent symlink rejected before creation")
     prove_parent_swap_during_mkdir_rejected()
+    prove_child_substitution_before_cleanup_rejected()
     reconciler = load_reconciler()
 
     prove_direct_authority_identity(reconciler)
