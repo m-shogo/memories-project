@@ -155,7 +155,7 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
         require(section.group("body").count(
             '      - ".github/workflows/autonomous-learning-guard.yml"\n'
         ) == 1, "ancestor independent learning workflow trigger drift")
-        all_paths = set(re.findall(r'      - "([^"]+)"', section.group("body")))
+        all_paths = set(re.findall(r'(?m)^      - "([^"]+)"$', section.group("body")))
         required_authority_paths = {
             ".github/workflows/backup-restore-helper-ancestor-reachability.yml",
             ".github/workflows/autonomous-learning-guard.yml",
@@ -907,6 +907,15 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
          "  pull_request:\n    paths: []\n    paths:\n", 1),
          "ancestor workflow event options drift"),
     )
+    commented_validator = "    # " + validator_path.strip() + "\n"
+    last_validator_position = workflow_source.rfind(validator_path)
+    cases += (
+        (TARGETS, workflow_source.replace(validator_path, commented_validator, 1),
+         "ancestor workflow authority trigger drift"),
+        (TARGETS, workflow_source[:last_validator_position] + commented_validator
+         + workflow_source[last_validator_position + len(validator_path):],
+         "ancestor workflow authority trigger drift"),
+    )
     for targets, workflow, expected in cases:
         try:
             validate_target_matrix(targets, workflow)
@@ -1196,7 +1205,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 106, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 108, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
