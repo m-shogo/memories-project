@@ -42,7 +42,8 @@ def load_module(path: Path, name: str):
 
 
 def guarded_temporary_directory(prefix: str, parent: Path):
-    require(PATH_NEGATIVE.is_file(), "typed contract path fixture guard missing")
+    require(PATH_NEGATIVE.is_file() and not PATH_NEGATIVE.is_symlink(),
+            "typed contract path fixture guard missing or symlinked")
     module = load_module(PATH_NEGATIVE, "memory_os_typed_path_fixture_guard_load")
     require(callable(getattr(module, "guarded_temporary_directory", None)),
             "typed contract path fixture guard callable missing")
@@ -50,6 +51,31 @@ def guarded_temporary_directory(prefix: str, parent: Path):
         return module.guarded_temporary_directory(prefix, parent)
     except module.Fail as exc:
         raise Fail(str(exc)) from exc
+
+
+
+def prove_helper_source_symlink_rejected() -> None:
+    # A shared fixture helper must be checked before dynamic import.
+    global PATH_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="typed-fixture-helper-source-") as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real-helper.py"
+        real.touch()
+        link = sandbox / "helper.py"
+        link.symlink_to(real)
+        original = PATH_NEGATIVE
+        try:
+            PATH_NEGATIVE = link
+            try:
+                guarded_temporary_directory(".tmp-must-not-create-", TMP_PARENT)
+            except Fail as exc:
+                require(str(exc) == "typed contract path fixture guard missing or symlinked",
+                        f"typed fixture helper source rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("typed symlinked fixture helper accepted")
+        finally:
+            PATH_NEGATIVE = original
+    print("PASS: typed load fixture helper symlink rejected before import")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -304,6 +330,7 @@ def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_helper_source_symlink_rejected()
     with guarded_temporary_directory(".tmp-typed-load-parent-negative-", TMP_PARENT) as raw:
         sandbox = Path(raw)
         link = sandbox / "redirect"
