@@ -45,6 +45,30 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_fixture_path_vacant(path: Path) -> None:
+    # A negative fixture must never delete or overwrite a pre-existing artifact.
+    require(not path.exists() and not path.is_symlink(),
+            f"negative fixture path already occupied: {path}")
+
+
+def require_fixture_parent_canonical(parent: Path, root: Path = ROOT) -> tuple[int, int]:
+    try:
+        relative = parent.relative_to(root)
+    except ValueError as exc:
+        raise Fail("negative fixture parent escapes canonical root") from exc
+    require(root.is_dir() and not root.is_symlink(),
+            "negative fixture root missing or symlinked")
+    cursor = root
+    for part in relative.parts:
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "negative fixture parent missing or symlinked")
+    require(parent.resolve(strict=True) == root.resolve(strict=True) / relative,
+            "negative fixture parent canonical resolution drift")
+    parent_stat = parent.stat()
+    return parent_stat.st_dev, parent_stat.st_ino
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path}")
@@ -429,18 +453,93 @@ def main() -> int:
         parent_alias_review["securityReviewRef"] = "scripts/../SECURITY.md"
         expect_rejected("parent-traversal generation review ref", lambda: writer.validate_record(parent_alias_review))
 
+        # Collision controls are isolated: occupied files and dangling symlinks survive.
+        occupied = tmp_path / "occupied-generation-review-fixture"
+        occupied.write_bytes(b"sentinel")
+        try:
+            require_fixture_path_vacant(occupied)
+        except Fail as exc:
+            require(str(exc) == f"negative fixture path already occupied: {occupied}",
+                    "occupied generation review fixture rejection diagnostic drift")
+            require(occupied.read_bytes() == b"sentinel",
+                    "occupied generation review fixture was modified")
+        else:
+            raise Fail("occupied generation review fixture unexpectedly accepted")
+
+        dangling = tmp_path / "occupied-generation-review-dangling"
+        dangling.symlink_to(tmp_path / "missing-generation-review-target")
+        try:
+            try:
+                require_fixture_path_vacant(dangling)
+            except Fail as exc:
+                require(str(exc) == f"negative fixture path already occupied: {dangling}",
+                        "dangling generation review fixture rejection diagnostic drift")
+                require(dangling.is_symlink(),
+                        "dangling generation review fixture was modified")
+            else:
+                raise Fail("dangling generation review fixture unexpectedly accepted")
+        finally:
+            dangling.unlink()
+
+        isolated_root = tmp_path / "isolated-generation-review-fixture"
+        isolated_parent = isolated_root / "evidence"
+        isolated_parent.mkdir(parents=True)
+        parent_identity = require_fixture_parent_canonical(isolated_parent, isolated_root)
+        require(parent_identity == (isolated_parent.stat().st_dev, isolated_parent.stat().st_ino),
+                "isolated generation review fixture parent identity drift")
+        for unsafe_parent, expected in (
+            (isolated_root / "missing", "negative fixture parent missing or symlinked"),
+            (tmp_path, "negative fixture parent escapes canonical root"),
+        ):
+            try:
+                require_fixture_parent_canonical(unsafe_parent, isolated_root)
+            except Fail as exc:
+                require(str(exc) == expected,
+                        "generation review fixture parent rejection diagnostic drift")
+            else:
+                raise Fail("unsafe generation review fixture parent unexpectedly accepted")
+        external_parent = tmp_path / "external-generation-review-parent"
+        external_parent.mkdir()
+        alias_parent = isolated_root / "alias"
+        alias_parent.symlink_to(external_parent, target_is_directory=True)
+        try:
+            try:
+                require_fixture_parent_canonical(alias_parent, isolated_root)
+            except Fail as exc:
+                require(str(exc) == "negative fixture parent missing or symlinked",
+                        "generation review symlinked parent rejection diagnostic drift")
+                require(alias_parent.is_symlink() and alias_parent.resolve() == external_parent.resolve(),
+                        "generation review symlinked parent was modified")
+            else:
+                raise Fail("symlinked generation review fixture parent unexpectedly accepted")
+        finally:
+            alias_parent.unlink()
+
         outside_review = tmp_path / "outside-review.txt"
         outside_review.write_text("external review\n", encoding="utf-8")
         escape_link = ROOT / "docs/fixtures/memory-os-operability/.generation-evidence-review-escape"
+        canonical_parent_identity = require_fixture_parent_canonical(escape_link.parent)
+        require_fixture_path_vacant(escape_link)
+        created_symlink = False
         try:
-            escape_link.unlink(missing_ok=True)
             escape_link.symlink_to(outside_review)
+            created_symlink = True
+            created_identity = escape_link.lstat()
             escaped_review = copy.deepcopy(valid)
             escaped_review["evidenceId"] = "brge_symlink_review"
             escaped_review["securityReviewRef"] = repo_ref(escape_link)
             expect_rejected("repo-local generation review symlink escapes repository", lambda: writer.validate_record(escaped_review))
         finally:
-            escape_link.unlink(missing_ok=True)
+            if created_symlink:
+                require(require_fixture_parent_canonical(escape_link.parent) == canonical_parent_identity,
+                        "generation review fixture parent identity drift before cleanup")
+                current_identity = escape_link.lstat()
+                require((current_identity.st_dev, current_identity.st_ino) ==
+                        (created_identity.st_dev, created_identity.st_ino),
+                        "generation review fixture symlink inode drift before cleanup")
+                require(escape_link.is_symlink() and escape_link.resolve() == outside_review.resolve(),
+                        "generation review fixture symlink target drift before cleanup")
+                escape_link.unlink()
 
         overlay = typed_overlay_record(valid["evidenceId"], commit_sha)
         write_json(overlay_registry, {
