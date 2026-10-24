@@ -334,6 +334,60 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         ),
         "loader leaf open not bound to checked parent FD",
     )
+    # AST presence of an os.open(part, dir_fd=fd) call is insufficient:
+    # a preceding return or a dead branch can leave the walk unreachable.
+    pin_body = [
+        statement for statement in pin.body
+        if not (isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Constant)
+                and isinstance(statement.value.value, str))
+    ]
+    require(
+        bool(pin_body)
+        and not any(isinstance(statement, (ast.Return, ast.Raise))
+                    for statement in pin_body[:-1]),
+        "ancestor pin exits before checked walk",
+    )
+    walk_try = pin_body[-1]
+    require(
+        isinstance(walk_try, ast.Try)
+        and len(walk_try.body) >= 2
+        and isinstance(walk_try.body[-2], ast.For)
+        and isinstance(walk_try.body[-1], ast.Return)
+        and isinstance(walk_try.body[-1].value, ast.Name)
+        and walk_try.body[-1].value.id == "fd"
+        and isinstance(walk_try.body[-2].iter, ast.Attribute)
+        and isinstance(walk_try.body[-2].iter.value, ast.Name)
+        and walk_try.body[-2].iter.value.id == "relative"
+        and walk_try.body[-2].iter.attr == "parts",
+        "ancestor pin missing live relative-parts walk",
+    )
+    require(
+        not any(isinstance(statement, (ast.Return, ast.Raise))
+                for statement in walk_try.body[:-2]),
+        "ancestor pin exits before checked walk",
+    )
+    walk_loop = walk_try.body[-2]
+    require(
+        len(walk_loop.body) >= 3
+        and isinstance(walk_loop.body[2], ast.Assign)
+        and len(walk_loop.body[2].targets) == 1
+        and isinstance(walk_loop.body[2].targets[0], ast.Name)
+        and walk_loop.body[2].targets[0].id == "next_fd"
+        and isinstance(walk_loop.body[2].value, ast.Call)
+        and isinstance(walk_loop.body[2].value.func, ast.Attribute)
+        and isinstance(walk_loop.body[2].value.func.value, ast.Name)
+        and walk_loop.body[2].value.func.value.id == "os"
+        and walk_loop.body[2].value.func.attr == "open"
+        and walk_loop.body[2].value.args
+        and isinstance(walk_loop.body[2].value.args[0], ast.Name)
+        and walk_loop.body[2].value.args[0].id == "part"
+        and any(keyword.arg == "dir_fd"
+                and isinstance(keyword.value, ast.Name)
+                and keyword.value.id == "fd"
+                for keyword in walk_loop.body[2].value.keywords),
+        "ancestor pin descriptor open not live",
+    )
     descriptor_open = any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -470,6 +524,26 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "        pass  # synthetic swallowed failure\n",
          "canonical __main__ dispatch handler drift"),
     )
+    replacements += (
+        ('    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),\n',
+         '    return os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)\n'
+         '    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),\n',
+         "ancestor pin exits before checked walk"),
+        ("        for part in relative.parts:\n",
+         "        return fd  # synthetic skipped ancestor walk\n"
+         "        for part in relative.parts:\n",
+         "ancestor pin exits before checked walk"),
+        ("        for part in relative.parts:\n",
+         "        for part in ():\n",
+         "ancestor pin missing live relative-parts walk"),
+        ("            next_fd = os.open(part, flags, dir_fd=fd)\n",
+         "            if False:\n"
+         "                next_fd = os.open(part, flags, dir_fd=fd)\n",
+         "ancestor pin descriptor open not live"),
+        ("        return fd\n",
+         "        return -1  # synthetic unbound return\n",
+         "ancestor pin missing live relative-parts walk"),
+    )
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
@@ -507,7 +581,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 35 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 40 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
