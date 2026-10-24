@@ -127,6 +127,118 @@ def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
 
 
 
+
+def require_full_runner_cli_dispatch(tree: ast.Module) -> None:
+    """Prove the actual script entrypoint calls main and propagates Fail."""
+    guards = [node for node in tree.body
+              if isinstance(node, ast.If)
+              and isinstance(node.test, ast.Compare)
+              and isinstance(node.test.left, ast.Name)
+              and node.test.left.id == "__name__"
+              and len(node.test.ops) == 1
+              and isinstance(node.test.ops[0], ast.Eq)
+              and len(node.test.comparators) == 1
+              and isinstance(node.test.comparators[0], ast.Constant)
+              and node.test.comparators[0].value == "__main__"]
+    require(len(guards) == 1 and guards[0] is tree.body[-1],
+            "full-chain CLI dispatch guard missing or duplicated")
+    guard = guards[0]
+    require(not guard.orelse and len(guard.body) == 1
+            and isinstance(guard.body[0], ast.Try),
+            "full-chain CLI dispatch must be direct try")
+    dispatch = guard.body[0]
+    require(len(dispatch.body) == 1 and isinstance(dispatch.body[0], ast.Raise),
+            "full-chain CLI dispatch must raise main exit status")
+    raised = dispatch.body[0].exc
+    require(isinstance(raised, ast.Call) and isinstance(raised.func, ast.Name)
+            and raised.func.id == "SystemExit" and len(raised.args) == 1
+            and not raised.keywords
+            and isinstance(raised.args[0], ast.Call)
+            and isinstance(raised.args[0].func, ast.Name)
+            and raised.args[0].func.id == "main"
+            and not raised.args[0].args and not raised.args[0].keywords,
+            "full-chain CLI dispatch must call guarded main")
+    require(not dispatch.orelse and not dispatch.finalbody
+            and len(dispatch.handlers) == 1
+            and isinstance(dispatch.handlers[0].type, ast.Name)
+            and dispatch.handlers[0].type.id == "Fail",
+            "full-chain CLI dispatch must catch only Fail")
+    handler = dispatch.handlers[0]
+    require(bool(handler.body) and isinstance(handler.body[-1], ast.Raise)
+            and isinstance(handler.body[-1].exc, ast.Call)
+            and isinstance(handler.body[-1].exc.func, ast.Name)
+            and handler.body[-1].exc.func.id == "SystemExit"
+            and len(handler.body[-1].exc.args) == 1
+            and isinstance(handler.body[-1].exc.args[0], ast.Constant)
+            and type(handler.body[-1].exc.args[0].value) is int
+            and handler.body[-1].exc.args[0].value != 0,
+            "full-chain CLI Fail handler must exit nonzero")
+
+
+def prove_full_runner_cli_dispatch() -> None:
+    try:
+        canonical = ast.parse(TARGET.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise Fail("full-chain CLI dispatch source unavailable") from exc
+    require_full_runner_cli_dispatch(canonical)
+    cases = (
+        ("guard-removed", "full-chain CLI dispatch guard missing or duplicated"),
+        ("guard-duplicate", "full-chain CLI dispatch guard missing or duplicated"),
+        ("guard-not-last", "full-chain CLI dispatch guard missing or duplicated"),
+        ("guard-else", "full-chain CLI dispatch must be direct try"),
+        ("dispatch-call-only", "full-chain CLI dispatch must raise main exit status"),
+        ("dispatch-dead", "full-chain CLI dispatch must raise main exit status"),
+        ("dispatch-zero", "full-chain CLI dispatch must call guarded main"),
+        ("dispatch-argument", "full-chain CLI dispatch must call guarded main"),
+        ("handler-type", "full-chain CLI dispatch must catch only Fail"),
+        ("handler-extra", "full-chain CLI dispatch must catch only Fail"),
+        ("handler-finally", "full-chain CLI dispatch must catch only Fail"),
+        ("handler-swallow", "full-chain CLI Fail handler must exit nonzero"),
+        ("handler-zero", "full-chain CLI Fail handler must exit nonzero"),
+    )
+    for label, expected in cases:
+        mutated = copy.deepcopy(canonical)
+        guard = mutated.body[-1]
+        dispatch = guard.body[0]
+        handler = dispatch.handlers[0]
+        if label == "guard-removed":
+            guard.test = ast.Constant(value=False)
+        elif label == "guard-duplicate":
+            mutated.body.append(copy.deepcopy(guard))
+        elif label == "guard-not-last":
+            mutated.body.append(ast.Pass())
+        elif label == "guard-else":
+            guard.orelse = [ast.Pass()]
+        elif label == "dispatch-call-only":
+            dispatch.body = [ast.Expr(value=ast.Call(func=ast.Name(id="main", ctx=ast.Load()),
+                                                      args=[], keywords=[]))]
+        elif label == "dispatch-dead":
+            dispatch.body = [ast.If(test=ast.Constant(value=False),
+                                    body=dispatch.body, orelse=[])]
+        elif label == "dispatch-zero":
+            dispatch.body[0].exc.args = [ast.Constant(value=0)]
+        elif label == "dispatch-argument":
+            dispatch.body[0].exc.args[0].args = [ast.Constant(value=None)]
+        elif label == "handler-type":
+            handler.type = ast.Name(id="Exception", ctx=ast.Load())
+        elif label == "handler-extra":
+            dispatch.handlers.append(copy.deepcopy(handler))
+        elif label == "handler-finally":
+            dispatch.finalbody = [ast.Pass()]
+        elif label == "handler-swallow":
+            handler.body[-1] = ast.Pass()
+        elif label == "handler-zero":
+            handler.body[-1].exc.args = [ast.Constant(value=0)]
+        try:
+            require_full_runner_cli_dispatch(mutated)
+        except Fail as exc:
+            require(str(exc) == expected,
+                    f"full-chain CLI {label} rejection diagnostic drift")
+        else:
+            raise Fail(f"full-chain CLI {label} bypass unexpectedly accepted")
+    print("PASS reject: thirteen full-chain CLI dispatch/failure-exit substitutions")
+
+
 def require_full_runner_main_binding(tree: ast.Module) -> None:
     """Bind the CLI entrypoint before its runtime identity defaults are captured."""
     definitions = [node for node in tree.body
@@ -396,6 +508,7 @@ def prove_full_step_exit_propagation() -> None:
 
 
 def main() -> int:
+    prove_full_runner_cli_dispatch()
     prove_full_runner_main_binding()
     prove_full_runner_step_binding()
     prove_full_step_exit_propagation()
