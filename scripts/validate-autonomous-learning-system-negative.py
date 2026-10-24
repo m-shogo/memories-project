@@ -155,6 +155,10 @@ def expected_diagnostic(name: str) -> str:
     }
     if name in fixed:
         return fixed[name]
+    if name.startswith("dynamic main "):
+        return "learning CI entrypoint main binding is shadowed by module control flow"
+    if name.startswith("dynamic learning guard "):
+        return "learning CI entrypoint learning guard binding is shadowed by module control flow"
     if name.startswith("disable mandatory "):
         return "mandatory learning rule must remain true: " + name.removeprefix("disable mandatory ")
     if name.startswith("drop required failure "):
@@ -451,6 +455,26 @@ def main() -> int:
             'if __name__ == "__main__":\n    pass  # raise SystemExit(main())\n',
         )),
     ))
+    # Dynamic module namespace mutation must not replace a verified guard
+    # after the AST sees its original function definition.
+    for label, symbol, anchor in (
+        ("main", "main",
+         'if __name__ == "__main__":' + chr(10) + "    raise SystemExit(main())" + chr(10)),
+        ("learning guard", "validate_learning_guards", "def main() -> int:" + chr(10)),
+    ):
+        for kind, mutation in (
+            ("globals-subscript", f"globals()['{symbol}'] = None"),
+            ("globals-keyword", f"globals().update({symbol}=None)"),
+            ("globals-dict", f"globals().update({{'{symbol}': None}})"),
+            ("setattr", f"setattr(sys.modules[__name__], '{symbol}', None)"),
+            ("exec", f"exec('{symbol} = None')"),
+        ):
+            cases.append((
+                f"dynamic {label} {kind}",
+                lambda root, before=anchor, injected=mutation: replace_in_entrypoint(
+                    root, before, injected + chr(10) + before
+                ),
+            ))
     for label, relative in (
         ("contract", CONTRACT),
         ("learning history", LEARNING),
