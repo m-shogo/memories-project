@@ -6183,3 +6183,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe and protected-authority check
 - These are synthetic negative tests, not production or promotion evidence. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Registered versus semantically eligible generations, distinct unsuperseded environments, current explicitly human-approved objective, current executable reviewed request for new recovery evidence, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Admission-chain load negative guards its own repository-local fixture parent
+
+### Material failure: symptom, observed evidence, root cause or unknown, failed approach
+- Symptom: the admission-chain load negative harness created a synthetic temporary child under `docs/fixtures/memory-os-operability` without first rejecting a symlinked repository ancestor.
+- Evidence: pre-change `scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py` used `TMP_PARENT.is_dir()` and direct `TemporaryDirectory(dir=TMP_PARENT)`; `is_dir()` follows symlinks. This is a verified synthetic-harness safety gap, not an observed production incident.
+- Root cause: this independent negative harness had not adopted the already proven checked-parent pattern from drill-request and generation-evidence negative suites.
+- Failed approach: assuming a directory-existence test or disposable child files establish canonical parent identity.
+
+### Correction, executable recurrence guard, retry condition
+- Code commit `1cd431a807ad2c384ac1317f6ee73598dcf1718a` adds a checked repository-relative, non-symlink ancestor and canonical-resolution guard before temporary creation, plus a real disposable symlink-parent negative that requires the exact domain rejection and no child publication.
+- The actual unreadable-authority fixture now uses the guarded constructor; the proof executes before loading the admission-chain validator. A path precheck is not an atomic check/use race guarantee.
+- Retry condition: observe the exact-source unreadable-authority CI result, or revisit on a changed helper/path precondition or demonstrated bypass. Do not retry unchanged clean-worktree or source-HEAD blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: post-write GitHub source re-read confirmed the guard and positive fixture callsite, removed the direct unguarded creation, and showed the intended CI workflows queued/running. Runtime PASS is not claimed until observed.
+- Why safe: the only code change is a synthetic negative harness; no production authority or evidence was created.
+- Reusable mechanism: validate all repository-local ancestor components and canonical parent before synthetic creation, then prove a symlinked parent is rejected before the test exercises domain authority.
+- Protected-authority check: post-change GitHub tree retained production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` (`NO_GO`), OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` (`PREREQUISITES_BLOCKED`), and learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. Semantic eligibility, distinct unsuperseded environments, current human-approved objective, executable reviewed request, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
