@@ -5109,3 +5109,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only a synthetic negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable drill requests, generation evidence, typed records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current recovery objective; new generation recovery evidence requires a current executable reviewed drill request; final candidates require all upstream gates, complete typed eight-domain coverage and independent review; human promotion remains separate/non-automatic. No production evidence, credentials, traffic, readiness or promotion was created. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Unresolved noncritical findings cannot be relabeled complete typed evidence
+
+### Material success: observed outcome and evidence
+- Code commit `174a0faf133d09c56b81fdc073a7719f674f9774` adds two exact-diagnostic negative cases and two positive controls to the existing CI-reachable typed admission suite. LOW/OPEN and MEDIUM/ACCEPTED_WITH_OWNER unresolved findings are accepted only with `evidenceComplete=false`; changing that flag to true is rejected with `evidenceComplete derivation drift` despite eight PASS domains and approved independent reviews.
+- Exact-source Non-Resurrection Readonly run `40058388404` completed SUCCESS and retained the canonical typed admission PASS and `production decision: NO_GO`. Child-negative stdout is suppressed on success; the individual new case lines are not claimed as visible in the job log.
+- The existing writer derives completeness from eight PASS domain results **and no unresolved findings**. Synthetic controls verify both the legitimate incomplete state and the forbidden complete relabel.
+
+### Symptom/risk, verified gap, failed approach
+- Risk: a future completeness refactor could ignore unresolved LOW/MEDIUM findings, admitting a complete typed record even though findings remain. No actual production bypass or incident was observed.
+- Verified gap: previous tests rejected HIGH unresolved findings and false completeness with all PASS domains, but did not prove LOW/MEDIUM findings prevent a true completeness claim.
+- Failed approach to avoid: inferring the no-findings completeness gate from HIGH/CRITICAL rejection alone or from empty-registry success.
+
+### Correction, executable recurrence guard and retry condition
+- Reuse the canonical synthetic record and exact `expect_rejected` classifier; positively validate LOW/OPEN and MEDIUM/ACCEPTED_WITH_OWNER incomplete records, then negatively mutate only `evidenceComplete` while preserving the finding and review bindings.
+- Retry only after exact-source CI regression, reviewed legitimate findings policy change or demonstrated completeness bypass. Do not retry unchanged clean-worktree, workflow-write or external-evidence blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only synthetic negative tests changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, generation evidence, complete typed records and final candidates; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Preflight still requires unsuperseded semantically eligible generations from distinct environments plus a human-approved current recovery objective; new evidence requires a current executable reviewed drill request; final candidates require all upstream gates, typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
