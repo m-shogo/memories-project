@@ -6461,3 +6461,19 @@ a promotion decision, a recovery objective, or drill evidence.
 - Outcome/evidence: the isolated pinned/eager Python prototype already passed this child substitution case; GitHub post-write re-read confirmed the new negative executes before writer/validator import. Exact-source CI remains unconfirmed.
 - Why safe: all objects are synthetic and inside a separately owned temporary directory. Reusable mechanism: independently test child inode ownership at cleanup even when the parent mkdir is descriptor-pinned.
 - Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. All real generation, objective, executable request, eight-domain coverage, independent review and human promotion gates remain mandatory. Learning/prototype/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Admission-chain pinned fixture cleanup refuses substituted child
+
+### Material failure: symptom, evidence, root cause, failed approach
+- Symptom: the admission-chain pinned fixture helper had no independent negative proving child inode drift is rejected before cleanup; the existing mkdir-time parent swap proof exercised a different branch. No actual deletion or production incident was observed.
+- Evidence: source `a787fa2841db841b702377740ecd41c03a1c784f` checked child inode in cleanup but lacked the child-substitution test already established in the generation-evidence and drill-request siblings.
+- Root cause: an untested cleanup-ownership branch remained after descriptor pinning. Failed approach: treating parent-race rejection as proof that a substituted child cannot be removed.
+
+### Correction, executable recurrence guard, retry condition
+- Code `113d8c577db903b1a2c88f578974c6381725afd6` adds the isolated child substitution negative before admission validator loading. It renames the owned child, substitutes a symlink, requires exact `admission-chain load temp child identity drift before cleanup`, and verifies the unowned replacement was not touched; outer pinned cleanup owns the entire sandbox.
+- Retry condition: inspect exact-source Unreadable Authority and Admission Chain Reconcile Negative CI for this SHA. Revisit on observed failure, reviewed helper change or demonstrated bypass; do not retry unchanged source-binding/clean-worktree/external-evidence blockers.
+
+### Material success: outcome/evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: the isolated pinned/eager Python prototype passed child-substitution refusal; GitHub post-write re-read confirmed the executable negative and its call before validator loading. Canonical exact-source CI is unconfirmed.
+- Why safe: the test mutates only synthetic owned paths. Reusable mechanism: test parent pinning and child inode cleanup as distinct executable failure boundaries.
+- Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered and semantically eligible generations remain distinct; two distinct unsuperseded eligible environments, current human-approved objective, current executable reviewed request, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/prototype/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
