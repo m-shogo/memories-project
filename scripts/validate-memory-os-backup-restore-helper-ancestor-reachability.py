@@ -144,6 +144,8 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
 
 def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     """Bind the independent workflow to its real validator and runtime proofs."""
+    require(not re.search(r"(?m)^\\s*(?:if|continue-on-error):", workflow_source),
+            "ancestor workflow conditional bypass")
     static_step = """      - name: Prove seven canonical ancestor negatives remain reachable
         run: |
           set -euo pipefail
@@ -735,9 +737,15 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         ("          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n",
          "          python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py\n",
          "ancestor validator workflow invocation drift"),
-        ("      - name: Prove seven canonical ancestor negatives remain reachable\n",
-         "      - name: Disabled ancestor negatives\n",
+        ("      - name: Prove seven canonical ancestor negatives remain reachable\\n",
+         "      - name: Disabled ancestor negatives\\n",
          "ancestor validator workflow invocation drift"),
+        ("  verify:\\n    runs-on: ubuntu-latest\\n",
+         "  verify:\\n    if: false\\n    runs-on: ubuntu-latest\\n",
+         "ancestor workflow conditional bypass"),
+        ("      - name: Verify read-only postcondition\\n",
+         "      - name: Verify read-only postcondition\\n        continue-on-error: true\\n",
+         "ancestor workflow conditional bypass"),
     )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
@@ -770,7 +778,7 @@ def main() -> int:
         total += workflow_runtime_negative_cases(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 12, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 14, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
