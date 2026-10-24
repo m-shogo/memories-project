@@ -5685,3 +5685,22 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Changes are confined to two synthetic CI negative harnesses; they do not create canonical generation evidence, production traffic, credentials, recovery objectives, reviewed requests, readiness or promotion.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged. Registered and semantically preflight-eligible generations remain distinct; distinct unsuperseded eligible environments and a current human-approved objective remain mandatory. New evidence needs a current executable reviewed drill request, and final candidates need complete typed eight-domain non-resurrection coverage plus independent review. Human promotion remains separate/non-automatic; learning and CI never satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Fixture ownership checks need their own non-destructive negative proof
+
+### Material success: outcome and observed evidence
+- Code commit `8f4d84604942627532e2a507718d6539c1c470a4` extends the existing candidate-mutation negative harness with three fail-closed probes for the newly introduced ownership helper. Two probes alter only the recorded parent/leaf inode values in memory, demand exact rejection diagnostics from the actual descriptor-bound write path, and verify the original evidence bytes remain unchanged. A third passes an unowned cleanup path and requires rejection before any unlink.
+- The harness restores the recorded identities in `finally` and rechecks the positive candidate predicate. Post-write GitHub source inspection confirms these executable assertions exist at blob `eb3ccd18a67f52b4024f76d9a897d227d6498dac`; runtime/CI PASS is not yet observed.
+
+### Symptom, evidence, root cause and failed approach
+- Coverage gap, not an observed filesystem incident: the initial ownership guard was present in source but had no negative case proving its parent/leaf identity checks actually rejected mismatches without touching evidence bytes.
+- Root cause: safety implementation and negative proof were introduced separately.
+- Failed approach to avoid: treating the mere presence of an inode comparison as executed fail-closed evidence.
+
+### Correction, recurrence guard and retry condition
+- Use the already-owned synthetic typed-domain file as positive control; mutate only the in-memory ownership tuple (never replace real paths), require exact rejection, byte preservation and positive candidate recovery. Test unowned cleanup rejection before deletion.
+- Retry exact-source runtime/CI validation when a workflow run or supported executable checkout is available; do not infer success from static source inspection. Revisit on a demonstrated bypass or reviewed ownership/fixture semantics change, not unchanged external or permission blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- All negative mutations are confined to the synthetic harness's in-memory identity registry. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
+- Registered and semantically eligible environments remain distinct, preflight needs two distinct unsuperseded eligible environments and a current human-approved objective, new evidence needs a current executable reviewed request, and final candidates need complete typed eight-domain coverage and independent review. Human production promotion remains separate/non-automatic. Learning, synthetic tests and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
