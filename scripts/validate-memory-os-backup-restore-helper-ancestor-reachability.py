@@ -174,6 +174,9 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
             "ancestor workflow execution context override")
     require(not re.search(r"(?m)^concurrency:", workflow_source),
             "ancestor workflow concurrency drift")
+    require(len(re.findall(r"(?m)^on:", workflow_source)) == 1
+            and len(re.findall(r"(?m)^permissions:", workflow_source)) == 1,
+            "ancestor workflow duplicate root authority")
     static_step = """      - name: Prove seven canonical ancestor negatives remain reachable
         run: |
           set -euo pipefail
@@ -248,6 +251,9 @@ def validate_independent_learning_workflow(source: str) -> None:
     require(len(re.findall(r"(?m)^concurrency:$", source)) == 1
             and source.count("concurrency:\n  group: autonomous-learning-guard-${{ github.sha }}\n  cancel-in-progress: false\n") == 1,
             "independent learning workflow concurrency drift")
+    require(len(re.findall(r"(?m)^on:", source)) == 1
+            and len(re.findall(r"(?m)^permissions:", source)) == 1,
+            "independent learning workflow duplicate root authority")
     require(re.search(r"(?m)^on:\n  push:\n    branches: \[so\]\n    paths:\n", source)
             is not None and "\n  workflow_dispatch:\n" in source,
             "independent learning workflow trigger drift")
@@ -998,7 +1004,21 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
                     f"workflow negative rejected at wrong boundary: {exc}")
         else:
             raise GuardFailure(f"workflow runtime negative accepted: {expected}")
-    return len(cases)
+    duplicate_root_cases = (
+        (workflow_source + "\npermissions:\n  contents: write\n",
+         "ancestor workflow duplicate root authority"),
+        (workflow_source + "\non:\n  workflow_dispatch:\n",
+         "ancestor workflow duplicate root authority"),
+    )
+    for mutated, expected in duplicate_root_cases:
+        try:
+            validate_workflow_runtime_reachability(mutated)
+        except GuardFailure as exc:
+            require(str(exc) == expected,
+                    f"ancestor duplicate-root mutation rejected at wrong boundary: {exc}")
+        else:
+            raise GuardFailure(f"ancestor duplicate-root mutation accepted: {expected}")
+    return len(cases) + len(duplicate_root_cases)
 
 
 
@@ -1060,7 +1080,21 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
                     f"independent workflow negative rejected at wrong boundary: {exc}")
         else:
             raise GuardFailure(f"independent workflow negative accepted: {expected}")
-    return len(cases)
+    duplicate_root_cases = (
+        (source + "\npermissions:\n  contents: write\n",
+         "independent learning workflow duplicate root authority"),
+        (source + "\non:\n  workflow_dispatch:\n",
+         "independent learning workflow duplicate root authority"),
+    )
+    for mutated, expected in duplicate_root_cases:
+        try:
+            validate_independent_learning_workflow(mutated)
+        except GuardFailure as exc:
+            require(str(exc) == expected,
+                    f"independent duplicate-root mutation rejected at wrong boundary: {exc}")
+        else:
+            raise GuardFailure(f"independent duplicate-root mutation accepted: {expected}")
+    return len(cases) + len(duplicate_root_cases)
 
 
 def main() -> int:
@@ -1085,7 +1119,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 85, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 89, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
