@@ -83,6 +83,63 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
     ]
     require(len(loaders) == 1, "missing or duplicate pinned fixture loader")
     require(direct_call_count(main, PROOF) == 1, "main missing direct ancestor proof")
+    proof_index = next(
+        index for index, statement in enumerate(main.body)
+        if isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Call)
+        and isinstance(statement.value.func, ast.Name)
+        and statement.value.func.id == PROOF
+    )
+    require(
+        not any(
+            isinstance(statement, (ast.Return, ast.Raise))
+            or (
+                isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Call)
+                and (
+                    (isinstance(statement.value.func, ast.Name)
+                     and statement.value.func.id in {"exit", "quit"})
+                    or (isinstance(statement.value.func, ast.Attribute)
+                        and isinstance(statement.value.func.value, ast.Name)
+                        and statement.value.func.value.id == "sys"
+                        and statement.value.func.attr == "exit")
+                )
+            )
+            for statement in main.body[:proof_index]
+        ),
+        "main exits before ancestor proof",
+    )
+    dispatches = [
+        node for node in tree.body
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and isinstance(node.test.left, ast.Name)
+        and node.test.left.id == "__name__"
+        and len(node.test.ops) == 1
+        and isinstance(node.test.ops[0], ast.Eq)
+        and len(node.test.comparators) == 1
+        and isinstance(node.test.comparators[0], ast.Constant)
+        and node.test.comparators[0].value == "__main__"
+    ]
+    require(len(dispatches) == 1, "missing canonical __main__ dispatch")
+    require(
+        any(
+            isinstance(statement, ast.Try)
+            and any(
+                isinstance(inner, ast.Raise)
+                and isinstance(inner.exc, ast.Call)
+                and isinstance(inner.exc.func, ast.Name)
+                and inner.exc.func.id == "SystemExit"
+                and len(inner.exc.args) == 1
+                and isinstance(inner.exc.args[0], ast.Call)
+                and isinstance(inner.exc.args[0].func, ast.Name)
+                and inner.exc.args[0].func.id == "main"
+                for inner in statement.body
+            )
+            for statement in dispatches[0].body
+        ),
+        "canonical __main__ dispatch does not execute main",
+    )
     require(
         any(isinstance(node, ast.Constant) and node.value == expected_diagnostic for node in ast.walk(proof)),
         "ancestor proof missing exact diagnostic",
@@ -121,6 +178,22 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "            next_fd = os.open(cursor, flags)\n",
          "ancestor walk missing descriptor-relative open"),
     )
+    replacements += (
+        ("    prove_helper_ancestor_swap_during_fd_walk_rejected()\n",
+         "    return 0  # synthetic early exit\n"
+         "    prove_helper_ancestor_swap_during_fd_walk_rejected()\n",
+         "main exits before ancestor proof"),
+        ("    prove_helper_ancestor_swap_during_fd_walk_rejected()\n",
+         "    raise SystemExit(0)  # synthetic early exit\n"
+         "    prove_helper_ancestor_swap_during_fd_walk_rejected()\n",
+         "main exits before ancestor proof"),
+        ('if __name__ == "__main__":',
+         'if False:  # synthetic disabled dispatch',
+         "missing canonical __main__ dispatch"),
+        ("        raise SystemExit(main())\n",
+         "        raise SystemExit(0)  # synthetic skipped main\n",
+         "canonical __main__ dispatch does not execute main"),
+    )
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
@@ -151,7 +224,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 4 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 8 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
