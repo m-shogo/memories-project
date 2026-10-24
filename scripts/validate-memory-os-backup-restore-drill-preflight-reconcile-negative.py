@@ -241,20 +241,6 @@ def prove_post_validator_rollback(module, tmp: Path) -> None:
 def main() -> int:
     require(RECONCILER.is_file(), "restore drill preflight reconciler missing")
     require(TMP_PARENT.is_dir(), "preflight negative fixture parent missing")
-    module = load_module()
-    module.enforce_execution_identity()
-    module.enforce_runtime_authorities()
-    canonical_before = {
-        module.CONTRACT: module.CONTRACT.read_bytes(),
-        module.STATUS: module.STATUS.read_bytes(),
-    }
-    with guarded_temporary_directory(".tmp-preflight-reconcile-negative-", TMP_PARENT) as tmpdir:
-        tmp = Path(tmpdir)
-        prove_second_replace_rollback(module, tmp)
-        prove_rollback_attempts_all_authorities(module)
-        prove_post_validator_rollback(module, tmp)
-    for path, payload in canonical_before.items():
-        require(path.read_bytes() == payload, f"canonical authority mutated by rollback negative: {path.name}")
     with guarded_temporary_directory(".tmp-preflight-reconcile-parent-negative-", TMP_PARENT) as raw:
         sandbox = Path(raw)
         link = sandbox / "redirect"
@@ -272,6 +258,20 @@ def main() -> int:
                 "preflight reconcile symlinked temp parent published a child")
     print("PASS: preflight reconcile fixture reuses checked drill parent guard")
 
+    module = load_module()
+    module.enforce_execution_identity()
+    module.enforce_runtime_authorities()
+    canonical_before = {
+        module.CONTRACT: module.CONTRACT.read_bytes(),
+        module.STATUS: module.STATUS.read_bytes(),
+    }
+    with guarded_temporary_directory(".tmp-preflight-reconcile-negative-", TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        prove_second_replace_rollback(module, tmp)
+        prove_rollback_attempts_all_authorities(module)
+        prove_post_validator_rollback(module, tmp)
+    for path, payload in canonical_before.items():
+        require(path.read_bytes() == payload, f"canonical authority mutated by rollback negative: {path.name}")
     print("Restore drill preflight reconcile negative suite PASS")
     print("partial preflight/status publication accepted: false")
     print("rollback skips later authority after earlier restore failure: false")
