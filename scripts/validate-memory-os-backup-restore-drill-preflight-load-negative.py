@@ -83,6 +83,7 @@ def pin_checked_helper_parent(path: Path) -> int:
             )
         return fd
     except OSError as exc:
+        os.close(fd)
         raise Fail("preflight load fixture guard parent open failed") from exc
     except BaseException:
         os.close(fd)
