@@ -155,10 +155,24 @@ def validate(repo_root: Path) -> None:
                     return True
                 return (any(binds(value, class_local=class_local) for value in eager)
                         or any(binds(child, class_local=True) for child in node.body))
-            if isinstance(node, (
-                ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
-            )):
-                return False
+            # List/set/dict comprehensions run immediately; their targets
+            # are comprehension-local, but elements, iterables and filters
+            # can mutate the module namespace. A generator expression defers
+            # its body, while its outermost iterable is evaluated eagerly.
+            if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp)):
+                values = ([node.key, node.value] if isinstance(node, ast.DictComp)
+                          else [node.elt])
+                return (any(binds(value, class_local=class_local) for value in values)
+                        or any(
+                            binds(generator.iter, class_local=class_local)
+                            or any(binds(condition, class_local=class_local)
+                                   for condition in generator.ifs)
+                            for generator in node.generators
+                        ))
+            if isinstance(node, ast.GeneratorExp):
+                return bool(node.generators) and binds(
+                    node.generators[0].iter, class_local=class_local
+                )
             if isinstance(node, ast.Global):
                 return name in node.names
             if isinstance(node, ast.Name):
