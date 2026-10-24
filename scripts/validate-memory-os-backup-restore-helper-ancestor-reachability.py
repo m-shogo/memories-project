@@ -145,6 +145,56 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         "ancestor proof missing exact diagnostic",
     )
     require(has_call(loaders[0], PIN), "loader missing pinned parent call")
+    # A dead pin_checked_helper_parent() call must not authenticate an
+    # unchecked full-path open. Bind the live first loader assignment and leaf.
+    live_statements = [
+        node for node in loaders[0].body
+        if not (isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str))
+    ]
+    first = live_statements[0] if live_statements else None
+    require(
+        isinstance(first, ast.Assign)
+        and len(first.targets) == 1
+        and isinstance(first.targets[0], ast.Name)
+        and first.targets[0].id == "parent_fd"
+        and isinstance(first.value, ast.Call)
+        and isinstance(first.value.func, ast.Name)
+        and first.value.func.id == PIN
+        and len(first.value.args) == 1
+        and isinstance(first.value.args[0], ast.Name)
+        and first.value.args[0].id == "path",
+        "loader parent FD not bound to checked ancestors",
+    )
+    require(
+        len(live_statements) >= 2
+        and isinstance(live_statements[1], ast.Try)
+        and live_statements[1].body
+        and isinstance(live_statements[1].body[0], ast.Try)
+        and live_statements[1].body[0].body
+        and isinstance(live_statements[1].body[0].body[0], ast.Assign)
+        and len(live_statements[1].body[0].body[0].targets) == 1
+        and isinstance(live_statements[1].body[0].body[0].targets[0], ast.Name)
+        and live_statements[1].body[0].body[0].targets[0].id == "fd"
+        and isinstance(live_statements[1].body[0].body[0].value, ast.Call)
+        and isinstance(live_statements[1].body[0].body[0].value.func, ast.Attribute)
+        and isinstance(live_statements[1].body[0].body[0].value.func.value, ast.Name)
+        and live_statements[1].body[0].body[0].value.func.value.id == "os"
+        and live_statements[1].body[0].body[0].value.func.attr == "open"
+        and live_statements[1].body[0].body[0].value.args
+        and isinstance(live_statements[1].body[0].body[0].value.args[0], ast.Attribute)
+        and isinstance(live_statements[1].body[0].body[0].value.args[0].value, ast.Name)
+        and live_statements[1].body[0].body[0].value.args[0].value.id == "path"
+        and live_statements[1].body[0].body[0].value.args[0].attr == "name"
+        and any(
+            keyword.arg == "dir_fd"
+            and isinstance(keyword.value, ast.Name)
+            and keyword.value.id == "parent_fd"
+            for keyword in live_statements[1].body[0].body[0].value.keywords
+        ),
+        "loader leaf open not bound to checked parent FD",
+    )
     descriptor_open = any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -193,6 +243,13 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ("        raise SystemExit(main())\n",
          "        raise SystemExit(0)  # synthetic skipped main\n",
          "canonical __main__ dispatch does not execute main"),
+        ("    parent_fd = pin_checked_helper_parent(path)\n",
+         "    if False: pin_checked_helper_parent(path)  # dead pin call\n"
+         "    parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)\n",
+         "loader parent FD not bound to checked ancestors"),
+        ("            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)\n",
+         "            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)\n",
+         "loader leaf open not bound to checked parent FD"),
     )
     count = 0
     for original, mutation, expected in replacements:
@@ -224,7 +281,7 @@ def main() -> int:
             total += negative_cases(source, diagnostic)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 8 * len(TARGETS), "ancestor negative count mismatch")
+        require(total == 10 * len(TARGETS), "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
