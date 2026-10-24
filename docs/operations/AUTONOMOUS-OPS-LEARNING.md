@@ -4765,3 +4765,25 @@ a promotion decision, a recovery objective, or drill evidence.
 - Only the existing synthetic negative harness changed; no production writer, generation, human-approved objective, reviewed request, recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion authority changed.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains PREREQUISITES_BLOCKED with zero registered/semantically eligible generations, objectives, requests, evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Strict preflight still requires unsuperseded semantically eligible generations from distinct environments plus an explicitly human-approved current objective; new evidence requires a current executable reviewed request; final candidates require typed eight-domain non-resurrection coverage and independent review; human promotion is separate and non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Full-chain default-captured helpers require symbol-specific binding proof
+
+### Material success: outcome and observed evidence
+- Initial code commit `5f0de794207d38838563d80e387b291495d876bf` added AST binding checks for `enforce_execution_transport`, `enforce_runtime_authority` and `canonical_script` plus thirty synthetic negative mutations across assignment, import alias, dead branch, namespace dictionary, dynamic execution, duplicate definition and decorator.
+- Corrected code commit `aeebbe8006db8f7be4bb22c953dca48d61dc2cad` passed exact-source Backup Restore Admission Chain run `40054328459` (job `120753834003`). Logs explicitly show `PASS reject: thirty full-chain guard/resolver helper binding substitutions`, `Admission-chain full runner negative validation PASS` and `production decision: NO_GO`.
+- The changes are confined to the existing CI-reachable synthetic negative harness. The CI-owned stale failure diagnostic was subsequently cleaned up by bounded reconcile commit `ab1bda3cef4a53f90a86b3c05e7b12222266a6b1`.
+
+### Material failure: symptom, evidence, verified root cause, failed approach
+- Exact-source run `40054229866` (job `120753515734`) failed at `5f0de794` with `full-chain helper enforce_runtime_authority/globals-update diagnostic drift`. The probe intended to mutate only `enforce_runtime_authority`.
+- Verified root cause: the first version of the generic AST classifier rejected every `globals().update(...)` and `exec(...)` call while scanning each protected helper, so the earlier `enforce_execution_transport` check incorrectly classified a mutation to a different helper. This was an overbroad synthetic diagnostic, not a production bypass.
+- Failed approach to avoid: reusing a generic dynamic-namespace mutation detector across multiple symbols without checking which symbol the concrete mutation affects, then expecting symbol-specific diagnostics.
+
+### Correction, executable recurrence guard and retry condition
+- Scope literal `exec`/`eval` and dictionary update/pop/setitem detection to the targeted helper name; retain conservative rejection for dynamic/unknown keys, `clear` and `popitem`. Preserve exact diagnostic assertions for all thirty probes.
+- Reusable mechanism: verify each default-captured authority helper has one synchronous undecorated canonical signature and no static/dynamic rebinding before the full runner can capture it; test every protected symbol independently.
+- Retry only on exact-source CI regression, a reviewed helper architecture change or a demonstrated binding bypass. Do not retry unchanged source-binding clean-worktree, external-evidence or workflow-write blockers.
+
+### Why safe and protected-authority check
+- No canonical runner, environment generation, human-approved objective, executable reviewed request, generation recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion authority was changed.
+- Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains PREREQUISITES_BLOCKED with zero registered/eligible generations, objectives, requests, evidence, typed records and candidates, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Distinct unsuperseded semantically eligible environments, an explicitly human-approved current objective, current executable reviewed drill request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate human production promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
