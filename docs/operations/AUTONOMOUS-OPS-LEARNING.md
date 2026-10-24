@@ -5565,3 +5565,22 @@ a promotion decision, a recovery objective, or drill evidence.
 - All synthetic Git commits and review files exist only inside a temporary directory and are destroyed afterward. The production repository's canonical evidence/registries and promotion authorities were not modified.
 - Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remains unchanged.
 - Registered and semantically eligible generations are distinct. Preflight still requires unsuperseded semantically eligible generations from distinct environments and an explicitly human-approved current objective; new generation evidence requires a current executable reviewed request. Final candidates require all generation/objective gates plus typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — External CI harness binds real review-pair runtime proof, not just its AST helper
+
+### Material success: outcome and observed evidence
+- Code commit `1a61071d64fcbb8c3bcdc0a32de52c5b2a93ae84` extends the existing independent-review execution-negative harness to require exactly one `prove_runtime_review_pair_controls` definition and a fourth direct `main()` step after canonical validator loading. It rejects five additional mutations that remove, hide, duplicate, shadow or delete the runtime proof.
+- Exact-source Backup Restore Generation Independent Review Negative run `40065952831` (job `120789135859`) completed SUCCESS. Its log explicitly reports `PASS: external candidate pair negative harness reachability rejects 11 bypasses` and `PASS: isolated Git source-order positive pair and exact reviewer/ref reuse runtime negatives`.
+
+### Symptom, evidence, verified root cause and failed approach
+- Verified CI-reachability risk, not a production incident: the new isolated Git positive/negative runtime test could have been skipped by a future harness change even while the older AST-only pair proof continued to pass.
+- Root cause: the external harness originally bound only the source-level proof invocation, not the later real Git runtime proof.
+- Failed approach to avoid: inferring runtime execution from a test helper's presence or from a different static guard's success.
+
+### Correction, executable recurrence guard and retry condition
+- Extend the existing external AST execution boundary to bind both source-level and runtime pair proof calls. In-memory negative mutations must fail at exact invocation/definition/shadowing diagnostics. Keep the workflow and production validators unchanged.
+- Retry only after exact-source CI regression, reviewed harness call-graph changes or demonstrated bypass. Unchanged clean-worktree, workflow-permission and external-evidence blockers remain scoped.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the synthetic CI execution-negative validator changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains prerequisite-blocked; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- No production-equivalent generations, objectives, drill/recovery evidence, credentials, traffic, readiness or promotion were created. Registered and unsuperseded semantically eligible generations remain distinct. Preflight requires distinct eligible environments and a current human-approved objective; new evidence requires a current executable reviewed request; final candidates require all existing gates, complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
