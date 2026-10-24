@@ -164,7 +164,7 @@ def reject_generation_validator_substitutions() -> None:
         raise Fail(f"canonical generation-evidence validator authority rejected: {exc}") from exc
 
 
-def repo_temp_module(prefix: str, overrides: dict[str, str]) -> Path:
+def repo_temp_module(prefix: str, overrides: dict[str, str]) -> tuple[Path, tuple[int, int], tuple[int, int]]:
     values = {
         "CONTRACT": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
         "REGISTRY": "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
@@ -202,16 +202,38 @@ def repo_temp_module(prefix: str, overrides: dict[str, str]) -> Path:
             "    return 0",
         ]
     )
+    require(ROOT.is_dir() and not ROOT.is_symlink(), "generation-evidence temp root missing or symlinked")
+    cursor = ROOT
+    for part in ("docs", "fixtures", "memory-os-operability"):
+        cursor = cursor / part
+        require(cursor.is_dir() and not cursor.is_symlink(),
+                "generation-evidence temp parent missing or symlinked")
+    require(TMP_PARENT == cursor and TMP_PARENT.resolve(strict=True) == ROOT.resolve(strict=True) / "docs/fixtures/memory-os-operability",
+            "generation-evidence temp parent canonical path drift")
+    parent_stat = TMP_PARENT.stat()
+    parent_identity = (parent_stat.st_dev, parent_stat.st_ino)
     fd, raw_path = tempfile.mkstemp(prefix=prefix, suffix=".py", dir=TMP_PARENT)
-    os.close(fd)
     path = Path(raw_path)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return path
+    created_stat = os.fstat(fd)
+    created_identity = (created_stat.st_dev, created_stat.st_ino)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as owned:
+            owned.write("\n".join(lines) + "\n")
+    except BaseException:
+        # Never delete a replacement if writing the exclusively created fixture fails.
+        if path.is_file() and not path.is_symlink():
+            current = path.stat()
+            if (current.st_dev, current.st_ino) == created_identity:
+                path.unlink()
+        raise
+    return path, parent_identity, created_identity
 
 
 def expect_rejection(label: str, overrides: dict[str, str], expected_message: str) -> None:
     module = load_authority_validator(f"generation_evidence_writer_authority_negative_{label}")
-    fake = repo_temp_module(f".generation-evidence-authority-negative-{label}-", overrides)
+    fake, parent_identity, created_identity = repo_temp_module(
+        f".generation-evidence-authority-negative-{label}-", overrides
+    )
     try:
         module.WRITER = fake
         try:
@@ -221,7 +243,17 @@ def expect_rejection(label: str, overrides: dict[str, str], expected_message: st
         else:
             raise Fail(f"{label}: substituted authority was accepted")
     finally:
-        fake.unlink(missing_ok=True)
+        require(TMP_PARENT.is_dir() and not TMP_PARENT.is_symlink(),
+                "generation-evidence temp parent substituted before cleanup")
+        current_parent = TMP_PARENT.stat()
+        require((current_parent.st_dev, current_parent.st_ino) == parent_identity,
+                "generation-evidence temp parent inode drift before cleanup")
+        require(fake.is_file() and not fake.is_symlink(),
+                "generation-evidence temp module substituted before cleanup")
+        current = fake.stat()
+        require((current.st_dev, current.st_ino) == created_identity,
+                "generation-evidence temp module inode drift before cleanup")
+        fake.unlink()
 
 
 def expect_contract_ref_rejection(field: str, replacement: str, expected_message: str) -> None:
