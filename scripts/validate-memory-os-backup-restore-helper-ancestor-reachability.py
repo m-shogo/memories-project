@@ -284,6 +284,24 @@ def validate_run_step_boundaries(
     require(source.endswith(FINAL_READONLY_LINE), diagnostic)
 
 
+
+def validate_learning_root_mapping_bodies(source: str, diagnostic: str) -> None:
+    """Prevent trailing token permission or concurrency key overrides."""
+    permissions = source.split("\npermissions:\n", 1)[1].split(
+        "\nconcurrency:\n", 1
+    )[0]
+    concurrency = source.split("\nconcurrency:\n", 1)[1].split(
+        "\njobs:\n", 1
+    )[0]
+    require(permissions == "  contents: read\n", diagnostic)
+    require(
+        concurrency ==
+        "  group: autonomous-learning-guard-${{ github.sha }}\n"
+        "  cancel-in-progress: false\n",
+        diagnostic,
+    )
+
+
 def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> None:
     """Reject silent loss of a canonical harness or its workflow trigger."""
     require(len(targets) >= MIN_CANONICAL_TARGETS,
@@ -638,6 +656,11 @@ def validate_independent_learning_workflow(source: str) -> None:
     validate_run_step_boundaries(
         source, LEARNING_RUN_BOUNDARIES,
         "independent learning workflow run boundary drift",
+    )
+
+
+    validate_learning_root_mapping_bodies(
+        source, "independent learning workflow root mapping drift",
     )
 
 
@@ -1647,6 +1670,24 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         (source + "          echo synthetic bypass\n",
          "independent learning workflow run boundary drift"),
     )
+    duplicate_root_cases += (
+        (source.replace(
+             "  contents: read\n\nconcurrency:",
+             "  contents: read\n  actions: write\n\nconcurrency:", 1),
+         "independent learning workflow root mapping drift"),
+        (source.replace(
+             "  contents: read\n\nconcurrency:",
+             '  contents: read\n  "contents": write\n\nconcurrency:', 1),
+         "independent learning workflow root mapping drift"),
+        (source.replace(
+             "  cancel-in-progress: false\n\njobs:",
+             "  cancel-in-progress: false\n  cancel-in-progress: true\n\njobs:", 1),
+         "independent learning workflow root mapping drift"),
+        (source.replace(
+             "  cancel-in-progress: false\n\njobs:",
+             '  cancel-in-progress: false\n  "group": synthetic\n\njobs:', 1),
+         "independent learning workflow root mapping drift"),
+    )
     for mutated, expected in duplicate_root_cases:
         try:
             validate_independent_learning_workflow(mutated)
@@ -1810,7 +1851,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 169, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 173, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
