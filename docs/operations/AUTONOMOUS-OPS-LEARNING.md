@@ -5991,3 +5991,22 @@ a promotion decision, a recovery objective, or drill evidence.
 - Observed source-level outcome: corrected external checker blob `8704f454bfddcde5ea9de6ca8e4e72983ef3c606` checks the additional fixture guard with isolated negative mutation. Runtime PASS was not yet confirmed at learning-write time.
 - Why safe: both commits changed only the existing synthetic typed load negative harness. Reusable mechanism: preserve earlier independent invariants in each mutation so the exact rejection proves the targeted guard; confirm with exact-source CI.
 - Protected authority check: production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged. Distinct semantically eligible generations, current human-approved objective, current executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, traffic, credential, readiness or promotion gates.
+
+## 2026-10-24 — Drill request load fixture must reject symlinked repository parent
+
+### Material success: outcome and observed evidence
+- Code commit `5479204a9c2c333fdeeb101411c8d197df23ec6d` replaces the repository-local direct `TemporaryDirectory(dir=TMP_PARENT)` in the existing drill-request unreadable/escaped-authority negative suite with `guarded_temporary_directory`. A real disposable symlink-parent negative requires the exact ancestor rejection before child creation and unchanged sandbox entries.
+- Post-write GitHub source inspection confirms the checked actual fixture site, synthetic symlink proof and no change to the outside-repository system-temp fixture. Exact-source runtime PASS was not yet observed at learning-write time.
+
+### Symptom, evidence, verified root cause or unknown, failed approach
+- Verified source-level safety gap, not a reported production incident: the drill request load suite previously checked `TMP_PARENT.is_dir()` then created a repository-local temporary child; `is_dir()` follows symlinks and cannot prove that the fixture path is a canonical non-symlink directory.
+- Root cause: this independent negative harness had not adopted the already established checked-parent fixture creation pattern. No same-domain reusable checked-parent helper was found in the inspected drill-request negative siblings.
+- Failed approach to avoid: treating `is_dir()` as a non-symlink ancestor guard, or assuming the drill-request authority reference checks protect the harness's separate fixture-creation path.
+
+### Correction, executable recurrence guard, retry condition
+- Check repository root and every parent component for real directories without symlinks, verify canonical resolution, and only then create the temporary fixture. The owned temporary context cleans the symlink leaf; no separate unlink was introduced. A precheck does not establish atomic check/use race freedom.
+- Retry runtime verification when exact-source Unreadable Authority/Admission Chain workflows complete. Revisit on demonstrated bypass or reviewed fixture path change. Do not retry unchanged external-evidence, permission or clean-worktree blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only the existing synthetic drill request load negative harness and append-only learning history changed. Production status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`; OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Registered generations remain distinct from semantically preflight-eligible generations; preflight needs two distinct unsuperseded eligible environments and a current explicitly human-approved objective; new recovery evidence needs a current executable reviewed request; final candidates require all generation/objective gates, typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate/non-automatic. Learning and synthetic CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
