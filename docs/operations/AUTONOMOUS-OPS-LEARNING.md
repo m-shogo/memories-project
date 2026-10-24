@@ -4701,3 +4701,25 @@ a promotion decision, a recovery objective, or drill evidence.
 - All mutation cases operate on in-memory AST copies. No production writer, generation, recovery objective, reviewed drill request, evidence, typed domain record, credential, traffic, readiness or promotion authority was changed.
 - Strict OPS-P0-007 preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current objective. New generation evidence requires a current executable reviewed request; final candidates require all existing gates, complete typed eight-domain non-resurrection coverage and independent review. Human production promotion remains separate and non-automatic.
 - This learning and CI proof cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Full-chain script dispatch must invoke main and propagate Fail
+
+### Material success: outcome and evidence
+- Commit `f968b525f3e6afc95d86d3c3b9eb07f615774952` adds a canonical AST positive control and thirteen negative probes to the existing CI-reachable full-chain negative suite. The probes reject removed/duplicated/nonterminal CLI guards, dead or direct-call-only dispatch, zero exit, unexpected arguments, alternate exception handlers, swallowed failures and handler finally branches.
+- Exact-source Backup Restore Admission Chain run `40053836317` (job `120752260957`) completed SUCCESS. Its log explicitly shows `PASS reject: thirteen full-chain CLI dispatch/failure-exit substitutions`, `Admission-chain full runner negative validation PASS` and `production decision: NO_GO`.
+- Production Status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, objectives, evidence and candidates, and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+
+### Symptom/risk, root cause or explicit unknown, failed approach
+- Risk: the module can define a correctly guarded `main` yet never execute it under `python script.py`, or can swallow `Fail` and exit 0. No production incident or successful bypass was observed.
+- Verified coverage gap: prior negative checks covered `main` symbol binding and runtime identity, not the executable module's `__main__` dispatch AST or its exception-to-nonzero-exit boundary.
+- Failed approach to avoid: equating function presence or a passing import-time test with proof that the actual CLI entrypoint reaches the guard and preserves failure status.
+
+### Correction, executable recurrence guard and retry condition
+- Require exactly one terminal `if __name__ == "__main__"` guard, a direct try with `raise SystemExit(main())`, and one `except Fail` whose last statement raises nonzero `SystemExit`. Verify exact rejection diagnostics on thirteen isolated AST mutations.
+- Reuse the canonical transitive CI route; no parallel authority, workflow write or production registry mutation is necessary.
+- Retry only after a reviewed CLI architecture change, an exact-source CI regression or a demonstrated new dispatch bypass. Do not retry unchanged source-binding clean-worktree, external dependency or workflow-write blockers.
+
+### Why safe, reusable mechanism and protected-authority check
+- The validator changes only in-memory AST copies of the canonical full runner; no production generation, objective, reviewed request, recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion was written.
+- Distinct unsuperseded semantically eligible environments, a human-approved current objective, an executable reviewed request for new generation evidence, complete eight-domain typed non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory.
+- Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
