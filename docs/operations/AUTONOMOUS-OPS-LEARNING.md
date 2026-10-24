@@ -7055,3 +7055,28 @@ a promotion decision, a recovery objective, or drill evidence.
 - Why safe: only the existing synthetic typed transport negative harness changed, with disposable system-temp fixtures and no production evidence/registry writes.
 - Reusable mechanism: pin checked parent and leaf FDs while retaining the canonical admission prefix and verifying exact negative reachability.
 - Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, executable reviewed request, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed transport parent-FD guard reaches exact-source CI
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: code head `eb221b9428fbc72802570c7ef914c7e705cd3dfc` reached Unreadable Authority Negatives run `40090092858`, job `120860835052`, which completed SUCCESS and logged `PASS: typed-transport helper parent swap preserves pinned source` and `Typed non-resurrection execution/registry/reconcile transport negative suite PASS`. Same-head Non-Resurrection Readonly `40090092859` and Reconcile Negative `40090092881` also completed SUCCESS.
+- Why safe: the new parent-swap negative ran after the canonical typed admission source-order prefix and child-exit proof, using only disposable synthetic helper directories.
+- Reusable mechanism: require exact-source marker and preserve source-order guard reachability, not merely code presence.
+- Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` is `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` is `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. All semantic eligibility, approved objective, executable reviewed request, typed eight-domain review and human promotion gates remain strict.
+
+## 2026-10-24 — Preflight reconcile helper parent is descriptor-pinned
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach
+- Symptom: preflight reconcile's helper loader pinned the leaf source but still opened through a mutable parent pathname; a parent swap after initial source validation could redirect the helper import. No production incident was observed.
+- Evidence: original blob `9ef158d6df8b3cd1b84c0e0f9cd19296d5b0d6fe` used full-path `os.open(path, O_NOFOLLOW)` and `path.lstat` without parent FD binding. Independent admission-chain, drill reconcile and typed transport parent-swap negatives established the same failure class. Root cause: missing parent-directory descriptor binding. Failed approach: treating leaf `O_NOFOLLOW` as sufficient for mutable ancestor resolution.
+
+### Correction, executable recurrence guard, retry condition
+- Code `35a000a7058c0b012df78426193589902020c3ce` adds checked parent `lstat/fstat` identity, `O_DIRECTORY|O_NOFOLLOW` parent open, FD-relative leaf open/stat, and pinned source-byte execution.
+- The new negative establishes a valid synthetic helper, swaps its parent after parent FD pinning but before leaf open, substitutes an untrusted symlinked parent, and requires the original helper result plus observed swap. Static inspection confirmed the main-path call; exact-source CI was **not yet observed** when this lesson was written.
+- Recurrence guard: valid positive control, deterministic parent swap at leaf open, exact PASS marker and direct exact-source Reconcile Negative CI. Retry condition: inspect the new workflow when complete, or revisit on demonstrated bypass, reviewed helper API change or observed regression. Do not retry unchanged clean-worktree or external-evidence blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: the parent-FD guard and deterministic negative were committed and statically reachable; runtime CI success remains unverified.
+- Why safe: only the existing preflight reconcile synthetic negative harness changed; helper substitutions are disposable system-temp fixtures, with no production evidence/registry writes.
+- Reusable mechanism: bind checked parent and leaf FDs and independently test the parent swap while keeping downstream workflow conclusions separate.
+- Protected-authority check: production status `ce67e9353d6583e4eaf792470563cad25a7396b3` remains `NO_GO`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered versus semantically eligible generations, distinct unsuperseded environments, current human-approved objective, current executable reviewed request, complete typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
