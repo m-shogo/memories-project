@@ -326,6 +326,16 @@ def validate(repo_root: Path) -> None:
     )
     if entry_guard_count != 1:
         raise ValidationFailure("learning CI entrypoint must execute main from its live module guard")
+    # A valid live module guard is not reachable if top-level execution
+    # terminates before reaching it. Reuse the same conservative termination
+    # detector already applied to statements preceding the guard in main().
+    live_entry_guard = next(
+        node for node in entry_tree.body
+        if ast.dump(node, include_attributes=False) == expected_entry_guard
+    )
+    if any(can_terminate_before_guard(node)
+           for node in entry_tree.body[:entry_tree.body.index(live_entry_guard)]):
+        raise ValidationFailure("learning CI entrypoint module terminates before live main guard")
 
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
