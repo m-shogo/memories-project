@@ -4723,3 +4723,24 @@ a promotion decision, a recovery objective, or drill evidence.
 - The validator changes only in-memory AST copies of the canonical full runner; no production generation, objective, reviewed request, recovery evidence, typed eight-domain record, credential, traffic, readiness or promotion was written.
 - Distinct unsuperseded semantically eligible environments, a human-approved current objective, an executable reviewed request for new generation evidence, complete eight-domain typed non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory.
 - Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Full-chain pre-dispatch eager exits reject; fixture escapes require a syntax preflight
+
+### Material success: outcome and observed evidence
+- Commit `7ea976a9657b6b78dc58271ae1860a567d369696` introduced fifteen synthetic AST negatives for module-level `raise`, `sys.exit`, `os._exit`, `exit`, `quit`, conditional/try exits, dynamic execution, eager class bodies, decorators, function defaults, class bases and lambda defaults before the full-chain CLI dispatch.
+- Correction commit `a3acbdc77a1bea41e651edcb1a4c55ab97393957` fixed the fixture strings. Exact-source Backup Restore Admission Chain run `40053988293` (job `120752746393`) completed SUCCESS and explicitly logged `PASS reject: fifteen full-chain pre-dispatch eager termination substitutions` and `Admission-chain full runner negative validation PASS`. The successful bounded reconcile removed the prior failure diagnostic in bot commit `aa85facea342f12ef3c3b8e75a845f2b98e58e04`.
+- The executable proof is in the existing CI-reachable full-runner negative suite; it does not modify the canonical runner or production authorities.
+
+### Material failure: symptom, evidence, verified root cause, failed approach
+- Initial exact-source run `40053956572` at `7ea976a9` failed. Job `120752645755` logged `SyntaxError: unexpected character after line continuation character` for the synthetic `if True:\\n    raise SystemExit(0)` source, before the new negative cases could complete. This was a fixture error, not a recovery-gate failure.
+- Verified root cause: JavaScript-generated source text double-escaped newline characters inside Python mutation strings. Python received a literal backslash-plus-n instead of an actual newline when `ast.parse` evaluated the fixture.
+- Failed approach to avoid: adapting cross-file AST fixtures without preflighting the resulting Python string escape depth, especially where the same fixture defect has already been recorded in learning.
+
+### Correction, recurrence guard and retry condition
+- Replace all ten double-escaped newline sequences in the inserted mutation fixture block with single-escaped Python newline literals; inspect the generated file content before updating. The correction CI passed.
+- Reusable executable guard: canonical positive AST control plus fifteen exact-diagnostic negative probes, with deferred function bodies excluded and eager decorators/defaults/class bodies included. Add a deterministic fixture-literal syntax preflight before any future multi-line mutation batch; never count an unexpected `SyntaxError` as the intended security rejection.
+- Retry only on exact-source CI regression, a reviewed change to import-time/CLI initialization semantics, or a demonstrated new early-exit bypass. Unchanged external dependencies, workflow-write and clean-worktree blockers retain their own retry conditions.
+
+### Why safe and protected-authority check
+- Only a synthetic negative validator, append-only learning and the CI-owned privacy-safe failure diagnostic lifecycle changed. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, recovery evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Distinct unsuperseded semantically eligible environments, an explicitly human-approved current objective, a current executable reviewed request for new generation evidence, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
