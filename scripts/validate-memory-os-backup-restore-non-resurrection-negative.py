@@ -267,6 +267,7 @@ def main() -> int:
             "domainResult": "PASS",
             "domainProductionField": None,
             "domainFieldMutation": None,
+            "domainSchemaMutation": False,
             "securityReviewer": "reviewer_security",
             "operabilityReviewer": "reviewer_operability",
             "reviewGeneration": "brge_negative_generation",
@@ -280,6 +281,7 @@ def main() -> int:
             "reviewResult": "APPROVED",
             "reviewProductionField": None,
             "reviewFieldMutation": None,
+            "reviewSchemaMutation": False,
             "reviewRefsMutation": None,
             "reviewDigestValueMutation": None,
             "reviewTypeOverride": None,
@@ -319,6 +321,8 @@ def main() -> int:
                     payload.pop("schemaVersion")
                 if mutate_domain and state["domainFieldMutation"] == "EXTRA":
                     payload["unexpectedField"] = False
+                if mutate_domain and state["domainSchemaMutation"]:
+                    payload["schemaVersion"] = "memory-os-backup-restore-non-resurrection-domain-evidence.v0"
                 return payload
             for review_type, prefix in review_prefixes.items():
                 if ref.startswith(prefix):
@@ -355,6 +359,8 @@ def main() -> int:
                         payload.pop("schemaVersion")
                     if mutate_review and state["reviewFieldMutation"] == "EXTRA":
                         payload["unexpectedField"] = False
+                    if mutate_review and state["reviewSchemaMutation"]:
+                        payload["schemaVersion"] = "memory-os-backup-restore-non-resurrection-review-evidence.v0"
                     return payload
             return real_load(path)
 
@@ -658,6 +664,32 @@ def main() -> int:
         state["reviewTarget"] = "BOTH"
         writer.validate_record(valid)
         print("PASS reject: all eight typed domains and both reviews enforce exact payload field sets")
+
+        # Correct field sets cannot excuse obsolete domain/review schema versions.
+        for domain in contract["requiredDomains"]:
+            case = f"domain {domain} evidence obsolete schema version"
+            EXPECTED_DIAGNOSTICS[case] = f"domain {domain} evidence schemaVersion drift"
+            state["domainTarget"] = domain
+            state["domainSchemaMutation"] = True
+            try:
+                expect_rejected(case, lambda: writer.validate_record(valid))
+            finally:
+                state["domainSchemaMutation"] = False
+        state["domainTarget"] = None
+        writer.validate_record(valid)
+        for review_type in ("SECURITY", "OPERABILITY"):
+            case = f"{review_type} review obsolete schema version"
+            EXPECTED_DIAGNOSTICS[case] = f"{review_type} review schemaVersion drift"
+            state["reviewTarget"] = review_type
+            state["reviewSchemaMutation"] = True
+            try:
+                expect_rejected(case, lambda: writer.validate_record(valid))
+            finally:
+                state["reviewSchemaMutation"] = False
+            writer.validate_record(valid)
+        state["reviewTarget"] = "BOTH"
+        writer.validate_record(valid)
+        print("PASS reject: all eight domains and both reviews reject obsolete schema versions")
 
         # The exact bundle/digest checks must reject malformed types and duplicate
         # refs before a superficially approved review can reach candidate admission.
