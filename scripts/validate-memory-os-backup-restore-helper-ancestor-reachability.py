@@ -158,6 +158,20 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     """Bind the independent workflow to its real validator and runtime proofs."""
     require(not re.search(r"(?m)^\s*(?:if|continue-on-error):", workflow_source),
             "ancestor workflow conditional bypass")
+    # An otherwise valid proof can be bypassed by an unreviewed Actions step,
+    # altered checkout/setup action, extra job, or elevated workflow token.
+    job_sections = workflow_source.split("\n"+"jobs:\n")
+    require(len(job_sections) == 2
+            and re.findall(r"(?m)^  [A-Za-z][\w-]*:$", job_sections[1]) == ["  verify:"]
+            and "\npermissions:\n  contents: read\n\njobs:\n" in workflow_source,
+            "ancestor workflow job or permissions drift")
+    expected_actions = "      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n"
+    require(workflow_source.count(expected_actions) == 1,
+            "ancestor workflow checkout/setup drift")
+    expected_headers = ["      - uses: actions/checkout@v4","      - uses: actions/setup-python@v5","      - name: Confirm exact clean source","      - name: Prove seven canonical ancestor negatives remain reachable","      - name: Prove every canonical helper ancestor race from the validator target set","      - name: Prove preflight reconcile helper races without downstream source-binding dependency","      - name: Verify read-only postcondition"]
+    actual_headers = re.findall(r"(?m)^      - (?:uses|name):[^\n]*", workflow_source)
+    require(actual_headers == expected_headers,
+            "ancestor workflow step allowlist drift")
     static_step = """      - name: Prove seven canonical ancestor negatives remain reachable
         run: |
           set -euo pipefail
@@ -775,6 +789,32 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "      - name: Verify read-only postcondition\n        continue-on-error: true\n",
          "ancestor workflow conditional bypass"),
     )
+    cases += (
+        ("      - uses: actions/checkout@v4\n",
+         "      - uses: actions/upload-artifact@v4\n      - uses: actions/checkout@v4\n",
+         "ancestor workflow step allowlist drift"),
+        ("      - name: Verify read-only postcondition\n",
+         "      - name: Synthetic unreviewed command\n        run: echo bypass\n      - name: Verify read-only postcondition\n",
+         "ancestor workflow step allowlist drift"),
+        ("      - uses: actions/setup-python@v5\n",
+         "      - uses: actions/setup-python@v4\n",
+         "ancestor workflow checkout/setup drift"),
+        ("          python-version: \"3.12\"\n",
+         "          python-version: \"3.11\"\n",
+         "ancestor workflow checkout/setup drift"),
+        ("          persist-credentials: false\n",
+         "          persist-credentials: true\n",
+         "ancestor workflow checkout/setup drift"),
+        ("          fetch-depth: 0\n",
+         "          fetch-depth: 1\n",
+         "ancestor workflow checkout/setup drift"),
+        ("permissions:\n  contents: read\n",
+         "permissions:\n  contents: write\n",
+         "ancestor workflow job or permissions drift"),
+        ("jobs:\n  verify:\n",
+         "jobs:\n  synthetic:\n    runs-on: ubuntu-latest\n    steps: []\n  verify:\n",
+         "ancestor workflow job or permissions drift"),
+    )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
                 f"workflow negative anchor not unique: {expected}")
@@ -806,7 +846,7 @@ def main() -> int:
         total += workflow_runtime_negative_cases(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 16, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 24, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
