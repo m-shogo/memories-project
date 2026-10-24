@@ -8,6 +8,9 @@ fixture. It never changes repository files or creates operational evidence.
 from __future__ import annotations
 
 import importlib.util
+import io
+import subprocess
+from contextlib import redirect_stdout
 import tempfile
 from pathlib import Path
 
@@ -114,7 +117,64 @@ def expect_self_symlink_fail(label: str, target: str, expected: str) -> None:
         raise Fail(f"{label}: symlinked runner identity was accepted")
 
 
+
+def prove_full_step_exit_propagation() -> None:
+    """Prove the full-chain parent cannot promote a failed child with PASS stdout."""
+    module = load_target()
+    original_run = module.subprocess.run
+    original_guard = module.enforce_execution_transport
+    relative = "scripts/validate-memory-os-backup-restore-admission-chain-full.py"
+    label = "controlled full-chain child"
+
+    def fixture_transport_guard() -> None:
+        # Only this isolated in-memory test replaces the transport guard.
+        pass
+
+    module.enforce_execution_transport = fixture_transport_guard
+    try:
+        for code, child_stdout, child_stderr in (
+            (0, "child success\n", ""),
+            (7, "child PASS-looking output\n", "controlled child failure\n"),
+            (-9, "", "controlled child signal\n"),
+        ):
+            calls = []
+
+            def controlled_run(argv, **kwargs):
+                calls.append((argv, kwargs))
+                return subprocess.CompletedProcess(argv, code, child_stdout, child_stderr)
+
+            module.subprocess.run = controlled_run
+            output = io.StringIO()
+            with redirect_stdout(output):
+                try:
+                    module.run_step(relative, label,
+                                    canonical_transport_guard=fixture_transport_guard)
+                except module.Fail as exc:
+                    if code == 0:
+                        raise Fail("full-chain successful child was rejected") from exc
+                    require(str(exc) == f"{label} failed with exit code {code}: {relative}",
+                            "full-chain child nonzero exit diagnostic drift")
+                else:
+                    require(code == 0, "full-chain child nonzero exit was accepted")
+            require(len(calls) == 1, "full-chain child subprocess invocation count drift")
+            argv, kwargs = calls[0]
+            require(argv == [module.sys.executable, str(ROOT / relative)],
+                    "full-chain child interpreter/path binding drift")
+            require(kwargs == {
+                "cwd": ROOT, "text": True, "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE, "check": False,
+            }, "full-chain child subprocess capture or execution mode drift")
+            parent_pass = f"PASS chain step: {label}"
+            require((parent_pass in output.getvalue()) is (code == 0),
+                    "full-chain child parent PASS output contradicts exit status")
+    finally:
+        module.subprocess.run = original_run
+        module.enforce_execution_transport = original_guard
+    print("PASS boundary: full-chain child nonzero/signal exits cannot become parent PASS")
+
+
 def main() -> int:
+    prove_full_step_exit_propagation()
     expect_fail(
         "repository root substitution",
         lambda m: setattr(m, "ROOT", ROOT / "scripts"),
