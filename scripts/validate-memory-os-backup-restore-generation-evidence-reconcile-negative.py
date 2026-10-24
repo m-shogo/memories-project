@@ -5,8 +5,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import secrets
 import shutil
+import stat
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
 
@@ -34,23 +38,135 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+@contextmanager
 def guarded_temporary_directory(*, prefix: str, parent: Path):
-    # This negative harness must not create a directory through a symlinked
-    # repository fixture parent, even when its child files are disposable.
+    # Pin every ancestor by descriptor: the checked pathname may be swapped
+    # before mkdir, but the new child must stay beneath the opened directory.
     try:
         relative = parent.relative_to(ROOT)
     except ValueError as exc:
         raise Fail("reconcile negative temp parent escapes repository") from exc
     require(ROOT.is_dir() and not ROOT.is_symlink(),
             "reconcile negative repository root missing or symlinked")
-    cursor = ROOT
-    for part in relative.parts:
-        cursor = cursor / part
-        require(cursor.is_dir() and not cursor.is_symlink(),
-                "reconcile negative temp ancestor missing or symlinked")
-    require(parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
-            "reconcile negative temp parent canonical resolution drift")
-    return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+    require(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")
+        and shutil.rmtree.avoids_symlink_attacks,
+        "reconcile negative pinned fixture directory unsupported",
+    )
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        fd = os.open(ROOT, flags)
+    except OSError as exc:
+        raise Fail(f"reconcile negative cannot pin repository root: {exc}") from exc
+    try:
+        root_entry = ROOT.lstat()
+        root_open = os.fstat(fd)
+        require(
+            stat.S_ISDIR(root_entry.st_mode)
+            and (root_entry.st_dev, root_entry.st_ino) == (root_open.st_dev, root_open.st_ino),
+            "reconcile negative repository root identity drift",
+        )
+        cursor = ROOT
+        for part in relative.parts:
+            cursor = cursor / part
+            require(cursor.is_dir() and not cursor.is_symlink(),
+                    "reconcile negative temp ancestor missing or symlinked")
+            next_fd = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+            entry = cursor.lstat()
+            opened = os.fstat(fd)
+            require(
+                stat.S_ISDIR(entry.st_mode)
+                and (entry.st_dev, entry.st_ino) == (opened.st_dev, opened.st_ino),
+                "reconcile negative temp ancestor identity drift",
+            )
+        require(
+            parent.resolve(strict=True) == ROOT.resolve(strict=True) / relative,
+            "reconcile negative temp parent canonical resolution drift",
+        )
+        pinned = os.fstat(fd)
+        for _ in range(8):
+            name = prefix + secrets.token_hex(8)
+            try:
+                os.mkdir(name, mode=0o700, dir_fd=fd)
+            except FileExistsError:
+                continue
+            break
+        else:
+            raise Fail("reconcile negative temp child exclusive creation exhausted")
+        created = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        try:
+            current = parent.lstat()
+            require(
+                stat.S_ISDIR(current.st_mode)
+                and (current.st_dev, current.st_ino) == (pinned.st_dev, pinned.st_ino),
+                "reconcile negative temp parent identity drift after creation",
+            )
+            require(stat.S_ISDIR(created.st_mode),
+                    "reconcile negative temp child is not a directory")
+            yield str(parent / name)
+        finally:
+            current_child = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            require(
+                stat.S_ISDIR(current_child.st_mode)
+                and (current_child.st_dev, current_child.st_ino) == (created.st_dev, created.st_ino),
+                "reconcile negative temp child identity drift before cleanup",
+            )
+            # Descriptor-relative, symlink-resistant cleanup cannot traverse a
+            # substituted parent pathname. Child inode drift fails closed.
+            shutil.rmtree(name, dir_fd=fd)
+    except OSError as exc:
+        raise Fail(f"reconcile negative pinned fixture operation failed: {exc}") from exc
+    finally:
+        os.close(fd)
+
+
+def prove_parent_swap_during_mkdir_rejected() -> None:
+    # Deterministically substitute only an exclusively owned sandbox parent
+    # after descriptor pinning and before the actual mkdir operation.
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-race-control-", parent=TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        checked = sandbox / "checked"
+        escaped = sandbox / "escaped"
+        parked = sandbox / "parked"
+        checked.mkdir()
+        escaped.mkdir()
+        original_identity = (checked.stat().st_dev, checked.stat().st_ino)
+        original_mkdir = os.mkdir
+        switched = False
+
+        def swap_before_mkdir(name: str, mode: int = 0o777, *, dir_fd: int | None = None) -> None:
+            nonlocal switched
+            if not switched and str(name).startswith(".tmp-generation-evidence-race-") and dir_fd is not None:
+                switched = True
+                checked.rename(parked)
+                checked.symlink_to(escaped, target_is_directory=True)
+            original_mkdir(name, mode=mode, dir_fd=dir_fd)
+
+        os.mkdir = swap_before_mkdir
+        try:
+            try:
+                with guarded_temporary_directory(prefix=".tmp-generation-evidence-race-", parent=checked):
+                    raise Fail("reconcile negative parent swap accepted")
+            except Fail as exc:
+                require(str(exc) == "reconcile negative temp parent identity drift after creation",
+                        f"reconcile negative parent swap rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("reconcile negative parent swap accepted")
+        finally:
+            os.mkdir = original_mkdir
+
+        require(switched, "reconcile negative parent swap probe did not reach pinned mkdir")
+        require(checked.is_symlink() and checked.resolve() == escaped.resolve(),
+                "reconcile negative parent swap did not install isolated redirect")
+        require((parked.stat().st_dev, parked.stat().st_ino) == original_identity,
+                "reconcile negative parent swap changed pinned directory identity")
+        require(not list(escaped.iterdir()), "reconcile negative parent swap published through redirect")
+        require(not list(parked.iterdir()), "reconcile negative parent swap left pinned child")
+        # The enclosing owned context removes all synthetic children; no
+        # unconditional unlink or rename of mutable fixture paths is needed.
+    print("PASS: reconcile negative parent swap during mkdir stays pinned and fails closed")
 
 
 def mode(path: Path) -> int:
@@ -231,6 +347,7 @@ def main() -> int:
         require(sorted(p.name for p in sandbox.iterdir()) == before,
                 "reconcile negative symlinked parent created a child")
     print("PASS: reconcile negative temp parent symlink rejected before creation")
+    prove_parent_swap_during_mkdir_rejected()
     reconciler = load_reconciler()
 
     prove_direct_authority_identity(reconciler)
