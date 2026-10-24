@@ -4848,3 +4848,23 @@ a promotion decision, a recovery objective, or drill evidence.
 ### Why safe, reusable mechanism and protected-authority check
 - Only learning and entry-docs validators plus append-only learning were modified. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, approved objectives, executable requests, recovery evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
 - Preflight still requires unsuperseded semantically eligible generations from distinct environments plus a human-approved current objective; new evidence requires a current executable reviewed request; final candidates require complete typed eight-domain non-resurrection coverage and independent review; human promotion remains separate and non-automatic. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-24 — Typed non-resurrection admission CLI main binding is independently guarded
+
+### Material success: outcome and observed evidence
+- Commit `9be561a986b7eda82630aa760f3d132d7030c94c` extends the existing typed non-resurrection transport-negative suite with a canonical AST positive control and thirteen diagnostic-specific negatives for `main` assignment, tuple rebinding, import alias, dead branch, dynamic namespace mutation, `exec`, class/async/duplicate definitions and decorators.
+- Exact-source Backup Restore Non-Resurrection Readonly run `40055052695` (job `120756095481`) completed SUCCESS. Logs explicitly show `PASS reject: thirteen typed admission main rebinding/decorator substitutions`, `Typed non-resurrection execution/registry/reconcile transport negative suite PASS` and `production decision: NO_GO`.
+- The existing canonical CI path executes the suite; no separate production authority was created.
+
+### Symptom/risk, verified coverage gap and failed approach
+- Risk: the typed admission module can retain a correct-looking `main(canonical_execution_guard=...)` while a later module-level assignment or dynamic write replaces the callable invoked by `python script.py`. No production incident or observed successful bypass occurred.
+- Verified gap: previous typed transport negatives protected the child `run_validator` binding and exercised runtime transport substitution but did not verify the module-level `main` binding.
+- Failed approach to avoid: treating runtime guard identity or the original main function text as sufficient proof that the actual CLI symbol cannot be replaced.
+
+### Correction, executable recurrence guard and retry condition
+- Require exactly one synchronous undecorated typed admission `main` with the canonical default-bound execution guard argument, reject static/dynamic symbol rebinding and require exact diagnostics for thirteen AST mutations.
+- Retry only after exact-source CI regression, reviewed legitimate typed admission architecture changes or a demonstrated new main-binding bypass. Unchanged clean-worktree, external evidence and workflow-write blockers retain their recorded retry conditions.
+
+### Why safe, reusable mechanism and protected-authority check
+- Only an existing synthetic negative harness and append-only learning were modified. Production Status blob `ce67e9353d6583e4eaf792470563cad25a7396b3` remains NO_GO; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked with zero registered/eligible generations, objectives, executable requests, generation evidence, typed records and final candidates; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` is unchanged.
+- Distinct unsuperseded semantically eligible environments, a human-approved current objective, current executable reviewed request for new evidence, complete typed eight-domain non-resurrection coverage, independent review and separate non-automatic human promotion remain mandatory. Learning/CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
