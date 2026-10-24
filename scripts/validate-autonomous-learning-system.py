@@ -187,6 +187,12 @@ def validate(repo_root: Path) -> None:
                     and not node.value.args and not node.value.keywords):
                 return True
             if isinstance(node, ast.Call):
+                # An immediately invoked lambda executes its body now, unlike
+                # a bare lambda expression or a deferred generator body.
+                if isinstance(node.func, ast.Lambda) and binds(
+                    node.func.body, class_local=class_local
+                ):
+                    return True
                 if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
                     if not node.args or not isinstance(node.args[0], ast.Constant):
                         return True
