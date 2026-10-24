@@ -152,6 +152,9 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
         ))
         require(set(targets) == triggered,
                 "ancestor target matrix workflow trigger drift")
+        require(section.group("body").count(
+            '      - ".github/workflows/autonomous-learning-guard.yml"\n'
+        ) == 1, "ancestor independent learning workflow trigger drift")
 
 
 def validate_workflow_runtime_reachability(workflow_source: str) -> None:
@@ -776,6 +779,15 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
     wrong_branch = workflow_source.replace(
         "    branches: [so]\n", "    branches: [main]\n", 1
     )
+    learning_anchor = '      - ".github/workflows/autonomous-learning-guard.yml"\n'
+    require(workflow_source.count(learning_anchor) == 2,
+            "ancestor learning trigger fixture must cover push and pull_request")
+    untriggered_learning_push = workflow_source.replace(learning_anchor, "", 1)
+    last_learning_trigger = workflow_source.rfind(learning_anchor)
+    untriggered_learning_pr = (
+        workflow_source[:last_learning_trigger]
+        + workflow_source[last_learning_trigger + len(learning_anchor):]
+    )
     cases = (
         (dropped, workflow_source,
          "ancestor target matrix below seven canonical harnesses"),
@@ -787,6 +799,10 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
          "ancestor target matrix workflow trigger drift"),
         (TARGETS, wrong_branch,
          "ancestor workflow so push trigger drift"),
+        (TARGETS, untriggered_learning_push,
+         "ancestor independent learning workflow trigger drift"),
+        (TARGETS, untriggered_learning_pr,
+         "ancestor independent learning workflow trigger drift"),
     )
     for targets, workflow, expected in cases:
         try:
@@ -958,7 +974,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 45, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 47, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
