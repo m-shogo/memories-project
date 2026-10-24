@@ -155,6 +155,16 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
         require(section.group("body").count(
             '      - ".github/workflows/autonomous-learning-guard.yml"\n'
         ) == 1, "ancestor independent learning workflow trigger drift")
+        all_paths = set(re.findall(r'^      - "([^"]+)"
+, section.group("body"), flags=re.MULTILINE))
+        required_authority_paths = {
+            ".github/workflows/backup-restore-helper-ancestor-reachability.yml",
+            ".github/workflows/autonomous-learning-guard.yml",
+            "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py",
+        }
+        require(all_paths - {f"scripts/{filename}" for filename in targets}
+                == required_authority_paths,
+                "ancestor workflow authority trigger drift")
 
 
 def validate_workflow_runtime_reachability(workflow_source: str) -> None:
@@ -256,6 +266,18 @@ def validate_independent_learning_workflow(source: str) -> None:
     expected_harnesses = {f"scripts/{filename}" for filename in TARGETS}
     require(triggered_harnesses == expected_harnesses,
             "independent learning workflow target trigger drift")
+    required_authority_paths = {
+        ".github/workflows/autonomous-learning-guard.yml",
+        ".github/workflows/backup-restore-helper-ancestor-reachability.yml",
+        "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py",
+        "contracts/operations/autonomous-learning-system.json",
+        "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
+        "scripts/validate-autonomous-learning-system.py",
+        "scripts/validate-autonomous-learning-system-negative.py",
+        "scripts/validate-memory-os-entry-docs.py",
+    }
+    require(paths - triggered_harnesses == required_authority_paths,
+            "independent learning workflow source trigger drift")
     require(source.count("      - name: Validate learning contract and executable negatives\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-autonomous-learning-system.py\n          python -B scripts/validate-autonomous-learning-system-negative.py\n          python -B scripts/validate-memory-os-entry-docs.py\n") == 1,
             "independent learning workflow learning validation drift")
     require(source.count("      - name: Independently enforce helper ancestor runtime workflow reachability\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n") == 1,
@@ -831,6 +853,20 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
         (TARGETS, untriggered_learning_pr,
          "ancestor independent learning workflow trigger drift"),
     )
+    authority_path = '      - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"\n'
+    validator_path = '      - "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"\n'
+    require(workflow_source.count(authority_path) == 2 and workflow_source.count(validator_path) == 2,
+            "ancestor authority trigger negative anchor missing")
+    cases += (
+        (TARGETS, workflow_source.replace(authority_path, "", 1),
+         "ancestor workflow authority trigger drift"),
+        (TARGETS, workflow_source[:workflow_source.rfind(validator_path)]
+         + workflow_source[workflow_source.rfind(validator_path) + len(validator_path):],
+         "ancestor workflow authority trigger drift"),
+        (TARGETS, workflow_source.replace(authority_path,
+         authority_path + '      - "scripts/synthetic-unreviewed-trigger.py"\n', 1),
+         "ancestor workflow authority trigger drift"),
+    )
     for targets, workflow, expected in cases:
         try:
             validate_target_matrix(targets, workflow)
@@ -1009,6 +1045,11 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("  group: autonomous-learning-guard-${{ github.sha }}\n", "  group: synthetic-unreviewed\n", "independent learning workflow concurrency drift"),
         ("    timeout-minutes: 10\n    steps:\n", "    timeout-minutes: 10\n    concurrency:\n      group: synthetic-unreviewed\n    steps:\n", "independent learning workflow job execution drift"),
     )
+    cases += (
+        ('      - "scripts/validate-autonomous-learning-system.py"\n', "", "independent learning workflow source trigger drift"),
+        ('      - "scripts/validate-autonomous-learning-system-negative.py"\n', "", "independent learning workflow source trigger drift"),
+        ('      - "scripts/validate-memory-os-entry-docs.py"\n', "", "independent learning workflow source trigger drift"),
+    )
     for original, replacement, expected in cases:
         require(source.count(original) == 1,
                 f"independent workflow negative anchor not unique: {expected}")
@@ -1045,7 +1086,7 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 79, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 85, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
