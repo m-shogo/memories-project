@@ -1200,8 +1200,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
     check_case(-9, "", "controlled signal termination\n")
     print("PASS boundary: typed child nonzero/signal exits reject even with PASS stdout")
 
-def main() -> int:
-    require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
+def prove_typed_transport_fixture_parent_guard() -> None:
     with guarded_temporary_directory(".tmp-typed-transport-parent-negative-", TEMP_PARENT) as raw:
         sandbox = Path(raw)
         link = sandbox / "redirect"
@@ -1218,6 +1217,10 @@ def main() -> int:
         require(sorted(p.name for p in sandbox.iterdir()) == before,
                 "typed transport symlinked temp parent published a child")
     print("PASS: typed transport fixture reuses checked parent guard")
+
+
+def main() -> int:
+    require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
     prove_typed_admission_main_reachability()
     prove_typed_admission_child_reachability()
     prove_typed_admission_candidate_derivation()
@@ -1260,6 +1263,7 @@ def main() -> int:
 
     exercise_registry_transaction_transport()
     exercise_reconciler_transaction_transport()
+    prove_typed_transport_fixture_parent_guard()
 
     print("Typed non-resurrection execution/registry/reconcile transport negative suite PASS")
     print("subprocess/import loader/guard substitution accepted: false")
