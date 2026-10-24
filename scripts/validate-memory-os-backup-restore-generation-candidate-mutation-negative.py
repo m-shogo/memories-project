@@ -124,15 +124,35 @@ def guarded_temporary_directory(prefix: str, parent: Path):
     return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
 
 
+def ensure_transient_parent(parent: Path) -> tuple[int, int]:
+    # Existing parents must be canonical. Missing parents may be created only
+    # one level below an already checked repository directory.
+    if parent.exists() or parent.is_symlink():
+        return canonical_parent_identity(parent)
+    expected = canonical_parent_identity(parent.parent)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    parent_fd = os.open(parent.parent, flags)
+    try:
+        actual = os.fstat(parent_fd)
+        require((actual.st_dev, actual.st_ino) == expected,
+                "candidate transient mkdir parent identity drift")
+        try:
+            os.mkdir(parent.name, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+    finally:
+        os.close(parent_fd)
+    return canonical_parent_identity(parent)
+
+
 def repo_ref(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
 
 def transient_path(prefix: str, suffix: str) -> Path:
     prefix_path = ROOT / prefix
-    prefix_path.parent.mkdir(parents=True, exist_ok=True)
-    # Reject symlinked evidence ancestors before publishing any temporary leaf.
-    canonical_parent_identity(prefix_path.parent)
+    # Do not mkdir through an unchecked symlinked evidence ancestor.
+    expected_parent = ensure_transient_parent(prefix_path.parent)
     handle = tempfile.NamedTemporaryFile(
         mode="w",
         prefix=prefix_path.name,
@@ -144,6 +164,8 @@ def transient_path(prefix: str, suffix: str) -> Path:
     path = Path(handle.name)
     try:
         parent_identity = canonical_parent_identity(path.parent)
+        require(parent_identity == expected_parent,
+                "candidate transient parent changed after publication")
         leaf = os.fstat(handle.fileno())
         require_owned = path.lstat()
         require(stat.S_ISREG(require_owned.st_mode)
@@ -267,6 +289,27 @@ def main() -> int:
             require(sorted(child.name for child in tmp_path.iterdir()) == before,
                     "symlinked temp parent left a temporary child")
             print("PASS: temporary directory parent symlink rejected before publication")
+
+            # The review evidence prefix may require one new directory.
+            # Prove safe single-child creation and rejection of a symlinked
+            # ancestor before it can redirect mkdir outside the fixture.
+            safe_child = tmp_path / "safe-new-evidence-parent"
+            require(ensure_transient_parent(safe_child) == canonical_parent_identity(safe_child),
+                    "canonical evidence parent creation did not preserve identity")
+            require(safe_child.is_dir() and not safe_child.is_symlink(),
+                    "canonical evidence parent creation did not create a real directory")
+            symlink_child = tmp_path / "redirected-evidence-parent"
+            symlink_child.symlink_to(safe_child, target_is_directory=True)
+            try:
+                ensure_transient_parent(symlink_child / "must-not-create")
+            except Fail as exc:
+                require(str(exc) == "candidate transient ancestor missing or symlinked",
+                        f"symlinked evidence mkdir rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("symlinked evidence mkdir was accepted")
+            require(not (safe_child / "must-not-create").exists(),
+                    "symlinked evidence mkdir created a child outside its declared parent")
+            print("PASS: evidence parent mkdir rejects symlinked ancestor before side effect")
 
             generation_registry = tmp_path / "generations.json"
             objectives_registry = tmp_path / "objectives.json"
