@@ -233,7 +233,9 @@ def expect_bound_field_fail(module, field: str, role: str) -> None:
     expect_review_payload_fail(module, payload, f"{role} authority mismatch: {field}", f"{field} mismatch", role)
 
 
-def expect_contract_fail(module, mutate, label: str) -> None:
+def expect_contract_fail(module, mutate, label: str, expected: str) -> None:
+    # A valid canonical contract must pass before and after every isolated mutation.
+    module.validate_contract_authority()
     canonical = json.loads(module.CONTRACT.read_text(encoding="utf-8"))
     mutated = json.loads(json.dumps(canonical))
     mutate(mutated)
@@ -242,11 +244,14 @@ def expect_contract_fail(module, mutate, label: str) -> None:
         module.load_json = lambda path, field: mutated if path == module.CONTRACT else original_load_json(path, field)
         try:
             module.validate_contract_authority()
-        except module.Fail:
-            return
-        raise Fail(f"contract authority negative unexpectedly passed: {label}")
+        except module.Fail as exc:
+            require(str(exc) == expected,
+                    f"contract authority negative rejected at wrong boundary ({label}): {exc}")
+        else:
+            raise Fail(f"contract authority negative unexpectedly passed: {label}")
     finally:
         module.load_json = original_load_json
+    module.validate_contract_authority()
 
 
 def expect_source_order_execution(module) -> None:
@@ -473,15 +478,69 @@ def main() -> int:
                                    "schemaVersion drift", role)
         expect_review_payload_pass(module, role)
 
-    expect_contract_fail(module, lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"), "required review field removed")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("independentReviewMustBindRecoveryObjectivesId", False), "binding rule disabled")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("candidateDerivationMustUseTypedIndependentReviewAuthority", False), "candidate review authority delegation disabled")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("independentReviewMustBeCreatedStrictlyAfterSourceCommit", False), "independent review source chronology disabled")
-    expect_contract_fail(module, lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustBeCreatedStrictlyAfterSourceCommit", False), "material-delta review source chronology disabled")
-    expect_contract_fail(module, lambda contract: contract["promotionBoundary"].__setitem__("completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews", False), "independent review promotion boundary disabled")
-    expect_contract_fail(module, lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"), "candidate material-delta validator substituted")
-    expect_contract_fail(module, lambda contract: contract.__setitem__("reviewSourceOrderValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"), "candidate review source-order validator substituted")
-    expect_contract_fail(module, lambda contract: contract["independentReviewRoles"].__setitem__("securityReviewRef", "OPERABILITY"), "review role map substituted")
+    expect_contract_fail(
+        module, lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"),
+        "required review field removed", "independent review required field authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract["requiredIndependentReviewEvidenceFields"].append("drillRequestId"),
+        "duplicate required review field", "independent review required field authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract["requiredIndependentReviewEvidenceFields"].append("unexpectedField"),
+        "unexpected required review field", "independent review required field authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract.__setitem__("independentReviewEvidenceSchemaVersion", "memory-os-backup-restore-generation-review-evidence.v0"),
+        "review schema authority downgraded", "independent review evidence schema authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract.__setitem__("independentReviewEvidenceRoot", "docs/evidence"),
+        "review namespace widened", "independent review evidence root authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"),
+        "candidate material-delta validator substituted", "candidate material-delta review validator authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract.__setitem__("reviewSourceOrderValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"),
+        "candidate review source-order validator substituted", "candidate review source-order validator authority drift",
+    )
+    expect_contract_fail(
+        module, lambda contract: contract["independentReviewRoles"].__setitem__("securityReviewRef", "OPERABILITY"),
+        "review role map substituted", "independent review role authority drift",
+    )
+    required_rules = (
+        "independentSecurityAndOperabilityReviewsRequired",
+        "typedIndependentReviewEvidenceRequired",
+        "candidateDerivationMustUseTypedIndependentReviewAuthority",
+        "independentReviewEvidenceMustRemainInsideMonitoredNamespace",
+        "independentReviewRoleMustMatchReference",
+        "independentReviewMustBeApproved",
+        "independentReviewReviewerPseudonymsMustBeDistinct",
+        "independentReviewPayloadMustRemainAppendOnlyAfterFirstCommit",
+        "independentReviewMustBeCreatedStrictlyAfterSourceCommit",
+        "crossGenerationMaterialDeltaReviewMustBeCreatedStrictlyAfterSourceCommit",
+        "independentReviewCannotAuthorizeAutomaticPromotion",
+    )
+    for rule in required_rules:
+        expect_contract_fail(
+            module, lambda contract, rule=rule: contract["recordRules"].__setitem__(rule, False),
+            f"mandatory independent review rule disabled: {rule}",
+            f"independent review contract rule drift: {rule}",
+        )
+    for field, rule in module.BOUND_RULE_BY_FIELD.items():
+        expect_contract_fail(
+            module, lambda contract, rule=rule: contract["recordRules"].__setitem__(rule, False),
+            f"mandatory independent review binding disabled: {field}",
+            f"independent review binding rule drift: {field}",
+        )
+    expect_contract_fail(
+        module, lambda contract: contract["promotionBoundary"].__setitem__(
+            "completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews", False
+        ),
+        "independent review promotion boundary disabled", "independent review promotion boundary drift",
+    )
 
     original_history = module.git_history
     try:
