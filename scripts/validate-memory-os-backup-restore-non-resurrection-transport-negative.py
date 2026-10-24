@@ -41,7 +41,8 @@ def load_module(path: Path, name: str):
 
 
 def guarded_temporary_directory(prefix: str, parent: Path):
-    require(PATH_NEGATIVE.is_file(), "typed contract path fixture guard missing")
+    require(PATH_NEGATIVE.is_file() and not PATH_NEGATIVE.is_symlink(),
+            "typed contract path fixture guard missing or symlinked")
     module = load_module(PATH_NEGATIVE, "memory_os_typed_path_fixture_guard_transport")
     require(callable(getattr(module, "guarded_temporary_directory", None)),
             "typed contract path fixture guard callable missing")
@@ -49,6 +50,31 @@ def guarded_temporary_directory(prefix: str, parent: Path):
         return module.guarded_temporary_directory(prefix, parent)
     except module.Fail as exc:
         raise Fail(str(exc)) from exc
+
+
+
+def prove_helper_source_symlink_rejected() -> None:
+    # Reject a symlinked shared fixture helper before import, independently of parent checks.
+    global PATH_NEGATIVE
+    with tempfile.TemporaryDirectory(prefix="typed-transport-helper-source-") as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real-helper.py"
+        real.touch()
+        link = sandbox / "helper.py"
+        link.symlink_to(real)
+        original = PATH_NEGATIVE
+        try:
+            PATH_NEGATIVE = link
+            try:
+                guarded_temporary_directory(".tmp-must-not-create-", TEMP_PARENT)
+            except Fail as exc:
+                require(str(exc) == "typed contract path fixture guard missing or symlinked",
+                        f"typed transport fixture helper rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("typed transport symlinked fixture helper accepted")
+        finally:
+            PATH_NEGATIVE = original
+    print("PASS: typed transport fixture helper symlink rejected before import")
 
 
 def load_validator():
@@ -1220,6 +1246,7 @@ def prove_typed_transport_fixture_parent_guard() -> None:
 
 
 def main() -> int:
+    prove_helper_source_symlink_rejected()
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
     prove_typed_admission_main_reachability()
     prove_typed_admission_child_reachability()
