@@ -54,19 +54,15 @@ jobs:
           python -m py_compile scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
           python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py
           python scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative
-      - name: Prove six other helper ancestor races without downstream admission dependencies
+      - name: Prove every canonical helper ancestor race from the validator target set
         run: |
           set -euo pipefail
           python - <<'PY'
           import runpy
-          for filename in (
-              "validate-memory-os-backup-restore-non-resurrection-load-negative.py",
-              "validate-memory-os-backup-restore-generation-evidence-load-negative.py",
-              "validate-memory-os-backup-restore-non-resurrection-transport-negative.py",
-              "validate-memory-os-backup-restore-generation-binding-negative.py",
-              "validate-memory-os-backup-restore-drill-request-reconcile-negative.py",
-              "validate-memory-os-backup-restore-admission-chain-reconcile-negative.py",
-          ):
+          targets = runpy.run_path(
+              "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
+          )["TARGETS"]
+          for filename in targets:
               proof = runpy.run_path(f"scripts/{filename}")
               proof["prove_helper_ancestor_swap_during_fd_walk_rejected"]()
           PY
@@ -80,8 +76,7 @@ jobs:
               "prove_helper_source_symlink_rejected",
               "prove_helper_source_swap_during_import_is_pinned",
               "prove_helper_parent_swap_after_pin_uses_original_source",
-              "prove_helper_ancestor_swap_during_fd_walk_rejected",
-          ):
+                        ):
               proof[name]()
           PY
       - name: Verify read-only postcondition
