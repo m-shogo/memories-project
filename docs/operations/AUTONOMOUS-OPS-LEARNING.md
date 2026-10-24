@@ -4527,3 +4527,26 @@ a promotion decision, a recovery objective, or drill evidence.
 - Correction: commit `2c5a504` replaces all ten double-escaped sequences with single source-level newline escapes. The post-write preflight verified ten correct escapes and zero doubled escapes.
 - Recurrence guard: inspect the final generated Python source and require both zero doubled newline escapes and a parseable positive fixture before committing. The existing exact-diagnostic negative assertions additionally reject syntax-error masking instead of counting it as a valid security rejection.
 - Retry condition: revisit only on a concrete exact-source CI regression, a reviewed legitimate writer module-binding change or a demonstrated new namespace rebinding bypass. Do not retry unchanged source-binding clean-worktree or external permission blockers.
+
+## 2026-10-24 — Eager class and definition expressions are import-time execution
+
+### Outcome
+- Commit `25934ba15776a46459227e63edffa8af9a05fd79` extends the existing typed writer CLI negative with six AST-bound rejection probes for class-body exit/raise, decorator execution, function default evaluation, class base evaluation and lambda default evaluation before final CLI dispatch.
+- Deferred function/method bodies remain exempt from this import-time check; class bodies and eager definition expressions are inspected instead.
+
+### Evidence
+- Independent local Python AST controls accepted a canonical guarded dispatch and deferred function/method bodies, while rejecting all six eager-execution substitutions. The committed source contains twelve correct fixture newline escapes and zero double-escaped newline sequences.
+- Exact-source GitHub workflow-run discovery for `25934ba` returned no runs at recording time. The result is local AST proof plus repository structural inspection, **not** a claimed Canonical CI success.
+- GitHub compare from run-start `c14ae1c5` to `25934ba` changed only the existing synthetic negative validator and append-only learning log; no protected authority paths were changed.
+
+### Why safe
+- No actual typed writer, generation/objective/drill/evidence registry, production status, recovery snapshot, credential, traffic, readiness or promotion authority was written.
+- `productionDecision=NO_GO` remains mandatory. OPS-P0-007 still requires unsuperseded semantically eligible generations from distinct environments, a current human-approved recovery objective, a current executable reviewed drill request for new generation evidence, complete typed eight-domain non-resurrection coverage, independent review and separate human promotion.
+
+### Reusable mechanism
+- Static CLI reachability checks must distinguish deferred function bodies from eagerly executed decorators, default arguments, class bases and class bodies. A final valid `__main__` block alone cannot prove those earlier expressions will not terminate the process.
+- Maintain a positive AST control, precise negative diagnostics and source-level fixture-escape preflight before committing. Do not treat a synthetic guard or learning history as production evidence or readiness.
+
+### Protected-authority check and retry condition
+- Protected authorities did not drift in the observed compare; the autonomous-learning contract blob remains `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`. Learning remains append-only and separate from production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness and promotion gates.
+- Retry only on observed exact-source CI failure, reviewed legitimate import-time architecture change or demonstrated new eager-execution bypass. Do not retry the unchanged source-binding clean-worktree or scoped external permission blockers.
