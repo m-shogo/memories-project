@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -182,11 +185,107 @@ def runtime_proofs() -> None:
     print("PASS: local migration recovery branch/SHA runtime (18 cases)")
 
 
+
+def require_diagnostic_payload(raw: str) -> None:
+    require("CANARY_DO_NOT_PERSIST_LOCAL_RECOVERY" not in raw,
+            "local recovery diagnostic persisted sensitive canary")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit("local migration recovery CI source guard: diagnostic invalid JSON") from exc
+    require(isinstance(value, dict), "local recovery diagnostic root must be object")
+    require(set(value) == {
+        "schemaVersion", "workflow", "sourceCommitSha", "failureStage",
+        "result", "exitCode", "output", "containsSecrets", "productionTraffic",
+        "productionCredentials", "productionEvidence", "productionReady",
+    }, "local recovery diagnostic field inventory drift")
+    require(value.get("schemaVersion") == "memory-os-validator-diagnostic.v1",
+            "local recovery diagnostic schema drift")
+    require(value.get("workflow") == "local-migration-recovery-artifact"
+            and value.get("result") == "FAIL",
+            "local recovery diagnostic identity drift")
+    require(value.get("sourceCommitSha") == "e" * 40
+            and value.get("failureStage") == "actual-recovery-artifact"
+            and value.get("exitCode") == 23,
+            "local recovery diagnostic source/stage/exit drift")
+    require(value.get("output") == "REDACTED: local migration recovery failed; raw output withheld",
+            "local recovery diagnostic raw output not redacted")
+    for field in ("containsSecrets", "productionTraffic", "productionCredentials",
+                  "productionEvidence", "productionReady"):
+        require(value.get(field) is False, "local recovery diagnostic unsafe flag: " + field)
+
+
+def diagnostic_runtime(publisher: str) -> None:
+    marker = "      - name: Record privacy-safe diagnostic\n"
+    require(publisher.count(marker) == 1, "local recovery diagnostic step not unique")
+    section = publisher.split(marker, 1)[1]
+    start, end = "          python - <<'PY'\n", "          PY\n"
+    require(section.count(start) == 1 and section.count(end) >= 1,
+            "local recovery inline diagnostic writer not unique")
+    inline = section.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    redacted = "'REDACTED: local migration recovery failed; raw output withheld'"
+    require(script.count(redacted) == 1, "local recovery diagnostic redaction marker not unique")
+    require(script.count("'productionReady': False") == 1,
+            "local recovery diagnostic readiness marker not unique")
+    with tempfile.TemporaryDirectory(prefix="local-recovery-diagnostic-proof-") as temp:
+        root = Path(temp)
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_SHA": "e" * 40,
+            "EXIT_CODE": "23",
+            "FAILURE_STAGE": "actual-recovery-artifact",
+            "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_LOCAL_RECOVERY",
+        })
+        variants = (
+            ("reviewed", script, True, None),
+            ("raw canary", script.replace(redacted, "os.environ['SENSITIVE_CANARY']", 1),
+             False, "persisted sensitive canary"),
+            ("readiness promotion", script.replace("'productionReady': False", "'productionReady': True", 1),
+             False, "unsafe flag: productionReady"),
+            ("traffic promotion", script.replace("'productionTraffic': False", "'productionTraffic': True", 1),
+             False, "unsafe flag: productionTraffic"),
+            ("credential promotion", script.replace("'productionCredentials': False", "'productionCredentials': True", 1),
+             False, "unsafe flag: productionCredentials"),
+            ("evidence promotion", script.replace("'productionEvidence': False", "'productionEvidence': True", 1),
+             False, "unsafe flag: productionEvidence"),
+            ("unreviewed field", script.replace("'productionReady': False,",
+                "'productionReady': False,\n    'rawSql': 'SELECT 1',", 1),
+             False, "diagnostic field inventory drift"),
+            ("array root", script.replace("json.dumps(value, indent=2)",
+                "json.dumps([value], indent=2)", 1),
+             False, "diagnostic root must be object"),
+            ("invalid JSON", script.replace("json.dumps(value, indent=2)",
+                "'{invalid json'", 1),
+             False, "diagnostic invalid JSON"),
+        )
+        for name, program, allowed, expected_failure in variants:
+            directory = root / name.replace(" ", "-")
+            directory.mkdir()
+            result = subprocess.run([sys.executable, "-c", program], cwd=directory, env=env,
+                                    capture_output=True, text=True, timeout=15, check=False)
+            require(result.returncode == 0, "local recovery diagnostic writer failed in isolation: " + name)
+            require("CANARY_DO_NOT_PERSIST_LOCAL_RECOVERY" not in result.stdout + result.stderr,
+                    "local recovery diagnostic leaked canary to process output")
+            path = directory / "docs/fixtures/memory-os-operability/local-migration-recovery-artifact-diagnostic.last.json"
+            require(path.is_file() and not path.is_symlink(), "local recovery diagnostic output missing")
+            try:
+                require_diagnostic_payload(path.read_text(encoding="utf-8"))
+            except SystemExit as exc:
+                require(not allowed, "local recovery reviewed diagnostic rejected")
+                require(expected_failure is not None and expected_failure in str(exc),
+                        "local recovery diagnostic rejected for wrong reason: " + name + ": " + str(exc))
+            else:
+                require(allowed, "local recovery diagnostic accepted unsafe mutation: " + name)
+    print("PASS: local recovery actual diagnostic writer (1 positive, 8 negative runtime cases)")
+
+
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
+    diagnostic_runtime(publisher)
     return 0
 
 
