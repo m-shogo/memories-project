@@ -6,6 +6,8 @@ on:
       - so
     paths:
       - ".github/workflows/production-shaped-failure-drills.yml"
+      - ".github/workflows/production-shaped-failure-drills-source-negative.yml"
+      - "scripts/validate-memory-os-production-shaped-failure-drill-workflow-source-negative.py"
       - "contracts/operations/requests/production-shaped-failure-drill-foundation.v1.json"
       - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
       - "contracts/operations/production-shaped-failure-drill-registry.v1.json"
@@ -25,8 +27,12 @@ on:
       - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-production-shaped-failure-drills.py"
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/production-shaped-failure-drills.yml"
+      - ".github/workflows/production-shaped-failure-drills-source-negative.yml"
+      - "scripts/validate-memory-os-production-shaped-failure-drill-workflow-source-negative.py"
       - "contracts/operations/requests/production-shaped-failure-drill-foundation.v1.json"
       - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
       - "contracts/operations/production-shaped-failure-drill-registry.v1.json"
@@ -62,18 +68,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Verify exact clean PR source
         run: |
           set -euo pipefail
+          test "${GITHUB_EVENT_NAME:-}" = "pull_request"
+          test "${GITHUB_BASE_REF:-}" = "so"
           expected="${{ github.event.pull_request.head.sha }}"
-          test -n "$expected"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
-      - uses: actions/setup-python@v5
+          python scripts/validate-memory-os-production-shaped-failure-drill-workflow-source-negative.py
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Reconcile and validate drill admission read-only
@@ -102,26 +112,30 @@ jobs:
             contracts/operations/production-operability-status.json
 
   validate-and-publish:
-    if: github.event_name != 'pull_request'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     permissions:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: true
       - name: Capture exact validation source
         id: source
         run: |
           set -euo pipefail
-          expected="${{ github.sha }}"
-          test -n "$expected"
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          expected="${GITHUB_SHA:-}"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+          python scripts/validate-memory-os-production-shaped-failure-drill-workflow-source-negative.py
           echo "sha=$expected" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Reconcile and validate drill admission
@@ -152,10 +166,10 @@ jobs:
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "Production-shaped drill validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
       - name: Commit bounded drill admission authority
-        if: steps.drills.outputs.exit_code == '0'
+        if: steps.drills.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
@@ -180,7 +194,7 @@ jobs:
           }
           git push origin HEAD:so
       - name: Record privacy-safe diagnostic
-        if: steps.drills.outputs.exit_code != '0'
+        if: steps.drills.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           DRILL_EXIT_CODE: ${{ steps.drills.outputs.exit_code }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
@@ -194,14 +208,13 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/production-shaped-failure-drills.log').read_text(encoding='utf-8', errors='replace')
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'production-shaped-failure-drills',
               'result': 'FAIL',
               'exitCode': int(os.environ['DRILL_EXIT_CODE']),
               'sourceCommitSha': os.environ['SOURCE_SHA'],
-              'output': text[-12000:],
+              'output': 'REDACTED: production-shaped drill validation failed; raw output withheld',
               'containsSecrets': False,
               'registeredDrillCount': 0,
               'productionEvidence': False,
