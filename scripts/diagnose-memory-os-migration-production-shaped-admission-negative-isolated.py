@@ -115,11 +115,39 @@ def verify_source() -> int:
         except SystemExit:
             continue
         raise SystemExit("migration isolation source guard accepted weakened mutation")
-    print("PASS: isolated migration-negative workflow source and five fail-closed mutations")
+    with tempfile.TemporaryDirectory(prefix="migration-negative-inner-guard-") as directory:
+        stage_path = Path(directory) / "stage"
+        for case in ("missing capability", "mismatched layout"):
+            env = os.environ.copy()
+            env.pop("MIGRATION_NEGATIVE_DISPOSABLE_CLONE", None)
+            env.pop("MIGRATION_NEGATIVE_DISPOSABLE_STAGE", None)
+            if case == "mismatched layout":
+                env["MIGRATION_NEGATIVE_DISPOSABLE_CLONE"] = str(ROOT.resolve(strict=True))
+                env["MIGRATION_NEGATIVE_DISPOSABLE_STAGE"] = str(stage_path)
+            result = subprocess.run([sys.executable, str(ROOT / SELF), "--inner", str(stage_path)],
+                                    cwd=ROOT, env=env, capture_output=True, text=True, timeout=15, check=False)
+            require(result.returncode != 0 and not stage_path.exists(),
+                    "unscoped inner execution mutated canonical checkout: " + case)
+    print("PASS: isolated migration-negative workflow source, five mutations, two inner containment negatives")
     return 0
 
 
+def require_disposable_inner(stage_path: Path) -> None:
+    """Reject accidental direct execution of destructive negatives in the canonical checkout."""
+    clone = os.environ.get("MIGRATION_NEGATIVE_DISPOSABLE_CLONE", "")
+    stage = os.environ.get("MIGRATION_NEGATIVE_DISPOSABLE_STAGE", "")
+    require(bool(clone and stage), "inner requires disposable clone capability")
+    require(Path(clone).is_absolute() and Path(stage).is_absolute(), "inner capability paths must be absolute")
+    require(stage_path == Path(stage), "inner stage capability mismatch")
+    require(ROOT.resolve(strict=True) == Path(clone).resolve(strict=True), "inner clone capability mismatch")
+    require(stage_path.parent.resolve(strict=True) == ROOT.parent.resolve(strict=True),
+            "inner stage must be outside clone")
+    require(ROOT.name == "repo" and (ROOT.parent / "home").is_dir(),
+            "inner requires disposable clone layout")
+
+
 def inner(stage_path: Path) -> int:
+    require_disposable_inner(stage_path)
     negative = (ROOT / NEGATIVE).resolve(strict=True)
     stage_path.write_text("bootstrap", encoding="ascii")
     sys.path.insert(0, str(negative.parent))
@@ -193,7 +221,9 @@ def run_isolated() -> int:
         require(checked == original, "disposable clone source drift")
         stage_path = sandbox / "stage"
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(home),
-               "PYTHONDONTWRITEBYTECODE": "1", "GIT_TERMINAL_PROMPT": "0"}
+               "PYTHONDONTWRITEBYTECODE": "1", "GIT_TERMINAL_PROMPT": "0",
+               "MIGRATION_NEGATIVE_DISPOSABLE_CLONE": str(clone.resolve(strict=True)),
+               "MIGRATION_NEGATIVE_DISPOSABLE_STAGE": str(stage_path)}
         completed = subprocess.run([sys.executable, str(clone / SELF), "--inner", str(stage_path)],
                                    cwd=clone, env=env, capture_output=True, text=True, timeout=240, check=False)
         stage = stage_path.read_text(encoding="ascii").strip() if stage_path.is_file() else "bootstrap"
