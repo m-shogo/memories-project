@@ -166,6 +166,48 @@ def require_step_key_negatives(job: str, *, pr: bool) -> None:
 
 
 
+
+REVIEWED_CONTROL_LINES = {True: [[],[],[]], False: [[],[],[],[],["        id: validation"],["        if: steps.validation.outputs.exit_code == '0' && github.event_name == 'pull_request'"],["        if: steps.validation.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'"],["        if: steps.validation.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'","        env:","          VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}"],[]]}
+
+
+def require_reviewed_controls(job: str, *, pr: bool) -> None:
+    """Bind ordered if/id/env and diagnostic env-value controls, not just keys."""
+    blocks = re.split(r"(?m)(?=^      - (?:uses|name): )", job)
+    steps = [block for block in blocks if block.startswith("      - ")]
+    actual = []
+    for block in steps:
+        before_run = block.split("\n        run:", 1)[0]
+        actual.append([
+            line for line in before_run.splitlines()
+            if re.match(r"^        (?:id|if|env):", line)
+            or re.match(r"^          [A-Z][A-Z_]*:", line)
+        ])
+    require(actual == REVIEWED_CONTROL_LINES[pr],
+            "generation step control values drift")
+
+
+def require_control_negatives(job: str) -> None:
+    require_reviewed_controls(job, pr=False)
+    controls = [line for step in REVIEWED_CONTROL_LINES[False] for line in step]
+    id_line = next(line for line in controls if line.startswith("        id:"))
+    if_line = next(line for line in controls if line.startswith("        if:"))
+    env_line = next(line for line in controls if line.startswith("          "))
+    mutations = (
+        ("id", job.replace(id_line, "        id: unreviewed", 1)),
+        ("if", job.replace(if_line, "        if: true", 1)),
+        ("env-value", job.replace(env_line, env_line.split(": ", 1)[0] + ": 0", 1)),
+        ("env-name", job.replace(env_line, "          UNREVIEWED_EXIT_CODE: 0", 1)),
+    )
+    for label, mutated in mutations:
+        require(mutated != job, f"generation control fixture unchanged: {label}")
+        try:
+            require_reviewed_controls(mutated, pr=False)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"generation unreviewed control mutation accepted: {label}")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("pull_request_target:" not in text, "generation-evidence authority must not use pull_request_target")
@@ -180,6 +222,8 @@ def main() -> int:
     require_step_inventory_negatives(validate, pr=False)
     require_step_key_negatives(validate_pr, pr=True)
     require_step_key_negatives(validate, pr=False)
+    require_reviewed_controls(validate_pr, pr=True)
+    require_control_negatives(validate)
 
     require("if: github.event_name == 'pull_request'" in validate_pr, "generation-evidence PR validator must be pull-request-only")
     require("permissions:\n      contents: read" in validate_pr, "generation-evidence PR validator must explicitly remain contents: read")
@@ -222,6 +266,7 @@ def main() -> int:
     print("immutable bootstrap/source/credential negative mutations rejected: 20")
     print("executable step header negative mutations rejected: 6")
     print("step-property negative mutations rejected: 14")
+    print("step-control negative mutations rejected: 4")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
