@@ -118,7 +118,7 @@ def main() -> int:
         ),
         (
             "atomic diagnostic replacement removed",
-            replace_once(canonical, "os.replace(tmp_name, path)", "path.write_text(json.dumps(value, indent=2) + '\\n', encoding='utf-8')", "atomic diagnostic replacement"),
+            replace_once(canonical, "os.replace(tmp_name, path)", "path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')", "atomic diagnostic replacement"),
         ),
     )
 
@@ -322,11 +322,49 @@ def main() -> int:
         else:
             raise Fail(f"independent permission workflow mutation accepted: {label}")
 
+    # Independent complete-source binding catches shell-body and trigger changes
+    # even when the approved step/header inventory remains intact.
+    independent_blob_cases = (
+        ("independent injected shell command",
+         replace_once(independent,
+                      "          python -m py_compile \\n",
+                      "          echo UNREVIEWED\n          python -m py_compile \\n",
+                      "independent injected shell command")),
+        ("independent relaxed shell",
+         replace_once(independent,
+                      "          set -euo pipefail\n          python -m py_compile",
+                      "          set +e\n          python -m py_compile",
+                      "independent relaxed shell")),
+        ("independent dropped PR trigger path",
+         independent.replace(
+             '      - ".github/workflows/backup-restore-permission-boundary-negative.yml"\n',
+             "", 1)),
+        ("independent skipped generation guard",
+         replace_once(independent,
+                      "        run: python scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py\n",
+                      "        run: echo UNREVIEWED\n",
+                      "independent skipped generation guard")),
+        ("independent injected workflow environment",
+         replace_once(independent,
+                      "permissions:\n  contents: read\n",
+                      "permissions:\n  contents: read\nenv:\n  UNREVIEWED: true\n",
+                      "independent injected workflow environment")),
+    )
+    for label, mutated in independent_blob_cases:
+        require(mutated != independent, f"independent blob mutation unchanged: {label}")
+        try:
+            module.require_reviewed_independent_permission_workflow_blob(mutated)
+        except module.Fail:
+            pass
+        else:
+            raise Fail(f"independent permission workflow complete-source mutation accepted: {label}")
+
     require(module.exact_workflow() == canonical, "negative suite mutated canonical workflow authority")
     run_runner_negative()
     print("Backup/restore admission-chain workflow permission negative PASS")
     print(f"forbidden workflow mutations rejected: {len(cases)}")
     print(f"independent permission workflow source mutations rejected: {len(independent_cases)}")
+    print(f"independent complete-source mutations rejected: {len(independent_blob_cases)}")
     print("full runner fail-closed negative proof executed: true")
     print("PR tracked/untracked workspace mutation accepted: false")
     print("crash-safe failure diagnostic publication required: true")
