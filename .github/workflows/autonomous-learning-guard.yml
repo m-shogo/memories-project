@@ -86,9 +86,20 @@ jobs:
               baseline = before
           elif event_name == "pull_request":
               baseline = "${{ github.event.pull_request.base.sha }}"
-              if not re.fullmatch(r"[0-9a-f]{40}", baseline):
+              head_sha = "${{ github.event.pull_request.head.sha }}"
+              merge_sha = "${{ github.sha }}"
+              if not all(re.fullmatch(r"[0-9a-f]{40}", value)
+                         for value in (baseline, head_sha, merge_sha)):
                   raise SystemExit(
-                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR base"
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR source SHA"
+                  )
+              parents = subprocess.check_output(
+                  ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+                  text=True,
+              ).split()
+              if parents != [merge_sha, baseline, head_sha]:
+                  raise SystemExit(
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: PR merge parent mismatch"
                   )
           elif event_name == "workflow_dispatch":
               if os.environ.get("GITHUB_REF") != "refs/heads/so":

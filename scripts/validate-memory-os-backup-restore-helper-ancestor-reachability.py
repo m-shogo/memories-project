@@ -573,9 +573,20 @@ def validate_independent_learning_workflow(source: str) -> None:
               baseline = before
           elif event_name == "pull_request":
               baseline = "${{ github.event.pull_request.base.sha }}"
-              if not re.fullmatch(r"[0-9a-f]{40}", baseline):
+              head_sha = "${{ github.event.pull_request.head.sha }}"
+              merge_sha = "${{ github.sha }}"
+              if not all(re.fullmatch(r"[0-9a-f]{40}", value)
+                         for value in (baseline, head_sha, merge_sha)):
                   raise SystemExit(
-                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR base"
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR source SHA"
+                  )
+              parents = subprocess.check_output(
+                  ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+                  text=True,
+              ).split()
+              if parents != [merge_sha, baseline, head_sha]:
+                  raise SystemExit(
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: PR merge parent mismatch"
                   )
           elif event_name == "workflow_dispatch":
               if os.environ.get("GITHUB_REF") != "refs/heads/so":
@@ -1666,6 +1677,9 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("          baseline = \"${{ github.event.pull_request.base.sha }}\"\n",
          "          baseline = \"HEAD^\"\n",
          "independent learning workflow append-only drift"),
+        ("          if parents != [merge_sha, baseline, head_sha]:\n", "          if False:\n", "independent learning workflow append-only drift"),
+        ("          head_sha = \"${{ github.event.pull_request.head.sha }}\"\n", "          head_sha = baseline\n", "independent learning workflow append-only drift"),
+        ("          merge_sha = \"${{ github.sha }}\"\n", "          merge_sha = baseline\n", "independent learning workflow append-only drift"),
         ("          ref: ${{ github.sha }}\n",
          "          ref: ${{ github.event.pull_request.head.sha }}\n",
          "independent learning workflow checkout/setup drift"),
@@ -1892,7 +1906,7 @@ def prove_push_baseline_append_only_negative() -> None:
                 "push-baseline rejected genuine append-only extension")
 
 
-def prove_pr_base_append_only_negative(source: str) -> None:
+def prove_pr_base_append_only_negative(source: str) -> int:
     """PR merge SHA must be checked against the actual reviewed base SHA."""
     with tempfile.TemporaryDirectory(prefix="learning-pr-base-negative-") as tmp:
         root = Path(tmp)
@@ -1925,13 +1939,27 @@ def prove_pr_base_append_only_negative(source: str) -> None:
                 "PR-base synthetic commit invalid")
         original = git("show", f"{base}:{authority}")
 
-        def run_reviewed_pr_step() -> subprocess.CompletedProcess[str]:
+        def run_reviewed_pr_step(
+            *, base_override: str | None = None,
+            head_override: str | None = None,
+            merge_override: str | None = None,
+        ) -> subprocess.CompletedProcess[str]:
             script = reviewed_learning_append_only_script(source)
-            marker = "${{ github.event.pull_request.base.sha }}"
-            require(script.count(marker) == 1,
-                    "PR-base reviewed workflow base binding drift")
+            markers = (
+                ("${{ github.event.pull_request.base.sha }}",
+                 base if base_override is None else base_override),
+                ("${{ github.event.pull_request.head.sha }}",
+                 git("rev-parse", "HEAD^2").decode("ascii").strip()
+                 if head_override is None else head_override),
+                ("${{ github.sha }}",
+                 git("rev-parse", "HEAD").decode("ascii").strip()
+                 if merge_override is None else merge_override),
+            )
             script = script.replace("${{ github.event_name }}", "pull_request")
-            script = script.replace(marker, base)
+            for marker, value in markers:
+                require(script.count(marker) == 1,
+                        "PR-base reviewed workflow source binding drift")
+                script = script.replace(marker, value)
             return subprocess.run(
                 [sys.executable, "-c", script],
                 cwd=root, capture_output=True, text=True,
@@ -1972,6 +2000,26 @@ def prove_pr_base_append_only_negative(source: str) -> None:
         require(accepted.returncode == 0 and
                 "Autonomous learning append-only PASS" in accepted.stdout,
                 "PR-base reviewed workflow rejected valid merge result")
+
+        for label, kwargs, diagnostic in (
+            ("wrong PR base", {"base_override": "f" * 40},
+             "PR merge parent mismatch"),
+            ("wrong PR head", {"head_override": base},
+             "PR merge parent mismatch"),
+            ("wrong merge SHA", {"merge_override": base},
+             "PR merge parent mismatch"),
+            ("nonhex PR head", {"head_override": "z" * 40},
+             "invalid PR source SHA"),
+            ("short PR head", {"head_override": "f" * 39},
+             "invalid PR source SHA"),
+            ("reversed parent identity",
+             {"base_override": git("rev-parse", "HEAD^2").decode("ascii").strip(),
+              "head_override": base}, "PR merge parent mismatch"),
+        ):
+            rejected = run_reviewed_pr_step(**kwargs)
+            require(rejected.returncode != 0 and diagnostic in rejected.stderr,
+                    f"PR merge runtime proof accepted {label}")
+    return 8
 
 
 
@@ -2111,14 +2159,13 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
         prove_push_baseline_append_only_negative()
         total += 1
-        prove_pr_base_append_only_negative(learning_workflow_source)
-        total += 2
+        total += prove_pr_base_append_only_negative(learning_workflow_source)
         total += prove_manual_dispatch_ref_negative(learning_workflow_source)
         total += prove_ancestor_dispatch_ref_negative(workflow_source)
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 213, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
