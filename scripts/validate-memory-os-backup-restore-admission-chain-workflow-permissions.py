@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -10,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_REL = Path(".github/workflows/backup-restore-admission-chain.yml")
 WORKFLOW = ROOT / WORKFLOW_REL
 INDEPENDENT_PERMISSION_WORKFLOW_REL = Path(".github/workflows/backup-restore-permission-boundary-negative.yml")
+REVIEWED_INDEPENDENT_PERMISSION_WORKFLOW_BLOB_SHA = "5e1bb1e7688fbe4617963f2d451440d5548481f2"
 
 
 class Fail(RuntimeError):
@@ -44,6 +46,14 @@ def independent_permission_workflow() -> str:
         return path.read_text(encoding="utf-8")
     except (FileNotFoundError, OSError, RuntimeError, ValueError, UnicodeDecodeError) as exc:
         raise Fail("independent permission workflow unreadable or escapes root") from exc
+
+
+def require_reviewed_independent_permission_workflow_blob(source: str) -> None:
+    """Bind the entire independent gate source, including event filters and shell bodies."""
+    payload = source.encode("utf-8")
+    blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    require(hashlib.sha1(blob).hexdigest() == REVIEWED_INDEPENDENT_PERMISSION_WORKFLOW_BLOB_SHA,
+            "independent permission workflow complete source drift")
 
 
 def validate_independent_permission_workflow(source: str) -> None:
@@ -112,7 +122,9 @@ def require_atomic_diagnostic_publication(publish: str) -> None:
 
 def main() -> int:
     text = exact_workflow()
-    validate_independent_permission_workflow(independent_permission_workflow())
+    independent_source = independent_permission_workflow()
+    validate_independent_permission_workflow(independent_source)
+    require_reviewed_independent_permission_workflow_blob(independent_source)
     require("pull_request_target:" not in text, "pull_request_target must never control backup/restore admission publication")
     require("permissions:\n  contents: read\n" in text, "workflow-level contents permission must default to read")
 
