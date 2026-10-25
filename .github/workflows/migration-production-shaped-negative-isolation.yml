@@ -1,0 +1,66 @@
+name: Migration Production Shaped Negative Isolation
+
+on:
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/migration-production-shaped-negative-isolation.yml"
+      - "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
+      - "scripts/register-memory-os-migration-production-shaped-admission.py"
+      - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/migration-production-shaped-negative-isolation.yml"
+      - "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
+      - "scripts/register-memory-os-migration-production-shaped-admission.py"
+      - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-negative:
+    if: github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so')
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Verify exact read-only source and isolated harness
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${GITHUB_BASE_REF:-}" = "so"
+            expected="$PR_HEAD_SHA"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            expected="${GITHUB_SHA:-}"
+          else
+            echo "Unreviewed migration isolation event" >&2
+            exit 1
+          fi
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py --verify-source
+      - name: Identify bounded negative failure stage in disposable local clone
+        run: |
+          set -euo pipefail
+          python scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py
+          test -z "$(git status --porcelain)"
