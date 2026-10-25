@@ -5,12 +5,14 @@ on:
     branches: [so]
     paths:
       - ".github/workflows/operability-admission-inventory-atomic-write-negative.yml"
+      - ".github/workflows/operability-admission-inventory-atomic-replacement-negative.yml"
       - ".github/workflows/operability-admission-inventory-atomic-write-source-negative.yml"
       - "scripts/validate-memory-os-operability-admission-inventory-atomic-write-workflow-negative.py"
   push:
     branches: [so]
     paths:
       - ".github/workflows/operability-admission-inventory-atomic-write-negative.yml"
+      - ".github/workflows/operability-admission-inventory-atomic-replacement-negative.yml"
       - ".github/workflows/operability-admission-inventory-atomic-write-source-negative.yml"
       - "scripts/validate-memory-os-operability-admission-inventory-atomic-write-workflow-negative.py"
 

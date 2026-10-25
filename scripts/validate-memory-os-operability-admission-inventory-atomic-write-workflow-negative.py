@@ -9,9 +9,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ".github/workflows/operability-admission-inventory-atomic-write-negative.yml"
 GUARD = ".github/workflows/operability-admission-inventory-atomic-write-source-negative.yml"
+REPLACEMENT = ".github/workflows/operability-admission-inventory-atomic-replacement-negative.yml"
 SELF = "scripts/validate-memory-os-operability-admission-inventory-atomic-write-workflow-negative.py"
 MAIN_BLOB = "7e6bf84e53d7406eb345e0835d1d7f346474dc89"
-GUARD_BLOB = "53354e802a173c637e227818b8da4501918b6c55"
+GUARD_BLOB = "1019c867d110e5fc15950d6c74dd17d6f6c3c5ec"
+REPLACEMENT_BLOB = "8cf7a9b2c6e01b8a911a9ea96fee56ed51c8b6d8"
 D = chr(36)
 BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
 REF = 'test "' + D + '{GITHUB_REF:-}" = "refs/heads/so"'
@@ -53,6 +55,7 @@ def validate(main: str, guard: str) -> None:
         ("  push:\n    branches: [so]\n", 1),
         ("  contents: read\n", 2),
         ("      - \"" + MAIN + "\"\n", 2),
+        ("      - \"" + REPLACEMENT + "\"\n", 2),
         ("      - \"" + GUARD + "\"\n", 2),
         ("      - \"" + SELF + "\"\n", 2),
         ("          PR_HEAD_SHA: " + D + "{{ github.event.pull_request.head.sha }}\n", 1),
@@ -128,11 +131,79 @@ def negatives(main: str, guard: str) -> None:
         raise SystemExit("atomic source accepted negative: " + label)
     print("PASS: atomic source 20 negative mutations")
 
+
+def validate_replacement(source: str) -> None:
+    checks = (
+        (CHECKOUT, 1), (SETUP, 1), (BASE, 1), (REF, 1), (SHA, 1), (HEAD, 1),
+        ("          persist-credentials: false\n", 1),
+        ("  pull_request:\n    branches:\n      - so\n", 1),
+        ("  push:\n    branches:\n      - so\n", 1),
+        ("  contents: read\n", 2),
+        ("          PR_HEAD_SHA: " + D + "{{ github.event.pull_request.head.sha }}\n", 1),
+        ("          ref: " + D + "{{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n", 1),
+        ("    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n", 1),
+        ('          test -z "$(git status --porcelain)"\n', 2),
+    )
+    for token, count in checks:
+        if source.count(token) != count:
+            raise SystemExit("atomic replacement source anchor drift: " + repr(token[:75]))
+    payload = source.encode("utf-8")
+    git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    if hashlib.sha1(git_blob).hexdigest() != REPLACEMENT_BLOB:
+        raise SystemExit("atomic replacement complete source drift")
+
+def runtime_replacement(source: str) -> None:
+    for token in (BASE, REF, SHA, HEAD):
+        if source.count(token) != 1:
+            raise SystemExit("atomic replacement runtime predicate unreachable")
+    for key, command, values in (
+        ("GITHUB_BASE_REF", BASE, (("so", True), ("main", False), ("", False))),
+        ("GITHUB_REF", REF, (("refs/heads/so", True), ("refs/heads/main", False), ("refs/tags/v1", False), ("", False))),
+    ):
+        for value, allowed in values:
+            p = subprocess.run(["bash", "-e", "-c", command], env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}, capture_output=True, check=False)
+            if (p.returncode == 0) != allowed:
+                raise SystemExit("atomic replacement branch predicate drift: " + key)
+    for value, allowed in (("a" * 40, True), ("0" * 40, True), ("a" * 39, False), ("A" * 40, False), ("g" * 40, False), ("", False), ("$(echo bypass)", False)):
+        script = 'expected="' + D + '{PROBE_SHA:-}"\n' + SHA
+        p = subprocess.run(["bash", "-e", "-c", script], env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value}, capture_output=True, check=False)
+        if (p.returncode == 0) != allowed:
+            raise SystemExit("atomic replacement SHA predicate drift")
+    print("PASS: atomic replacement source runtime branch (7) and SHA (7) cases")
+
+def negatives_replacement(source: str) -> None:
+    cases = (
+        (CHECKOUT, "uses: actions/checkout@v4"),
+        (SETUP, "uses: actions/setup-python@v5"),
+        (BASE, "true"),
+        (REF, "true"),
+        (SHA, 'test -n "$expected"'),
+        ("          persist-credentials: false\n", "          persist-credentials: true\n"),
+        ("  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
+        ("permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
+        ('          PR_HEAD_SHA: ' + D + '{{ github.event.pull_request.head.sha }}\n', '          PR_HEAD_SHA: ' + D + '{{ github.sha }}\n'),
+        ("    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n", "    if: always()\n"),
+    )
+    for old, new in cases:
+        if source.count(old) != 1:
+            raise SystemExit("atomic replacement negative fixture ambiguous: " + old[:65])
+        mutated = source.replace(old, new, 1)
+        try:
+            validate_replacement(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("atomic replacement accepted source mutation")
+    print("PASS: atomic replacement 10 negative source mutations")
+
 def main() -> int:
     main_source, guard_source = read(MAIN), read(GUARD)
+    replacement_source = read(REPLACEMENT)
     validate(main_source, guard_source)
+    validate_replacement(replacement_source)
     runtime(main_source, guard_source)
+    runtime_replacement(replacement_source)
     negatives(main_source, guard_source)
+    negatives_replacement(replacement_source)
     return 0
 
 if __name__ == "__main__":
