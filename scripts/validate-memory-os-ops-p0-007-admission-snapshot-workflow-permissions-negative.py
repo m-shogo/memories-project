@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import stat
 import sys
 import tempfile
 import textwrap
@@ -605,6 +606,7 @@ def prove_diagnostic_privacy_boundary_rejected(publish: str) -> None:
 def validate_atomic_diagnostic_publication(publish: str) -> None:
     required_fragments = (
         "existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None",
+        "if path.is_symlink():",
         "tempfile.mkstemp(",
         "dir=path.parent",
         "os.fchmod(fd, existing_mode)",
@@ -2962,7 +2964,50 @@ def prove_snapshot_diagnostic_redaction_runtime(publish: str) -> None:
             require(value.get(field) is False, "strict snapshot diagnostic non-production drift: " + field)
         require("CANARY_DO_NOT_PERSIST_SNAPSHOT" not in raw,
                 "strict snapshot diagnostic persisted synthetic canary")
-    print("PASS: strict OPS-P0-007 isolated diagnostic redaction (1 runtime case)")
+
+        # The source guard must reject removal of the actual final-path symlink precondition.
+        symlink_guard = "          if path.is_symlink():\n"
+        require(publish.count(symlink_guard) == 1,
+                "strict snapshot diagnostic symlink guard not unique")
+        try:
+            validate_atomic_diagnostic_publication(publish.replace(symlink_guard, "", 1))
+        except Fail as exc:
+            require("if path.is_symlink():" in str(exc),
+                    "strict snapshot symlink mutation rejected outside intended guard")
+        else:
+            raise Fail("strict snapshot diagnostic accepted removed symlink guard")
+        path.chmod(0o640)
+        positive = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                  capture_output=True, text=True, check=False, timeout=15)
+        require(positive.returncode == 0 and stat.S_IMODE(path.stat().st_mode) == 0o640,
+                "strict snapshot diagnostic failed existing mode preservation")
+        previous = path.read_bytes()
+        for label, anchor in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            require(script.count(anchor) == 1, "strict snapshot diagnostic fault anchor drift: " + label)
+            mutated = script.replace(anchor, "raise OSError('synthetic snapshot " + label + " failure')", 1)
+            outcome = subprocess.run([sys.executable, "-c", mutated], cwd=directory, env=env,
+                                     capture_output=True, text=True, check=False, timeout=15)
+            require(outcome.returncode != 0 and "synthetic snapshot " + label + " failure" in outcome.stderr,
+                    "strict snapshot diagnostic intended fault not reached: " + label)
+            require(path.read_bytes() == previous and stat.S_IMODE(path.stat().st_mode) == 0o640,
+                    "strict snapshot diagnostic failure changed previous bytes/mode: " + label)
+            require(not list(path.parent.glob(".ops-p0-007-admission-snapshot-diagnostic.last.json.*.tmp")),
+                    "strict snapshot diagnostic failure leaked temporary file: " + label)
+        outside = Path(directory) / "external-snapshot-canary"
+        outside.write_bytes(b"EXTERNAL_SNAPSHOT_CANARY")
+        path.unlink()
+        path.symlink_to(outside)
+        outcome = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                 capture_output=True, text=True, check=False, timeout=15)
+        require(outcome.returncode != 0 and "target must not be a symlink" in outcome.stderr,
+                "strict snapshot diagnostic accepted symlink target")
+        require(path.is_symlink() and outside.read_bytes() == b"EXTERNAL_SNAPSHOT_CANARY",
+                "strict snapshot diagnostic followed external symlink")
+        require(not list(path.parent.glob(".ops-p0-007-admission-snapshot-diagnostic.last.json.*.tmp")),
+                "strict snapshot diagnostic symlink failure leaked temporary file")
+
+    print("PASS: strict OPS-P0-007 diagnostic redaction/atomic runtime (5 cases)")
 
 
 def main() -> int:
