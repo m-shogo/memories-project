@@ -631,7 +631,7 @@ def require_exact_checkout_ref(workflow: str, expected: str, label: str) -> None
         workflow,
     )
     action = ("actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
-              if label == "strict snapshot publisher" else "actions/checkout@v4")
+              if label in ("strict snapshot publisher", "strict snapshot publication workflow") else "actions/checkout@v4")
     require(
         checkout_steps == [action],
         f"{label} checkout must bind to exact event source SHA",
