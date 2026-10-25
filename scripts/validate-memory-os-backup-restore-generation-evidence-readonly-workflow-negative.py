@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-readonly.yml"
+EXTERNAL_PERMISSION_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py"
 REVIEWED_WORKFLOW_BLOB_SHA = "4f3974d40145a61176ea4de7f302568cbf6c782f"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
@@ -43,6 +45,17 @@ def validate(source: str) -> None:
         raise SystemExit("generation evidence readonly complete source drift")
 
 
+def require_external_reviewed_binding(source: str) -> None:
+    """Reject stale independent generation permission CI workflow digests."""
+    matches = re.findall(
+        r'^REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "([0-9a-f]{40})"$',
+        source,
+        flags=re.MULTILINE,
+    )
+    if matches != [REVIEWED_WORKFLOW_BLOB_SHA]:
+        raise SystemExit("generation evidence readonly external permission digest drift")
+
+
 def prove_branch_guards_runtime() -> None:
     cases = (
         ("PR so", REQUIRED[14][1].strip(), "PR_BASE_REF", "so", True),
@@ -63,6 +76,17 @@ def prove_branch_guards_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    external = EXTERNAL_PERMISSION_VALIDATOR.read_text(encoding="utf-8")
+    require_external_reviewed_binding(external)
+    mutated_external = external.replace(REVIEWED_WORKFLOW_BLOB_SHA, "0" * 40, 1)
+    if mutated_external == external:
+        raise SystemExit("generation evidence readonly external binding fixture drift")
+    try:
+        require_external_reviewed_binding(mutated_external)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation evidence readonly accepted stale external digest")
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),

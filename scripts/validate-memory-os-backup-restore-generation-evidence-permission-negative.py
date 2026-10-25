@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence.yml"
 READONLY_WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-readonly.yml"
-REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "42e740f9b7d1de7b6ed6ad3881f4d3a6d9ec0caa"
+REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "4f3974d40145a61176ea4de7f302568cbf6c782f"
 
 
 class Fail(RuntimeError):
