@@ -17,7 +17,7 @@ PUBLISHER = ".github/workflows/incident-human-tabletop-evidence.yml"
 INDEPENDENT = ".github/workflows/incident-human-tabletop-workflow-source-negative.yml"
 SELF = "scripts/validate-memory-os-incident-human-tabletop-workflow-source-negative.py"
 REVIEWED_PUBLISHER = "a24f87fa0ccfcdf6b3861ef13ba0e8d2c4a335e9"
-REVIEWED_INDEPENDENT = ""
+REVIEWED_INDEPENDENT = "5c1c180b5cee387956819255b75f293f9bb50f90"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
@@ -73,7 +73,7 @@ def validate(publisher: str, independent: str) -> None:
         for token in required:
             if token not in content:
                 raise SystemExit("human-tabletop " + label + " missing source: " + token)
-        if digest and blob(content) != digest:
+        if blob(content) != digest:
             raise SystemExit("human-tabletop " + label + " complete Git blob drift")
     if '          cat "$log"\n' in publisher or "text[-12000:]" in publisher:
         raise SystemExit("human-tabletop raw log disclosure")
