@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import math
 import os
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/live-object-load-scenario-contract.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 STATUS_RE = re.compile(r"^[1-5]xx$")
+UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$")
 
 
 class ValidationError(RuntimeError):
@@ -62,6 +64,15 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def require_utc_timestamp(value: Any, field: str) -> None:
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            f"{field} must be RFC3339 UTC")
+    try:
+        dt.datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise ValidationError(f"{field} must be RFC3339 UTC") from exc
+
+
 def integer(value: Any, field: str, *, minimum: int = 0) -> int:
     require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be an integer")
     require(value >= minimum, f"{field} must be >= {minimum}")
@@ -103,8 +114,7 @@ def validate() -> None:
     if expected_sha:
         require(commit_sha == expected_sha, "commitSha does not match EXPECTED_COMMIT_SHA")
 
-    require(isinstance(result.get("generatedAt"), str) and result["generatedAt"].endswith("Z"),
-            "generatedAt must be RFC3339 UTC")
+    require_utc_timestamp(result.get("generatedAt"), "generatedAt")
     environment = result.get("environment")
     require(isinstance(environment, dict), "environment must be an object")
     require(environment.get("databaseMode") == "LOCAL_POSTGRES",
@@ -131,8 +141,7 @@ def validate() -> None:
             "dependencyMode must be LOCAL_POSTGRES_MINIO")
     require(observed.get("result") == "PASS", "scenario result must be PASS")
     require(observed.get("integrityResult") == "PASS", "integrityResult must be PASS")
-    require(isinstance(observed.get("startedAt"), str) and observed["startedAt"].endswith("Z"),
-            "startedAt must be RFC3339 UTC")
+    require_utc_timestamp(observed.get("startedAt"), "startedAt")
 
     batch = observed.get("batch")
     require(isinstance(batch, dict), "batch must be an object")

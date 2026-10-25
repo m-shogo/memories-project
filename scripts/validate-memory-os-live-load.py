@@ -9,6 +9,7 @@ capacity evidence.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import math
 import os
@@ -21,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/live-postgres-load-scenario-contract.v1.json"
 SHA256_RE = re.compile(r"^[0-9a-f]{40}$")
 STATUS_CLASS_RE = re.compile(r"^[1-5]xx$")
+UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$")
 
 
 class ValidationError(RuntimeError):
@@ -63,6 +65,15 @@ def load_json(path: Path) -> dict[str, Any]:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValidationError(message)
+
+
+def require_utc_timestamp(value: Any, field: str) -> None:
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            f"{field} must be RFC3339 UTC")
+    try:
+        dt.datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise ValidationError(f"{field} must be RFC3339 UTC") from exc
 
 
 def integer(value: Any, field: str, *, minimum: int = 0) -> int:
@@ -149,8 +160,7 @@ def validate() -> None:
         require(commit_sha == expected_sha, "result commitSha does not match EXPECTED_COMMIT_SHA")
 
     generated_at = result.get("generatedAt")
-    require(isinstance(generated_at, str) and generated_at.endswith("Z"),
-            "generatedAt must be an RFC3339 UTC timestamp")
+    require_utc_timestamp(generated_at, "generatedAt")
 
     environment = result.get("environment")
     require(isinstance(environment, dict), "environment must be an object")
@@ -200,8 +210,7 @@ def validate() -> None:
         require(scenario.get("result") == "PASS", f"{scenario_id}: result must be PASS")
         require(scenario.get("integrityResult") == "PASS",
                 f"{scenario_id}: integrityResult must be PASS")
-        require(isinstance(scenario.get("startedAt"), str) and scenario["startedAt"].endswith("Z"),
-                f"{scenario_id}: startedAt must be RFC3339 UTC")
+        require_utc_timestamp(scenario.get("startedAt"), f"{scenario_id}: startedAt")
 
         batch = scenario.get("batch")
         require(isinstance(batch, dict), f"{scenario_id}: batch must be an object")
