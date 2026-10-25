@@ -391,6 +391,8 @@ def require_readonly_workflow_source_negatives(source: str) -> None:
         ("missing-permission-gate-push-trigger",
          before_push + "  push:\n" + after_push.replace(permission_trigger, "", 1)),
     )
+    require(len(cases) + len(trigger_mutations) == 15,
+            "admission readonly negative diagnostic inventory drift")
     for label, mutated in trigger_mutations:
         require(mutated != source, f"admission readonly trigger fixture unchanged: {label}")
         try:
@@ -477,7 +479,7 @@ def main() -> int:
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
     print("independent admission negative CI source mutations rejected: 10")
-    print("independent admission readonly CI source mutations rejected: 12")
+    print("independent admission readonly CI source mutations rejected: 15")
     print("production decision changed: false")
     return 0
 
