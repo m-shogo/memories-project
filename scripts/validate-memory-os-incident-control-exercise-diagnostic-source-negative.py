@@ -97,9 +97,9 @@ def inline_writers(publisher: str) -> tuple[str, str]:
         start = publisher.index(marker) + len(marker)
         end = publisher.index("\n          PY\n", start)
         lines = publisher[start:end].splitlines()
-        if not lines or any(not line.startswith("          ") for line in lines):
+        if not lines or any(line and not line.startswith("          ") for line in lines):
             raise SystemExit("incident control inline writer indentation drift")
-        scripts.append("\n".join(line[10:] for line in lines) + "\n")
+        scripts.append("\n".join(line[10:] if line else "" for line in lines) + "\n")
     return scripts[0], scripts[1]
 
 
