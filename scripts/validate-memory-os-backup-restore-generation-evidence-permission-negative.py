@@ -4,7 +4,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import re
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -307,7 +312,7 @@ def require_trigger_path_negatives(source: str) -> None:
 
 
 
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "be543c887e092ebb8de3938805fdfeccb269eefa"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "eba6236596d9b36f37635e7e13b2b9fc8e018f46"
 
 
 def require_reviewed_workflow_blob(source: str) -> None:
@@ -398,6 +403,74 @@ def require_readonly_workflow_source_negatives(source: str) -> None:
                 raise Fail(f"generation readonly CI trigger mutation accepted: {label}")
 
 
+def require_diagnostic_privacy_source(source: str) -> None:
+    """Reject raw generation validator logs in diagnostics and public CI."""
+    marker = "              'output': 'REDACTED: generation evidence validation failed; consult CI job logs',\n"
+    suppressed = '          printf "Generation evidence validation exit code: %s (raw validator log suppressed)\\n" "$code"\n'
+    require(source.count(marker) == 1, "generation diagnostic redaction marker drift")
+    require(source.count(suppressed) == 1, "generation raw CI log suppression drift")
+    require("text[-12000:]" not in source, "generation diagnostic raw tail restored")
+    require('          cat "$log"\n' not in source, "generation raw CI log echo restored")
+
+
+def require_diagnostic_privacy_negatives(source: str) -> None:
+    require_diagnostic_privacy_source(source)
+    cases = (
+        ("raw diagnostic", "              'output': 'REDACTED: generation evidence validation failed; consult CI job logs',\n",
+         "              'output': Path('/tmp/backup-restore-generation-evidence.log').read_text(),\n"),
+        ("raw CI log", '          printf "Generation evidence validation exit code: %s (raw validator log suppressed)\\n" "$code"\n',
+         '          cat "$log"\n'),
+        ("missing redaction", "              'output': 'REDACTED: generation evidence validation failed; consult CI job logs',\n", ""),
+    )
+    for label, old, new in cases:
+        require(source.count(old) == 1, "generation diagnostic fixture anchor drift: " + label)
+        mutated = source.replace(old, new, 1)
+        require(mutated != source, "generation diagnostic fixture unchanged: " + label)
+        try:
+            require_diagnostic_privacy_source(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail("generation diagnostic accepted privacy regression: " + label)
+    print(f"PASS: generation evidence diagnostic privacy negatives ({len(cases)} cases)")
+
+
+def prove_diagnostic_redaction_runtime(source: str) -> None:
+    """Execute the actual inline generation diagnostic writer in isolation."""
+    start = "          python - <<'PY'\n"
+    end = "          PY\n"
+    require(source.count(start) == 1 and source.count(end) == 1,
+            "generation diagnostic writer is not uniquely reachable")
+    inline = source.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="generation-evidence-diagnostic-") as tmpdir:
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_SHA": "d" * 40,
+            "VALIDATION_EXIT_CODE": "19",
+            "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_ABC",
+        })
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmpdir, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        require(result.returncode == 0,
+                "generation isolated diagnostic failed: " + result.stderr[:500])
+        output = Path(tmpdir) / "docs/fixtures/memory-os-operability/backup-restore-generation-evidence-diagnostic.last.json"
+        data = json.loads(output.read_text(encoding="utf-8"))
+        require(data.get("output") == "REDACTED: generation evidence validation failed; consult CI job logs",
+                "generation diagnostic persisted raw validator output")
+        require(data.get("sourceCommitSha") == "d" * 40 and data.get("exitCode") == 19,
+                "generation diagnostic source/exit binding drift")
+        require(data.get("containsSecrets") is False and data.get("generationEvidenceCreated") is False,
+                "generation diagnostic secret/evidence flags drift")
+        require(data.get("productionEvidence") is False and data.get("productionReady") is False,
+                "generation diagnostic production evidence/readiness drift")
+        require("CANARY_DO_NOT_PERSIST_ABC" not in output.read_text(encoding="utf-8"),
+                "generation diagnostic persisted synthetic canary")
+    print("PASS: generation evidence isolated diagnostic redaction runtime (1 case)")
+
+
 def main() -> int:
     require(READONLY_WORKFLOW.is_file() and not READONLY_WORKFLOW.is_symlink(),
             "generation readonly CI workflow missing or substituted")
@@ -406,6 +479,8 @@ def main() -> int:
     require_root_event_negatives(text)
     require_trigger_path_negatives(text)
     require_run_body_negatives(text)
+    require_diagnostic_privacy_negatives(text)
+    prove_diagnostic_redaction_runtime(text)
     require("pull_request_target:" not in text, "generation-evidence authority must not use pull_request_target")
     require("\njobs:\n  validate-pr:\n" in text, "dedicated generation-evidence PR validation job missing")
     require("\n  validate:\n" in text, "generation-evidence non-PR authority job missing")

@@ -365,7 +365,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "Generation evidence validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
 
       - name: Reject stale generation recovery authority on pull requests
@@ -479,14 +479,14 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/backup-restore-generation-evidence.log').read_text(encoding='utf-8', errors='replace')
+          # Never persist untrusted generation validator stdout in the repository.
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'backup-restore-generation-evidence',
               'result': 'FAIL',
               'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
               'sourceCommitSha': os.environ['SOURCE_SHA'],
-              'output': text[-12000:],
+              'output': 'REDACTED: generation evidence validation failed; consult CI job logs',
               'containsSecrets': False,
               'drillRequestCreated': False,
               'generationEvidenceCreated': False,
