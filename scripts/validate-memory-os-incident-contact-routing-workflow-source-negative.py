@@ -52,7 +52,7 @@ def validate(publisher: str, independent: str) -> None:
         "if candidate.is_symlink():", "if not path.parent.is_dir():",
         "path.parent.resolve(strict=True).relative_to(repo)",
         "if path.exists() and not path.is_file():",
-        "os.fchmod(fd, mode)", "os.fsync(handle.fileno())",
+        "os.fchmod(fd, existing_mode)", "os.fsync(handle.fileno())",
         "os.replace(tmp_name, path)", "os.unlink(tmp_name)",
     )
     independent_required = (
@@ -177,7 +177,7 @@ def source_negatives(publisher: str, independent: str) -> None:
         ("missing parent", "if not path.parent.is_dir():", "if False:"),
         ("escape", "path.parent.resolve(strict=True).relative_to(repo)", "path.parent.resolve(strict=True)"),
         ("regular", "if path.exists() and not path.is_file():", "if False:"),
-        ("mode", "os.fchmod(fd, mode)", "pass"),
+        ("mode", "os.fchmod(fd, existing_mode)", "pass"),
         ("fsync", "os.fsync(handle.fileno())", "pass"),
         ("atomic", "os.replace(tmp_name, path)", "path.write_bytes(payload)"),
         ("cleanup", "os.unlink(tmp_name)", "pass"),
