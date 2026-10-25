@@ -206,7 +206,9 @@ def normalize_lifecycle(lifecycle: dict[str, Any]) -> dict[str, Any]:
     lifecycle["evidenceRefs"] = unique(refs)
     note = str(readiness.get("note", ""))
     stronger_authority_present = any(readiness[field] for field in STRONGER_LIFECYCLE_FIELDS)
-    if "append-only operator evidence ledger" not in note and not stronger_authority_present:
+    # A different reconciler may have already published a more specific
+    # non-production recovery note. Operator evidence must not erase it.
+    if not note.strip() and not stronger_authority_present:
         readiness["note"] = (
             "The canonical migration sequence, clean PostgreSQL 16 dry-run, binding lifecycle/runbook and append-only operator evidence ledger exist. "
             "Production recovery-point verification, mixed-version release proof, isolated restore linkage and production-shaped rehearsal remain required, so OPS-P0-001 stays PARTIAL."

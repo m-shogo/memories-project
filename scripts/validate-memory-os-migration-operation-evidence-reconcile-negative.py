@@ -59,6 +59,32 @@ def prove_stronger_authority_is_preserved(module, lifecycle_payload: bytes) -> N
         require(normalized_readiness.get(field) is True,
                 f"weaker operation evidence rolled back stronger lifecycle authority: {field}")
 
+    # Independent publishers share the lifecycle note. A new operator-ledger
+    # reconciliation may add its own evidence refs, but must not downgrade an
+    # already published local recovery or other informative nonempty note.
+    for existing_note in (
+        "The non-production migration registry now contains a passing local rehearsal; "
+        "production-shaped restore remains unproven.",
+        "Existing non-production lifecycle detail must survive operator reconciliation.",
+    ):
+        candidate = json.loads(lifecycle_payload.decode("utf-8"))
+        candidate["readiness"]["note"] = existing_note
+        for field in module.STRONGER_LIFECYCLE_FIELDS:
+            candidate["readiness"][field] = False
+        updated = module.normalize_lifecycle(candidate)["readiness"]
+        require(updated["note"] == existing_note,
+                "operator reconciliation clobbered an existing lifecycle note")
+        require(updated["operatorEvidenceRecordImplemented"] is True,
+                "operator evidence readiness was not retained")
+
+    blank = json.loads(lifecycle_payload.decode("utf-8"))
+    blank["readiness"]["note"] = ""
+    for field in module.STRONGER_LIFECYCLE_FIELDS:
+        blank["readiness"][field] = False
+    fallback = module.normalize_lifecycle(blank)["readiness"]["note"]
+    require("append-only operator evidence ledger" in fallback,
+            "empty lifecycle note lost the operator evidence fallback")
+
 
 def prove_canonical_ledger_preappend_guard(tmp_path: Path) -> None:
     creator = load_module(CREATOR, "migration_operation_creator_negative")
