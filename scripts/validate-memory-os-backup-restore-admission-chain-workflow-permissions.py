@@ -55,6 +55,11 @@ def validate_independent_permission_workflow(source: str) -> None:
             "independent permission workflow checkout/setup source drift")
     require(source.count("      - name: Require exact clean source\n        env:\n          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n        run: |\n          set -euo pipefail\n          test -z \"$(git status --porcelain)\"\n          if [[ \"${{ github.event_name }}\" == \"pull_request\" ]]; then\n            [[ \"$PR_HEAD_SHA\" =~ ^[0-9a-f]{40}$ ]]\n            test \"$(git rev-parse HEAD)\" = \"$PR_HEAD_SHA\"\n          else\n            test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"\n          fi\n\n") == 1,
             "independent permission workflow PR source identity drift")
+    jobs = source.split("\njobs:\n", 1)
+    require(len(jobs) == 2, "independent permission workflow job boundary drift")
+    step_headers = re.findall(r"(?m)^      - ([^\n]+)$", jobs[1])
+    require(step_headers == ["name: Checkout exact source","name: Set up Python","name: Require exact clean source","name: Compile backup/restore permission negatives","name: Enforce end-to-end admission permission boundary","name: Enforce drill-request planning permission boundary","name: Enforce generation-evidence permission boundary","name: Enforce typed non-resurrection registry mode rollback","name: Enforce human-approved recovery-objective registry mode rollback","name: Prove read-only permission gate"],
+            "independent permission workflow step inventory drift")
     require(source.count("        uses: ") == 2,
             "independent permission workflow unreviewed action step")
     require(source.count(

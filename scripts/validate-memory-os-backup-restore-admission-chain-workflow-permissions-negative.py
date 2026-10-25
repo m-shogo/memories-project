@@ -303,6 +303,16 @@ def main() -> int:
         ("independent token write elevation", replace_once(independent, "permissions:\n  contents: read\n", "permissions:\n  contents: write\n", "independent token write elevation")),
         ("independent PR target event", replace_once(independent, "  pull_request:\n", "  pull_request_target:\n", "independent PR target event")),
     )
+    independent_cases += (
+        ("independent extra named action step",
+         replace_once(independent, "      - name: Require exact clean source\n",
+                      "      - name: Unreviewed action\n        uses: synthetic/unreviewed@v1\n      - name: Require exact clean source\n",
+                      "independent extra named action step")),
+        ("independent quoted step header",
+         replace_once(independent, "      - name: Require exact clean source\n",
+                      "      - 'name': Require exact clean source\n",
+                      "independent quoted step header")),
+    )
     for label, mutated in independent_cases:
         require(mutated != independent, f"independent mutation unchanged: {label}")
         try:
