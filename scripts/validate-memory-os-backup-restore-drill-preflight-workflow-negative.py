@@ -167,6 +167,42 @@ def runtime_sha_proof(main: str, guard: str) -> None:
                 raise SystemExit("preflight SHA runtime predicate drift: " + source_label + " " + predicate_label + " " + case_label)
     print(f"PASS: preflight publisher/independent exact SHA runtime ({len(cases) * 3} cases)")
 
+
+def runtime_cas_proof(main: str) -> None:
+    """Execute the reviewed four-way stale-source predicate with a synthetic git."""
+    predicate = 'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then'
+    if main.count(predicate) != 4:
+        raise SystemExit("preflight CAS runtime predicate unreachable or count drift")
+    prefix = (
+        "git() {\n"
+        '  if [[ "$1" == "rev-parse" && "$2" == "origin/so" ]]; then\n'
+        '    printf "%s\\n" "$REMOTE_SHA"\n'
+        "  else\n"
+        "    return 64\n"
+        "  fi\n"
+        "}\n"
+    )
+    script = prefix + predicate + "\n  exit 75\nfi\nexit 0\n"
+    cases = (
+        ("matching source", "a" * 40, "a" * 40, 0),
+        ("stale source", "b" * 40, "a" * 40, 75),
+        ("missing remote", "", "a" * 40, 75),
+        ("missing source", "a" * 40, "", 75),
+    )
+    for label, remote, source, expected_code in cases:
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "REMOTE_SHA": remote,
+            "SOURCE_SHA": source,
+        }
+        result = subprocess.run(
+            ["bash", "-e", "-c", script], env=env, capture_output=True, check=False
+        )
+        if result.returncode != expected_code:
+            raise SystemExit("preflight CAS runtime guard drift: " + label)
+    print(f"PASS: preflight reviewed latest-source CAS runtime ({len(cases)} cases)")
+
+
 def prove_negative_mutations(main: str, guard: str) -> None:
     publisher_cases = (
         ("PR checkout ref", "ref: ${{ github.event.pull_request.head.sha }}", "ref: ${{ github.sha }}"),
@@ -259,6 +295,7 @@ def main() -> int:
     validate(publisher, independent)
     runtime_branch_proof(publisher, independent)
     runtime_sha_proof(publisher, independent)
+    runtime_cas_proof(publisher)
     prove_negative_mutations(publisher, independent)
     return 0
 
