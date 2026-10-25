@@ -2595,9 +2595,12 @@ def require_readonly_workflow_authority(readonly: str) -> None:
     )
     compiled = PR_COMPILE_FILES[-6:]
     require(
-        body[:5] == [
+        body[:8] == [
             "set -euo pipefail",
             'expected="' + READONLY_SOURCE_REF + '"',
+            '[[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.pull_request.head.sha }}" =~ ^[0-9a-f]{40}$ ]]',
+            '[[ "${{ github.event_name }}" != "workflow_dispatch" || "$GITHUB_REF" == "refs/heads/so" ]]',
+            '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]',
             'test -n "$expected"',
             'test "$(git rev-parse HEAD)" = "$expected"',
             'test -z "$(git status --porcelain --untracked-files=all)"',
@@ -2653,6 +2656,26 @@ def prove_readonly_workflow_negative(readonly: str) -> None:
                     f"readonly bootstrap rejected outside exact guard ({label}): {exc}")
         else:
             raise Fail(f"strict snapshot readonly accepted bootstrap mutation: {label}")
+    # An absent PR head must not silently validate the merge/event SHA.
+    # Manual dispatch from a non-so ref must also fail before any validator.
+    source_identity_lines = (
+        ("missing PR-head format guard",
+         '          [[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.pull_request.head.sha }}" =~ ^[0-9a-f]{40}$ ]]\n'),
+        ("missing dispatch ref guard",
+         '          [[ "${{ github.event_name }}" != "workflow_dispatch" || "$GITHUB_REF" == "refs/heads/so" ]]\n'),
+        ("missing event SHA format guard",
+         '          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]\n'),
+    )
+    for label, line in source_identity_lines:
+        require(readonly.count(line) == 1, f"strict snapshot readonly source fixture drift: {label}")
+        mutated = readonly.replace(line, "", 1)
+        try:
+            require_readonly_workflow_authority(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly workflow authority drift",
+                    f"readonly source guard rejected outside exact validator ({label}): {exc}")
+        else:
+            raise Fail(f"strict snapshot readonly accepted source-identity mutation: {label}")
     marker = "      - name: Prove deterministic snapshot authority immutability\n"
     negative = "          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py\n"
     diff = '          diff -u "$snapshot" "$current"\n'
