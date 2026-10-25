@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-worker-host-failure-admission.yml"
 INDEPENDENT = ".github/workflows/deletion-worker-host-failure-source-negative.yml"
 SELF = "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
-REVIEWED_PUBLISHER = "9732904b18dcb1723dd24469d31649d0f4a94033"
+REVIEWED_PUBLISHER = "01f3c5116119e5bc49b6b4431196dce39795be99"
 REVIEWED_INDEPENDENT = "7a003ec33ba7b10ba0c6f6f51eafe038151a2dc3"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -44,8 +44,18 @@ def blob(content: str) -> str:
 
 def validate(publisher: str, independent: str) -> None:
     publisher_required = (
+        "  pull_request:\n    branches:\n      - so\n",
         "  push:\n    branches:\n      - so\n",
         "  workflow_dispatch:\n",
+        "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        "          persist-credentials: false\n",
+        "          persist-credentials: true\n",
+        "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'",
+        'test "${GITHUB_BASE_REF:-}" = "so"',
+        'test "${GITHUB_REF:-}" = "refs/heads/so"',
+        '[[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]',
         "permissions:\n  contents: read\n", "      contents: write\n",
         '          echo "Deletion host-failure validation completed; raw validator output withheld."\n',
         "'output': 'Deletion host-failure validation failed; raw validator output withheld.',",
@@ -194,6 +204,13 @@ def source_negatives(publisher: str, independent: str) -> None:
         ("fsync", "os.fsync(handle.fileno())", "pass"),
         ("atomic", "os.replace(temp_name, path)", "path.write_bytes(payload)"),
         ("cleanup", "os.unlink(temp_name)", "pass"),
+        ("PR base scope", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n    paths:\n"),
+        ("floating checkout", "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "uses: actions/checkout@v4"),
+        ("floating setup", "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "uses: actions/setup-python@v5"),
+        ("PR credential", "          persist-credentials: false\n", "          persist-credentials: true\n"),
+        ("writer event scope", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "    if: github.event_name != 'pull_request'"),
+        ("writer ref", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("writer SHA", '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]', 'test -n "$GITHUB_SHA"'),
     )
     i_cases = (
         ("PR base", PR_BASE, "true"), ("push branch", PUSH_REF, "true"),
@@ -218,7 +235,7 @@ def source_negatives(publisher: str, independent: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("deletion-host-failure accepted mutation: " + name + "/" + label)
-    print("PASS: deletion-host-failure publisher (10) and independent (10) source mutations")
+    print("PASS: deletion-host-failure publisher (17) and independent (10) source mutations")
 
 
 def predicate_runtime(independent: str) -> None:
