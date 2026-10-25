@@ -62,6 +62,12 @@ jobs:
             [[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]
           elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
             test "${GITHUB_REF:-}" = "refs/heads/so"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
+          else
+            echo "Unreviewed admission readonly event" >&2
+            exit 1
           fi
           expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
