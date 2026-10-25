@@ -8,6 +8,8 @@ on:
       - ".github/workflows/migration-evidence-registry.yml"
       - ".github/workflows/migration-evidence-registry-source-negative.yml"
       - "scripts/validate-memory-os-migration-evidence-registry-workflow-source-negative.py"
+      - "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
+      - "scripts/reconcile-memory-os-migration-evidence-registry.py"
   push:
     branches:
       - so
@@ -15,6 +17,8 @@ on:
       - ".github/workflows/migration-evidence-registry.yml"
       - ".github/workflows/migration-evidence-registry-source-negative.yml"
       - "scripts/validate-memory-os-migration-evidence-registry-workflow-source-negative.py"
+      - "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
+      - "scripts/reconcile-memory-os-migration-evidence-registry.py"
 
 permissions:
   contents: read
@@ -59,4 +63,19 @@ jobs:
           python scripts/validate-memory-os-migration-evidence-registry-workflow-source-negative.py
           git diff --check
           git diff --exit-code
+          test -z "$(git status --porcelain)"
+      - name: Prove lifecycle authority in disposable exact-source clone
+        run: |
+          set -euo pipefail
+          sandbox="$(mktemp -d)"
+          trap 'rm -rf "$sandbox"' EXIT
+          git clone --quiet --no-hardlinks --no-checkout . "$sandbox/repo"
+          git -C "$sandbox/repo" checkout --quiet --detach "$(git rev-parse HEAD)"
+          (
+            cd "$sandbox/repo"
+            python scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py
+            git diff --check
+            git diff --exit-code
+            test -z "$(git status --porcelain)"
+          )
           test -z "$(git status --porcelain)"

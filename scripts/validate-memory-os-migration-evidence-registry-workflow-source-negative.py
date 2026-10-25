@@ -15,7 +15,9 @@ PUBLISHER = ".github/workflows/migration-evidence-registry.yml"
 INDEPENDENT = ".github/workflows/migration-evidence-registry-source-negative.yml"
 SELF = "scripts/validate-memory-os-migration-evidence-registry-workflow-source-negative.py"
 PUBLISHER_SHA = "44cbad2f07c77bd76a2d3982a666806a340f3912"
-INDEPENDENT_SHA = "059b392b3802f986fc07979a867a91bf8eff459e"
+INDEPENDENT_SHA = "878f920daaa183087dceb1dc8c24dde0b47e2180"
+AUTHORITY_NEGATIVE = "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
+AUTHORITY_NEGATIVE_SHA = "bfa8ad1f5ab6eaf9a3445caf3279c7b38dc784e9"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 WRITER_SCOPE = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
@@ -86,14 +88,20 @@ INDEPENDENT_REQUIRED = (
     (WRITER_REF, 1),
     (PR_SHA, 1),
     ("python " + SELF, 1),
+    ('      - "' + AUTHORITY_NEGATIVE + '"\n', 2),
+    ('      - "' + "scripts/reconcile-memory-os-migration-evidence-registry.py" + '"\n', 2),
+    ("python " + AUTHORITY_NEGATIVE, 1),
+    ("git clone --quiet --no-hardlinks --no-checkout .", 1),
     ("permissions:\n  contents: read\n", 1),
     ("      contents: read\n", 1),
 )
 
 
-def validate(publisher: str, independent: str) -> None:
+def validate(publisher: str, independent: str, authority_negative: str | None = None) -> None:
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
+    check_source("lifecycle negative", read(AUTHORITY_NEGATIVE) if authority_negative is None else authority_negative,
+                 AUTHORITY_NEGATIVE_SHA, ())
 
 
 def negative_proofs(publisher: str, independent: str) -> None:
@@ -114,6 +122,8 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("independent checkout pin", False, CHECKOUT, "uses: actions/checkout@v4"),
         ("independent credentials", False, "persist-credentials: false", "persist-credentials: true"),
         ("independent self guard", False, "python " + SELF, "echo skip"),
+        ("independent lifecycle guard", False, "python " + AUTHORITY_NEGATIVE, "echo skip"),
+        ("independent isolated clone", False, "git clone --quiet --no-hardlinks --no-checkout .", "echo skip"),
     )
     for label, publisher_case, before, after in cases:
         original = publisher if publisher_case else independent
@@ -125,7 +135,18 @@ def negative_proofs(publisher: str, independent: str) -> None:
         except SystemExit:
             continue
         raise SystemExit("migration evidence source negative accepted: " + label)
-    print("PASS: migration evidence CI source negatives (16 cases)")
+    suite = read(AUTHORITY_NEGATIVE)
+    require("def prove_stronger_lifecycle_authority_cannot_be_downgraded" in suite,
+            "lifecycle downgrade negative entrypoint missing")
+    try:
+        validate(publisher, independent, suite.replace(
+            "def prove_stronger_lifecycle_authority_cannot_be_downgraded",
+            "def disabled_stronger_lifecycle_authority_cannot_be_downgraded", 1))
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("migration evidence source negative accepted: lifecycle suite digest drift")
+    print("PASS: migration evidence CI source negatives (19 cases)")
 
 
 def runtime_proofs() -> None:
