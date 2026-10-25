@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,9 +42,28 @@ def validate(source: str, *, check_blob: bool = True) -> None:
             raise SystemExit("generation independent review workflow complete source blob drift")
 
 
+def prove_branch_guards_runtime() -> None:
+    """Execute the reviewed shell predicates against disposable synthetic refs."""
+    cases = (
+        ("PR so", REQUIRED[14][1].strip(), "GITHUB_BASE_REF", "so", True),
+        ("PR main", REQUIRED[14][1].strip(), "GITHUB_BASE_REF", "main", False),
+        ("PR missing", REQUIRED[14][1].strip(), "GITHUB_BASE_REF", "", False),
+        ("push so", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/heads/so", True),
+        ("push main", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/tags/v1", False),
+    )
+    for label, command, key, value, expected in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+        result = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+        if (result.returncode == 0) != expected:
+            raise SystemExit("generation independent review runtime branch guard drift: " + label)
+    print("PASS: generation independent review PR/push branch guard runtime (6 cases)")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
