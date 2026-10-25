@@ -158,9 +158,138 @@ def prove_transaction_rollback(reconciler) -> None:
             reconciler.CANONICAL_CONTRACT.write_bytes(original)
 
 
+def validate_reconciler_atomic_source() -> None:
+    text = RECONCILER_PATH.read_text(encoding="utf-8")
+    required = (
+        "if not path.parent.is_dir():",
+        "if candidate.is_symlink():",
+        "if path.exists() and not path.is_file():",
+        "stat.S_IMODE(path.stat().st_mode)",
+        "os.fchmod(fd, existing_mode)",
+        "os.fsync(handle.fileno())",
+        "os.replace(temporary_path, path)",
+        "temporary_path.unlink()",
+    )
+
+    def require_source(value: str) -> None:
+        for fragment in required:
+            if value.count(fragment) != 1:
+                raise RuntimeError("ownership reconciler atomic source drift: " + fragment)
+        if "path.parent.mkdir(parents=True, exist_ok=True)" in value:
+            raise RuntimeError("ownership reconciler atomic parent may be created")
+
+    require_source(text)
+    for fragment in required:
+        changed = text.replace(fragment, "pass  # synthetic mutation", 1)
+        if changed == text:
+            raise RuntimeError("ownership reconciler mutation fixture missing: " + fragment)
+        try:
+            require_source(changed)
+        except RuntimeError:
+            continue
+        raise RuntimeError("ownership reconciler accepted atomic mutation: " + fragment)
+
+
+def prove_atomic_file_guards(reconciler) -> None:
+    import os
+    import stat
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="ownership-authority-atomic-") as tmp:
+        root = Path(tmp)
+        parent = root / "inside"
+        parent.mkdir()
+        target = parent / "authority.json"
+        target.write_bytes(b"original\n")
+        target.chmod(0o640)
+        reconciler.atomic_write(target, b"next\n")
+        if target.read_bytes() != b"next\n" or stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise RuntimeError("ownership atomic positive mode/bytes drift")
+
+        for name in ("replace", "fsync"):
+            original = getattr(reconciler.os, name)
+
+            def fail(*_args, **_kwargs):
+                raise OSError("synthetic " + name + " failure")
+
+            try:
+                setattr(reconciler.os, name, fail)
+                try:
+                    reconciler.atomic_write(target, b"should-not-publish\n")
+                except OSError as exc:
+                    if "synthetic " + name + " failure" not in str(exc):
+                        raise RuntimeError("ownership atomic failure wrong reason") from exc
+                else:
+                    raise RuntimeError("ownership atomic accepted injected " + name + " failure")
+            finally:
+                setattr(reconciler.os, name, original)
+            if (target.read_bytes() != b"next\n" or
+                stat.S_IMODE(target.stat().st_mode) != 0o640 or
+                list(parent.glob(".authority.json.*.tmp"))):
+                raise RuntimeError("ownership atomic failure corrupted prior bytes/mode/temp")
+
+        canary = root / "external-canary"
+        canary.write_bytes(b"external\n")
+        target.unlink()
+        target.symlink_to(canary)
+        try:
+            reconciler.atomic_write(target, b"invalid\n")
+        except reconciler.ReconcileFailure as exc:
+            if "symlink" not in str(exc):
+                raise RuntimeError("ownership target symlink rejected for wrong reason") from exc
+        else:
+            raise RuntimeError("ownership atomic followed target symlink")
+        if canary.read_bytes() != b"external\n":
+            raise RuntimeError("ownership atomic changed target symlink canary")
+        target.unlink()
+
+        outside = root / "outside"
+        outside.mkdir()
+        (outside / target.name).write_bytes(b"outside\n")
+        original_parent = root / "original-parent"
+        parent.rename(original_parent)
+        parent.symlink_to(outside, target_is_directory=True)
+        try:
+            reconciler.atomic_write(target, b"invalid\n")
+        except reconciler.ReconcileFailure as exc:
+            if "symlink" not in str(exc):
+                raise RuntimeError("ownership parent symlink rejected for wrong reason") from exc
+        else:
+            raise RuntimeError("ownership atomic followed parent symlink")
+        if (outside / target.name).read_bytes() != b"outside\n":
+            raise RuntimeError("ownership atomic changed parent symlink canary")
+        parent.unlink()
+        original_parent.rename(parent)
+
+        target.mkdir()
+        try:
+            reconciler.atomic_write(target, b"invalid\n")
+        except reconciler.ReconcileFailure as exc:
+            if "regular" not in str(exc):
+                raise RuntimeError("ownership directory target rejected for wrong reason") from exc
+        else:
+            raise RuntimeError("ownership atomic accepted directory target")
+        target.rmdir()
+        parent.rmdir()
+        try:
+            reconciler.atomic_write(target, b"invalid\n")
+        except reconciler.ReconcileFailure as exc:
+            if "parent missing" not in str(exc):
+                raise RuntimeError("ownership missing parent rejected for wrong reason") from exc
+        else:
+            raise RuntimeError("ownership atomic created missing parent")
+        if parent.exists():
+            raise RuntimeError("ownership atomic created missing parent")
+
+    print("PASS: ownership reconciler atomic source (8 mutations)")
+    print("PASS: ownership reconciler mode, replace/fsync rollback, symlink and path runtime (7 cases)")
+
+
 def main() -> int:
     reconciler = load_module()
     validate_atomic_diagnostic_publication()
+    validate_reconciler_atomic_source()
+    prove_atomic_file_guards(reconciler)
     expect_authority_identity(reconciler)
     prove_validator_chain(reconciler)
     prove_noop_validation(reconciler)
