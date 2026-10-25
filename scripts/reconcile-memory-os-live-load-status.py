@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -195,6 +196,11 @@ def result_is_pass(document: dict[str, Any], expected_sha: str) -> bool:
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    require(not path.is_symlink(), "live-load atomic target symlink refused")
+    try:
+        mode = stat.S_IMODE(path.stat().st_mode)
+    except FileNotFoundError:
+        mode = 0o644
     temp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -208,6 +214,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        os.chmod(temp_path, mode)
         os.replace(temp_path, path)
         temp_path = None
     finally:

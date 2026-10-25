@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import tempfile
 from pathlib import Path
 
@@ -213,9 +214,26 @@ def main() -> int:
         require(failed, "synthetic atomic replacement failure was not exercised")
         require(atomic_target.read_bytes() == b"before\n", "atomic replacement failure mutated target bytes")
         require(not list(tmp_root.glob(".*.tmp")), "atomic replacement failure left a temp file")
+        atomic_target.chmod(0o640)
+        module.atomic_write_bytes(atomic_target, b"after\\n")
+        require(atomic_target.read_bytes() == b"after\\n", "atomic replacement success lost bytes")
+        require(stat.S_IMODE(atomic_target.stat().st_mode) == 0o640,
+                "atomic replacement changed existing target mode")
+        outside = tmp_root / "outside.json"
+        outside.write_bytes(b"external sentinel\\n")
+        symlink = tmp_root / "symlink.json"
+        symlink.symlink_to(outside)
+        try:
+            module.atomic_write_bytes(symlink, b"forbidden\\n")
+        except module.ReconcileFailure as exc:
+            require("symlink refused" in str(exc), "unexpected symlink rejection")
+        else:
+            raise Fail("atomic writer followed a symlink target")
+        require(outside.read_bytes() == b"external sentinel\\n", "symlink changed outside sentinel")
+        require(not list(tmp_root.glob(".*.tmp")), "atomic mode/symlink test left temp file")
 
     print(
-        "PASS: live-load reconcile pins canonical data, execution transport and runtime guard authorities, publishes atomically, and rolls back both derived authorities after post-write validation failure"
+        "PASS: live-load reconcile pins canonical data, execution transport and runtime guard authorities, publishes atomically with mode and symlink guards, and rolls back both derived authorities after post-write validation failure"
     )
     return 0
 
