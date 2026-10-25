@@ -350,6 +350,21 @@ def main() -> int:
                       "permissions:\n  contents: read\nenv:\n  UNREVIEWED: true\n",
                       "independent injected workflow environment")),
     )
+    require(independent.count(
+        '      - ".github/workflows/backup-restore-admission-chain-negative.yml"\n'
+    ) == 2, "independent permission trigger fixture inventory drift")
+    independent_trigger_cases = (
+        ("independent removed negative CI PR trigger",
+         independent.replace(
+             '      - ".github/workflows/backup-restore-admission-chain-negative.yml"\n',
+             "", 1)),
+        ("independent removed negative CI push trigger",
+         independent.split("  push:\n", 1)[0] + "  push:\n" +
+         independent.split("  push:\n", 1)[1].replace(
+             '      - ".github/workflows/backup-restore-admission-chain-negative.yml"\n',
+             "", 1)),
+    )
+    independent_blob_cases += independent_trigger_cases
     for label, mutated in independent_blob_cases:
         require(mutated != independent, f"independent blob mutation unchanged: {label}")
         try:
