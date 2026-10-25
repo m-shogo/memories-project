@@ -192,7 +192,11 @@ def require_diagnostic_payload(raw: str) -> None:
     """Reject secret-bearing or promotion-shaped diagnostic JSON."""
     require("CANARY_DO_NOT_PERSIST_MIGRATION_EVIDENCE" not in raw,
             "migration evidence diagnostic persisted sensitive canary")
-    value = json.loads(raw)
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit("migration evidence CI source guard: diagnostic invalid JSON") from exc
+    require(isinstance(value, dict), "migration evidence diagnostic root must be object")
     require(set(value) == {
         "schemaVersion", "workflow", "result", "exitCode", "sourceCommitSha",
         "output", "containsSecrets", "productionEvidence", "productionReady",
@@ -243,6 +247,15 @@ def diagnostic_runtime(publisher: str) -> None:
             ("unreviewed raw field", script.replace("'productionReady': False,",
                 "'productionReady': False,\n    'rawSql': 'SELECT 1',", 1),
              False, "diagnostic field inventory drift"),
+            ("array root", script.replace("json.dump(value, handle, indent=2)",
+                "json.dump([value], handle, indent=2)", 1),
+             False, "diagnostic root must be object"),
+            ("scalar root", script.replace("json.dump(value, handle, indent=2)",
+                "json.dump('not-an-object', handle, indent=2)", 1),
+             False, "diagnostic root must be object"),
+            ("invalid JSON", script.replace("json.dump(value, handle, indent=2)",
+                "handle.write('{invalid json')", 1),
+             False, "diagnostic invalid JSON"),
         )
         for name, program, allowed, expected_failure in variants:
             directory = root / name.replace(" ", "-")
@@ -263,7 +276,7 @@ def diagnostic_runtime(publisher: str) -> None:
                         "migration evidence diagnostic rejected for wrong reason: " + name + ": " + str(exc))
             else:
                 require(allowed, "migration evidence diagnostic accepted unsafe mutation: " + name)
-    print("PASS: migration evidence actual diagnostic writer (1 positive, 5 negative runtime cases)")
+    print("PASS: migration evidence actual diagnostic writer (1 positive, 8 negative runtime cases)")
 
 
 def main() -> int:
