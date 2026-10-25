@@ -69,8 +69,13 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
             test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
             test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          else
+            echo "Unreviewed permission CI event" >&2
+            exit 1
           fi
 
       - name: Compile backup/restore permission negatives
