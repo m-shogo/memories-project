@@ -10,6 +10,9 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
   push:
     branches:
       - so
@@ -19,6 +22,9 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
 
 permissions:
   contents: read
