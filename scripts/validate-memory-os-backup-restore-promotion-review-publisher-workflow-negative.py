@@ -115,6 +115,32 @@ def runtime(publisher: str, independent: str) -> None:
     print("PASS: human promotion publisher/independent PR-push branch runtime (12 cases), writer event runtime (4 cases)")
 
 
+def runtime_sha_proof(publisher: str, independent: str) -> None:
+    """Execute human-promotion review SHA admission; tests never authorize promotion."""
+    cases = (
+        ("lowercase hex", "a" * 40, True),
+        ("numeric hex", "0" * 40, True),
+        ("short SHA", "a" * 39, False),
+        ("long SHA", "a" * 41, False),
+        ("uppercase SHA", "A" * 40, False),
+        ("nonhex SHA", "g" * 40, False),
+        ("empty SHA", "", False),
+        ("literal shell substitution", "$(echo unexpected)", False),
+    )
+    for source_label, source_text, count in (
+        ("publisher", publisher, 2),
+        ("independent", independent, 1),
+    ):
+        if source_text.count(SHA_FORMAT) != count:
+            raise SystemExit("human promotion SHA predicate unreachable: " + source_label)
+        for label, value, allowed in cases:
+            command = 'expected="${PROBE_SHA:-}"\n' + SHA_FORMAT
+            env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value}
+            result = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+            if (result.returncode == 0) != allowed:
+                raise SystemExit("human promotion SHA predicate drift: " + source_label + " " + label)
+    print(f"PASS: human promotion publisher/independent SHA runtime ({len(cases) * 2} cases)")
+
 def negatives(publisher: str, independent: str) -> None:
     publisher_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -176,6 +202,7 @@ def main() -> int:
     independent = source(INDEPENDENT)
     validate(publisher, independent)
     runtime(publisher, independent)
+    runtime_sha_proof(publisher, independent)
     negatives(publisher, independent)
     return 0
 
