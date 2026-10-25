@@ -9,6 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence.yml"
+READONLY_WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-readonly.yml"
+REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "1a32b34d081f52d842aaad79d4df8886e52bea75"
 
 
 class Fail(RuntimeError):
@@ -337,7 +339,40 @@ def require_run_body_negatives(source: str) -> None:
             raise Fail(f"recovery unreviewed run-body mutation accepted: {label}")
 
 
+def require_reviewed_readonly_workflow_blob(source: str) -> None:
+    """Bind the complete generation-evidence readonly CI executable source."""
+    payload = source.encode("utf-8")
+    git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    require(hashlib.sha1(git_blob).hexdigest() == REVIEWED_READONLY_WORKFLOW_BLOB_SHA,
+            "generation readonly CI complete workflow source drift")
+
+
+def require_readonly_workflow_source_negatives(source: str) -> None:
+    require_reviewed_readonly_workflow_blob(source)
+    cases = (
+        ("floating-checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
+        ("persisted-credentials", "persist-credentials: false", "persist-credentials: true"),
+        ("missing-pr-head-guard", '[[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]', "true"),
+        ("dispatch-other-branch", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("skipped-generation-validation", "python scripts/validate-memory-os-backup-restore-generation-evidence.py", "echo UNREVIEWED"),
+        ("injected-shell", "          python scripts/validate-memory-os-operability.py", "          echo UNREVIEWED\n          python scripts/validate-memory-os-operability.py"),
+    )
+    for label, before, after in cases:
+        require(source.count(before) == 1, f"generation readonly CI fixture anchor drift: {label}")
+        mutated = source.replace(before, after, 1)
+        require(mutated != source, f"generation readonly CI fixture unchanged: {label}")
+        try:
+            require_reviewed_readonly_workflow_blob(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"generation readonly CI source mutation accepted: {label}")
+
+
 def main() -> int:
+    require(READONLY_WORKFLOW.is_file() and not READONLY_WORKFLOW.is_symlink(),
+            "generation readonly CI workflow missing or substituted")
+    require_readonly_workflow_source_negatives(READONLY_WORKFLOW.read_text(encoding="utf-8"))
     text = WORKFLOW.read_text(encoding="utf-8")
     require_root_event_negatives(text)
     require_trigger_path_negatives(text)
@@ -403,6 +438,7 @@ def main() -> int:
     print("workflow root/event negative mutations rejected: 6")
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
+    print("independent generation readonly CI source mutations rejected: 6")
     print("production decision changed: false")
     return 0
 
