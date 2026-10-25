@@ -153,7 +153,7 @@ def main() -> int:
             },
         )
         pass_validator.write_text("raise SystemExit(0)\n", encoding="utf-8")
-        fail_validator.write_text("raise SystemExit(17)\n", encoding="utf-8")
+        fail_validator.write_text('print("SYNTHETIC_VALIDATOR_SECRET_DO_NOT_LOG")\nraise SystemExit(17)\n', encoding="utf-8")
 
         module.STATUS_PATH = status_path
         module.LOAD_CONTRACT_PATH = load_path
@@ -176,6 +176,11 @@ def main() -> int:
                     "canonical operability validation failed" in str(exc),
                     f"unexpected failure reason: {exc}",
                 )
+                require(
+                    "SYNTHETIC_VALIDATOR_SECRET_DO_NOT_LOG" not in str(exc),
+                    "reconciler leaked failing validator stdout",
+                )
+                require("exit code 17" in str(exc), "validator exit code not preserved")
             else:
                 raise Fail("reconciler accepted a failing post-write operability validator")
         finally:

@@ -162,7 +162,7 @@ def run_validator(
     )
     require(
         type(completed.returncode) is int and completed.returncode == 0,
-        f"canonical {label} validation failed: {completed.stdout[-2000:]}",
+        f"canonical {label} validation failed (exit code {completed.returncode})",
     )
 
 
