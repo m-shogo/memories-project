@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/backup-restore-promotion-review.yml"
 INDEPENDENT = ".github/workflows/backup-restore-promotion-review-source-negative.yml"
 SELF = "scripts/validate-memory-os-backup-restore-promotion-review-publisher-workflow-negative.py"
-REVIEWED_PUBLISHER = "901861b63f5a3237bcac82dd27ab59a5170677e7"
+REVIEWED_PUBLISHER = "1d0e9a5334a3cff3c62c3699d756f3b0d2d3a6fb"
 REVIEWED_INDEPENDENT = "5e92aa51cdfa55ea4a55bff9674d7c7496bc71d7"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -44,6 +47,10 @@ MAIN_REQUIRED = (
     ("root read token", "permissions:\n  contents: read\n", 1),
     ("PR read token", "      contents: read\n", 1),
     ("writer write token", "      contents: write\n", 1),
+    ("diagnostic fixed redaction", "              'output': 'REDACTED: promotion review validation failed; consult CI job logs',\n", 1),
+    ("raw CI log suppression", '          printf "Promotion review validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
+    ("no raw diagnostic tail", "text[-12000:]", 0),
+    ("no raw CI log echo", '          cat "$log"\n', 0),
 )
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
@@ -141,6 +148,44 @@ def runtime_sha_proof(publisher: str, independent: str) -> None:
                 raise SystemExit("human promotion SHA predicate drift: " + source_label + " " + label)
     print(f"PASS: human promotion publisher/independent SHA runtime ({len(cases) * 2} cases)")
 
+def runtime_diagnostic_redaction(publisher: str) -> None:
+    """Execute the exact human-promotion diagnostic writer in isolation."""
+    start = "          python - <<'PY'\n"
+    end = "          PY\n"
+    if publisher.count(start) != 1 or publisher.count(end) != 1:
+        raise SystemExit("human promotion diagnostic writer not uniquely reachable")
+    inline = publisher.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="human-promotion-diagnostic-") as tmpdir:
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_SHA": "f" * 40,
+            "VALIDATION_EXIT_CODE": "29",
+            "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_GHI",
+        })
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmpdir, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            raise SystemExit("human promotion isolated diagnostic failed: " + result.stderr[:500])
+        output = Path(tmpdir) / "docs/fixtures/memory-os-operability/backup-restore-promotion-review-diagnostic.last.json"
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        if payload.get("output") != "REDACTED: promotion review validation failed; consult CI job logs":
+            raise SystemExit("human promotion diagnostic persisted raw validator output")
+        if payload.get("sourceCommitSha") != "f" * 40 or payload.get("exitCode") != 29:
+            raise SystemExit("human promotion diagnostic source/exit binding drift")
+        if payload.get("containsSecrets") is not False or payload.get("reviewCreated") is not False:
+            raise SystemExit("human promotion diagnostic secret/review flags drift")
+        if payload.get("trafficChanged") is not False or payload.get("productionReady") is not False:
+            raise SystemExit("human promotion diagnostic traffic/readiness flags drift")
+        if payload.get("productionEvidence") is not False:
+            raise SystemExit("human promotion diagnostic production evidence drift")
+        if "CANARY_DO_NOT_PERSIST_GHI" in output.read_text(encoding="utf-8"):
+            raise SystemExit("human promotion diagnostic persisted synthetic canary")
+    print("PASS: human promotion isolated diagnostic redaction (1 runtime case)")
+
+
 def negatives(publisher: str, independent: str) -> None:
     publisher_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -165,6 +210,9 @@ def negatives(publisher: str, independent: str) -> None:
         ("capture step removed", CAPTURE, ""),
         ("unreviewed Action", CAPTURE, "      - uses: unreviewed/action@v1\n" + CAPTURE),
         ("unreviewed shell", CAPTURE, "      - run: echo unreviewed\n" + CAPTURE),
+        ("raw diagnostic", "              'output': 'REDACTED: promotion review validation failed; consult CI job logs',\n", "              'output': Path('/tmp/backup-restore-promotion-review.log').read_text(),\n"),
+        ("raw CI log", '          printf "Promotion review validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
+        ("missing redaction", "              'output': 'REDACTED: promotion review validation failed; consult CI job logs',\n", ""),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -203,6 +251,7 @@ def main() -> int:
     validate(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
+    runtime_diagnostic_redaction(publisher)
     negatives(publisher, independent)
     return 0
 
