@@ -14,6 +14,7 @@ PUBLISHER = ".github/workflows/reconcile-deletion-sigkill-authority.yml"
 INDEPENDENT = ".github/workflows/deletion-sigkill-diagnostic-source-negative.yml"
 SCRIPT = "scripts/validate-memory-os-deletion-sigkill-diagnostic-source-negative.py"
 REVIEWED = "0906a248b52297e836738d0c6ff00daaf49fed7d"
+REVIEWED_INDEPENDENT = "18e047a7bbc8f5e7335eefa5f8931610f8522306"
 TARGET = "docs/fixtures/memory-os-operability/deletion-sigkill-authority-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -169,6 +170,44 @@ def log_runtime(text):
     print("PASS: SIGKILL actual shell withholds synthetic secret and returns exit 23")
 
 
+
+def identity_runtime(ci, title):
+    command = step(ci, title)
+    head = "a" * 40
+    cases = (
+        ("pull_request", "so", "", head, "", True),
+        ("pull_request", "main", "", head, "", False),
+        ("pull_request", "so", "", "A" * 40, "", False),
+        ("pull_request", "so", "", "b" * 40, "", False),
+        ("pull_request", "so", "", "", "", False),
+        ("push", "", "refs/heads/so", "", head, True),
+        ("push", "", "refs/heads/main", "", head, False),
+        ("push", "", "refs/heads/so", "", "A" * 40, False),
+        ("push", "", "refs/heads/so", "", "b" * 40, False),
+        ("push", "", "refs/heads/so", "", "a" * 39, False),
+        ("schedule", "", "refs/heads/so", "", head, False),
+        ("workflow_dispatch", "", "refs/heads/so", "", head, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="diagnostic-source-identity-") as temp:
+        root = Path(temp)
+        git = root / "git"
+        git.write_text("#!/bin/sh\n"
+                       "if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then printf '" + head + "\\n'; exit 0; fi\n"
+                       "if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then exit 0; fi\n"
+                       "exit 1\n", encoding="utf-8")
+        git.chmod(0o755)
+        for event, base, ref, pr_sha, sha, allowed in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_BASE_REF=base, GITHUB_REF=ref,
+                       PR_HEAD_SHA=pr_sha, GITHUB_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", command],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != allowed:
+                raise AssertionError("diagnostic independent event/base/ref/SHA runtime drift: " + event)
+    print("PASS: diagnostic independent exact-source event/base/ref/SHA shell runtime (12 cases)")
+
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -179,6 +218,9 @@ def main():
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
+    if blob(independent) != REVIEWED_INDEPENDENT:
+        raise SystemExit("SIGKILL independent workflow complete Git blob drift")
+    identity_runtime(independent, "Require exact clean SIGKILL diagnostic source")
     policy(publisher)
     mutations(publisher)
     writer_runtime(publisher)

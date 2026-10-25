@@ -14,6 +14,7 @@ PUBLISHER = ".github/workflows/reconcile-compatibility-authority-diagnostic.yml"
 INDEPENDENT = ".github/workflows/compatibility-diagnostic-source-negative.yml"
 SELF = "scripts/validate-memory-os-compatibility-diagnostic-source-negative.py"
 REVIEWED = "5a8e31638d7c22f408d68cfb5e8a60dc360e6d00"
+REVIEWED_INDEPENDENT = "e673a883f98c2a905ce6c56d7945d33a7f231a96"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 TARGET = "docs/fixtures/memory-os-operability/compatibility-authority-diagnostic.last.json"
@@ -171,6 +172,44 @@ def log_runtime(text):
     print("PASS: compatibility actual stage shell withholds secret and records exit 23")
 
 
+
+def identity_runtime(ci, title):
+    command = step(ci, title)
+    head = "a" * 40
+    cases = (
+        ("pull_request", "so", "", head, "", True),
+        ("pull_request", "main", "", head, "", False),
+        ("pull_request", "so", "", "A" * 40, "", False),
+        ("pull_request", "so", "", "b" * 40, "", False),
+        ("pull_request", "so", "", "", "", False),
+        ("push", "", "refs/heads/so", "", head, True),
+        ("push", "", "refs/heads/main", "", head, False),
+        ("push", "", "refs/heads/so", "", "A" * 40, False),
+        ("push", "", "refs/heads/so", "", "b" * 40, False),
+        ("push", "", "refs/heads/so", "", "a" * 39, False),
+        ("schedule", "", "refs/heads/so", "", head, False),
+        ("workflow_dispatch", "", "refs/heads/so", "", head, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="diagnostic-source-identity-") as temp:
+        root = Path(temp)
+        git = root / "git"
+        git.write_text("#!/bin/sh\n"
+                       "if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then printf '" + head + "\\n'; exit 0; fi\n"
+                       "if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then exit 0; fi\n"
+                       "exit 1\n", encoding="utf-8")
+        git.chmod(0o755)
+        for event, base, ref, pr_sha, sha, allowed in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_BASE_REF=base, GITHUB_REF=ref,
+                       PR_HEAD_SHA=pr_sha, GITHUB_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", command],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != allowed:
+                raise AssertionError("diagnostic independent event/base/ref/SHA runtime drift: " + event)
+    print("PASS: diagnostic independent exact-source event/base/ref/SHA shell runtime (12 cases)")
+
+
+
 def main():
     text = read(PUBLISHER)
     if blob(text) != REVIEWED:
@@ -181,6 +220,9 @@ def main():
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in ci:
             raise AssertionError("compatibility independent CI source/reachability drift: " + marker)
+    if blob(ci) != REVIEWED_INDEPENDENT:
+        raise SystemExit("compatibility independent workflow complete Git blob drift")
+    identity_runtime(ci, "Require exact clean compatibility diagnostic source")
     policy(text)
     mutations(text)
     writer_runtime(text)
