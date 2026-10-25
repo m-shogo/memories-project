@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_PATH = ".github/workflows/backup-restore-drill-preflight.yml"
 GUARD_PATH = ".github/workflows/backup-restore-drill-preflight-source-negative.yml"
 SELF_PATH = "scripts/validate-memory-os-backup-restore-drill-preflight-workflow-negative.py"
-MAIN_BLOB = "245847c8b296bd72cb847be9baa211ef70b90aed"
+MAIN_BLOB = "a93a537427e0ffc5f56a8fc3edc63475f8b78184"
 GUARD_BLOB = "cdcfc001168b18173441671f1fe30417984f3bba"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -58,6 +61,10 @@ MAIN_REQUIRED = (
     ("diagnostic durability", "                  os.fsync(handle.fileno())\n", 1),
     ("diagnostic atomic replacement", "              os.replace(tmp_name, path)\n", 1),
     ("diagnostic bounded staging", "          git add docs/fixtures/memory-os-operability/backup-restore-drill-preflight-diagnostic.last.json\n", 1),
+    ("diagnostic fixed redaction", "              'output': 'REDACTED: preflight validator failed; consult CI job logs',\n", 1),
+    ("CI raw log suppressed", '          printf "Preflight validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
+    ("no raw diagnostic tail", "text[-12000:]", 0),
+    ("no raw CI log echo", '          cat "$log"\n', 0),
 )
 
 GUARD_REQUIRED = (
@@ -203,6 +210,41 @@ def runtime_cas_proof(main: str) -> None:
     print(f"PASS: preflight reviewed latest-source CAS runtime ({len(cases)} cases)")
 
 
+def runtime_diagnostic_redaction_proof(main: str) -> None:
+    """Execute the actual inline diagnostic writer in an isolated temporary directory."""
+    start = "          python - <<'PY'\n"
+    end = "          PY\n"
+    if main.count(start) != 1 or main.count(end) != 1:
+        raise SystemExit("preflight diagnostic inline writer is not uniquely reachable")
+    inline = main.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    marker = "REDACTED: preflight validator failed; consult CI job logs"
+    with tempfile.TemporaryDirectory(prefix="preflight-diagnostic-redaction-") as tmpdir:
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_SHA": "a" * 40,
+            "PREFLIGHT_EXIT_CODE": "7",
+            "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_123",
+        })
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmpdir, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            raise SystemExit("preflight isolated diagnostic writer failed: " + result.stderr[:500])
+        output = Path(tmpdir) / "docs/fixtures/memory-os-operability/backup-restore-drill-preflight-diagnostic.last.json"
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        if payload.get("output") != marker or payload.get("exitCode") != 7:
+            raise SystemExit("preflight diagnostic persisted unreviewed output or exit code")
+        if payload.get("sourceCommitSha") != "a" * 40 or payload.get("containsSecrets") is not False:
+            raise SystemExit("preflight diagnostic source or secret flag drift")
+        if payload.get("productionReady") is not False or payload.get("productionEvidence") is not False:
+            raise SystemExit("preflight diagnostic forged readiness/evidence")
+        if "CANARY_DO_NOT_PERSIST_123" in output.read_text(encoding="utf-8"):
+            raise SystemExit("preflight diagnostic persisted synthetic sensitive content")
+    print("PASS: preflight isolated diagnostic writer redaction (1 runtime case)")
+
+
 def prove_negative_mutations(main: str, guard: str) -> None:
     publisher_cases = (
         ("PR checkout ref", "ref: ${{ github.event.pull_request.head.sha }}", "ref: ${{ github.sha }}"),
@@ -247,6 +289,9 @@ def prove_negative_mutations(main: str, guard: str) -> None:
         ("diagnostic durability", "                  os.fsync(handle.fileno())\n", "                  handle.flush()\n"),
         ("diagnostic atomic replacement", "              os.replace(tmp_name, path)\n", "              path.write_bytes(payload)\n"),
         ("diagnostic bounded staging", "          git add docs/fixtures/memory-os-operability/backup-restore-drill-preflight-diagnostic.last.json\n", "          git add -A\n"),
+        ("diagnostic raw output regression", "              'output': 'REDACTED: preflight validator failed; consult CI job logs',\n", "              'output': Path('/tmp/backup-restore-drill-preflight.log').read_text(),\n"),
+        ("CI raw log regression", '          printf "Preflight validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
+        ("diagnostic false secret flag", "              'containsSecrets': False,\n", "              'containsSecrets': True,\n"),
     )
     independent_cases = (
         ("independent checkout source", "ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}", "ref: ${{ github.sha }}"),
@@ -296,6 +341,7 @@ def main() -> int:
     runtime_branch_proof(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_cas_proof(publisher)
+    runtime_diagnostic_redaction_proof(publisher)
     prove_negative_mutations(publisher, independent)
     return 0
 
