@@ -36,6 +36,61 @@ def require_publication_scope(header: str) -> None:
             "publication job key inventory drift")
 
 
+
+def require_reviewed_bootstrap(job: str, *, pr: bool) -> tuple[str, str]:
+    """Bind both immutable actions, exact checkout source, and credential persistence."""
+    name = "Checkout exact pull request source" if pr else "Checkout exact source"
+    source = (
+        "ref: ${{ github.event.pull_request.head.sha }}"
+        if pr else "ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+    )
+    checkout = (
+        f"      - name: {name}\n"
+        "        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n"
+        "        with:\n"
+        f"          {source}\n"
+        "          fetch-depth: 0\n"
+        f"          persist-credentials: {'false' if pr else 'true'}\n"
+    )
+    setup = (
+        "      - name: Set up Python\n"
+        "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
+        "        with:\n"
+        '          python-version: "3.12"\n'
+    )
+    require(job.count(checkout) == 1, "drill bootstrap checkout source or credentials drift")
+    require(job.count(setup) == 1, "drill bootstrap Python action drift")
+    uses = re.findall(r"(?m)^\s*uses:\s*([^\n]+)$", job)
+    require(uses == [
+        "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+    ], "drill bootstrap action inventory drift")
+    return checkout, setup
+
+
+def require_bootstrap_negatives(job: str, *, pr: bool) -> None:
+    checkout, setup = require_reviewed_bootstrap(job, pr=pr)
+    credential = "false" if pr else "true"
+    mutations = (
+        job.replace("actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4", 1),
+        job.replace("actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@11d5960a326750d5838078e36cf38b85af677260", 1),
+        job.replace("actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "actions/setup-python@v5", 1),
+        job.replace("actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87060", 1),
+        job.replace(f"          persist-credentials: {credential}\n",
+                    f"          persist-credentials: {'true' if pr else 'false'}\n", 1),
+        job.replace(f"          persist-credentials: {credential}\n", "", 1),
+        job.replace(checkout, checkout.replace("fetch-depth: 0", "fetch-depth: 1"), 1),
+        job.replace(checkout, checkout + "      - uses: actions/checkout@v4\n", 1),
+    )
+    for mutated in mutations:
+        require(mutated != job, "drill bootstrap negative fixture did not mutate")
+        try:
+            require_reviewed_bootstrap(mutated, pr=pr)
+        except Fail:
+            pass
+        else:
+            raise Fail("drill bootstrap negative mutation accepted")
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("pull_request_target:" not in text, "drill-request authority must not use pull_request_target")
@@ -44,6 +99,8 @@ def main() -> int:
 
     _, jobs = text.split("\njobs:\n", 1)
     validate_pr, validate = jobs.split("\n  validate:\n", 1)
+    require_bootstrap_negatives(validate_pr, pr=True)
+    require_bootstrap_negatives(validate, pr=False)
 
     require("if: github.event_name == 'pull_request'" in validate_pr, "drill-request PR validator must be pull-request-only")
     require("permissions:\n      contents: read" in validate_pr, "drill-request PR validator must explicitly remain contents: read")
@@ -88,6 +145,7 @@ def main() -> int:
     print("PASS: reviewed requests remain planning authority only and publication excludes pull requests")
     print("PASS: downstream generation/typed gates, rollback negatives, stale-source CAS and atomic diagnostics remain enforced")
     print("publisher event/ref negative mutations rejected: 4")
+    print("immutable bootstrap/source/credential negative mutations rejected: 16")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
