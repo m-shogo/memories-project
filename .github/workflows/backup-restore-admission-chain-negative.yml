@@ -2,6 +2,8 @@ name: Backup Restore Admission Chain Negative
 
 on:
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/backup-restore-admission-chain-negative.yml"
       - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
@@ -185,6 +187,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${GITHUB_BASE_REF:-}" = "so"
             pr_head="${{ github.event.pull_request.head.sha }}"
             [[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]
           elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then

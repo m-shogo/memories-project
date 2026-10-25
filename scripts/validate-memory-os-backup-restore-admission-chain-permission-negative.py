@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain.yml"
 NEGATIVE_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-negative.yml"
-REVIEWED_NEGATIVE_WORKFLOW_BLOB_SHA = "a422a98a071a9d5dc96c5dfd5f02770bc872c2cc"
+REVIEWED_NEGATIVE_WORKFLOW_BLOB_SHA = "9e49f2bb43d94d333e2753bc30ed22b7ee9715b7"
 READONLY_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-readonly.yml"
 REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "d6a35451b4b76545b20c0a8ab74e487d9e469f8d"
 
@@ -294,8 +294,31 @@ def require_reviewed_negative_workflow_blob(source: str) -> None:
             "admission negative CI complete workflow source drift")
 
 
+def prove_negative_workflow_branch_guards_runtime(source: str) -> None:
+    """Run reviewed PR-base and push-ref predicates with bounded synthetic inputs."""
+    pr = 'test "${GITHUB_BASE_REF:-}" = "so"'
+    push = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
+    require(source.count(pr) == 1 and source.count(push) == 2,
+            "admission negative CI runtime branch predicate inventory drift")
+    cases = (
+        ("PR so", pr, "GITHUB_BASE_REF", "so", True),
+        ("PR main", pr, "GITHUB_BASE_REF", "main", False),
+        ("PR missing", pr, "GITHUB_BASE_REF", "", False),
+        ("push so", push, "GITHUB_REF", "refs/heads/so", True),
+        ("push main", push, "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", push, "GITHUB_REF", "refs/tags/v1", False),
+    )
+    for label, command, key, value, expected in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+        completed = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+        require((completed.returncode == 0) == expected,
+                "admission negative CI runtime branch predicate drift: " + label)
+    print("PASS: admission negative CI PR/push branch guard runtime (6 cases)")
+
+
 def require_negative_workflow_source_negatives(source: str) -> None:
     require_reviewed_negative_workflow_blob(source)
+    prove_negative_workflow_branch_guards_runtime(source)
     cases = (
         ("floating-checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
         ("persisted-credentials", "persist-credentials: false", "persist-credentials: true"),
@@ -307,6 +330,8 @@ def require_negative_workflow_source_negatives(source: str) -> None:
         ("push-event-substituted", 'elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then', 'elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then'),
         ("skipped-chain-negative", "run: python scripts/validate-memory-os-backup-restore-admission-chain-negative.py", "run: echo UNREVIEWED"),
         ("injected-shell", "          python -m py_compile", "          echo UNREVIEWED\n          python -m py_compile"),
+        ("missing-pr-base-guard", 'test "${GITHUB_BASE_REF:-}" = "so"', 'test "${GITHUB_BASE_REF:-}" = "main"'),
+        ("missing-pr-target-filter", "  pull_request:\n    branches:\n      - so\n    paths:\n", "  pull_request:\n    paths:\n"),
     )
     for label, before, after in cases:
         require(source.count(before) == 1, f"admission negative CI fixture anchor drift: {label}")
@@ -478,7 +503,7 @@ def main() -> int:
     print("workflow root/event negative mutations rejected: 6")
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
-    print("independent admission negative CI source mutations rejected: 10")
+    print("independent admission negative CI source mutations rejected: 12")
     print("independent admission readonly CI source mutations rejected: 15")
     print("production decision changed: false")
     return 0
