@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/migration-production-shaped-admission.yml"
+WRITER_SCOPE = "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
 
 
 class Fail(RuntimeError):
@@ -25,6 +26,26 @@ def section(text: str, start: str, end: str | None = None) -> str:
     return tail if end_offset < 0 else tail[:end_offset]
 
 
+
+def prove_writer_scope_negatives(reconcile: str) -> None:
+    require(reconcile.count(WRITER_SCOPE) == 1, "migration writer scope not uniquely bound")
+    for label, weakened in (
+        ("broad non-PR", "if: github.event_name != 'pull_request'"),
+        ("always", "if: always()"),
+        ("push only", "if: github.event_name == 'push'"),
+        ("branch only", "if: github.ref == 'refs/heads/so'"),
+        ("missing branch", "if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'"),
+    ):
+        changed = reconcile.replace(WRITER_SCOPE, weakened, 1)
+        require(changed != reconcile, "migration writer scope fixture unchanged: " + label)
+        try:
+            require(WRITER_SCOPE in changed, "migration writer scope rejected: " + label)
+        except Fail:
+            continue
+        raise Fail("migration writer scope accepted weakened predicate: " + label)
+    print("PASS: migration writer push/dispatch so-only scope (5 negatives)")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("pull_request_target:" not in text, "pull_request_target must never carry migration admission authority")
@@ -38,7 +59,8 @@ def main() -> int:
     require("contents: write" not in pr, "pull request validation must not receive write authority")
 
     reconcile = section(text, "  reconcile:\n")
-    require("if: github.event_name != 'pull_request'" in reconcile, "publication job must exclude pull requests")
+    require(WRITER_SCOPE in reconcile, "publication job must be push/dispatch on so only")
+    prove_writer_scope_negatives(reconcile)
     require("permissions:\n      contents: write" in reconcile, "non-PR publication job must retain bounded write authority")
     require("ref: ${{ github.sha }}" in reconcile, "publication must checkout exact event source")
     require(reconcile.count("git fetch origin so") >= 3, "publication and diagnostic paths must re-check remote source")

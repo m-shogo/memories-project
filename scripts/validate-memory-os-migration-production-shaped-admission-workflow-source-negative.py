@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/migration-production-shaped-admission.yml"
 INDEPENDENT = ".github/workflows/migration-production-shaped-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py"
-PUBLISHER_SHA = "463815d50ead37c8de8615ea036a0c74910c19b9"
+PUBLISHER_SHA = "3eba8275ba319a13b0084e5712ea628f81553738"
 INDEPENDENT_SHA = "f927a8d2a6a64cde09a842272aa411040c9932a3"
 D = chr(36)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -38,6 +38,7 @@ PUBLISHER_REQUIRED = (
     ("publisher trigger", '      - "' + PUBLISHER + '"\n', 2),
     ("independent trigger", '      - "' + INDEPENDENT + '"\n', 2),
     ("validator trigger", '      - "' + SELF + '"\n', 2),
+    ("permission validator trigger", '      - "scripts/validate-memory-os-migration-production-shaped-admission-permission-negative.py"\n', 2),
     ("checkout pin", CHECKOUT, 2),
     ("setup pin", SETUP, 2),
     ("PR no credentials", "          persist-credentials: false\n", 1),
@@ -168,6 +169,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("publisher trigger", '      - "' + PUBLISHER + '"\n', ""),
         ("independent trigger", '      - "' + INDEPENDENT + '"\n', ""),
         ("validator trigger", '      - "' + SELF + '"\n', ""),
+        ("permission validator trigger", '      - "scripts/validate-memory-os-migration-production-shaped-admission-permission-negative.py"\n', ""),
         ("floating checkout", CHECKOUT, "uses: actions/checkout@v4"),
         ("floating setup", SETUP, "uses: actions/setup-python@v5"),
         ("PR credentials", "          persist-credentials: false\n", "          persist-credentials: true\n"),
