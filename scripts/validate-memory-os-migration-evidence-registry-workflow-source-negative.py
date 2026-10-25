@@ -193,6 +193,10 @@ def require_diagnostic_payload(raw: str) -> None:
     require("CANARY_DO_NOT_PERSIST_MIGRATION_EVIDENCE" not in raw,
             "migration evidence diagnostic persisted sensitive canary")
     value = json.loads(raw)
+    require(set(value) == {
+        "schemaVersion", "workflow", "result", "exitCode", "sourceCommitSha",
+        "output", "containsSecrets", "productionEvidence", "productionReady",
+    }, "migration evidence diagnostic field inventory drift")
     require(value.get("schemaVersion") == "memory-os-validator-diagnostic.v1",
             "migration evidence diagnostic schema drift")
     require(value.get("workflow") == "migration-evidence-registry" and value.get("result") == "FAIL",
@@ -225,11 +229,22 @@ def diagnostic_runtime(publisher: str) -> None:
         env.update({"SOURCE_COMMIT_SHA": "e" * 40, "MIGRATION_EXIT_CODE": "23",
                     "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_MIGRATION_EVIDENCE"})
         variants = (
-            ("reviewed", script, True),
-            ("raw canary", script.replace(marker_text, "os.environ['SENSITIVE_CANARY']", 1), False),
-            ("readiness promotion", script.replace("'productionReady': False", "'productionReady': True", 1), False),
+            ("reviewed", script, True, None),
+            ("raw canary", script.replace(marker_text, "os.environ['SENSITIVE_CANARY']", 1),
+             False, "persisted sensitive canary"),
+            ("readiness promotion", script.replace("'productionReady': False", "'productionReady': True", 1),
+             False, "asserted secrets/evidence/readiness"),
+            ("unreviewed traffic", script.replace("'productionReady': False,",
+                "'productionReady': False,\n    'productionTraffic': True,", 1),
+             False, "diagnostic field inventory drift"),
+            ("unreviewed credentials", script.replace("'productionReady': False,",
+                "'productionReady': False,\n    'productionCredentials': True,", 1),
+             False, "diagnostic field inventory drift"),
+            ("unreviewed raw field", script.replace("'productionReady': False,",
+                "'productionReady': False,\n    'rawSql': 'SELECT 1',", 1),
+             False, "diagnostic field inventory drift"),
         )
-        for name, program, allowed in variants:
+        for name, program, allowed, expected_failure in variants:
             directory = root / name.replace(" ", "-")
             directory.mkdir()
             result = subprocess.run([sys.executable, "-c", program], cwd=directory, env=env,
@@ -242,11 +257,13 @@ def diagnostic_runtime(publisher: str) -> None:
             raw = path.read_text(encoding="utf-8")
             try:
                 require_diagnostic_payload(raw)
-            except SystemExit:
+            except SystemExit as exc:
                 require(not allowed, "migration evidence reviewed diagnostic rejected")
+                require(expected_failure is not None and expected_failure in str(exc),
+                        "migration evidence diagnostic rejected for wrong reason: " + name + ": " + str(exc))
             else:
                 require(allowed, "migration evidence diagnostic accepted unsafe mutation: " + name)
-    print("PASS: migration evidence actual diagnostic writer (1 positive, 2 negative runtime cases)")
+    print("PASS: migration evidence actual diagnostic writer (1 positive, 5 negative runtime cases)")
 
 
 def main() -> int:
