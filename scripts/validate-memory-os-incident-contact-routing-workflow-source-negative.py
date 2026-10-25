@@ -17,7 +17,7 @@ PUBLISHER = ".github/workflows/incident-contact-routing-admission.yml"
 INDEPENDENT = ".github/workflows/incident-contact-routing-source-negative.yml"
 SELF = "scripts/validate-memory-os-incident-contact-routing-workflow-source-negative.py"
 REVIEWED_PUBLISHER = "df3ecb650747f2d2686b2cd9fbeb5737e4975522"
-REVIEWED_INDEPENDENT = ""
+REVIEWED_INDEPENDENT = "2946cdfb8b9c006bb58a83de866e2ba495e550b5"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
@@ -73,7 +73,7 @@ def validate(publisher: str, independent: str) -> None:
         for token in required:
             if token not in content:
                 raise SystemExit("contact-routing " + label + " missing source: " + token)
-        if digest and blob(content) != digest:
+        if blob(content) != digest:
             raise SystemExit("contact-routing " + label + " complete Git blob drift")
     if '          cat "$log"\n' in publisher or "text[-12000:]" in publisher:
         raise SystemExit("contact-routing raw log disclosure")
