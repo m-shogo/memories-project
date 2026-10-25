@@ -555,6 +555,7 @@ def validate_independent_learning_workflow(source: str) -> None:
           from pathlib import Path
           import subprocess
           import re
+          import os
 
           authority = "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
           event_name = "${{ github.event_name }}"
@@ -572,6 +573,10 @@ def validate_independent_learning_workflow(source: str) -> None:
                       "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR base"
                   )
           elif event_name == "workflow_dispatch":
+              if os.environ.get("GITHUB_REF") != "refs/heads/so":
+                  raise SystemExit(
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: unreviewed dispatch ref"
+                  )
               # Immutable, previously validated append-only authority baseline.
               baseline = "77b4b4a7f5d6282524ecb5e6dba4b614622d28e3"
           else:
@@ -1578,6 +1583,17 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "independent learning workflow step authority drift"),
     )
     cases += (
+        ("          if os.environ.get(\"GITHUB_REF\") != \"refs/heads/so\":\n",
+         "          if False:\n",
+         "independent learning workflow append-only drift"),
+        ("          if os.environ.get(\"GITHUB_REF\") != \"refs/heads/so\":\n",
+         "          if os.environ.get(\"GITHUB_REF\") != \"refs/heads/main\":\n",
+         "independent learning workflow append-only drift"),
+        ("          if os.environ.get(\"GITHUB_REF\") != \"refs/heads/so\":\n",
+         "          if os.environ.get(\"UNTRUSTED_REF\") != \"refs/heads/so\":\n",
+         "independent learning workflow append-only drift"),
+    )
+    cases += (
         ("          baseline = before\n", "          baseline = \"HEAD^\"\n",
          "independent learning workflow append-only drift"),
         ("          baseline = \"77b4b4a7f5d6282524ecb5e6dba4b614622d28e3\"\n",
@@ -1895,7 +1911,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 182, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 185, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

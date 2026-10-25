@@ -73,6 +73,7 @@ jobs:
           from pathlib import Path
           import subprocess
           import re
+          import os
 
           authority = "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
           event_name = "${{ github.event_name }}"
@@ -90,6 +91,10 @@ jobs:
                       "AUTONOMOUS LEARNING APPEND-ONLY FAILED: invalid PR base"
                   )
           elif event_name == "workflow_dispatch":
+              if os.environ.get("GITHUB_REF") != "refs/heads/so":
+                  raise SystemExit(
+                      "AUTONOMOUS LEARNING APPEND-ONLY FAILED: unreviewed dispatch ref"
+                  )
               # Immutable, previously validated append-only authority baseline.
               baseline = "77b4b4a7f5d6282524ecb5e6dba4b614622d28e3"
           else:
