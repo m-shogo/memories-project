@@ -1589,6 +1589,21 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("          event_name = \"${{ github.event_name }}\"\n",
          "          event_name = \"workflow_dispatch\"\n",
          "independent learning workflow append-only drift"),
+        ("          baseline = \"${{ github.event.pull_request.base.sha }}\"\n",
+         "          baseline = \"${{ github.event.pull_request.head.sha }}\"\n",
+         "independent learning workflow append-only drift"),
+        ("          baseline = \"${{ github.event.pull_request.base.sha }}\"\n",
+         "          baseline = \"${{ github.event.sha }}\"\n",
+         "independent learning workflow append-only drift"),
+        ("          baseline = \"${{ github.event.pull_request.base.sha }}\"\n",
+         "          baseline = \"HEAD^\"\n",
+         "independent learning workflow append-only drift"),
+        ("          ref: ${{ github.sha }}\n",
+         "          ref: ${{ github.event.pull_request.head.sha }}\n",
+         "independent learning workflow checkout/setup drift"),
+        ("          test \"$(git rev-parse HEAD)\" = \"${{ github.sha }}\"\n",
+         "          test \"$(git rev-parse HEAD)\" = \"${{ github.ref }}\"\n",
+         "independent learning workflow exact-source drift"),
         ("          if subprocess.run(\n",
          "          if False and subprocess.run(\n",
          "independent learning workflow append-only drift"),
@@ -1880,7 +1895,7 @@ def main() -> int:
         total += 1
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 177, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 182, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
