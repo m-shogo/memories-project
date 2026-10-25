@@ -244,7 +244,7 @@ def validate_trigger_path_inventory(
 
 def validate_setup_python_input_inventory(source: str, diagnostic: str) -> None:
     """Bind complete setup-python inputs, not just an approved prefix."""
-    anchor = "      - uses: actions/setup-python@v5\n"
+    anchor = "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
     require(source.count(anchor) == 1, diagnostic)
     block = source.split(anchor, 1)[1].split("      - name:", 1)[0]
     require(block == '        with:\n          python-version: "3.12"\n',
@@ -428,10 +428,10 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
         workflow_source, ("runs-on", "timeout-minutes", "steps"),
         "ancestor workflow job key inventory drift",
     )
-    expected_actions = "      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n"
+    expected_actions = "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n"
     require(workflow_source.count(expected_actions) == 1,
             "ancestor workflow checkout/setup drift")
-    expected_headers = ["      - uses: actions/checkout@v4","      - uses: actions/setup-python@v5","      - name: Confirm exact clean source","      - name: Prove seven canonical ancestor negatives remain reachable","      - name: Prove every canonical helper ancestor race from the validator target set","      - name: Prove preflight reconcile helper races without downstream source-binding dependency","      - name: Verify read-only postcondition"]
+    expected_headers = ["      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262","      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065","      - name: Confirm exact clean source","      - name: Prove seven canonical ancestor negatives remain reachable","      - name: Prove every canonical helper ancestor race from the validator target set","      - name: Prove preflight reconcile helper races without downstream source-binding dependency","      - name: Verify read-only postcondition"]
     actual_headers = re.findall(r"(?m)^      - (?:uses|name):[^\n]*", workflow_source)
     require(actual_headers == expected_headers,
             "ancestor workflow step allowlist drift")
@@ -607,7 +607,7 @@ def validate_independent_learning_workflow(source: str) -> None:
           PY
 """) == 1,
             "independent learning workflow append-only drift")
-    require(source.count("      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.sha }}\n          persist-credentials: false\n          fetch-depth: 0\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n") == 1,
+    require(source.count("      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.sha }}\n          persist-credentials: false\n          fetch-depth: 0\n      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n") == 1,
             "independent learning workflow checkout/setup drift")
     require(source.count("      - name: Confirm exact clean source\n        shell: bash\n        run: |\n          set -euo pipefail\n          test \"$(git rev-parse HEAD)\" = \"${{ github.sha }}\"\n          test -z \"$(git status --porcelain)\"\n") == 1,
             "independent learning workflow exact-source drift")
@@ -631,8 +631,8 @@ def validate_independent_learning_workflow(source: str) -> None:
         "independent learning workflow job key inventory drift",
     )
     require(re.findall(r"(?m)^      - (?:uses|name):[^\n]*", source) == [
-        "      - uses: actions/checkout@v4",
-        "      - uses: actions/setup-python@v5",
+        "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
         "      - name: Confirm exact clean source",
         "      - name: Enforce append-only learning authority against parent",
         "      - name: Validate learning contract and executable negatives",
@@ -1326,13 +1326,13 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor workflow conditional bypass"),
     )
     cases += (
-        ("      - uses: actions/checkout@v4\n",
-         "      - uses: actions/upload-artifact@v4\n      - uses: actions/checkout@v4\n",
+        ("      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n",
+         "      - uses: actions/upload-artifact@v4\n      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n",
          "ancestor workflow step allowlist drift"),
         ("      - name: Verify read-only postcondition\n",
          "      - name: Synthetic unreviewed command\n        run: echo bypass\n      - name: Verify read-only postcondition\n",
          "ancestor workflow step allowlist drift"),
-        ("      - uses: actions/setup-python@v5\n",
+        ("      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
          "      - uses: actions/setup-python@v4\n",
          "ancestor workflow checkout/setup drift"),
         ("          python-version: \"3.12\"\n",
@@ -1441,6 +1441,14 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         ('            if [[ ! "$pr_head" =~ ^[0-9a-f]{40}$ ]]; then\n',
          '            if false; then\n',
          "ancestor exact-source workflow check drift"),
+    )
+    cases += (
+        ("      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n",
+         "      - uses: actions/checkout@v4\n",
+         "ancestor workflow checkout/setup drift"),
+        ("      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
+         "      - uses: actions/setup-python@v5\n",
+         "ancestor workflow checkout/setup drift"),
     )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
@@ -1682,6 +1690,14 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
         ("  workflow_dispatch:\n",
          "    types: [opened]\n  workflow_dispatch:\n",
          "independent learning workflow PR options drift"),
+    )
+    cases += (
+        ("      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n",
+         "      - uses: actions/checkout@v4\n",
+         "independent learning workflow checkout/setup drift"),
+        ("      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
+         "      - uses: actions/setup-python@v5\n",
+         "independent learning workflow checkout/setup drift"),
     )
     for original, replacement, expected in cases:
         # Push and PR now share several trigger paths and the so branch
@@ -2086,7 +2102,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 205, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 209, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
