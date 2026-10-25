@@ -14,7 +14,7 @@ UPLOAD = ".github/workflows/reconcile-upload-route-authority.yml"
 SIGKILL = ".github/workflows/deletion-worker-sigkill-recovery.yml"
 INDEPENDENT = ".github/workflows/live-dependency-bootstrap-source-negative.yml"
 SELF = "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
-REVIEWED_LIVE = "3e3c25e356d16be6c748a1baee4e3a79e11e1578"
+REVIEWED_LIVE = "fd501a86a6e2f3ed3cb68c29d0d9ffb39162dc57"
 REVIEWED_UPLOAD = "3997403c3d93983470942909a8673aa961fc099a"
 REVIEWED_SIGKILL = "564f8dae50222dc9025ee31449c116d7f3b8345d"
 REVIEWED_INDEPENDENT = "20da90b7e0db3ecea90799b706de07ad9bd14a13"
@@ -59,6 +59,14 @@ def step_script(workflow: str, title: str) -> str:
 def validate(live: str, upload: str, sigkill: str, independent: str) -> None:
     live_required = (
         "      - name: Start local MinIO harness\n",
+        "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/so'",
+        "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
+        "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        "persist-credentials: true",
+        'test "${GITHUB_REF:-}" = "refs/heads/so"',
+        '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$(git rev-parse HEAD)" = "${GITHUB_SHA:-}"',
         "          set -euo pipefail\n",
         "quay.io/minio/minio server /data",
         "      - name: Publish exact-source result documents\n        if: env.PUBLISH_RESULTS == 'true'",
@@ -147,6 +155,47 @@ def synthetic_bootstrap_failure(live: str, upload: str, sigkill: str) -> None:
                 raise SystemExit("live dependency " + label + " generated evidence on bootstrap failure")
     print("PASS: live PostgreSQL/object, upload-route and deletion SIGKILL MinIO bootstrap denial exits 125 before publication (3 cases)")
 
+
+
+def live_source_identity_runtime(live: str) -> None:
+    """Execute the actual live dependency writer event/ref/SHA shell before bootstrap."""
+    code = step_script(live, "Capture exact source and previous evidence state")
+    if 'source_sha="$(git rev-parse HEAD)"' not in code:
+        raise SystemExit("live dependency source identity shell drift")
+    code = code.split('source_sha="$(git rev-parse HEAD)"', 1)[0]
+    head = "a" * 40
+    cases = (
+        ("push", "refs/heads/so", head, head, True),
+        ("workflow_dispatch", "refs/heads/so", head, head, True),
+        ("schedule", "refs/heads/so", head, head, True),
+        ("pull_request", "refs/heads/so", head, head, False),
+        ("push", "refs/heads/main", head, head, False),
+        ("push", "refs/tags/v1", head, head, False),
+        ("push", "refs/heads/so", "A" * 40, head, False),
+        ("push", "refs/heads/so", "a" * 39, head, False),
+        ("push", "refs/heads/so", "b" * 40, head, False),
+        ("workflow_dispatch", "", head, head, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="live-dependency-source-") as tmp:
+        root = Path(tmp)
+        git = root / "git"
+        git.write_text(
+            "#!/bin/sh\\n"
+            "if [ \\"$1\\" = \\"status\\" ]; then exit 0; fi\\n"
+            "if [ \\"$1\\" = \\"rev-parse\\" ]; then printf '%s\\\\n' \\"$STUB_HEAD\\"; exit 0; fi\\n"
+            "exit 1\\n", encoding="utf-8"
+        )
+        git.chmod(0o755)
+        for event, ref, sha, stub_head, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_REF=ref, GITHUB_SHA=sha,
+                       STUB_HEAD=stub_head)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", code],
+                                    cwd=root, env=env, capture_output=True, text=True,
+                                    timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise SystemExit("live dependency writer source identity runtime drift: " + event + "/" + ref)
+    print("PASS: live dependency actual writer event/ref/SHA shell (10 cases)")
 
 def predicate_runtime(independent: str) -> None:
     for command in (PR_BASE, PUSH_REF, SHA_FORMAT):
@@ -237,6 +286,7 @@ def main() -> int:
     predicate_runtime(independent)
     source_negatives(live, upload, sigkill, independent)
     synthetic_bootstrap_failure(live, upload, sigkill)
+    live_source_identity_runtime(live)
     print("capacity evidence generated: false")
     print("production evidence generated: false")
     print("production decision changed: false")
