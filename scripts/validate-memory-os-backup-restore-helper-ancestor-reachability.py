@@ -439,7 +439,7 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
     # Bind remaining preflight, exact-source and read-only run bodies, not just headers.
     require(workflow_source.count("      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n") == 1,
             "ancestor preflight runtime proof drift")
-    require(workflow_source.count("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n") == 1,
+    require(workflow_source.count("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"pull_request\" ]; then\n            pr_head=\"${{ github.event.pull_request.head.sha }}\"\n            if [[ ! \"$pr_head\" =~ ^[0-9a-f]{40}$ ]]; then\n              echo \"ANCESTOR PR HEAD SHA REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n") == 1,
             "ancestor exact-source workflow check drift")
     require(workflow_source.count("      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          git diff --exit-code\n          test -z \"$(git status --porcelain)\"\n") == 1,
             "ancestor read-only workflow postcondition drift")
@@ -1364,11 +1364,11 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
         ("      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"prove_helper_parent_swap_after_pin_uses_original_source\",\n                        ):\n              proof[name]()\n          PY\n",
          "      - name: Prove preflight reconcile helper races without downstream source-binding dependency\n        run: |\n          set -euo pipefail\n          python - <<'PY'\n          import runpy\n          proof = runpy.run_path(\"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py\")\n          for name in (\n              \"prove_helper_source_symlink_rejected\",\n              \"prove_helper_source_swap_during_import_is_pinned\",\n              \"synthetic_wrong_parent_proof\",\n                        ):\n              proof[name]()\n          PY\n",
          "ancestor preflight runtime proof drift"),
-        ("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n",
-         "      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          echo synthetic-source-bypass\n          test -z \"$(git status --porcelain)\"\n",
+        ("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"pull_request\" ]; then\n            pr_head=\"${{ github.event.pull_request.head.sha }}\"\n            if [[ ! \"$pr_head\" =~ ^[0-9a-f]{40}$ ]]; then\n              echo \"ANCESTOR PR HEAD SHA REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n",
+         "      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"pull_request\" ]; then\n            pr_head=\"${{ github.event.pull_request.head.sha }}\"\n            if [[ ! \"$pr_head\" =~ ^[0-9a-f]{40}$ ]]; then\n              echo \"ANCESTOR PR HEAD SHA REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          echo synthetic-source-bypass\n          test -z \"$(git status --porcelain)\"\n",
          "ancestor exact-source workflow check drift"),
-        ("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n",
-         "      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          echo synthetic-clean-bypass\n",
+        ("      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"pull_request\" ]; then\n            pr_head=\"${{ github.event.pull_request.head.sha }}\"\n            if [[ ! \"$pr_head\" =~ ^[0-9a-f]{40}$ ]]; then\n              echo \"ANCESTOR PR HEAD SHA REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n",
+         "      - name: Confirm exact clean source\n        run: |\n          set -euo pipefail\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"workflow_dispatch\" ]; then\n            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n              echo \"ANCESTOR DISPATCH REF REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          if [ \"${GITHUB_EVENT_NAME:-}\" = \"pull_request\" ]; then\n            pr_head=\"${{ github.event.pull_request.head.sha }}\"\n            if [[ ! \"$pr_head\" =~ ^[0-9a-f]{40}$ ]]; then\n              echo \"ANCESTOR PR HEAD SHA REJECTED\" >&2\n              exit 1\n            fi\n          fi\n          expected=\"${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\"\n          test -n \"$expected\"\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          echo synthetic-clean-bypass\n",
          "ancestor exact-source workflow check drift"),
         ("      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          git diff --exit-code\n          test -z \"$(git status --porcelain)\"\n",
          "      - name: Verify read-only postcondition\n        run: |\n          git diff --check\n          echo synthetic-readonly-bypass\n          test -z \"$(git status --porcelain)\"\n",
@@ -1432,6 +1432,14 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor exact-source workflow check drift"),
         ("            if [ \"${GITHUB_REF:-}\" != \"refs/heads/so\" ]; then\n",
          "            if [ \"${UNTRUSTED_REF:-}\" != \"refs/heads/so\" ]; then\n",
+         "ancestor exact-source workflow check drift"),
+    )
+    cases += (
+        ('          if [ \\"${GITHUB_EVENT_NAME:-}\\" = \\"pull_request\\" ]; then\\n',
+         '          if false; then\\n',
+         "ancestor exact-source workflow check drift"),
+        ('            if [[ ! \\"$pr_head\\" =~ ^[0-9a-f]{40}$ ]]; then\\n',
+         '            if false; then\\n',
          "ancestor exact-source workflow check drift"),
     )
     for original, replacement, expected in cases:
@@ -2006,6 +2014,49 @@ def prove_ancestor_dispatch_ref_negative(source: str) -> int:
     return 4
 
 
+
+def prove_ancestor_pr_head_negative(source: str) -> int:
+    """A missing or malformed PR head must not fall back to github.sha."""
+    step_name = "      - name: Confirm exact clean source\\n"
+    next_step = "      - name: Prove seven canonical ancestor negatives remain reachable\\n"
+    require(source.count(step_name) == 1 and source.count(next_step) == 1,
+            "ancestor PR runtime step boundary drift")
+    block = source.split(step_name, 1)[1].split(next_step, 1)[0]
+    require(block.count("        run: |\\n") == 1,
+            "ancestor PR runtime run body drift")
+    lines = block.split("        run: |\\n", 1)[1].splitlines()
+    require(all(not line or line.startswith("          ") for line in lines),
+            "ancestor PR runtime indentation drift")
+    script = "\\n".join(line[10:] if line else "" for line in lines) + "\\n"
+    pr_marker = "${{ github.event.pull_request.head.sha }}"
+    expected_marker = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+    require(script.count(pr_marker) == 1 and script.count(expected_marker) == 1,
+            "ancestor PR runtime SHA binding drift")
+    actual = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+    ).strip()
+    require(re.fullmatch(r"[0-9a-f]{40}", actual) is not None,
+            "ancestor PR runtime positive SHA invalid")
+    for malformed in ("", "f" * 39, "g" * 40, "f" * 41):
+        candidate = script.replace(pr_marker, malformed)
+        result = subprocess.run(
+            ["bash", "-c", candidate],
+            cwd=ROOT, env={"GITHUB_EVENT_NAME": "pull_request"},
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        require(result.returncode != 0 and
+                "ANCESTOR PR HEAD SHA REJECTED" in result.stderr,
+                f"ancestor PR head runtime proof accepted {malformed!r}")
+    accepted = script.replace(pr_marker, actual).replace(expected_marker, actual)
+    result = subprocess.run(
+        ["bash", "-c", accepted],
+        cwd=ROOT, env={"GITHUB_EVENT_NAME": "pull_request"},
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    require(result.returncode == 0,
+            f"ancestor PR head runtime positive control failed: {result.stderr}")
+    return 4
+
 def main() -> int:
     workflow_source = (
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
@@ -2032,9 +2083,10 @@ def main() -> int:
         total += 2
         total += prove_manual_dispatch_ref_negative(learning_workflow_source)
         total += prove_ancestor_dispatch_ref_negative(workflow_source)
+        total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 199, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 205, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
