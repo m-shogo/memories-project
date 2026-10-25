@@ -41,6 +41,7 @@ MAIN_REQUIRED = (
     ("PR checkout source", 'ref: ' + D + '{{ github.event.pull_request.head.sha }}', 1),
     ("writer checkout source", 'ref: ' + D + '{{ github.sha }}', 1),
     ("writer SHA source", 'expected="' + D + '{GITHUB_SHA:-}"', 1),
+    ("capture step", "      - name: Capture exact generation binding authority source\n", 1),
     ("latest reset", "            git reset --hard origin/so\n", 1),
     ("root read token", "permissions:\n  contents: read\n", 1),
     ("writer write token", "      contents: write\n", 1),
@@ -138,8 +139,8 @@ def negatives(publisher: str, independent: str) -> None:
         ("latest reset", "            git reset --hard origin/so\n", ""),
         ("root write token", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
         ("writer token removed", "      contents: write\n", "      contents: read\n"),
-        ("unreviewed Action", "      - name: Capture exact generation binding source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact generation binding source\n"),
-        ("unreviewed shell", "      - name: Capture exact generation binding source\n", "      - run: echo unreviewed\n      - name: Capture exact generation binding source\n"),
+        ("unreviewed Action", "      - name: Capture exact generation binding authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact generation binding authority source\n"),
+        ("unreviewed shell", "      - name: Capture exact generation binding authority source\n", "      - run: echo unreviewed\n      - name: Capture exact generation binding authority source\n"),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
