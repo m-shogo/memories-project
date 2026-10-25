@@ -28,7 +28,8 @@ REQUIRED = (
     ("PR SHA", '          expected="${{ github.event.pull_request.head.sha }}"\n', 1),
     ("HEAD check", '          test "$(git rev-parse HEAD)" = "$expected"\n', 2),
     ("write scope", "      contents: write\n", 1),
-    ("stale-source CAS", '          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then\n', 2),
+    ("stale-source CAS", '\n          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then\n', 2),
+    ("nested stale-source CAS", '\n            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then\n', 2),
 )
 
 
@@ -83,6 +84,7 @@ def main() -> int:
         ("HEAD check", REQUIRED[14][1], ""),
         ("write scope", REQUIRED[15][1], "      contents: read\n"),
         ("stale-source CAS", REQUIRED[16][1], ""),
+        ("nested stale-source CAS", REQUIRED[17][1], ""),
         ("inserted Action", "      - name: Capture exact consistency authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact consistency authority source\n"),
         ("inserted shell", "      - name: Capture exact consistency authority source\n", "      - run: echo unreviewed\n      - name: Capture exact consistency authority source\n"),
     )
