@@ -15,9 +15,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-worker-host-failure-admission.yml"
 INDEPENDENT = ".github/workflows/deletion-worker-host-failure-source-negative.yml"
+PERMISSION = ".github/workflows/deletion-worker-host-failure-permission-negative.yml"
 SELF = "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
 REVIEWED_PUBLISHER = "01f3c5116119e5bc49b6b4431196dce39795be99"
-REVIEWED_INDEPENDENT = "7a003ec33ba7b10ba0c6f6f51eafe038151a2dc3"
+REVIEWED_INDEPENDENT = "906835e3156a95bedc7cf925dba5bfd2bb8e8418"
+REVIEWED_PERMISSION = "c2549cdc7a939dcaa7c91720724e61d31ee9d685"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
@@ -69,7 +71,7 @@ def validate(publisher: str, independent: str) -> None:
         "  pull_request:\n    branches:\n      - so\n",
         "  push:\n    branches:\n      - so\n",
         '      - "' + PUBLISHER + '"', '      - "' + INDEPENDENT + '"',
-        '      - "' + SELF + '"', CHECKOUT, SETUP,
+        '      - "' + SELF + '"', '      - "' + PERMISSION + '"', CHECKOUT, SETUP,
         "          persist-credentials: false\n", PR_BASE, PUSH_REF, SHA_FORMAT,
         "          python " + SELF, "permissions:\n  contents: read\n",
         "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
@@ -89,6 +91,104 @@ def validate(publisher: str, independent: str) -> None:
         raise SystemExit("deletion-host-failure raw log disclosure")
     if "path.parent.mkdir(parents=True, exist_ok=True)" in publisher:
         raise SystemExit("deletion-host-failure diagnostic creates unchecked parent")
+
+
+def validate_permission(content: str) -> None:
+    required = (
+        "  pull_request:\n    branches:\n      - so\n",
+        "  push:\n    branches:\n      - so\n",
+        "  workflow_dispatch:\n",
+        "permissions:\n  contents: read\n",
+        "    if: github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so')",
+        "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        "          persist-credentials: false\n",
+        'test "${GITHUB_BASE_REF:-}" = "so"',
+        'test "${GITHUB_REF:-}" = "refs/heads/so"',
+        '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]',
+        "          python scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py",
+    )
+    for token in required:
+        if token not in content:
+            raise SystemExit("deletion-host-failure permission CI source missing: " + token)
+    if blob(content) != REVIEWED_PERMISSION:
+        raise SystemExit("deletion-host-failure permission CI complete Git blob drift")
+
+
+def permission_negatives(content: str) -> None:
+    cases = (
+        ("PR base", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n    paths:\n"),
+        ("job scope", "    if: github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so')", "    if: always()"),
+        ("checkout pin", "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "uses: actions/checkout@v4"),
+        ("setup pin", "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "uses: actions/setup-python@v5"),
+        ("credentials", "          persist-credentials: false\n", "          persist-credentials: true\n"),
+        ("PR base identity", 'test "${GITHUB_BASE_REF:-}" = "so"', "true"),
+        ("writer ref identity", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("SHA identity", '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]', 'test -n "$expected"'),
+        ("permission", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
+        ("self validator", "          python scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py", "          true"),
+    )
+    for label, old, new in cases:
+        if old not in content:
+            raise SystemExit("deletion-host-failure permission negative fixture missing: " + label)
+        altered = content.replace(old, new, 1)
+        if altered == content:
+            raise SystemExit("deletion-host-failure permission negative fixture unchanged: " + label)
+        try:
+            validate_permission(altered)
+        except SystemExit:
+            continue
+        raise SystemExit("deletion-host-failure permission accepted mutation: " + label)
+    print("PASS: deletion-host-failure permission workflow source mutations (10 cases)")
+
+
+def permission_runtime(content: str) -> None:
+    marker = "      - name: Require exact clean source\n"
+    if content.count(marker) != 1:
+        raise SystemExit("deletion-host-failure permission runtime step ambiguous")
+    start = content.index("        run: |\n", content.index(marker)) + len("        run: |\n")
+    end = content.index("\n      - uses:", start)
+    lines = content[start:end].splitlines()
+    if not lines or any(line and not line.startswith("          ") for line in lines):
+        raise SystemExit("deletion-host-failure permission runtime indentation drift")
+    command = "\n".join(line[10:] if line else "" for line in lines) + "\n"
+    a = "a" * 40
+    with tempfile.TemporaryDirectory(prefix="deletion-host-permission-runtime-") as tmp:
+        root = Path(tmp)
+        git = root / "git"
+        git.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then\n"
+            "  printf '" + a + "\\n'\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then exit 0; fi\n"
+            "exit 1\n", encoding="utf-8",
+        )
+        git.chmod(0o755)
+        cases = (
+            ("pull_request", "so", "", a, a, True),
+            ("pull_request", "main", "", a, a, False),
+            ("pull_request", "so", "", "A" * 40, a, False),
+            ("pull_request", "so", "", "b" * 40, a, False),
+            ("pull_request", "so", "", "", a, False),
+            ("push", "", "refs/heads/so", a, a, True),
+            ("push", "", "refs/heads/main", a, a, False),
+            ("push", "", "refs/heads/so", a, "A" * 40, False),
+            ("push", "", "refs/heads/so", a, "a" * 39, False),
+            ("workflow_dispatch", "", "refs/heads/so", a, a, True),
+            ("workflow_dispatch", "", "refs/heads/main", a, a, False),
+            ("schedule", "", "refs/heads/so", a, a, False),
+        )
+        for event, base, ref, pr_sha, sha, allowed in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_BASE_REF=base, GITHUB_REF=ref,
+                       PR_HEAD_SHA=pr_sha, GITHUB_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", command],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != allowed:
+                raise SystemExit("deletion-host-failure permission event/base/ref/SHA runtime drift: " + event)
+    print("PASS: deletion-host-failure permission exact-source shell runtime (12 cases)")
 
 
 def inline_writer(publisher: str) -> str:
@@ -220,6 +320,7 @@ def source_negatives(publisher: str, independent: str) -> None:
         ("credentials", "          persist-credentials: false\n", "          persist-credentials: true\n"),
         ("self trigger", '      - "' + SELF + '"', ""),
         ("publisher trigger", '      - "' + PUBLISHER + '"', ""),
+        ("permission trigger", '      - "' + PERMISSION + '"', ""),
         ("root write", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
         ("job scope", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "    if: always()"),
     )
@@ -235,7 +336,7 @@ def source_negatives(publisher: str, independent: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("deletion-host-failure accepted mutation: " + name + "/" + label)
-    print("PASS: deletion-host-failure publisher (17) and independent (10) source mutations")
+    print("PASS: deletion-host-failure publisher (17) and independent (11) source mutations")
 
 
 def predicate_runtime(independent: str) -> None:
@@ -266,7 +367,11 @@ def predicate_runtime(independent: str) -> None:
 
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
+    permission = source(PERMISSION)
     validate(publisher, independent)
+    validate_permission(permission)
+    permission_negatives(permission)
+    permission_runtime(permission)
     predicate_runtime(independent)
     source_negatives(publisher, independent)
     runtime(publisher)
