@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,7 +14,7 @@ WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain.yml"
 NEGATIVE_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-negative.yml"
 REVIEWED_NEGATIVE_WORKFLOW_BLOB_SHA = "a422a98a071a9d5dc96c5dfd5f02770bc872c2cc"
 READONLY_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-readonly.yml"
-REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "062db2ed7039fc1396fdb7aed5049c1041c0e4ad"
+REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "d6a35451b4b76545b20c0a8ab74e487d9e469f8d"
 
 
 class Fail(RuntimeError):
@@ -326,9 +328,35 @@ def require_reviewed_readonly_workflow_blob(source: str) -> None:
             "admission readonly CI complete workflow source drift")
 
 
+def prove_readonly_branch_guards_runtime(source: str) -> None:
+    """Execute the reviewed readonly PR base and push-ref predicates."""
+    pr = 'test "${PR_BASE_REF:-}" = "so"'
+    push = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
+    require(source.count(pr) == 1 and source.count(push) == 2,
+            "admission readonly branch guard source drift")
+    cases = (
+        ("PR so", pr, "PR_BASE_REF", "so", True),
+        ("PR main", pr, "PR_BASE_REF", "main", False),
+        ("PR missing", pr, "PR_BASE_REF", "", False),
+        ("push so", push, "GITHUB_REF", "refs/heads/so", True),
+        ("push main", push, "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", push, "GITHUB_REF", "refs/tags/v1", False),
+    )
+    for label, command, key, value, expected in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+        result = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+        require((result.returncode == 0) == expected,
+                "admission readonly branch runtime guard drift: " + label)
+    print("PASS: admission readonly PR/push branch guard runtime (6 cases)")
+
+
 def require_readonly_workflow_source_negatives(source: str) -> None:
     require_reviewed_readonly_workflow_blob(source)
+    prove_readonly_branch_guards_runtime(source)
     cases = (
+        ("PR target changed", "  pull_request:\n    branches: [so]\n    paths:\n", "  pull_request:\n    branches: [main]\n    paths:\n"),
+        ("PR base environment removed", "PR_BASE_REF: ${{ github.base_ref }}", "PR_BASE_REF: main"),
+        ("PR base assertion removed", 'test "${PR_BASE_REF:-}" = "so"', "true"),
         ("floating-checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
         ("persisted-credentials", "persist-credentials: false", "persist-credentials: true"),
         ("missing-pr-head-guard", '[[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]', "true"),

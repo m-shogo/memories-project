@@ -2,6 +2,7 @@ name: Backup Restore Admission Chain Readonly
 
 on:
   pull_request:
+    branches: [so]
     paths:
       - ".github/workflows/backup-restore-admission-chain-readonly.yml"
       - ".github/workflows/backup-restore-permission-boundary-negative.yml"
@@ -55,9 +56,12 @@ jobs:
         with:
           python-version: "3.12"
       - name: Prove end-to-end admission authority immutability
+        env:
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${PR_BASE_REF:-}" = "so"
             pr_head="${{ github.event.pull_request.head.sha }}"
             [[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]
           elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
