@@ -159,6 +159,58 @@ def main() -> int:
         ),
     )
 
+    # Fail closed on mutable or substituted bootstrap actions and PR credential leakage.
+    cases += (
+        (
+            "PR checkout floating tag",
+            replace_once(canonical, "      - name: Checkout exact PR source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", "      - name: Checkout exact PR source\n        uses: actions/checkout@v4\n", "PR checkout floating tag"),
+        ),
+        (
+            "PR checkout substituted SHA",
+            replace_once(canonical, "      - name: Checkout exact PR source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", "      - name: Checkout exact PR source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677263\n", "PR checkout substituted SHA"),
+        ),
+        (
+            "publication checkout floating tag",
+            replace_once(canonical, "      - name: Checkout exact publication source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", "      - name: Checkout exact publication source\n        uses: actions/checkout@v4\n", "publication checkout floating tag"),
+        ),
+        (
+            "publication checkout substituted SHA",
+            replace_once(canonical, "      - name: Checkout exact publication source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", "      - name: Checkout exact publication source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677263\n", "publication checkout substituted SHA"),
+        ),
+        (
+            "PR setup floating tag",
+            replace_once(canonical, "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n\n      - name: Verify exact clean PR authority source\n", "        uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n\n      - name: Verify exact clean PR authority source\n", "PR setup floating tag"),
+        ),
+        (
+            "PR setup substituted SHA",
+            replace_once(canonical, "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n\n      - name: Verify exact clean PR authority source\n", "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87064\n        with:\n          python-version: \"3.12\"\n\n      - name: Verify exact clean PR authority source\n", "PR setup substituted SHA"),
+        ),
+        (
+            "publication setup floating tag",
+            replace_once(canonical, "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n\n      - name: Capture exact chain authority source\n", "        uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n\n      - name: Capture exact chain authority source\n", "publication setup floating tag"),
+        ),
+        (
+            "publication setup substituted SHA",
+            replace_once(canonical, "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n\n      - name: Capture exact chain authority source\n", "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87064\n        with:\n          python-version: \"3.12\"\n\n      - name: Capture exact chain authority source\n", "publication setup substituted SHA"),
+        ),
+        (
+            "PR checkout credential persistence enabled",
+            replace_once(canonical, "          persist-credentials: false\n\n      - name: Set up Python", "          persist-credentials: true\n\n      - name: Set up Python", "PR checkout credential persistence enabled"),
+        ),
+        (
+            "PR checkout credential persistence removed",
+            replace_once(canonical, "          persist-credentials: false\n\n      - name: Set up Python", "\n      - name: Set up Python", "PR checkout credential persistence removed"),
+        ),
+        (
+            "publication checkout credentials disabled",
+            replace_once(canonical, "          persist-credentials: true\n\n      - name: Set up Python", "          persist-credentials: false\n\n      - name: Set up Python", "publication checkout credentials disabled"),
+        ),
+        (
+            "publication checkout credential intent removed",
+            replace_once(canonical, "          persist-credentials: true\n\n      - name: Set up Python", "\n      - name: Set up Python", "publication checkout credential intent removed"),
+        ),
+    )
+
     for label, mutated in cases:
         require(mutated != canonical, f"negative mutation did not change workflow: {label}")
         expect_reject(module, label, mutated)

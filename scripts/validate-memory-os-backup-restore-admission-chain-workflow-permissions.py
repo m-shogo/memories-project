@@ -69,6 +69,22 @@ def main() -> int:
     pr = job_block(text, "validate-pr", "validate-and-publish")
     publish = job_block(text, "validate-and-publish")
 
+    # Bind both bootstrap actions and checkout credentials to reviewed job roles.
+    require(pr.count("      - name: Checkout exact PR source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event.pull_request.head.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n") == 1 and
+            pr.count("        uses: actions/checkout@") == 1,
+            "PR pinned checkout and credential boundary drift")
+    require(pr.count("      - name: Set up Python\n        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n\n      - name: Verify exact clean PR authority source\n") == 1 and
+            pr.count("        uses: actions/setup-python@") == 1 and
+            pr.count("        uses: ") == 2,
+            "PR pinned Python setup boundary drift")
+    require(publish.count("      - name: Checkout exact publication source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.sha }}\n          fetch-depth: 0\n          persist-credentials: true\n") == 1 and
+            publish.count("        uses: actions/checkout@") == 1,
+            "publication pinned checkout and credential boundary drift")
+    require(publish.count("      - name: Set up Python\n        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n\n      - name: Capture exact chain authority source\n") == 1 and
+            publish.count("        uses: actions/setup-python@") == 1 and
+            publish.count("        uses: ") == 2,
+            "publication pinned Python setup boundary drift")
+
     require("if: github.event_name == 'pull_request'" in pr, "PR validation job must be pull-request-only")
     require("permissions:\n      contents: read\n" in pr, "PR validation job must explicitly retain read-only contents permission")
     require("contents: write" not in pr, "PR validation job must not receive contents: write")
