@@ -9,6 +9,7 @@ on:
       - "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
   push:
     branches:
@@ -18,6 +19,7 @@ on:
       - "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
   workflow_dispatch:
 

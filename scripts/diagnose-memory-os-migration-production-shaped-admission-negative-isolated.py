@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -16,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/migration-production-shaped-negative-isolation.yml"
 NEGATIVE = "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
 SELF = "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
-WORKFLOW_BLOB_SHA = "a469a2a75bb86a044728f8f1642b2d47848043f4"
+WORKFLOW_BLOB_SHA = "e439088b4ac8ab0fce2a08bfd46f38a2a8b33933"
 CHECKOUT = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 STAGES = frozenset((
@@ -74,10 +75,32 @@ def validate_workflow(source: str) -> None:
     require(git_blob_sha(source) == WORKFLOW_BLOB_SHA, "complete workflow blob changed")
 
 
+
+def verify_validator_precedence() -> None:
+    """The intended append-lock rejection must precede upstream clean-worktree suites."""
+    validator = ROOT / "scripts/validate-memory-os-migration-production-shaped-admission.py"
+    source = validator.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    main = next((node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"), None)
+    require(main is not None, "migration validator main missing")
+    lines = source.splitlines()
+    lock_lines = [node.lineno for node in ast.walk(main)
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                  and node.func.id == "require"
+                  and node.args and "appendLockPath" in ast.get_source_segment(source, node)]
+    upstream_lines = [node.lineno for node in ast.walk(main)
+                      if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                      and node.func.id == "run_canonical_validator"]
+    require(len(lock_lines) == 1 and len(upstream_lines) == 2, "migration validator precedence inventory drift")
+    require(lock_lines[0] < min(upstream_lines), "append-lock rejection must precede upstream canonical suites")
+    print("PASS: append-lock drift checked before both canonical upstream validators")
+
+
 def verify_source() -> int:
     require(WORKFLOW.is_file() and not WORKFLOW.is_symlink(), "workflow missing or symlink")
     source = WORKFLOW.read_text(encoding="utf-8")
     validate_workflow(source)
+    verify_validator_precedence()
     for original, replacement in (
         (CHECKOUT, "actions/checkout@v4"),
         ("persist-credentials: false", "persist-credentials: true"),

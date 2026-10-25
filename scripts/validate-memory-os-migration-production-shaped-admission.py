@@ -81,21 +81,24 @@ def validate_generation_authority(generations: dict[str, Any]) -> None:
 
 
 def main() -> int:
-    run_canonical_validator(RELEASE_VALIDATOR, "release baseline")
-    run_canonical_validator(GENERATION_VALIDATOR, "environment generation")
-
+    # Reject local contract/source binding drift before upstream suites that require
+    # an otherwise clean canonical worktree; still run both suites for valid bindings.
     contract = load(CONTRACT)
-    registry = load(REGISTRY)
-    releases = load(RELEASES)
-    release_pairs = load(RELEASE_PAIRS)
-    generations = load(GENERATIONS)
-    release_contract = load(RELEASE_CONTRACT)
     require(contract.get("schemaVersion") == "memory-os-migration-production-shaped-admission.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-migration-production-shaped-admission-record.v1", "record schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
     require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
     require(contract.get("sourceReleasePairRegistry") == str(RELEASE_PAIRS.relative_to(ROOT)), "release pair registry binding drift")
+
+    run_canonical_validator(RELEASE_VALIDATOR, "release baseline")
+    run_canonical_validator(GENERATION_VALIDATOR, "environment generation")
+
+    registry = load(REGISTRY)
+    releases = load(RELEASES)
+    release_pairs = load(RELEASE_PAIRS)
+    generations = load(GENERATIONS)
+    release_contract = load(RELEASE_CONTRACT)
     rules = contract.get("admissionRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "admissionRules must remain true")
     promotion = contract.get("promotionRules")
