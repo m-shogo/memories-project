@@ -79,11 +79,7 @@ jobs:
       - name: Prove closed live object stage vocabulary
         run: |
           set -euo pipefail
-          (cd services/import-api && go test ./internal/httpserver -run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter) -count=1)
-          git diff --check
-          git diff --exit-code
-          test -z "$(git status --porcelain)"
- -count=1)
+          (cd services/import-api && go test ./internal/httpserver -run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter)$' -count=1)
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
