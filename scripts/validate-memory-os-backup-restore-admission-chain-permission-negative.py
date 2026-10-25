@@ -9,6 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain.yml"
+NEGATIVE_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-negative.yml"
+REVIEWED_NEGATIVE_WORKFLOW_BLOB_SHA = "18c80c27ed7d4581f776d323ea993cae211ac6e3"
 
 
 class Fail(RuntimeError):
@@ -269,7 +271,40 @@ def require_run_body_negatives(source: str) -> None:
             raise Fail(f"recovery unreviewed run-body mutation accepted: {label}")
 
 
+def require_reviewed_negative_workflow_blob(source: str) -> None:
+    """Bind the complete read-only negative CI source, not just action names."""
+    payload = source.encode("utf-8")
+    git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    require(hashlib.sha1(git_blob).hexdigest() == REVIEWED_NEGATIVE_WORKFLOW_BLOB_SHA,
+            "admission negative CI complete workflow source drift")
+
+
+def require_negative_workflow_source_negatives(source: str) -> None:
+    require_reviewed_negative_workflow_blob(source)
+    cases = (
+        ("floating-checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
+        ("persisted-credentials", "persist-credentials: false", "persist-credentials: true"),
+        ("missing-pr-head-guard", '[[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]', "true"),
+        ("dispatch-other-branch", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("skipped-chain-negative", "run: python scripts/validate-memory-os-backup-restore-admission-chain-negative.py", "run: echo UNREVIEWED"),
+        ("injected-shell", "          python -m py_compile", "          echo UNREVIEWED\n          python -m py_compile"),
+    )
+    for label, before, after in cases:
+        require(source.count(before) == 1, f"admission negative CI fixture anchor drift: {label}")
+        mutated = source.replace(before, after, 1)
+        require(mutated != source, f"admission negative CI fixture unchanged: {label}")
+        try:
+            require_reviewed_negative_workflow_blob(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"admission negative CI source mutation accepted: {label}")
+
+
 def main() -> int:
+    require(NEGATIVE_WORKFLOW.is_file() and not NEGATIVE_WORKFLOW.is_symlink(),
+            "admission negative CI workflow missing or substituted")
+    require_negative_workflow_source_negatives(NEGATIVE_WORKFLOW.read_text(encoding="utf-8"))
     text = WORKFLOW.read_text(encoding="utf-8")
     require_root_event_negatives(text)
     require_trigger_path_negatives(text)
@@ -338,6 +373,7 @@ def main() -> int:
     print("workflow root/event negative mutations rejected: 6")
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
+    print("independent admission negative CI source mutations rejected: 6")
     print("production decision changed: false")
     return 0
 
