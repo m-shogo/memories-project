@@ -42,6 +42,9 @@ REQUIRED = (
     "git ls-remote origin refs/heads/so",
     'if [[ "$remote_sha" != "$SOURCE_SHA" ]]',
     "git push origin HEAD:so",
+    "if git diff --cached --quiet; then",
+    "git diff --cached --check",
+    'git commit -m "test(load): classify MinIO lifecycle failures"',
 )
 
 def policy(text):
@@ -69,7 +72,7 @@ def negatives(text):
         except AssertionError:
             continue
         raise AssertionError("live object stage floating Action accepted")
-    print("PASS: live object stage source negative mutations (18 cases)")
+    print("PASS: live object stage source negative mutations (21 cases)")
 
 def step(text, title):
     marker = "      - name: " + title + "\n"
@@ -123,6 +126,127 @@ def runtime(text, title, writer):
                 raise AssertionError("live object stage source shell event/base/ref/SHA drift: " + title + "/" + event)
     print("PASS: live object stage actual " + ("writer" if writer else "PR") + " source shell runtime (10 cases)")
 
+
+def publisher_runtime(text):
+    """Execute the actual publisher commit step against disposable local Git remotes."""
+    import shlex
+    import shutil
+
+    shell = step(text, "Commit diagnostic authority")
+    target = "services/import-api/internal/httpserver/live_object_load_test.go"
+    real_git = shutil.which("git")
+    if not real_git:
+        raise AssertionError("git executable missing")
+
+    def git(cwd, *args):
+        result = subprocess.run([real_git, *args], cwd=cwd, capture_output=True,
+                                text=True, timeout=20, check=False)
+        if result.returncode:
+            raise AssertionError("disposable git setup failed: " + result.stderr[-400:])
+        return result.stdout.strip()
+
+    def publish(work, source_sha, extra_env=None):
+        env = dict(os.environ, SOURCE_SHA=source_sha)
+        if extra_env:
+            env.update(extra_env)
+        return subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                              cwd=work, env=env, capture_output=True, text=True,
+                              timeout=20, check=False)
+
+    def mutate(work, comment):
+        dest = work / target
+        dest.write_text("package httpserver\\n// " + comment + "\\n", encoding="utf-8")
+
+    with tempfile.TemporaryDirectory(prefix="live-object-publisher-") as tmp:
+        root = Path(tmp)
+        remote, seed = root / "origin.git", root / "seed"
+        git(root, "init", "--bare", "-q", str(remote))
+        git(root, "init", "-q", "-b", "so", str(seed))
+        git(seed, "config", "user.name", "Synthetic Fixture")
+        git(seed, "config", "user.email", "fixture@example.invalid")
+        original = seed / target
+        original.parent.mkdir(parents=True)
+        original.write_text("package httpserver\\n", encoding="utf-8")
+        git(seed, "add", target)
+        git(seed, "commit", "-qm", "fixture: initial")
+        git(seed, "remote", "add", "origin", str(remote))
+        git(seed, "push", "-q", "origin", "HEAD:so")
+        initial = git(seed, "rev-parse", "HEAD")
+
+        work = root / "work"
+        git(root, "clone", "-q", "-b", "so", str(remote), str(work))
+        result = publish(work, initial)
+        if result.returncode != 0 or git(work, "rev-parse", "HEAD") != initial:
+            raise AssertionError("publisher no-op changed commit or failed")
+        if git(root, "--git-dir=" + str(remote), "rev-parse", "refs/heads/so") != initial:
+            raise AssertionError("publisher no-op advanced remote")
+
+        mutate(work, "stale candidate")
+        mutate(seed, "concurrent publisher")
+        git(seed, "add", target)
+        git(seed, "commit", "-qm", "fixture: concurrent")
+        git(seed, "push", "-q", "origin", "HEAD:so")
+        concurrent = git(seed, "rev-parse", "HEAD")
+        result = publish(work, initial)
+        if result.returncode != 75 or "source is stale" not in result.stderr:
+            raise AssertionError("publisher did not reject stale source with exit 75")
+        if git(root, "--git-dir=" + str(remote), "rev-parse", "refs/heads/so") != concurrent:
+            raise AssertionError("stale publisher overwrote concurrent remote")
+
+        fresh = root / "fresh"
+        git(root, "clone", "-q", "-b", "so", str(remote), str(fresh))
+        mutate(fresh, "accepted publisher")
+        result = publish(fresh, concurrent)
+        if result.returncode != 0:
+            raise AssertionError("publisher valid commit failed: " + result.stderr[-400:])
+        accepted = git(fresh, "rev-parse", "HEAD")
+        if accepted == concurrent or git(root, "--git-dir=" + str(remote), "rev-parse", "refs/heads/so") != accepted:
+            raise AssertionError("publisher valid commit did not advance remote")
+
+        invalid = root / "invalid"
+        git(root, "clone", "-q", "-b", "so", str(remote), str(invalid))
+        mutate(invalid, "trailing whitespace  ")
+        result = publish(invalid, accepted)
+        if result.returncode == 0 or git(invalid, "rev-parse", "HEAD") != accepted:
+            raise AssertionError("publisher whitespace pre-commit rejection failed")
+        if git(root, "--git-dir=" + str(remote), "rev-parse", "refs/heads/so") != accepted:
+            raise AssertionError("invalid publisher changed remote")
+
+        racer, competing = root / "racer", root / "competing"
+        git(root, "clone", "-q", "-b", "so", str(remote), str(racer))
+        git(root, "clone", "-q", "-b", "so", str(remote), str(competing))
+        mutate(racer, "racing publisher")
+        mutate(competing, "concurrent race winner")
+        git(competing, "add", target)
+        git(competing, "commit", "-qm", "fixture: race winner")
+        wrapper = root / "bin"
+        wrapper.mkdir()
+        shim = wrapper / "git"
+        shim.write_text(
+            "#!/bin/sh\\n"
+            "if [ \\"$1\\" = \\"ls-remote\\" ]; then\\n"
+            "  output=$(" + shlex.quote(real_git) + " \\"$@\\") || exit $?\\n"
+            "  " + shlex.quote(real_git) + " -C \\"$RACE_WORK\\" push -q origin HEAD:so || exit 98\\n"
+            "  printf '%s\\\\n' \\"$output\\"\\n"
+            "  exit 0\\n"
+            "fi\\n"
+            "exec " + shlex.quote(real_git) + " \\"$@\\"\\n",
+            encoding="utf-8",
+        )
+        shim.chmod(0o755)
+        result = publish(racer, accepted, {
+            "PATH": str(wrapper) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+            "RACE_WORK": str(competing),
+        })
+        winner = git(competing, "rev-parse", "HEAD")
+        if result.returncode == 0 or result.returncode == 75:
+            raise AssertionError("publisher post-CAS non-fast-forward race was not rejected")
+        if git(root, "--git-dir=" + str(remote), "rev-parse", "refs/heads/so") != winner:
+            raise AssertionError("racing publisher overwrote winner")
+        if git(racer, "rev-parse", "HEAD") == winner:
+            raise AssertionError("race fixture did not create divergent commits")
+    print("PASS: live object stage actual publisher no-op, stale CAS, valid push, pre-commit rejection, and post-CAS race (5 cases)")
+
 def main():
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     if blob(publisher) != REVIEWED_PUBLISHER or blob(independent) != REVIEWED_INDEPENDENT:
@@ -136,6 +260,7 @@ def main():
     negatives(publisher)
     runtime(publisher, "Validate diagnostic source read-only", False)
     runtime(publisher, "Reconcile stage diagnostics", True)
+    publisher_runtime(publisher)
     print("PASS: live object stage read-only source proof; production evidence generated: false; production decision changed: false")
 
 if __name__ == "__main__":
