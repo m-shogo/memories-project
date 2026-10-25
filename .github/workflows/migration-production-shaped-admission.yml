@@ -277,7 +277,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os, tempfile
+          import json, os, stat, tempfile
           from pathlib import Path
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
@@ -293,9 +293,14 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/migration-production-shaped-admission-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
+          if path.is_symlink():
+              raise SystemExit('migration production admission diagnostic target must not be a symlink')
+          existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
           fd, temp_name = tempfile.mkstemp(prefix='.migration-production-shaped-admission-diagnostic.', suffix='.tmp', dir=path.parent)
           try:
               with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                  if existing_mode is not None:
+                      os.fchmod(handle.fileno(), existing_mode)
                   json.dump(value, handle, indent=2)
                   handle.write('\n')
                   handle.flush()

@@ -9,13 +9,14 @@ import os
 import subprocess
 import sys
 import tempfile
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/migration-production-shaped-admission.yml"
 INDEPENDENT = ".github/workflows/migration-production-shaped-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py"
-PUBLISHER_SHA = "80c283c3bf93934f115321d761a349a9b74648cb"
+PUBLISHER_SHA = "de15191e084b753b379ca6f657b57521fa1dbf92"
 INDEPENDENT_SHA = "6e5d70153437516601b00c9d6d542dc90abf7191"
 ISOLATION = ".github/workflows/migration-production-shaped-negative-isolation.yml"
 ISOLATION_SCRIPT = "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
@@ -184,7 +185,40 @@ def diagnostic_runtime(publisher: str) -> None:
             raise SystemExit("migration production-shaped admission diagnostic evidence/readiness flag drift")
         if value.get("admittedRehearsalCount") != 0 or "CANARY_DO_NOT_PERSIST_MIGRATION" in raw:
             raise SystemExit("migration production-shaped admission diagnostic fabricated evidence or persisted canary")
-    print("PASS: migration production-shaped admission isolated diagnostic redaction (1 runtime case)")
+        output.chmod(0o640)
+        preserved = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                   capture_output=True, text=True, timeout=15, check=False)
+        if preserved.returncode or stat.S_IMODE(output.stat().st_mode) != 0o640:
+            raise SystemExit("migration production-shaped diagnostic did not preserve existing mode")
+        previous = output.read_bytes()
+        for label, before, replacement in (
+            ("replace", "os.replace(temp_name, path)", "raise OSError('synthetic admission diagnostic replace failure')"),
+            ("fsync", "os.fsync(handle.fileno())", "raise OSError('synthetic admission diagnostic fsync failure')"),
+        ):
+            if script.count(before) != 1:
+                raise SystemExit("migration production-shaped diagnostic failure anchor drift: " + label)
+            injected = script.replace(before, replacement, 1)
+            failure = subprocess.run([sys.executable, "-c", injected], cwd=directory, env=env,
+                                     capture_output=True, text=True, timeout=15, check=False)
+            if failure.returncode == 0 or "synthetic admission diagnostic " + label + " failure" not in failure.stderr:
+                raise SystemExit("migration production-shaped diagnostic failure did not execute: " + label)
+            if output.read_bytes() != previous or stat.S_IMODE(output.stat().st_mode) != 0o640:
+                raise SystemExit("migration production-shaped diagnostic failure changed existing output: " + label)
+            if list(output.parent.glob(".migration-production-shaped-admission-diagnostic.*.tmp")):
+                raise SystemExit("migration production-shaped diagnostic failure left temporary file: " + label)
+        outside = Path(directory) / "external-admission-diagnostic-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        if symlink.returncode == 0 or "target must not be a symlink" not in symlink.stderr:
+            raise SystemExit("migration production-shaped diagnostic accepted symlink target")
+        if not output.is_symlink() or outside.read_bytes() != previous:
+            raise SystemExit("migration production-shaped diagnostic mutated external symlink target")
+        if list(output.parent.glob(".migration-production-shaped-admission-diagnostic.*.tmp")):
+            raise SystemExit("migration production-shaped diagnostic symlink rejection left temporary file")
+    print("PASS: migration production-shaped admission diagnostic redaction and atomic runtime (5 cases)")
 
 
 def negatives(publisher: str, independent: str) -> None:
