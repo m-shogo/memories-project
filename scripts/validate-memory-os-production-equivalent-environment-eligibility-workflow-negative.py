@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/production-equivalent-environment-eligibility.yml"
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "72aa5578692cbfa70d6c69b56495539d9244c629"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "cad837867ba560444e665636087d62279de7f60b"
 REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
     ("self trigger", '      - "scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py"\n', 2),
@@ -30,6 +33,10 @@ REQUIRED = (
     ("HEAD check", '          test "$(git rev-parse HEAD)" = "$expected"\n', 2),
     ("write scope", "      contents: write\n", 1),
     ("retry latest", "            git reset --hard origin/so\n", 1),
+    ("redacted diagnostic", "              'output': 'REDACTED: environment eligibility validation failed; raw output withheld',\n", 1),
+    ("suppressed CI log", '          printf "Environment eligibility validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
+    ("no raw diagnostic tail", "text[-12000:]", 0),
+    ("no raw CI log", '          cat "$log"\n', 0),
 )
 
 
@@ -62,10 +69,42 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: semantic eligibility CI PR/push branch guard runtime (6 cases)")
 
 
+
+def prove_diagnostic_redaction_runtime(source: str) -> None:
+    """Run the actual inline diagnostic writer in an isolated temporary directory."""
+    start, end = "          python - <<'PY'\n", "          PY\n"
+    if source.count(start) != 1 or source.count(end) != 1:
+        raise SystemExit("semantic eligibility diagnostic writer is not uniquely reachable")
+    inline = source.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="semantic-eligibility-diagnostic-") as directory:
+        env = os.environ.copy()
+        env.update({"SOURCE_SHA": "e" * 40, "ELIGIBILITY_EXIT_CODE": "23",
+                    "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_ELIGIBILITY"})
+        result = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                capture_output=True, text=True, check=False)
+        if result.returncode:
+            raise SystemExit("semantic eligibility isolated diagnostic failed: " + result.stderr[:500])
+        output = Path(directory) / "docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json"
+        raw = output.read_text(encoding="utf-8")
+        value = json.loads(raw)
+        if value.get("output") != "REDACTED: environment eligibility validation failed; raw output withheld":
+            raise SystemExit("semantic eligibility diagnostic persisted raw validator output")
+        if value.get("sourceCommitSha") != "e" * 40 or value.get("exitCode") != 23:
+            raise SystemExit("semantic eligibility diagnostic source/exit binding drift")
+        for field in ("containsSecrets", "generationCreated", "eligibilityFabricated", "productionEvidence", "productionReady"):
+            if value.get(field) is not False:
+                raise SystemExit("semantic eligibility diagnostic evidence/readiness drift: " + field)
+        if "CANARY_DO_NOT_PERSIST_ELIGIBILITY" in raw:
+            raise SystemExit("semantic eligibility diagnostic persisted synthetic canary")
+    print("PASS: semantic eligibility isolated diagnostic redaction (1 runtime case)")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
+    prove_diagnostic_redaction_runtime(source)
     cases = (
         ("PR target", REQUIRED[0][1], "  pull_request:\n    paths:\n"),
         ("self trigger", REQUIRED[1][1], ""),
@@ -85,6 +124,9 @@ def main() -> int:
         ("HEAD check", REQUIRED[15][1], ""),
         ("write scope", REQUIRED[16][1], "      contents: read\n"),
         ("retry latest", REQUIRED[17][1], ""),
+        ("raw diagnostic", REQUIRED[18][1], "              'output': Path('/tmp/production-equivalent-environment-eligibility.log').read_text(),\n"),
+        ("raw CI log", REQUIRED[19][1], '          cat "$log"\n'),
+        ("missing redaction", REQUIRED[18][1], ""),
         ("inserted Action", "      - name: Capture exact semantic eligibility source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact semantic eligibility source\n"),
         ("inserted shell", "      - name: Capture exact semantic eligibility source\n", "      - run: echo unreviewed\n      - name: Capture exact semantic eligibility source\n"),
     )

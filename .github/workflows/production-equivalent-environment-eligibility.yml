@@ -142,7 +142,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "Environment eligibility validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
       - name: Commit bounded generation eligibility authority
         if: steps.eligibility.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
@@ -220,14 +220,13 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/production-equivalent-environment-eligibility.log').read_text(encoding='utf-8', errors='replace')
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'production-equivalent-environment-eligibility',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['ELIGIBILITY_EXIT_CODE']),
-              'output': text[-12000:],
+              'output': 'REDACTED: environment eligibility validation failed; raw output withheld',
               'containsSecrets': False,
               'generationCreated': False,
               'eligibilityFabricated': False,
