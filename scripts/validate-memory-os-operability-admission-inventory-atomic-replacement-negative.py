@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,6 +88,24 @@ def main() -> int:
                 return text.replace(expected, '"schemaVersion": "synthetic-invalid"', 1)
 
         output_replace_count = 0
+        source_guard_calls: list[str] = []
+        source_guard_name = "memory_os_operability_inventory_source_authority"
+        source_guard_path = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+        original_spec = generator.importlib.util.spec_from_file_location
+
+        class SyntheticSourceAuthorityLoader:
+            def create_module(self, spec):
+                return None
+
+            def exec_module(self, module):
+                module.main = lambda: 0
+
+        def scoped_spec(name, location, *args, **kwargs):
+            if name == source_guard_name:
+                require(Path(location) == source_guard_path, "inventory rollback source-authority path drift")
+                source_guard_calls.append(name)
+                return ModuleSpec(name, SyntheticSourceAuthorityLoader())
+            return original_spec(name, location, *args, **kwargs)
 
         def reject_rollback_replace(source: str | Path, destination: str | Path) -> None:
             nonlocal output_replace_count
@@ -98,6 +117,7 @@ def main() -> int:
 
         generator.json = InvalidInventoryJsonProxy()
         generator.os.replace = reject_rollback_replace
+        generator.importlib.util.spec_from_file_location = scoped_spec
         try:
             try:
                 generator.main()
@@ -109,10 +129,12 @@ def main() -> int:
             else:
                 raise Fail("synthetic inventory validator plus rollback failure unexpectedly accepted")
         finally:
+            generator.importlib.util.spec_from_file_location = original_spec
             generator.os.replace = original_replace
             generator.json = original_json
             generator.atomic_write_text(CANONICAL_OUTPUT, output_before.decode("utf-8"))
 
+        require(source_guard_calls == [source_guard_name], "inventory rollback fixture did not reach reviewed source-authority loader exactly once")
         require(output_replace_count == 2, f"inventory rollback diagnostic fixture expected two authority replacements, got {output_replace_count}")
         require(CANONICAL_OUTPUT.read_bytes() == output_before, "rollback diagnostic cleanup mutated canonical operability inventory bytes")
         require(
