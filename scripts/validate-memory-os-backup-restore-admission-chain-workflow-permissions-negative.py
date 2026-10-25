@@ -287,10 +287,36 @@ def main() -> int:
         require(mutated != canonical, f"negative mutation did not change workflow: {label}")
         expect_reject(module, label, mutated)
 
+    # Independently mutate the permission-check workflow bootstrap and PR identity.
+    independent = module.independent_permission_workflow()
+    module.validate_independent_permission_workflow(independent)
+    independent_cases = (
+        ("independent floating checkout", replace_once(independent, "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "uses: actions/checkout@v4", "independent floating checkout")),
+        ("independent substituted checkout SHA", replace_once(independent, "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677263", "independent substituted checkout SHA")),
+        ("independent floating setup-python", replace_once(independent, "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "uses: actions/setup-python@v5", "independent floating setup-python")),
+        ("independent substituted setup-python SHA", replace_once(independent, "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87064", "independent substituted setup-python SHA")),
+        ("independent persisted PR credentials", replace_once(independent, "          persist-credentials: false\n", "          persist-credentials: true\n", "independent persisted PR credentials")),
+        ("independent missing credential isolation", replace_once(independent, "          persist-credentials: false\n", "", "independent missing credential isolation")),
+        ("independent missing PR SHA format check", replace_once(independent, "            [[ \"$PR_HEAD_SHA\" =~ ^[0-9a-f]{40}$ ]]\n", "", "independent missing PR SHA format check")),
+        ("independent PR HEAD check bypass", replace_once(independent, "            test \"$(git rev-parse HEAD)\" = \"$PR_HEAD_SHA\"\n", "            test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"\n", "independent PR HEAD check bypass")),
+        ("independent extra action step", replace_once(independent, "      - name: Require exact clean source\n", "      - uses: synthetic/unreviewed@v1\n      - name: Require exact clean source\n", "independent extra action step")),
+        ("independent token write elevation", replace_once(independent, "permissions:\n  contents: read\n", "permissions:\n  contents: write\n", "independent token write elevation")),
+        ("independent PR target event", replace_once(independent, "  pull_request:\n", "  pull_request_target:\n", "independent PR target event")),
+    )
+    for label, mutated in independent_cases:
+        require(mutated != independent, f"independent mutation unchanged: {label}")
+        try:
+            module.validate_independent_permission_workflow(mutated)
+        except module.Fail:
+            pass
+        else:
+            raise Fail(f"independent permission workflow mutation accepted: {label}")
+
     require(module.exact_workflow() == canonical, "negative suite mutated canonical workflow authority")
     run_runner_negative()
     print("Backup/restore admission-chain workflow permission negative PASS")
     print(f"forbidden workflow mutations rejected: {len(cases)}")
+    print(f"independent permission workflow source mutations rejected: {len(independent_cases)}")
     print("full runner fail-closed negative proof executed: true")
     print("PR tracked/untracked workspace mutation accepted: false")
     print("crash-safe failure diagnostic publication required: true")

@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_REL = Path(".github/workflows/backup-restore-admission-chain.yml")
 WORKFLOW = ROOT / WORKFLOW_REL
+INDEPENDENT_PERMISSION_WORKFLOW_REL = Path(".github/workflows/backup-restore-permission-boundary-negative.yml")
 
 
 class Fail(RuntimeError):
@@ -31,6 +32,34 @@ def exact_workflow() -> str:
         return WORKFLOW.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise Fail(f"cannot read admission-chain workflow: {exc}") from exc
+
+
+def independent_permission_workflow() -> str:
+    path = ROOT / INDEPENDENT_PERMISSION_WORKFLOW_REL
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+        require(resolved == INDEPENDENT_PERMISSION_WORKFLOW_REL and path.is_file()
+                and not path.is_symlink(),
+                "independent permission workflow authority substituted")
+        return path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError, RuntimeError, ValueError, UnicodeDecodeError) as exc:
+        raise Fail("independent permission workflow unreadable or escapes root") from exc
+
+
+def validate_independent_permission_workflow(source: str) -> None:
+    require("pull_request_target:" not in source,
+            "independent permission workflow forbidden event")
+    require(source.count("permissions:\n  contents: read\n") == 1,
+            "independent permission workflow token scope drift")
+    require(source.count("      - name: Checkout exact source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 1\n          persist-credentials: false\n\n      - name: Set up Python\n        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n\n") == 1,
+            "independent permission workflow checkout/setup source drift")
+    require(source.count("      - name: Require exact clean source\n        env:\n          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n        run: |\n          set -euo pipefail\n          test -z \"$(git status --porcelain)\"\n          if [[ \"${{ github.event_name }}\" == \"pull_request\" ]]; then\n            [[ \"$PR_HEAD_SHA\" =~ ^[0-9a-f]{40}$ ]]\n            test \"$(git rev-parse HEAD)\" = \"$PR_HEAD_SHA\"\n          else\n            test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"\n          fi\n\n") == 1,
+            "independent permission workflow PR source identity drift")
+    require(source.count("        uses: ") == 2,
+            "independent permission workflow unreviewed action step")
+    require(source.count(
+        "        run: python scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py\n"
+    ) == 1, "independent permission workflow permission guard unreachable")
 
 
 def job_block(text: str, name: str, next_name: str | None = None) -> str:
@@ -78,6 +107,7 @@ def require_atomic_diagnostic_publication(publish: str) -> None:
 
 def main() -> int:
     text = exact_workflow()
+    validate_independent_permission_workflow(independent_permission_workflow())
     require("pull_request_target:" not in text, "pull_request_target must never control backup/restore admission publication")
     require("permissions:\n  contents: read\n" in text, "workflow-level contents permission must default to read")
 

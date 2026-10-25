@@ -41,13 +41,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
 
@@ -58,6 +59,7 @@ jobs:
           set -euo pipefail
           test -z "$(git status --porcelain)"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
             test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
           else
             test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
