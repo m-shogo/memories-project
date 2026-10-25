@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -243,7 +246,7 @@ def require_trigger_path_negatives(source: str) -> None:
 
 
 
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "68df8bc2c6edb7b06083ce5771ea9112c469a806"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "28a5b4f151e222883a61134ffef3b022d9e892fb"
 
 
 def require_reviewed_workflow_blob(source: str) -> None:
@@ -428,6 +431,76 @@ def require_readonly_workflow_source_negatives(source: str) -> None:
             raise Fail(f"admission readonly CI trigger mutation accepted: {label}")
 
 
+def require_diagnostic_privacy_source(source: str) -> None:
+    """Forbid raw admission-chain logs in diagnostics and public CI."""
+    marker = "              'output': 'REDACTED: admission chain validation failed; consult CI job logs',\n"
+    suppressed = '          printf "Admission chain validation exit code: %s (raw validator log suppressed)\\n" "$code"\n'
+    require(source.count(marker) == 1, "admission-chain diagnostic redaction marker drift")
+    require(source.count(suppressed) == 1, "admission-chain raw CI log suppression drift")
+    require("text[-12000:]" not in source, "admission-chain raw diagnostic tail restored")
+    require('          cat "$log"\n' not in source, "admission-chain raw CI log echo restored")
+
+
+def require_diagnostic_privacy_negatives(source: str) -> None:
+    require_diagnostic_privacy_source(source)
+    cases = (
+        ("raw diagnostic", "              'output': 'REDACTED: admission chain validation failed; consult CI job logs',\n",
+         "              'output': Path('/tmp/backup-restore-admission-chain.log').read_text(),\n"),
+        ("raw CI log", '          printf "Admission chain validation exit code: %s (raw validator log suppressed)\\n" "$code"\n',
+         '          cat "$log"\n'),
+        ("missing redaction", "              'output': 'REDACTED: admission chain validation failed; consult CI job logs',\n", ""),
+    )
+    for label, old, new in cases:
+        require(source.count(old) == 1, "admission-chain diagnostic fixture anchor drift: " + label)
+        mutated = source.replace(old, new, 1)
+        require(mutated != source, "admission-chain diagnostic fixture unchanged: " + label)
+        try:
+            require_diagnostic_privacy_source(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail("admission-chain diagnostic accepted privacy regression: " + label)
+    print(f"PASS: admission-chain diagnostic privacy negatives ({len(cases)} cases)")
+
+
+def prove_diagnostic_redaction_runtime(source: str) -> None:
+    """Execute the exact inline diagnostic writer in a temporary directory."""
+    start = "          python - <<'PY'\n"
+    end = "          PY\n"
+    require(source.count(start) == 1 and source.count(end) == 1,
+            "admission-chain diagnostic writer not uniquely reachable")
+    inline = source.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="admission-chain-diagnostic-") as tmpdir:
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_SHA": "b" * 40,
+            "CHAIN_EXIT_CODE": "37",
+            "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_MNO",
+        })
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmpdir, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        require(result.returncode == 0,
+                "admission-chain isolated diagnostic failed: " + result.stderr[:500])
+        output = Path(tmpdir) / "docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json"
+        data = json.loads(output.read_text(encoding="utf-8"))
+        require(data.get("output") == "REDACTED: admission chain validation failed; consult CI job logs",
+                "admission-chain diagnostic persisted raw validator output")
+        require(data.get("sourceCommitSha") == "b" * 40 and data.get("exitCode") == 37,
+                "admission-chain diagnostic source/exit binding drift")
+        require(data.get("containsSecrets") is False and data.get("preflightCreatedPrerequisite") is False,
+                "admission-chain diagnostic secret/prerequisite flags drift")
+        require(data.get("productionEvidence") is False and data.get("productionReady") is False,
+                "admission-chain diagnostic production evidence/readiness drift")
+        require(data.get("typedEvidenceCreated") is False and data.get("restoreExecuted") is False,
+                "admission-chain diagnostic typed/restore flags drift")
+        require("CANARY_DO_NOT_PERSIST_MNO" not in output.read_text(encoding="utf-8"),
+                "admission-chain diagnostic persisted synthetic canary")
+    print("PASS: admission-chain isolated diagnostic redaction (1 runtime case)")
+
+
 def main() -> int:
     require(NEGATIVE_WORKFLOW.is_file() and not NEGATIVE_WORKFLOW.is_symlink(),
             "admission negative CI workflow missing or substituted")
@@ -439,6 +512,8 @@ def main() -> int:
     require_root_event_negatives(text)
     require_trigger_path_negatives(text)
     require_run_body_negatives(text)
+    require_diagnostic_privacy_negatives(text)
+    prove_diagnostic_redaction_runtime(text)
     require("pull_request_target:" not in text, "backup/restore admission chain must not use pull_request_target")
     require("permissions:\n  contents: read\n" in text, "admission-chain workflow default token must remain read-only")
     require("\njobs:\n  validate-pr:\n" in text, "dedicated admission-chain PR validation job missing")

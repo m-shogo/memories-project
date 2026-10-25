@@ -126,7 +126,7 @@ jobs:
             python scripts/validate-memory-os-backup-restore-admission-chain-full.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "Admission chain validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
 
       - name: Commit bounded chain authority
@@ -216,14 +216,14 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/backup-restore-admission-chain.log').read_text(encoding='utf-8', errors='replace')
+          # Never persist untrusted admission-chain validator stdout.
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'backup-restore-admission-chain',
               'result': 'FAIL',
               'exitCode': int(os.environ['CHAIN_EXIT_CODE']),
               'sourceCommitSha': os.environ['SOURCE_SHA'],
-              'output': text[-12000:],
+              'output': 'REDACTED: admission chain validation failed; consult CI job logs',
               'containsSecrets': False,
               'preflightCreatedPrerequisite': False,
               'drillRequestCreated': False,
