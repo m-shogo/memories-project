@@ -2,8 +2,11 @@ name: Production Equivalent Environment Eligibility
 
 on:
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/production-equivalent-environment-eligibility.yml"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py"
       - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
@@ -23,6 +26,7 @@ on:
       - so
     paths:
       - ".github/workflows/production-equivalent-environment-eligibility.yml"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py"
       - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
@@ -54,20 +58,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Validate semantic eligibility authority read-only
         run: |
           set -euo pipefail
+          test "${GITHUB_BASE_REF:-}" = "so"
           expected="${{ github.event.pull_request.head.sha }}"
-          test -n "$expected"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+          python scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py
           python -m py_compile \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
@@ -87,26 +94,30 @@ jobs:
           test -z "$(git status --porcelain)"
 
   validate:
-    if: github.event_name != 'pull_request'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     permissions:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Capture exact semantic eligibility source
         run: |
           set -euo pipefail
-          expected="${{ github.sha }}"
-          test -n "$expected"
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          expected="${GITHUB_SHA:-}"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+          python scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py
           echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"
       - name: Derive and validate restore-preflight generation eligibility
         id: eligibility
@@ -142,6 +153,7 @@ jobs:
           revalidate_latest_eligibility() {
             git fetch origin so
             git reset --hard origin/so
+            python scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py
             SOURCE_SHA="$(git rev-parse HEAD)"
             export SOURCE_SHA
             : > "$log"
