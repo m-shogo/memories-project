@@ -181,9 +181,64 @@ def require_root_event_negatives(source: str) -> None:
             raise Fail(f"recovery unreviewed root/event mutation accepted: {label}")
 
 
+
+REVIEWED_TRIGGER_PATHS = [".github/workflows/backup-restore-admission-chain.yml","contracts/operations/backup-restore-*.json","contracts/operations/production-equivalent-environment-*.json","contracts/operations/recovery-objectives-*.json","contracts/operations/operability-admission-inventory.v1.json","contracts/operations/production-operability-status.json","docs/evidence/backup-restore/**","docs/evidence/recovery-objectives/approvals/**","docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**","docs/fixtures/memory-os-operability/recovery-objectives-approval/**","scripts/memory_os_backup_restore_blockers.py","scripts/memory_os_environment_generation_eligibility.py","scripts/*backup*.py","scripts/*recovery*objective*.py","scripts/*production*equivalent*environment*.py","scripts/validate-memory-os-operability.py"]
+
+
+def require_reviewed_trigger_paths(source: str) -> None:
+    """Bind complete PR/push trigger paths and so-only publisher push branch."""
+    sections = source.split("\non:\n", 1)
+    require(len(sections) == 2, "recovery trigger source missing")
+    event = sections[1].split("\npermissions:\n", 1)
+    require(len(event) == 2, "recovery trigger permissions boundary missing")
+    parts = event[0].split("  pull_request:\n", 1)
+    require(len(parts) == 2, "recovery PR trigger missing")
+    parts = parts[1].split("  push:\n", 1)
+    require(len(parts) == 2, "recovery push trigger missing")
+    pr_body, remainder = parts
+    parts = remainder.split("  workflow_dispatch:\n", 1)
+    require(len(parts) == 2, "recovery dispatch trigger missing")
+    push_body = parts[0]
+    pr_keys = re.findall(r"(?m)^    ([^ \t#\n][^\n]*)$", pr_body)
+    push_keys = re.findall(r"(?m)^    ([^ \t#\n][^\n]*)$", push_body)
+    require(pr_keys == ["paths:"] and push_keys == ["branches:", "paths:"],
+            "recovery trigger filter key inventory drift")
+    require(push_body.startswith("    branches:\n      - so\n    paths:\n"),
+            "recovery publisher push branch drift")
+    for body in (pr_body, push_body.split("    paths:\n", 1)[1]):
+        paths = re.findall(r"(?m)^      - ([^\n]+)$", body)
+        require(paths == [f'"{path}"' for path in REVIEWED_TRIGGER_PATHS],
+                "recovery trigger path inventory drift")
+
+
+def require_trigger_path_negatives(source: str) -> None:
+    require_reviewed_trigger_paths(source)
+    first = f'      - "{REVIEWED_TRIGGER_PATHS[0]}"\n'
+    require(source.count(first) == 2, "recovery trigger fixture first path missing")
+    before, after = source.split("  push:\n", 1)
+    mutations = (
+        ("pr-path-removed", source.replace(first, "", 1)),
+        ("pr-negative-path", source.replace(first, '      - "!unreviewed/**"\n' + first, 1)),
+        ("push-branch", source.replace("    branches:\n      - so\n", "    branches:\n      - main\n", 1)),
+        ("duplicate-branches", source.replace("    branches:\n      - so\n", "    branches:\n      - so\n    branches:\n      - main\n", 1)),
+        ("paths-ignore", source.replace("    paths:\n", "    paths-ignore:\n      - \"docs/**\"\n    paths:\n", 1)),
+        ("quoted-paths", source.replace("    paths:\n", '    "paths":\n', 1)),
+        ("push-path-removed", before + "  push:\n" + after.replace(first, "", 1)),
+    )
+    for label, mutated in mutations:
+        require(mutated != source, f"recovery trigger fixture unchanged: {label}")
+        try:
+            require_reviewed_trigger_paths(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"recovery trigger mutation accepted: {label}")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require_root_event_negatives(text)
+    require_trigger_path_negatives(text)
     require("pull_request_target:" not in text, "backup/restore admission chain must not use pull_request_target")
     require("permissions:\n  contents: read\n" in text, "admission-chain workflow default token must remain read-only")
     require("\njobs:\n  validate-pr:\n" in text, "dedicated admission-chain PR validation job missing")
@@ -246,6 +301,7 @@ def main() -> int:
     print("PASS: bounded full revalidation, stale-source CAS and atomic failure diagnostics remain enforced")
     print("production evidence generated: false")
     print("workflow root/event negative mutations rejected: 6")
+    print("workflow trigger-path negative mutations rejected: 7")
     print("production decision changed: false")
     return 0
 
