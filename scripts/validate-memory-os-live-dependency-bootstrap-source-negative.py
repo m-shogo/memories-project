@@ -17,7 +17,7 @@ SELF = "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
 REVIEWED_LIVE = "fd501a86a6e2f3ed3cb68c29d0d9ffb39162dc57"
 REVIEWED_UPLOAD = "3997403c3d93983470942909a8673aa961fc099a"
 REVIEWED_SIGKILL = "564f8dae50222dc9025ee31449c116d7f3b8345d"
-REVIEWED_INDEPENDENT = "20da90b7e0db3ecea90799b706de07ad9bd14a13"
+REVIEWED_INDEPENDENT = "ff92e4a807def62fefe1ad2df90f16fd9ba23aee"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
@@ -97,6 +97,8 @@ def validate(live: str, upload: str, sigkill: str, independent: str) -> None:
         "  push:\n    branches:\n      - so\n",
         '      - "' + LIVE + '"', '      - "' + UPLOAD + '"',
         '      - "' + SIGKILL + '"', '      - "' + INDEPENDENT + '"', '      - "' + SELF + '"',
+        '      - "scripts/validate-memory-os-live-load.py"',
+        '      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"',
         CHECKOUT, SETUP, "          persist-credentials: false\n",
         PR_BASE, PUSH_REF, SHA_FORMAT, "          python " + SELF,
         "permissions:\n  contents: read\n",
@@ -115,6 +117,10 @@ def validate(live: str, upload: str, sigkill: str, independent: str) -> None:
                 raise SystemExit("live dependency " + label + " source drift: " + token)
         if blob(text) != digest:
             raise SystemExit("live dependency " + label + " complete Git blob drift")
+    evidence_validator = source("scripts/validate-memory-os-live-load.py")
+    for marker in ("object_pairs_hook=reject_duplicate_json_keys", "resultPath authority drift", "path.is_symlink()"):
+        if marker not in evidence_validator:
+            raise SystemExit("live PostgreSQL evidence validator authority drift: " + marker)
     if live.index("      - name: Start local MinIO harness") > live.index("      - name: Publish exact-source result documents"):
         raise SystemExit("live load publication may precede dependency startup")
     if upload.index("      - name: Start local MinIO") > upload.index("      - name: Commit reconciled route authority"):
@@ -289,6 +295,88 @@ def source_negatives(live: str, upload: str, sigkill: str, independent: str) -> 
     print("PASS: live dependency source negatives (14 live + 6 upload + 4 SIGKILL + 11 independent)")
 
 
+
+def postgres_evidence_validator_runtime() -> None:
+    """Prove the canonical local PostgreSQL evidence validator rejects ambiguous JSON."""
+    import importlib.util
+    import json
+
+    module_path = ROOT / "scripts/validate-memory-os-live-load.py"
+    spec = importlib.util.spec_from_file_location("live_postgres_evidence_validator", module_path)
+    if spec is None or spec.loader is None:
+        raise SystemExit("live PostgreSQL evidence validator import failed")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    contract_text = source("contracts/operations/live-postgres-load-scenario-contract.v1.json")
+    result_text = source("docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json")
+    with tempfile.TemporaryDirectory(prefix="live-postgres-evidence-negative-") as tmp:
+        root = Path(tmp)
+        contract_path = root / "contracts/operations/live-postgres-load-scenario-contract.v1.json"
+        result_path = root / "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
+        contract_path.parent.mkdir(parents=True)
+        result_path.parent.mkdir(parents=True)
+        module.ROOT = root
+        module.CONTRACT_PATH = contract_path
+        previous_expected = os.environ.pop("EXPECTED_COMMIT_SHA", None)
+        try:
+            def reset():
+                if result_path.is_symlink():
+                    result_path.unlink()
+                contract_path.write_text(contract_text, encoding="utf-8")
+                result_path.write_text(result_text, encoding="utf-8")
+
+            def reject(label, expected):
+                try:
+                    module.validate()
+                except module.ValidationError as exc:
+                    if expected not in str(exc):
+                        raise SystemExit("live PostgreSQL wrong rejection for " + label + ": " + str(exc)) from exc
+                else:
+                    raise SystemExit("live PostgreSQL accepted " + label)
+
+            reset()
+            module.validate()
+            reset()
+            result_path.write_text('{"schemaVersion":"synthetic-duplicate",' + result_text.lstrip()[1:], encoding="utf-8")
+            reject("duplicate top-level JSON", "duplicate JSON key")
+            reset()
+            result_path.write_text(result_text.replace('"productionEvidence": false',
+                                '"productionEvidence": true, "productionEvidence": false', 1), encoding="utf-8")
+            reject("duplicate nested JSON", "duplicate JSON key")
+            reset()
+            contract = json.loads(contract_text)
+            contract["resultPath"] = "../../outside.json"
+            contract_path.write_text(json.dumps(contract), encoding="utf-8")
+            reject("path traversal", "resultPath authority drift")
+            reset()
+            outside = root / "outside.json"
+            outside.write_text(result_text, encoding="utf-8")
+            result_path.unlink()
+            result_path.symlink_to(outside)
+            reject("symlink evidence", "symlink")
+            if outside.read_text(encoding="utf-8") != result_text:
+                raise SystemExit("live PostgreSQL symlink changed external sentinel")
+            reset()
+            document = json.loads(result_text)
+            document["scenarios"][0]["batch"]["statusClassCounts"]["transport_error_credential"] = 0
+            result_path.write_text(json.dumps(document), encoding="utf-8")
+            reject("unbounded status label", "invalid status class")
+            reset()
+            document = json.loads(result_text)
+            document["environment"]["productionEvidence"] = True
+            result_path.write_text(json.dumps(document), encoding="utf-8")
+            reject("false production evidence", "ephemeral live-load results must not claim production evidence")
+            reset()
+            contract = json.loads(contract_text)
+            contract["readiness"]["capacityBoundaryEstablished"] = True
+            contract_path.write_text(json.dumps(contract), encoding="utf-8")
+            reject("false capacity readiness", "capacityBoundaryEstablished cannot be true")
+        finally:
+            if previous_expected is not None:
+                os.environ["EXPECTED_COMMIT_SHA"] = previous_expected
+    print("PASS: live PostgreSQL actual evidence validator baseline and seven duplicate/path/symlink/privacy/readiness negatives")
+
+
 def main() -> int:
     live, upload, sigkill, independent = source(LIVE), source(UPLOAD), source(SIGKILL), source(INDEPENDENT)
     validate(live, upload, sigkill, independent)
@@ -296,6 +384,7 @@ def main() -> int:
     source_negatives(live, upload, sigkill, independent)
     synthetic_bootstrap_failure(live, upload, sigkill)
     live_source_identity_runtime(live)
+    postgres_evidence_validator_runtime()
     print("capacity evidence generated: false")
     print("production evidence generated: false")
     print("production decision changed: false")

@@ -10,6 +10,8 @@ on:
       - ".github/workflows/deletion-worker-sigkill-recovery.yml"
       - ".github/workflows/live-dependency-bootstrap-source-negative.yml"
       - "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
+      - "scripts/validate-memory-os-live-load.py"
+      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
   push:
     branches:
       - so
@@ -19,6 +21,8 @@ on:
       - ".github/workflows/deletion-worker-sigkill-recovery.yml"
       - ".github/workflows/live-dependency-bootstrap-source-negative.yml"
       - "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
+      - "scripts/validate-memory-os-live-load.py"
+      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
 
 permissions:
   contents: read
