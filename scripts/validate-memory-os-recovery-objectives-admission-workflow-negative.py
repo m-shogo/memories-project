@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/recovery-objectives-admission.yml"
 INDEPENDENT = ".github/workflows/recovery-objectives-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-recovery-objectives-admission-workflow-negative.py"
-REVIEWED_PUBLISHER = "34a629e74df487d45f5eb935c57e7b60f888e90c"
+REVIEWED_PUBLISHER = "f6b10d56be369de46098f9798fc686322eb90302"
 REVIEWED_INDEPENDENT = "16c74a57a5e8b0f983a95e36aa3055c0ab96adae"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -41,6 +44,10 @@ MAIN_REQUIRED = (
     ("writer SHA source", 'expected="' + D + '{GITHUB_SHA:-}"', 1),
     ("root read token", "permissions:\n  contents: read\n", 1),
     ("writer write token", "      contents: write\n", 1),
+    ("diagnostic fixed redaction", "              'output': 'REDACTED: recovery objective validation failed; consult CI job logs',\n", 1),
+    ("raw CI log suppression", '          printf "Recovery objective validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
+    ("no raw diagnostic tail", "text[-12000:]", 0),
+    ("no raw CI log echo", '          cat "$log"\n', 0),
 )
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
@@ -138,6 +145,42 @@ def runtime_sha_proof(publisher: str, independent: str) -> None:
                 raise SystemExit("recovery objective SHA predicate drift: " + source_label + " " + label)
     print(f"PASS: recovery objective publisher/independent SHA runtime ({len(cases) * 2} cases)")
 
+def runtime_diagnostic_redaction(publisher: str) -> None:
+    """Run the exact inline diagnostic writer in an isolated directory."""
+    start = "          python - <<'PY'\n"
+    end = "          PY\n"
+    if publisher.count(start) != 1 or publisher.count(end) != 1:
+        raise SystemExit("recovery objective diagnostic writer is not uniquely reachable")
+    inline = publisher.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="recovery-objective-diagnostic-") as tmpdir:
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_SHA": "c" * 40,
+            "VALIDATION_EXIT_CODE": "17",
+            "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_789",
+        })
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmpdir, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            raise SystemExit("recovery objective isolated diagnostic failed: " + result.stderr[:500])
+        output = Path(tmpdir) / "docs/fixtures/memory-os-operability/recovery-objectives-admission-diagnostic.last.json"
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        if payload.get("output") != "REDACTED: recovery objective validation failed; consult CI job logs":
+            raise SystemExit("recovery objective diagnostic persisted raw validator output")
+        if payload.get("sourceCommitSha") != "c" * 40 or payload.get("exitCode") != 17:
+            raise SystemExit("recovery objective diagnostic source/exit drift")
+        if payload.get("containsSecrets") is not False or payload.get("objectiveCreated") is not False:
+            raise SystemExit("recovery objective diagnostic secret/objective flags drift")
+        if payload.get("productionEvidence") is not False or payload.get("productionReady") is not False:
+            raise SystemExit("recovery objective diagnostic evidence/readiness flags drift")
+        if "CANARY_DO_NOT_PERSIST_789" in output.read_text(encoding="utf-8"):
+            raise SystemExit("recovery objective diagnostic leaked synthetic canary")
+    print("PASS: recovery objective isolated diagnostic redaction (1 runtime case)")
+
+
 def negatives(publisher: str, independent: str) -> None:
     publisher_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -161,6 +204,9 @@ def negatives(publisher: str, independent: str) -> None:
         ("unreviewed Action", "      - name: Capture exact recovery objective authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact recovery objective authority source\n"),
         ("unreviewed shell", "      - name: Capture exact recovery objective authority source\n", "      - run: echo unreviewed\n      - name: Capture exact recovery objective authority source\n"),
         ("appended command", '          echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"\n', '          echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"\n          echo unreviewed\n'),
+        ("raw diagnostic", "              'output': 'REDACTED: recovery objective validation failed; consult CI job logs',\n", "              'output': Path('/tmp/recovery-objectives-admission.log').read_text(),\n"),
+        ("raw CI log", '          printf "Recovery objective validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
+        ("missing redaction", "              'output': 'REDACTED: recovery objective validation failed; consult CI job logs',\n", ""),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -199,6 +245,7 @@ def main() -> int:
     validate(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
+    runtime_diagnostic_redaction(publisher)
     negatives(publisher, independent)
     return 0
 

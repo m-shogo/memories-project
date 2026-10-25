@@ -153,7 +153,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "Recovery objective validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
       - name: Commit bounded objective authority
         if: steps.validation.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
@@ -195,14 +195,14 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/recovery-objectives-admission.log').read_text(encoding='utf-8', errors='replace')
+          # Persist no untrusted validator stdout in the repository.
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'recovery-objectives-admission',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
-              'output': text[-12000:],
+              'output': 'REDACTED: recovery objective validation failed; consult CI job logs',
               'containsSecrets': False,
               'objectiveCreated': False,
               'objectiveValueChosenOrDefaulted': False,
