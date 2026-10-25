@@ -187,6 +187,22 @@ def passing(record: dict[str, Any]) -> bool:
     return all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult"))
 
 
+STRONGER_LIFECYCLE_FIELDS = (
+    "productionShapedRehearsalCompleted",
+    "isolatedRestoreLinked",
+    "mixedVersionCompatibilityProven",
+    "ready",
+)
+
+
+def require_no_stronger_lifecycle_downgrade(readiness: dict[str, Any]) -> None:
+    # Local evidence cannot demote a later independently authorized
+    # production-shaped lifecycle milestone to False.
+    for field in STRONGER_LIFECYCLE_FIELDS:
+        require(readiness.get(field) is False,
+                "migration registry cannot overwrite stronger lifecycle authority: " + field)
+
+
 def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
     enforce_runtime_authorities()
     originals = {path: path.read_bytes() for path in outputs}
@@ -261,6 +277,7 @@ def main() -> int:
     lifecycle = load(LIFECYCLE)
     lifecycle_readiness = lifecycle.get("readiness")
     require(isinstance(lifecycle_readiness, dict), "migration lifecycle readiness missing")
+    require_no_stronger_lifecycle_downgrade(lifecycle_readiness)
     lifecycle_readiness["operatorEvidenceRecordImplemented"] = True
     lifecycle_readiness["productionShapedRehearsalCompleted"] = False
     lifecycle_readiness["isolatedRestoreLinked"] = False

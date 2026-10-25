@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -345,6 +346,23 @@ def prove_orphan_rescue_authorities(before: dict[Path, bytes]) -> None:
     print("PASS exhaustive rollback: orphan rescue attempts all authorities after restore failure")
 
 
+def prove_stronger_lifecycle_authority_cannot_be_downgraded(before: dict[Path, bytes]) -> None:
+    module = load_module(RECONCILER, "migration_registry_stronger_lifecycle_guard")
+    original = json.loads(before[CANONICAL_LIFECYCLE].decode("utf-8"))["readiness"]
+    module.require_no_stronger_lifecycle_downgrade(original)
+    for field in module.STRONGER_LIFECYCLE_FIELDS:
+        candidate = dict(original)
+        candidate[field] = True
+        try:
+            module.require_no_stronger_lifecycle_downgrade(candidate)
+        except module.Fail as exc:
+            require("cannot overwrite stronger lifecycle authority: " + field in str(exc),
+                    "unexpected stronger lifecycle rejection: " + field)
+        else:
+            raise NegativeFailure("migration registry accepted stronger lifecycle downgrade: " + field)
+    require_canonical_bytes_unchanged(before, "stronger lifecycle negative")
+
+
 def main() -> int:
     before = {
         CANONICAL_REGISTRY: CANONICAL_REGISTRY.read_bytes(),
@@ -353,6 +371,7 @@ def main() -> int:
         CANONICAL_LOCAL_CONTRACT: CANONICAL_LOCAL_CONTRACT.read_bytes(),
         CANONICAL_STATUS: CANONICAL_STATUS.read_bytes(),
     }
+    prove_stronger_lifecycle_authority_cannot_be_downgraded(before)
     prove_registry_reconcile_authorities(before)
     prove_orphan_rescue_authorities(before)
     print("Memory OS migration evidence reconcile authority negative PASS")
