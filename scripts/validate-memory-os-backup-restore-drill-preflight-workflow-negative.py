@@ -129,6 +129,33 @@ def runtime_branch_proof(main: str, guard: str) -> None:
     print("PASS: preflight publisher/independent PR-push branch runtime (12 cases), publisher event runtime (4 cases)")
 
 
+def runtime_sha_proof(main: str, guard: str) -> None:
+    """Execute the reviewed SHA predicates, including malformed and injection-shaped inputs."""
+    cases = (
+        ("lowercase hex", "a" * 40, True),
+        ("numeric hex", "0" * 40, True),
+        ("short SHA", "a" * 39, False),
+        ("long SHA", "a" * 41, False),
+        ("uppercase SHA", "A" * 40, False),
+        ("nonhex SHA", "g" * 40, False),
+        ("missing SHA", "", False),
+        ("literal shell substitution", "$(echo unexpected)", False),
+    )
+    for source_label, source, predicate_label, command in (
+        ("publisher", main, "PR", PR_SHA_FORMAT),
+        ("publisher", main, "writer", WRITER_SHA_FORMAT),
+        ("independent", guard, "source", PR_SHA_FORMAT),
+    ):
+        if source.count(command) != 1:
+            raise SystemExit("preflight SHA runtime predicate unreachable: " + source_label + " " + predicate_label)
+        script = command if predicate_label == "writer" else 'expected="${PROBE_SHA:-}"\n' + command
+        for case_label, value, accepted in cases:
+            env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value, "GITHUB_SHA": value}
+            result = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True, check=False)
+            if (result.returncode == 0) != accepted:
+                raise SystemExit("preflight SHA runtime predicate drift: " + source_label + " " + predicate_label + " " + case_label)
+    print(f"PASS: preflight publisher/independent exact SHA runtime ({len(cases) * 3} cases)")
+
 def prove_negative_mutations(main: str, guard: str) -> None:
     publisher_cases = (
         ("PR checkout ref", "ref: ${{ github.event.pull_request.head.sha }}", "ref: ${{ github.sha }}"),
@@ -209,6 +236,7 @@ def main() -> int:
     independent = checked_source(GUARD_PATH)
     validate(publisher, independent)
     runtime_branch_proof(publisher, independent)
+    runtime_sha_proof(publisher, independent)
     prove_negative_mutations(publisher, independent)
     return 0
 
