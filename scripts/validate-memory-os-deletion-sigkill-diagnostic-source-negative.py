@@ -63,6 +63,8 @@ def policy(text):
             raise AssertionError("SIGKILL source policy missing: " + item[:70])
     if text.count(CHECKOUT) != 2 or text.count(SETUP) != 2:
         raise AssertionError("SIGKILL Actions source drift")
+    if text.count("git fetch origin so") != 2:
+        raise AssertionError("SIGKILL both success/failure CAS fetch boundaries required")
     if any(x in text for x in ("checkout@v4", "setup-python@v5", "tee /tmp/sigkill",
                                "sigkill-reconcile-output.txt", "[-16000:]")):
         raise AssertionError("SIGKILL raw output/floating Actions regression")
