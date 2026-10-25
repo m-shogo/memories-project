@@ -31,6 +31,30 @@ REQUIRED = (
 )
 
 
+INDEPENDENT_PATH = ROOT / ".github/workflows/backup-restore-drill-preflight-reconcile-source-negative.yml"
+INDEPENDENT_BLOB = "31f8be5c3cb73e82d925684cc6bba47d03e37607"
+INDEPENDENT_REQUIRED = (
+    ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
+    ("push target", "  push:\n    branches:\n      - so\n    paths:\n", 1),
+    ("reviewed workflow trigger", "      - \".github/workflows/backup-restore-drill-preflight-reconcile-negative.yml\"\n", 2),
+    ("guard self trigger", "      - \".github/workflows/backup-restore-drill-preflight-reconcile-source-negative.yml\"\n", 2),
+    ("validator trigger", "      - \"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py\"\n", 2),
+    ("checkout pin", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
+    ("setup pin", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
+    ("no credentials", "          persist-credentials: false\n", 1),
+    ("PR head binding", "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n", 1),
+    ("PR base", "            test \"${GITHUB_BASE_REF:-}\" = \"so\"\n", 1),
+    ("push ref", "            test \"${GITHUB_REF:-}\" = \"refs/heads/so\"\n", 1),
+    ("SHA format", "          [[ \"$expected\" =~ ^[0-9a-f]{40}$ ]]\n", 1),
+    ("exact HEAD", "          test \"$(git rev-parse HEAD)\" = \"$expected\"\n", 1),
+    ("clean checkout", "          test -z \"$(git status --porcelain)\"\n", 2),
+    ("read token", "  contents: read\n", 2),
+    ("exact job scope", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n", 1),
+    ("self execution", "          python scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py\n", 1),
+)
+
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
@@ -44,6 +68,86 @@ def validate(source: str, *, check_blob: bool = True) -> None:
         git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
         if hashlib.sha1(git_blob).hexdigest() != REVIEWED_WORKFLOW_GIT_BLOB_SHA:
             raise SystemExit("semantic preflight reconcile complete workflow source drift")
+
+
+
+def validate_independent(source: str) -> None:
+    for label, token, expected in INDEPENDENT_REQUIRED:
+        if source.count(token) != expected:
+            raise SystemExit("semantic preflight independent source drift: " + label)
+    if not source.rstrip().endswith('          test -z "$(git status --porcelain)"'):
+        raise SystemExit("semantic preflight independent final read-only terminator drift")
+    payload = source.encode("utf-8")
+    git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    if hashlib.sha1(git_blob).hexdigest() != INDEPENDENT_BLOB:
+        raise SystemExit("semantic preflight independent complete workflow source drift")
+
+
+def prove_independent_runtime(source: str) -> None:
+    for label, command, key, value, allowed in (
+        ("PR so", INDEPENDENT_REQUIRED[9][1].strip(), "GITHUB_BASE_REF", "so", True),
+        ("PR main", INDEPENDENT_REQUIRED[9][1].strip(), "GITHUB_BASE_REF", "main", False),
+        ("PR absent", INDEPENDENT_REQUIRED[9][1].strip(), "GITHUB_BASE_REF", "", False),
+        ("push so", INDEPENDENT_REQUIRED[10][1].strip(), "GITHUB_REF", "refs/heads/so", True),
+        ("push main", INDEPENDENT_REQUIRED[10][1].strip(), "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", INDEPENDENT_REQUIRED[10][1].strip(), "GITHUB_REF", "refs/tags/v1", False),
+    ):
+        if source.count(command) != 1:
+            raise SystemExit("semantic preflight independent runtime predicate unreachable: " + label)
+        result = subprocess.run(["bash", "-e", "-c", command],
+            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value},
+            capture_output=True, check=False)
+        if (result.returncode == 0) != allowed:
+            raise SystemExit("semantic preflight independent branch runtime drift: " + label)
+    predicate = INDEPENDENT_REQUIRED[11][1].strip()
+    if source.count(predicate) != 1:
+        raise SystemExit("semantic preflight independent SHA runtime predicate unreachable")
+    for label, value, allowed in (
+        ("lowercase", "a" * 40, True), ("numeric", "0" * 40, True),
+        ("short", "a" * 39, False), ("long", "a" * 41, False),
+        ("uppercase", "A" * 40, False), ("nonhex", "g" * 40, False),
+        ("missing", "", False), ("substitution", "$(echo unexpected)", False),
+    ):
+        command = 'expected="${PROBE_SHA:-}"\n' + predicate
+        result = subprocess.run(["bash", "-e", "-c", command],
+            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value},
+            capture_output=True, check=False)
+        if (result.returncode == 0) != allowed:
+            raise SystemExit("semantic preflight independent SHA runtime drift: " + label)
+    print("PASS: semantic preflight independent branch (6) and SHA (8) runtime cases")
+
+
+def prove_independent_negatives(source: str) -> None:
+    cases = (
+        ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", "  pull_request:\n    paths:\n"),
+        ("push target", "  push:\n    branches:\n      - so\n    paths:\n", "  push:\n    paths:\n"),
+        ("workflow trigger", "      - \".github/workflows/backup-restore-drill-preflight-reconcile-negative.yml\"\n", ""),
+        ("self trigger", "      - \".github/workflows/backup-restore-drill-preflight-reconcile-source-negative.yml\"\n", ""),
+        ("validator trigger", "      - \"scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py\"\n", ""),
+        ("checkout floating", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", "      - uses: actions/checkout@v4\n"),
+        ("setup floating", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", "      - uses: actions/setup-python@v5\n"),
+        ("credential persistence", "          persist-credentials: false\n", "          persist-credentials: true\n"),
+        ("PR head substitution", "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n", "          PR_HEAD_SHA: ${{ github.sha }}\n"),
+        ("PR base", "            test \"${GITHUB_BASE_REF:-}\" = \"so\"\n", ""),
+        ("push ref", "            test \"${GITHUB_REF:-}\" = \"refs/heads/so\"\n", ""),
+        ("SHA weakened", "          [[ \"$expected\" =~ ^[0-9a-f]{40}$ ]]\n", "          test -n \"$expected\"\n"),
+        ("HEAD weakened", "          test \"$(git rev-parse HEAD)\" = \"$expected\"\n", "          test -n \"$expected\"\n"),
+        ("job scope", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n", "    if: always()\n"),
+        ("self execution", "          python scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py\n", ""),
+        ("injected action", "      - name: Prove reconcile source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove reconcile source admission\n"),
+        ("appended shell", "          git diff --exit-code\n", "          git diff --exit-code\n          echo unreviewed\n"),
+    )
+    for label, old, replacement in cases:
+        if old not in source:
+            raise SystemExit("semantic preflight independent negative anchor missing: " + label)
+        try:
+            validate_independent(source.replace(old, replacement, 1))
+        except SystemExit:
+            continue
+        raise SystemExit("semantic preflight independent accepted forbidden mutation: " + label)
+    print(f"PASS: semantic preflight independent source admission ({len(cases)} negatives)")
+
+
 
 
 def prove_branch_guards_runtime() -> None:
@@ -90,8 +194,12 @@ def prove_sha_guard_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    independent = INDEPENDENT_PATH.read_text(encoding="utf-8")
+    validate_independent(independent)
     prove_branch_guards_runtime()
     prove_sha_guard_runtime()
+    prove_independent_runtime(independent)
+    prove_independent_negatives(independent)
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
