@@ -9,13 +9,14 @@ import os
 import subprocess
 import sys
 import tempfile
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_PATH = ".github/workflows/backup-restore-drill-preflight.yml"
 GUARD_PATH = ".github/workflows/backup-restore-drill-preflight-source-negative.yml"
 SELF_PATH = "scripts/validate-memory-os-backup-restore-drill-preflight-workflow-negative.py"
-MAIN_BLOB = "a93a537427e0ffc5f56a8fc3edc63475f8b78184"
+MAIN_BLOB = "355bfae32bbe476d604707212b5d48c557c4e81c"
 GUARD_BLOB = "cdcfc001168b18173441671f1fe30417984f3bba"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -242,7 +243,40 @@ def runtime_diagnostic_redaction_proof(main: str) -> None:
             raise SystemExit("preflight diagnostic forged readiness/evidence")
         if "CANARY_DO_NOT_PERSIST_123" in output.read_text(encoding="utf-8"):
             raise SystemExit("preflight diagnostic persisted synthetic sensitive content")
-    print("PASS: preflight isolated diagnostic writer redaction (1 runtime case)")
+        output.chmod(0o640)
+        mode_positive = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                       capture_output=True, text=True, timeout=15, check=False)
+        if mode_positive.returncode or stat.S_IMODE(output.stat().st_mode) != 0o640:
+            raise SystemExit("preflight diagnostic existing mode was not preserved")
+        previous = output.read_bytes()
+        for label, source, injected in (
+            ("replace", "os.replace(tmp_name, path)", "raise OSError('synthetic preflight diagnostic replace failure')"),
+            ("fsync", "os.fsync(handle.fileno())", "raise OSError('synthetic preflight diagnostic fsync failure')"),
+        ):
+            if script.count(source) != 1:
+                raise SystemExit("preflight diagnostic failure anchor drift: " + label)
+            failure = subprocess.run([sys.executable, "-c", script.replace(source, injected, 1)],
+                                     cwd=tmpdir, env=env, capture_output=True, text=True,
+                                     timeout=15, check=False)
+            if failure.returncode == 0 or "synthetic preflight diagnostic " + label + " failure" not in failure.stderr:
+                raise SystemExit("preflight diagnostic intended failure not reached: " + label)
+            if output.read_bytes() != previous or stat.S_IMODE(output.stat().st_mode) != 0o640:
+                raise SystemExit("preflight diagnostic failure mutated prior bytes/mode: " + label)
+            if list(output.parent.glob(".backup-restore-drill-preflight-diagnostic.last.json.*.tmp")):
+                raise SystemExit("preflight diagnostic failure left temporary file: " + label)
+        outside = Path(tmpdir) / "external-preflight-diagnostic-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        if symlink.returncode == 0 or "target must not be a symlink" not in symlink.stderr:
+            raise SystemExit("preflight diagnostic accepted symlinked output")
+        if not output.is_symlink() or outside.read_bytes() != previous:
+            raise SystemExit("preflight diagnostic symlink altered external file")
+        if list(output.parent.glob(".backup-restore-drill-preflight-diagnostic.last.json.*.tmp")):
+            raise SystemExit("preflight diagnostic symlink rejection left temporary file")
+    print("PASS: preflight diagnostic redaction and atomic runtime (5 cases)")
 
 
 def prove_negative_mutations(main: str, guard: str) -> None:
