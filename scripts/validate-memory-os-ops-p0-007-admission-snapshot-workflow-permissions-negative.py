@@ -2535,12 +2535,13 @@ def require_readonly_workflow_authority(readonly: str) -> None:
     require(len(steps) == 3, diagnostic)
     require(
         steps[0] == [
-            "      - uses: actions/checkout@v4",
+            "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
             "        with:",
             "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
             "          fetch-depth: 0",
+            "          persist-credentials: false",
         ] and steps[1] == [
-            "      - uses: actions/setup-python@v5",
+            "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
             "        with:",
             '          python-version: "3.12"',
         ] and steps[2][:2] == [
@@ -2633,6 +2634,25 @@ def require_readonly_workflow_authority(readonly: str) -> None:
 
 def prove_readonly_workflow_negative(readonly: str) -> None:
     require_readonly_workflow_authority(readonly)
+    # Bind the reviewed immutable bootstrap and credential isolation with
+    # dedicated negative fixtures, separate from shell-body integrity proofs.
+    bootstrap_cases = (
+        ("floating checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
+        ("substituted checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@11d5960a326750d5838078e36cf38b85af677263"),
+        ("floating setup", "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "actions/setup-python@v5"),
+        ("persisted credentials", "          persist-credentials: false\n", "          persist-credentials: true\n"),
+        ("missing credential isolation", "          persist-credentials: false\n", ""),
+    )
+    for label, before, after in bootstrap_cases:
+        require(readonly.count(before) == 1, f"strict snapshot readonly bootstrap fixture drift: {label}")
+        mutated = readonly.replace(before, after, 1)
+        try:
+            require_readonly_workflow_authority(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly workflow authority drift",
+                    f"readonly bootstrap rejected outside exact guard ({label}): {exc}")
+        else:
+            raise Fail(f"strict snapshot readonly accepted bootstrap mutation: {label}")
     marker = "      - name: Prove deterministic snapshot authority immutability\n"
     negative = "          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py\n"
     diff = '          diff -u "$snapshot" "$current"\n'
