@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "operability-evidence-ownership",
+  "sourceCommitSha": "f77768877c51a2573784cd52dc6bb8aaac1046bd",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Ownership validation failed; raw validator output withheld.",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
