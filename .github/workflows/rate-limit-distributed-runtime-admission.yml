@@ -167,7 +167,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-rate-limit.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          echo "Distributed rate limit validation completed; raw validator output withheld."
           exit 0
       - name: Commit bounded runtime admission authority
         if: steps.runtime.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
@@ -204,21 +204,33 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/rate-limit-distributed-runtime.log').read_text(encoding='utf-8', errors='replace')
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'rate-limit-distributed-runtime-admission',
               'result': 'FAIL',
               'exitCode': int(os.environ['RUNTIME_EXIT_CODE']),
               'sourceCommitSha': os.environ['SOURCE_SHA'],
-              'output': text[-12000:],
+              'output': 'Distributed rate limit validation failed; raw validator output withheld.',
               'containsSecrets': False,
               'admittedRuntimeCount': 0,
               'productionEvidence': False,
               'productionReady': False,
           }
-          path = Path('docs/fixtures/memory-os-operability/rate-limit-distributed-runtime-diagnostic.last.json')
-          path.parent.mkdir(parents=True, exist_ok=True)
+          repo = Path.cwd().resolve(strict=True)
+          path = repo / 'docs/fixtures/memory-os-operability/rate-limit-distributed-runtime-diagnostic.last.json'
+          if not path.parent.is_dir():
+              raise RuntimeError('distributed rate limit diagnostic parent missing')
+          candidate = repo
+          for component in path.relative_to(repo).parts:
+              candidate = candidate / component
+              if candidate.is_symlink():
+                  raise RuntimeError('distributed rate limit diagnostic path must not be a symlink')
+          try:
+              path.parent.resolve(strict=True).relative_to(repo)
+          except ValueError as exc:
+              raise RuntimeError('distributed rate limit diagnostic parent escaped repository') from exc
+          if path.exists() and not path.is_file():
+              raise RuntimeError('distributed rate limit diagnostic target must be regular')
           payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
           mode = path.stat().st_mode & 0o777 if path.exists() else None
           fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
