@@ -533,11 +533,49 @@ def main() -> int:
         module.CONTRACT: module.CONTRACT.read_bytes(),
         module.STATUS: module.STATUS.read_bytes(),
     }
-    with guarded_temporary_directory(".tmp-preflight-reconcile-negative-", TMP_PARENT) as tmpdir:
-        tmp = Path(tmpdir)
-        prove_second_replace_rollback(module, tmp)
-        prove_rollback_attempts_all_authorities(module)
-        prove_post_validator_rollback(module, tmp)
+    # Validate the real upstream source chain before synthetic repository-local
+    # fixtures make the checkout intentionally dirty. Inside the fault-injection
+    # fixture, preserve and verify the same three upstream call sites without
+    # rerunning unrelated clean-worktree source-binding checks.
+    original_loader = module.load_validator_module
+    canonical_validator = original_loader()
+    expected_upstream = (
+        (canonical_validator.GEN_VALIDATOR, "environment generation"),
+        (canonical_validator.OBJECTIVE_VALIDATOR, "recovery objectives"),
+        (canonical_validator.DRILL_VALIDATOR, "restore drill request"),
+    )
+    for path, label in expected_upstream:
+        canonical_validator.run_validator(path, label)
+    upstream_calls: list[tuple[Path, str]] = []
+
+    def isolated_fixture_validator():
+        validator = original_loader()
+
+        def record_prevalidated(path: Path, label: str) -> None:
+            require(
+                (path, label) in expected_upstream,
+                f"preflight fixture attempted unreviewed upstream validator: {label}",
+            )
+            upstream_calls.append((path, label))
+
+        validator.run_validator = record_prevalidated
+        return validator
+
+    module.load_validator_module = isolated_fixture_validator
+    try:
+        with guarded_temporary_directory(".tmp-preflight-reconcile-negative-", TMP_PARENT) as tmpdir:
+            tmp = Path(tmpdir)
+            prove_second_replace_rollback(module, tmp)
+            prove_rollback_attempts_all_authorities(module)
+            prove_post_validator_rollback(module, tmp)
+    finally:
+        module.load_validator_module = original_loader
+    require(
+        upstream_calls == list(expected_upstream) * 2,
+        f"preflight fixture upstream validation call order drift: {upstream_calls}",
+    )
+    module.enforce_execution_identity()
+    print("PASS boundary: real upstream validators executed before fixture; two ordered synthetic call chains preserved")
     for path, payload in canonical_before.items():
         require(path.read_bytes() == payload, f"canonical authority mutated by rollback negative: {path.name}")
     print("Restore drill preflight reconcile negative suite PASS")
