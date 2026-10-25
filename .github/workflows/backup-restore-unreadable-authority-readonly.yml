@@ -16,6 +16,9 @@ on:
       - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-*-load-negative.py"
       - "scripts/validate-memory-os-*-writer-authority-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-unreadable-authority-trigger-negative.py"
   push:
     branches: [so]
     paths:
@@ -32,6 +35,9 @@ on:
       - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-*-load-negative.py"
       - "scripts/validate-memory-os-*-writer-authority-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
+      - "scripts/validate-memory-os-backup-restore-unreadable-authority-trigger-negative.py"
 
 permissions:
   contents: read
@@ -83,6 +89,7 @@ jobs:
       - name: Run canonical unreadable-authority negative suite
         run: |
           set -euo pipefail
+          python scripts/validate-memory-os-backup-restore-unreadable-authority-trigger-negative.py
           python scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
