@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/backup-restore-non-resurrection-admission.yml"
 INDEPENDENT = ".github/workflows/backup-restore-non-resurrection-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-backup-restore-non-resurrection-admission-workflow-negative.py"
-REVIEWED_PUBLISHER = "55397d3726882984094e2c9418e3ab01ecae9c0b"
+REVIEWED_PUBLISHER = "22d2e65556f21f01f6ce3bffbd5e1f874a0f2c88"
 REVIEWED_INDEPENDENT = "0a4853c3adf951c4873f5f6fc1ec16d9f1854ce4"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -188,7 +189,38 @@ def runtime_diagnostic_redaction(publisher: str) -> None:
             raise SystemExit("typed admission diagnostic readiness drift")
         if "CANARY_DO_NOT_PERSIST_DEF" in output.read_text(encoding="utf-8"):
             raise SystemExit("typed admission diagnostic persisted synthetic canary")
-    print("PASS: typed non-resurrection isolated diagnostic redaction (1 runtime case)")
+        output.chmod(0o640)
+        positive = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                  capture_output=True, text=True, timeout=15, check=False)
+        if positive.returncode or stat.S_IMODE(output.stat().st_mode) != 0o640:
+            raise SystemExit("typed admission diagnostic failed to preserve existing mode")
+        previous = output.read_bytes()
+        for label, before in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            if script.count(before) != 1:
+                raise SystemExit("typed admission diagnostic fault anchor drift: " + label)
+            failure = subprocess.run([sys.executable, "-c", script.replace(
+                before, "raise OSError('synthetic typed admission diagnostic " + label + " failure')", 1)],
+                cwd=tmpdir, env=env, capture_output=True, text=True, timeout=15, check=False)
+            if failure.returncode == 0 or "synthetic typed admission diagnostic " + label + " failure" not in failure.stderr:
+                raise SystemExit("typed admission diagnostic intended fault not reached: " + label)
+            if output.read_bytes() != previous or stat.S_IMODE(output.stat().st_mode) != 0o640:
+                raise SystemExit("typed admission diagnostic fault altered prior bytes/mode: " + label)
+            if list(output.parent.glob(".backup-restore-non-resurrection-admission-diagnostic.last.json.*.tmp")):
+                raise SystemExit("typed admission diagnostic fault left temporary file: " + label)
+        outside = Path(tmpdir) / "external-typed-admission-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        if symlink.returncode == 0 or "target must not be a symlink" not in symlink.stderr:
+            raise SystemExit("typed admission diagnostic accepted symlink destination")
+        if not output.is_symlink() or outside.read_bytes() != previous:
+            raise SystemExit("typed admission diagnostic altered external symlink canary")
+        if list(output.parent.glob(".backup-restore-non-resurrection-admission-diagnostic.last.json.*.tmp")):
+            raise SystemExit("typed admission diagnostic symlink rejection left temporary file")
+    print("PASS: typed non-resurrection diagnostic redaction/atomic runtime (5 cases)")
 
 
 def negatives(publisher: str, independent: str) -> None:
@@ -223,6 +255,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("raw diagnostic", "              'output': 'REDACTED: typed non-resurrection validation failed; consult CI job logs',\n", "              'output': Path('/tmp/backup-restore-non-resurrection-admission.log').read_text(),\n"),
         ("raw CI log", '          printf "Typed non-resurrection validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
         ("missing redaction", "              'output': 'REDACTED: typed non-resurrection validation failed; consult CI job logs',\n", ""),
+        ("symlink guard", "          if path.is_symlink():\n              raise SystemExit('typed non-resurrection diagnostic target must not be a symlink')\n", ""),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
