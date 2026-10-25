@@ -155,7 +155,7 @@ def publisher_runtime(text):
 
     def mutate(work, comment):
         dest = work / target
-        dest.write_text("package httpserver\\n// " + comment + "\\n", encoding="utf-8")
+        dest.write_text("package httpserver\n// " + comment + "\n", encoding="utf-8")
 
     with tempfile.TemporaryDirectory(prefix="live-object-publisher-") as tmp:
         root = Path(tmp)
@@ -166,7 +166,7 @@ def publisher_runtime(text):
         git(seed, "config", "user.email", "fixture@example.invalid")
         original = seed / target
         original.parent.mkdir(parents=True)
-        original.write_text("package httpserver\\n", encoding="utf-8")
+        original.write_text("package httpserver\n", encoding="utf-8")
         git(seed, "add", target)
         git(seed, "commit", "-qm", "fixture: initial")
         git(seed, "remote", "add", "origin", str(remote))
@@ -223,14 +223,14 @@ def publisher_runtime(text):
         wrapper.mkdir()
         shim = wrapper / "git"
         shim.write_text(
-            "#!/bin/sh\\n"
-            "if [ \\"$1\\" = \\"ls-remote\\" ]; then\\n"
-            "  output=$(" + shlex.quote(real_git) + " \\"$@\\") || exit $?\\n"
-            "  " + shlex.quote(real_git) + " -C \\"$RACE_WORK\\" push -q origin HEAD:so || exit 98\\n"
-            "  printf '%s\\\\n' \\"$output\\"\\n"
-            "  exit 0\\n"
-            "fi\\n"
-            "exec " + shlex.quote(real_git) + " \\"$@\\"\\n",
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"ls-remote\" ]; then\n"
+            "  output=$(" + shlex.quote(real_git) + " \"$@\") || exit $?\n"
+            "  " + shlex.quote(real_git) + " -C \"$RACE_WORK\" push -q origin HEAD:so || exit 98\n"
+            "  printf '%s\\n' \"$output\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "exec " + shlex.quote(real_git) + " \"$@\"\n",
             encoding="utf-8",
         )
         shim.chmod(0o755)
