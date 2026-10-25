@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-reconcile-negative.yml"
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "0917bd884f5aff53080f7e5c1efc3014ab6297be"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "563c543233e125f37b1661f865ae275ccab7de90"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -24,6 +24,8 @@ REQUIRED = (
     ("clean source", '          test -z "$(git status --porcelain)"', 2),
     ("self-trigger", '      - "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-workflow-negative.py"\n', 2),
     ("self-execution", '          python scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-workflow-negative.py\n', 1),
+    ("PR base ref", '            test "${GITHUB_BASE_REF:-}" = "so"\n', 1),
+    ("PR target filter", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
 )
 
 
@@ -78,6 +80,18 @@ def main() -> int:
         pass
     else:
         raise SystemExit("generation evidence reconcile accepted appended final command")
+    for label, old, replacement in (
+        ("PR base ref", REQUIRED[14][1], ""),
+        ("PR target filter", REQUIRED[15][1], "  pull_request:\n    paths:\n"),
+    ):
+        if old not in source:
+            raise SystemExit("generation evidence reconcile PR branch negative anchor missing: " + label)
+        mutated = source.replace(old, replacement, 1)
+        try:
+            validate(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("generation evidence reconcile accepted forbidden PR branch mutation: " + label)
     # Whole-source binding rejects otherwise anchor-preserving workflow changes.
     for label, mutated in (
         ("extra executable step", source.replace(
@@ -94,7 +108,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("generation evidence reconcile accepted whole-source mutation: " + label)
-    print(f"PASS: generation evidence reconcile workflow source admission ({len(cases) + 3} negatives)")
+    print(f"PASS: generation evidence reconcile workflow source admission ({len(cases) + 5} negatives)")
     return 0
 
 

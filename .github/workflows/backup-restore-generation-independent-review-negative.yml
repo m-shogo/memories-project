@@ -2,6 +2,8 @@ name: Backup Restore Generation Independent Review Negative
 
 on:
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/backup-restore-generation-independent-review-negative.yml"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
@@ -59,6 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${GITHUB_BASE_REF:-}" = "so"
             expected="${{ github.event.pull_request.head.sha }}"
             [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           elif [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then

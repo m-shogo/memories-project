@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-review-negative.yml"
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "29a0fd5b067b2e69b4db0cf62540308a51743982"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "b81c18a30dcf3b5fc6d6f143a84ada5e572163f2"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -24,6 +24,8 @@ REQUIRED = (
     ("clean source", '          test -z "$(git status --porcelain)"\n', 2),
     ("self-trigger", '      - "scripts/validate-memory-os-backup-restore-generation-independent-review-workflow-negative.py"\n', 2),
     ("self-execution", '          python scripts/validate-memory-os-backup-restore-generation-independent-review-workflow-negative.py\n', 1),
+    ("PR base ref", '            test "${GITHUB_BASE_REF:-}" = "so"\n', 1),
+    ("PR target filter", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
 )
 
 
@@ -66,6 +68,18 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"generation independent review accepted forbidden mutation: {label}")
+    for label, old, replacement in (
+        ("PR base ref", REQUIRED[14][1], ""),
+        ("PR target filter", REQUIRED[15][1], "  pull_request:\n    paths:\n"),
+    ):
+        if old not in source:
+            raise SystemExit("generation independent review PR branch negative anchor missing: " + label)
+        mutated = source.replace(old, replacement, 1)
+        try:
+            validate(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("generation independent review accepted forbidden PR branch mutation: " + label)
     # Whole-source binding rejects otherwise anchor-preserving workflow changes.
     for label, mutated in (
         ("extra executable step", source.replace(
@@ -82,7 +96,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("generation independent review accepted whole-source mutation: " + label)
-    print(f"PASS: generation independent review workflow source admission ({len(cases) + 2} negatives)")
+    print(f"PASS: generation independent review workflow source admission ({len(cases) + 4} negatives)")
     return 0
 
 
