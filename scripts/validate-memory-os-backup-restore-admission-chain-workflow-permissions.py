@@ -156,6 +156,10 @@ def main() -> int:
             publish.count("        uses: ") == 2,
             "publication pinned Python setup boundary drift")
 
+    require(pr.count("      - name: Verify exact clean PR authority source\n        run: |\n          set -euo pipefail\n          expected=\"${{ github.event.pull_request.head.sha }}\"\n          [[ \"$expected\" =~ ^[0-9a-f]{40}$ ]]\n          test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"\n\n") == 1,
+            "PR exact-source SHA format and clean checkout block drift")
+    require(publish.count("      - name: Capture exact chain authority source\n        run: |\n          set -euo pipefail\n          test \"${GITHUB_REF:-}\" = \"refs/heads/so\"\n          [[ \"${GITHUB_EVENT_NAME:-}\" == \"push\" || \"${GITHUB_EVENT_NAME:-}\" == \"workflow_dispatch\" ]]\n          [[ \"${GITHUB_SHA:-}\" =~ ^[0-9a-f]{40}$ ]]\n          test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"\n          test -z \"$(git status --porcelain)\"\n          echo \"SOURCE_SHA=$GITHUB_SHA\" >> \"$GITHUB_ENV\"\n\n") == 1,
+            "publication event/ref/SHA source identity block drift")
     require("if: github.event_name == 'pull_request'" in pr, "PR validation job must be pull-request-only")
     require("permissions:\n      contents: read\n" in pr, "PR validation job must explicitly retain read-only contents permission")
     require("contents: write" not in pr, "PR validation job must not receive contents: write")

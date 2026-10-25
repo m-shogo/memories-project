@@ -92,6 +92,22 @@ def main() -> int:
             replace_once(canonical, "ref: ${{ github.event.pull_request.head.sha }}", "ref: ${{ github.sha }}", "PR exact-head checkout"),
         ),
         (
+            "PR 40-hex head SHA requirement removed",
+            replace_once(canonical, "          [[ \"$expected\" =~ ^[0-9a-f]{40}$ ]]\n", "          test -n \"$expected\"\n", "PR 40-hex head SHA requirement removed"),
+        ),
+        (
+            "publication branch ref check removed",
+            replace_once(canonical, "          test \"${GITHUB_REF:-}\" = \"refs/heads/so\"\n", "", "publication branch ref check removed"),
+        ),
+        (
+            "publication event whitelist removed",
+            replace_once(canonical, "          [[ \"${GITHUB_EVENT_NAME:-}\" == \"push\" || \"${GITHUB_EVENT_NAME:-}\" == \"workflow_dispatch\" ]]\n", "", "publication event whitelist removed"),
+        ),
+        (
+            "publication 40-hex SHA requirement weakened",
+            replace_once(canonical, "          [[ \"${GITHUB_SHA:-}\" =~ ^[0-9a-f]{40}$ ]]\n", "          test -n \"$GITHUB_SHA\"\n", "publication 40-hex SHA requirement weakened"),
+        ),
+        (
             "PR clean-worktree assertion removed",
             replace_once(
                 canonical,

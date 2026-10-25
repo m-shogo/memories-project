@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           expected="${{ github.event.pull_request.head.sha }}"
-          test -n "$expected"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
 
@@ -107,7 +107,9 @@ jobs:
       - name: Capture exact chain authority source
         run: |
           set -euo pipefail
-          test -n "$GITHUB_SHA"
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
           echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
