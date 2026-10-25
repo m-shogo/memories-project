@@ -1885,6 +1885,41 @@ def prove_pr_base_append_only_negative() -> None:
 
 
 
+def prove_manual_dispatch_ref_negative(source: str) -> int:
+    """Execute the actual reviewed dispatch script with unapproved refs."""
+    step_name = "      - name: Enforce append-only learning authority against parent\n"
+    next_step = "      - name: Validate learning contract and executable negatives\n"
+    require(source.count(step_name) == 1 and source.count(next_step) == 1,
+            "dispatch runtime proof step boundary drift")
+    body = source.split(step_name, 1)[1].split(next_step, 1)[0]
+    begin = "          python - <<'PY'\n"
+    end = "          PY\n"
+    require(body.count(begin) == 1 and body.count(end) == 1,
+            "dispatch runtime proof here-doc boundary drift")
+    script = body.split(begin, 1)[1].split(end, 1)[0]
+    lines = script.splitlines()
+    require(all(not line or line.startswith("          ") for line in lines),
+            "dispatch runtime proof indentation drift")
+    script = "\n".join(line[10:] if line else "" for line in lines) + "\n"
+    event_marker = "${{ github.event_name }}"
+    require(script.count(event_marker) == 1,
+            "dispatch runtime proof event binding drift")
+    script = script.replace(event_marker, "workflow_dispatch")
+    for selected_ref in ("refs/heads/main", "refs/tags/v1",
+                         "refs/pull/123/merge", None):
+        env = {} if selected_ref is None else {"GITHUB_REF": selected_ref}
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=ROOT, env=env, capture_output=True, text=True,
+            timeout=10, check=False,
+        )
+        require(result.returncode != 0 and
+                "AUTONOMOUS LEARNING APPEND-ONLY FAILED: unreviewed dispatch ref"
+                in result.stderr,
+                f"dispatch runtime proof did not reject {selected_ref!r}")
+    return 4
+
+
 def main() -> int:
     workflow_source = (
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
@@ -1909,9 +1944,10 @@ def main() -> int:
         total += 1
         prove_pr_base_append_only_negative()
         total += 1
+        total += prove_manual_dispatch_ref_negative(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 185, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 189, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
