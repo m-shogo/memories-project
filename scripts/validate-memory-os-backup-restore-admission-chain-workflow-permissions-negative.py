@@ -307,6 +307,10 @@ def main() -> int:
     independent = module.independent_permission_workflow()
     module.validate_independent_permission_workflow(independent)
     independent_cases = (
+        ("independent PR target branch substituted", replace_once(independent, "  pull_request:\n    branches:\n      - so\n    paths:\n", "  pull_request:\n    branches:\n      - main\n    paths:\n", "independent PR target branch substituted")),
+        ("independent PR base environment removed", replace_once(independent, "          PR_BASE_REF: ${{ github.base_ref }}\n", "", "independent PR base environment removed")),
+        ("independent PR base assertion removed", replace_once(independent, '            test "$PR_BASE_REF" = "so"\n', "", "independent PR base assertion removed")),
+        ("independent PR base assertion relaxed", replace_once(independent, '            test "$PR_BASE_REF" = "so"\n', '            test -n "$PR_BASE_REF"\n', "independent PR base assertion relaxed")),
         ("independent floating checkout", replace_once(independent, "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "uses: actions/checkout@v4", "independent floating checkout")),
         ("independent substituted checkout SHA", replace_once(independent, "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677263", "independent substituted checkout SHA")),
         ("independent floating setup-python", replace_once(independent, "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "uses: actions/setup-python@v5", "independent floating setup-python")),

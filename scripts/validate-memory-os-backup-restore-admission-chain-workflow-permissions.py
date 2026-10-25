@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_REL = Path(".github/workflows/backup-restore-admission-chain.yml")
 WORKFLOW = ROOT / WORKFLOW_REL
 INDEPENDENT_PERMISSION_WORKFLOW_REL = Path(".github/workflows/backup-restore-permission-boundary-negative.yml")
-REVIEWED_INDEPENDENT_PERMISSION_WORKFLOW_BLOB_SHA = "1ea416bf5f5b3a29bfdce86fce5851472d4b9613"
+REVIEWED_INDEPENDENT_PERMISSION_WORKFLOW_BLOB_SHA = "f29ae44ee28023b006d383d8c70cd8e2a7374270"
 
 
 class Fail(RuntimeError):
@@ -59,11 +59,13 @@ def require_reviewed_independent_permission_workflow_blob(source: str) -> None:
 def validate_independent_permission_workflow(source: str) -> None:
     require("pull_request_target:" not in source,
             "independent permission workflow forbidden event")
+    require(source.count("  pull_request:\n    branches:\n      - so\n    paths:\n") == 1,
+            "independent permission workflow PR target branch drift")
     require(source.count("permissions:\n  contents: read\n") == 1,
             "independent permission workflow token scope drift")
     require(source.count("      - name: Checkout exact source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n          fetch-depth: 1\n          persist-credentials: false\n\n      - name: Set up Python\n        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n        with:\n          python-version: \"3.12\"\n\n") == 1,
             "independent permission workflow checkout/setup source drift")
-    require(source.count("      - name: Require exact clean source\n        env:\n          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n        run: |\n          set -euo pipefail\n          test -z \"$(git status --porcelain)\"\n          if [[ \"${{ github.event_name }}\" == \"pull_request\" ]]; then\n            [[ \"$PR_HEAD_SHA\" =~ ^[0-9a-f]{40}$ ]]\n            test \"$(git rev-parse HEAD)\" = \"$PR_HEAD_SHA\"\n          elif [[ \"${{ github.event_name }}\" == \"push\" ]]; then\n            test \"${GITHUB_REF:-}\" = \"refs/heads/so\"\n            [[ \"${GITHUB_SHA:-}\" =~ ^[0-9a-f]{40}$ ]]\n            test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"\n          else\n            echo \"Unreviewed permission CI event\" >&2\n            exit 1\n          fi\n\n") == 1,
+    require(source.count("      - name: Require exact clean source\n        env:\n          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n          PR_BASE_REF: ${{ github.base_ref }}\n        run: |\n          set -euo pipefail\n          test -z \"$(git status --porcelain)\"\n          if [[ \"${{ github.event_name }}\" == \"pull_request\" ]]; then\n            test \"$PR_BASE_REF\" = \"so\"\n            [[ \"$PR_HEAD_SHA\" =~ ^[0-9a-f]{40}$ ]]\n            test \"$(git rev-parse HEAD)\" = \"$PR_HEAD_SHA\"\n          elif [[ \"${{ github.event_name }}\" == \"push\" ]]; then\n            test \"${GITHUB_REF:-}\" = \"refs/heads/so\"\n            [[ \"${GITHUB_SHA:-}\" =~ ^[0-9a-f]{40}$ ]]\n            test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"\n          else\n            echo \"Unreviewed permission CI event\" >&2\n            exit 1\n          fi\n\n") == 1,
             "independent permission workflow PR source identity drift")
     jobs = source.split("\njobs:\n", 1)
     require(len(jobs) == 2, "independent permission workflow job boundary drift")

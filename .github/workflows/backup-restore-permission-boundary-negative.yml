@@ -2,6 +2,8 @@ name: Backup Restore Permission Boundary Negative
 
 on:
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/backup-restore-admission-chain.yml"
       - ".github/workflows/backup-restore-admission-chain-negative.yml"
@@ -67,10 +69,12 @@ jobs:
       - name: Require exact clean source
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$PR_BASE_REF" = "so"
             [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
             test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
           elif [[ "${{ github.event_name }}" == "push" ]]; then
