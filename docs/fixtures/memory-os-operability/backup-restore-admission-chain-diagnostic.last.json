@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-admission-chain",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "22596075d4f5e7048e8b63db3e14d1dce31d0334",
+  "output": "BACKUP RESTORE ADMISSION CHAIN FULL VALIDATION FAILED: admission-chain workflow permission negative failed with exit code 1: scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py\nBackup/restore admission-chain workflow permission boundary PASS\nPR contents write authority: false\nPR exact-head validation: true\nPR tracked/untracked mutation accepted: false\nnon-PR publication write authority: isolated\nbounded latest-so revalidation and stale-source refusal: preserved\ncrash-safe failure diagnostic publication: required\nproduction evidence created: false\nproduction decision: NO_GO\nPASS chain step: admission-chain workflow permission boundary\nADMISSION CHAIN WORKFLOW PERMISSION NEGATIVE FAILED: independent permission workflow mutation accepted: independent extra action step\n",
+  "containsSecrets": false,
+  "preflightCreatedPrerequisite": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "typedEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
