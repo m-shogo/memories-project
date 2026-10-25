@@ -5,6 +5,11 @@ on:
     paths:
       - ".github/workflows/backup-restore-generation-binding-readonly.yml"
       - "scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py"
@@ -15,6 +20,11 @@ on:
     paths:
       - ".github/workflows/backup-restore-generation-binding-readonly.yml"
       - "scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py"
