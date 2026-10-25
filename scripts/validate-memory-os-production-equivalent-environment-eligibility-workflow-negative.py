@@ -23,7 +23,7 @@ REQUIRED = (
     ("publisher branch", '          test "${GITHUB_REF:-}" = "refs/heads/so"\n', 1),
     ("publisher event", '          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]\n', 1),
     ("publisher scope", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n", 1),
-    ("self execution", "          python scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py\n", 2),
+    ("self execution", "\n          python scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py\n", 2),
     ("retry self execution", "            python scripts/validate-memory-os-production-equivalent-environment-eligibility-workflow-negative.py\n", 1),
     ("writer SHA", '          expected="${GITHUB_SHA:-}"\n', 1),
     ("PR SHA", '          expected="${{ github.event.pull_request.head.sha }}"\n', 1),
