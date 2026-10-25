@@ -3,7 +3,7 @@
   "workflow": "migration-production-shaped-admission",
   "result": "FAIL",
   "exitCode": 1,
-  "sourceCommitSha": "3168fa9a55e96145882bd70683e3a162d864d813",
+  "sourceCommitSha": "4d79e88848239ed4fb76b6df5a50b5e0d7c90e08",
   "output": "REDACTED: migration production-shaped admission failed; raw output withheld",
   "containsSecrets": false,
   "admittedRehearsalCount": 0,
