@@ -15,7 +15,7 @@ REQUIRED = (
     ("checkout SHA", "        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup SHA", "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
     ("no credentials", "          persist-credentials: false\n", 1),
-    ("checkout ref", "          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n", 1),
+    ("checkout ref", "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n", 1),
     ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", 1),
     ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
     ("PR base assertion", "            test \"${PR_BASE_REF:-}\" = \"so\"\n", 1),
