@@ -369,7 +369,22 @@ def prove_stronger_lifecycle_main_rejects_before_write(before: dict[Path, bytes]
     module = load_module(RECONCILER, "migration_registry_main_lifecycle_guard")
     original_load = module.load
     original_commit = module.commit_outputs_transactionally
+    original_load_writer = module.load_writer
     for field in module.STRONGER_LIFECYCLE_FIELDS:
+        upstream_validation_calls: list[bool] = []
+
+        def prevalidated_writer() -> Any:
+            # The isolated checkout may not contain historical source commits.
+            # Stub only the unrelated append-registry Git ancestry check; retain
+            # the actual reconciler main path, path authority, and prewrite guard.
+            writer = original_load_writer()
+
+            def accept_prevalidated_registry(_registry: dict[str, Any], _contract: dict[str, Any]) -> None:
+                upstream_validation_calls.append(True)
+
+            writer.validate_registry_for_append = accept_prevalidated_registry
+            return writer
+
         def synthetic_load(path: Path) -> dict[str, Any]:
             value = original_load(path)
             if path == module.LIFECYCLE:
@@ -380,6 +395,7 @@ def prove_stronger_lifecycle_main_rejects_before_write(before: dict[Path, bytes]
             raise NegativeFailure("migration registry reached authority write despite stronger " + field)
 
         module.load = synthetic_load
+        module.load_writer = prevalidated_writer
         module.commit_outputs_transactionally = forbidden_commit
         try:
             try:
@@ -391,7 +407,9 @@ def prove_stronger_lifecycle_main_rejects_before_write(before: dict[Path, bytes]
                 raise NegativeFailure("migration registry main accepted stronger lifecycle: " + field)
         finally:
             module.load = original_load
+            module.load_writer = original_load_writer
             module.commit_outputs_transactionally = original_commit
+        require(upstream_validation_calls == [True], "synthetic upstream precondition not reached: " + field)
         require_canonical_bytes_unchanged(before, "main-path stronger lifecycle " + field)
     print("PASS stronger lifecycle main-path prewrite rejection (4 cases)")
 
