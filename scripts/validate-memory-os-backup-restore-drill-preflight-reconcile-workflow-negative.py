@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-drill-preflight-reconcile-negative.yml"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "2ee5dd443a19a4a8f01113bdbc5ced4fbd4bdc60"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -22,10 +26,12 @@ REQUIRED = (
     ("clean source", '          test -z "$(git status --porcelain)"', 2),
     ("self-trigger", '      - "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py"\n', 2),
     ("self-execution", '          python scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py\n', 1),
+    ("PR base ref", '            test "${GITHUB_BASE_REF:-}" = "so"\n', 1),
+    ("PR target filter", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
 )
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"semantic preflight reconcile workflow source boundary drift: {label}")
@@ -33,11 +39,35 @@ def validate(source: str) -> None:
 
     if not source.rstrip().endswith('          test -z "$(git status --porcelain)"'):
         raise SystemExit("semantic preflight reconcile workflow source boundary drift: final read-only terminator")
+    if check_blob:
+        payload = source.encode("utf-8")
+        git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        if hashlib.sha1(git_blob).hexdigest() != REVIEWED_WORKFLOW_GIT_BLOB_SHA:
+            raise SystemExit("semantic preflight reconcile complete workflow source drift")
+
+
+def prove_branch_guards_runtime() -> None:
+    """Execute reviewed branch predicates against disposable synthetic refs."""
+    cases = (
+        ("PR so", REQUIRED[14][1].strip(), "GITHUB_BASE_REF", "so", True),
+        ("PR main", REQUIRED[14][1].strip(), "GITHUB_BASE_REF", "main", False),
+        ("PR missing", REQUIRED[14][1].strip(), "GITHUB_BASE_REF", "", False),
+        ("push so", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/heads/so", True),
+        ("push main", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/tags/v1", False),
+    )
+    for label, command, key, value, expected in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+        result = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+        if (result.returncode == 0) != expected:
+            raise SystemExit("semantic preflight reconcile runtime branch guard drift: " + label)
+    print("PASS: semantic preflight reconcile PR/push branch guard runtime (6 cases)")
 
 
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
@@ -64,14 +94,36 @@ def main() -> int:
             continue
         raise SystemExit(f"semantic preflight reconcile accepted forbidden mutation: {label}")
     # The canonical workflow may or may not end in a newline; both are valid.
-    validate(source.rstrip("\n") + "\n")
+    validate(source.rstrip("\n") + "\n", check_blob=False)
     try:
         validate(source + '\n          echo "unreviewed final command"\n')
     except SystemExit:
         pass
     else:
         raise SystemExit("semantic preflight reconcile accepted appended final command")
-    print(f"PASS: semantic preflight reconcile workflow source admission ({len(cases) + 1} negatives)")
+    for label, old, replacement in (
+        ("PR base ref", REQUIRED[14][1], ""),
+        ("PR target filter", REQUIRED[15][1], "  pull_request:\n    paths:\n"),
+    ):
+        if old not in source:
+            raise SystemExit("semantic preflight reconcile PR branch negative anchor missing: " + label)
+        try:
+            validate(source.replace(old, replacement, 1))
+        except SystemExit:
+            continue
+        raise SystemExit("semantic preflight reconcile accepted forbidden PR branch mutation: " + label)
+    for label, old, replacement in (
+        ("inserted executable step", "      - name: Prove preflight partial-publication rollback\n", "      - run: echo unreviewed\n      - name: Prove preflight partial-publication rollback\n"),
+        ("extra command before final read-only step", "          git diff --exit-code\n", "          git diff --exit-code\n          echo unreviewed\n"),
+    ):
+        if old not in source:
+            raise SystemExit("semantic preflight reconcile whole-source negative anchor missing: " + label)
+        try:
+            validate(source.replace(old, replacement, 1))
+        except SystemExit:
+            continue
+        raise SystemExit("semantic preflight reconcile accepted forbidden whole-source mutation: " + label)
+    print(f"PASS: semantic preflight reconcile workflow source admission ({len(cases) + 5} negatives)")
     return 0
 
 
