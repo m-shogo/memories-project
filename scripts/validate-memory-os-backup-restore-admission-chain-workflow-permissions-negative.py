@@ -102,7 +102,7 @@ def main() -> int:
         ),
         (
             "publication allowed on pull requests",
-            replace_once(canonical, "if: github.event_name != 'pull_request'", "if: github.event_name == 'pull_request'", "publication PR exclusion"),
+            replace_once(canonical, "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "if: github.event_name == 'pull_request'", "publication PR exclusion"),
         ),
         (
             "publication source identity check removed",
@@ -208,6 +208,42 @@ def main() -> int:
         (
             "publication checkout credential intent removed",
             replace_once(canonical, "          persist-credentials: true\n\n      - name: Set up Python", "\n      - name: Set up Python", "publication checkout credential intent removed"),
+        ),
+    )
+
+    # Write-capable publication is admitted only for reviewed so push/dispatch.
+    cases += (
+        (
+            "publication unscoped non-PR event",
+            replace_once(canonical, "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "if: github.event_name != 'pull_request'", "publication unscoped non-PR event"),
+        ),
+        (
+            "publication redirected to main",
+            replace_once(canonical, "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'", "publication redirected to main"),
+        ),
+        (
+            "publication allows PR target",
+            replace_once(canonical, "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "if: (github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "publication allows PR target"),
+        ),
+        (
+            "publication dispatch without branch scope",
+            replace_once(canonical, "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "if: github.event_name == 'workflow_dispatch'", "publication dispatch without branch scope"),
+        ),
+        (
+            "publication push without branch scope",
+            replace_once(canonical, "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "if: github.event_name == 'push'", "publication push without branch scope"),
+        ),
+        (
+            "publication unconditional write job",
+            replace_once(canonical, "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "if: true", "publication unconditional write job"),
+        ),
+        (
+            "publication duplicate job if override",
+            replace_once(canonical, "  validate-and-publish:\n    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n", "  validate-and-publish:\n    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n    if: true\n", "publication duplicate job if override"),
+        ),
+        (
+            "publication dispatch path substituted",
+            replace_once(canonical, "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.event.pull_request.base.ref == 'refs/heads/so'", "publication dispatch path substituted"),
         ),
     )
 

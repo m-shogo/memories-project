@@ -86,7 +86,7 @@ jobs:
           git diff --exit-code
 
   validate-and-publish:
-    if: github.event_name != 'pull_request'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     permissions:
       contents: write
     runs-on: ubuntu-latest

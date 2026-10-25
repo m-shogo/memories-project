@@ -96,7 +96,13 @@ def main() -> int:
         "PR validation must reject tracked or untracked workspace mutation",
     )
 
-    require("if: github.event_name != 'pull_request'" in publish, "publication job must exclude pull requests")
+    approved_publish_condition = "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
+    require(publish.startswith(
+        "  validate-and-publish:\n    " + approved_publish_condition +
+        "\n    permissions:\n      contents: write\n"
+    ), "publication job event/ref authority drift")
+    require(publish.count("\n    if: ") == 1,
+            "publication job duplicate event condition")
     require("permissions:\n      contents: write\n" in publish, "publication job must own the only contents: write permission")
     require("ref: ${{ github.sha }}" in publish, "publication must checkout the exact event source")
     require("test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"" in publish, "publication must verify exact source identity")
