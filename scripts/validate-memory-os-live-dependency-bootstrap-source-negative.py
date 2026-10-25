@@ -11,11 +11,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LIVE = ".github/workflows/regenerate-live-postgres-load-results.yml"
 UPLOAD = ".github/workflows/reconcile-upload-route-authority.yml"
+SIGKILL = ".github/workflows/deletion-worker-sigkill-recovery.yml"
 INDEPENDENT = ".github/workflows/live-dependency-bootstrap-source-negative.yml"
 SELF = "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
 REVIEWED_LIVE = "3e3c25e356d16be6c748a1baee4e3a79e11e1578"
 REVIEWED_UPLOAD = "3997403c3d93983470942909a8673aa961fc099a"
-REVIEWED_INDEPENDENT = "b48a04f5faeb538bd6d547a8f9a37ba4611dd8a1"
+REVIEWED_SIGKILL = "564f8dae50222dc9025ee31449c116d7f3b8345d"
+REVIEWED_INDEPENDENT = "20da90b7e0db3ecea90799b706de07ad9bd14a13"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
@@ -54,7 +56,7 @@ def step_script(workflow: str, title: str) -> str:
     return "\n".join(line[10:] if line else "" for line in lines) + "\n"
 
 
-def validate(live: str, upload: str, independent: str) -> None:
+def validate(live: str, upload: str, sigkill: str, independent: str) -> None:
     live_required = (
         "      - name: Start local MinIO harness\n",
         "          set -euo pipefail\n",
@@ -73,11 +75,20 @@ def validate(live: str, upload: str, independent: str) -> None:
         "      - name: Commit reconciled route authority\n",
         'test "$(git rev-parse origin/so)" = "$SOURCE_SHA"',
     )
+    sigkill_required = (
+        "      - name: Start local MinIO\n",
+        "minio/minio server /data",
+        "      - name: Execute exact-source SIGKILL proof\n",
+        "      - name: Commit exact-source result\n",
+        "      - name: Reconcile local-only authority\n",
+        "      - name: Record privacy-safe failure diagnostic\n",
+        'test "$(git rev-parse origin/so)" != "$SOURCE_SHA"',
+    )
     independent_required = (
         "  pull_request:\n    branches:\n      - so\n",
         "  push:\n    branches:\n      - so\n",
         '      - "' + LIVE + '"', '      - "' + UPLOAD + '"',
-        '      - "' + INDEPENDENT + '"', '      - "' + SELF + '"',
+        '      - "' + SIGKILL + '"', '      - "' + INDEPENDENT + '"', '      - "' + SELF + '"',
         CHECKOUT, SETUP, "          persist-credentials: false\n",
         PR_BASE, PUSH_REF, SHA_FORMAT, "          python " + SELF,
         "permissions:\n  contents: read\n",
@@ -88,6 +99,7 @@ def validate(live: str, upload: str, independent: str) -> None:
     for label, text, required, digest in (
         ("live", live, live_required, REVIEWED_LIVE),
         ("upload", upload, upload_required, REVIEWED_UPLOAD),
+        ("sigkill", sigkill, sigkill_required, REVIEWED_SIGKILL),
         ("independent", independent, independent_required, REVIEWED_INDEPENDENT),
     ):
         for token in required:
@@ -99,14 +111,18 @@ def validate(live: str, upload: str, independent: str) -> None:
         raise SystemExit("live load publication may precede dependency startup")
     if upload.index("      - name: Start local MinIO") > upload.index("      - name: Commit reconciled route authority"):
         raise SystemExit("upload route authority publication may precede dependency startup")
-    for label, workflow, title in (("live", live, "Start local MinIO harness"), ("upload", upload, "Start local MinIO")):
+    if sigkill.index("      - name: Start local MinIO") > sigkill.index("      - name: Commit exact-source result"):
+        raise SystemExit("SIGKILL publication may precede dependency startup")
+    for label, workflow, title in (("live", live, "Start local MinIO harness"), ("upload", upload, "Start local MinIO"), ("sigkill", sigkill, "Start local MinIO")):
         script = step_script(workflow, title)
         if "docker run -d" not in script or "continue-on-error: true" in workflow:
             raise SystemExit("live dependency " + label + " bootstrap fail-closed drift")
 
 
-def synthetic_bootstrap_failure(live: str, upload: str) -> None:
-    for label, workflow, title in (("live", live, "Start local MinIO harness"), ("upload", upload, "Start local MinIO")):
+def synthetic_bootstrap_failure(live: str, upload: str, sigkill: str) -> None:
+    if sigkill.index("      - name: Start local MinIO") > sigkill.index("      - name: Commit exact-source result"):
+        raise SystemExit("SIGKILL publication may precede dependency startup")
+    for label, workflow, title in (("live", live, "Start local MinIO harness"), ("upload", upload, "Start local MinIO"), ("sigkill", sigkill, "Start local MinIO")):
         code = step_script(workflow, title)
         with tempfile.TemporaryDirectory(prefix="live-dependency-bootstrap-") as tmp:
             root = Path(tmp)
@@ -129,7 +145,7 @@ def synthetic_bootstrap_failure(live: str, upload: str) -> None:
                 raise SystemExit("live dependency " + label + " accepted synthetic image pull denial")
             if list(root.rglob("*.json")):
                 raise SystemExit("live dependency " + label + " generated evidence on bootstrap failure")
-    print("PASS: live PostgreSQL/object and upload-route MinIO bootstrap denial exits 125 before checkpoint/publication (2 cases)")
+    print("PASS: live PostgreSQL/object, upload-route and deletion SIGKILL MinIO bootstrap denial exits 125 before publication (3 cases)")
 
 
 def predicate_runtime(independent: str) -> None:
@@ -158,7 +174,7 @@ def predicate_runtime(independent: str) -> None:
     print("PASS: live dependency independent branch/base (6) and SHA (6) runtime cases")
 
 
-def source_negatives(live: str, upload: str, independent: str) -> None:
+def source_negatives(live: str, upload: str, sigkill: str, independent: str) -> None:
     live_cases = (
         ("bootstrap shell", "          set -euo pipefail\n", "          set +e\n"),
         ("image", "quay.io/minio/minio server /data", "quay.io/minio/minio:latest server /data"),
@@ -175,6 +191,12 @@ def source_negatives(live: str, upload: str, independent: str) -> None:
         ("publication", "      - name: Commit reconciled route authority\n", "      - name: Unsafe commit\n"),
         ("rollback", "      - name: Validate reconcile rollback boundary\n", "      - name: Skip rollback\n"),
     )
+    sigkill_cases = (
+        ("image", "minio/minio server /data", "minio/minio:latest server /data"),
+        ("ignore docker", "          docker run -d --name memory-os-deletion-sigkill-minio", "          docker run -d --name memory-os-deletion-sigkill-minio || true"),
+        ("bootstrap", "      - name: Start local MinIO\n", "      - name: Disabled MinIO\n"),
+        ("publication", "      - name: Commit exact-source result\n", "      - name: Unsafe commit\n"),
+    )
     independent_cases = (
         ("PR base", PR_BASE, "true"), ("push branch", PUSH_REF, "true"),
         ("SHA format", SHA_FORMAT, 'test -n "$expected"'),
@@ -184,9 +206,10 @@ def source_negatives(live: str, upload: str, independent: str) -> None:
         ("self trigger", '      - "' + SELF + '"', ""),
         ("live trigger", '      - "' + LIVE + '"', ""),
         ("upload trigger", '      - "' + UPLOAD + '"', ""),
+        ("SIGKILL trigger", '      - "' + SIGKILL + '"', ""),
         ("root write", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
     )
-    for label, original, cases in (("live", live, live_cases), ("upload", upload, upload_cases), ("independent", independent, independent_cases)):
+    for label, original, cases in (("live", live, live_cases), ("upload", upload, upload_cases), ("sigkill", sigkill, sigkill_cases), ("independent", independent, independent_cases)):
         for name, old, new in cases:
             if old not in original:
                 raise SystemExit("live dependency negative fixture missing: " + label + "/" + name)
@@ -195,23 +218,25 @@ def source_negatives(live: str, upload: str, independent: str) -> None:
                 raise SystemExit("live dependency negative fixture unchanged: " + label + "/" + name)
             try:
                 if label == "live":
-                    validate(altered, upload, independent)
+                    validate(altered, upload, sigkill, independent)
                 elif label == "upload":
-                    validate(live, altered, independent)
+                    validate(live, altered, sigkill, independent)
+                elif label == "sigkill":
+                    validate(live, upload, altered, independent)
                 else:
-                    validate(live, upload, altered)
+                    validate(live, upload, sigkill, altered)
             except SystemExit:
                 continue
             raise SystemExit("live dependency accepted mutation: " + label + "/" + name)
-    print("PASS: live dependency source negatives (6 live + 6 upload + 10 independent)")
+    print("PASS: live dependency source negatives (6 live + 6 upload + 4 SIGKILL + 11 independent)")
 
 
 def main() -> int:
-    live, upload, independent = source(LIVE), source(UPLOAD), source(INDEPENDENT)
-    validate(live, upload, independent)
+    live, upload, sigkill, independent = source(LIVE), source(UPLOAD), source(SIGKILL), source(INDEPENDENT)
+    validate(live, upload, sigkill, independent)
     predicate_runtime(independent)
-    source_negatives(live, upload, independent)
-    synthetic_bootstrap_failure(live, upload)
+    source_negatives(live, upload, sigkill, independent)
+    synthetic_bootstrap_failure(live, upload, sigkill)
     print("capacity evidence generated: false")
     print("production evidence generated: false")
     print("production decision changed: false")

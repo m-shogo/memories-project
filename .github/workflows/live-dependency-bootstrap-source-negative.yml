@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/regenerate-live-postgres-load-results.yml"
       - ".github/workflows/reconcile-upload-route-authority.yml"
+      - ".github/workflows/deletion-worker-sigkill-recovery.yml"
       - ".github/workflows/live-dependency-bootstrap-source-negative.yml"
       - "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
   push:
@@ -15,6 +16,7 @@ on:
     paths:
       - ".github/workflows/regenerate-live-postgres-load-results.yml"
       - ".github/workflows/reconcile-upload-route-authority.yml"
+      - ".github/workflows/deletion-worker-sigkill-recovery.yml"
       - ".github/workflows/live-dependency-bootstrap-source-negative.yml"
       - "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
 
