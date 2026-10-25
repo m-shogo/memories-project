@@ -414,6 +414,70 @@ def prove_stronger_lifecycle_main_rejects_before_write(before: dict[Path, bytes]
     print("PASS stronger lifecycle main-path prewrite rejection (4 cases)")
 
 
+
+def prove_stronger_registry_readiness_cannot_be_downgraded(before: dict[Path, bytes]) -> None:
+    module = load_module(RECONCILER, "migration_registry_stronger_readiness_guard")
+    original = json.loads(before[CANONICAL_CONTRACT].decode("utf-8"))["readiness"]
+    module.require_no_stronger_registry_readiness_downgrade(original)
+    for field in module.STRONGER_REGISTRY_READINESS_FIELDS:
+        candidate = dict(original)
+        candidate[field] = True
+        try:
+            module.require_no_stronger_registry_readiness_downgrade(candidate)
+        except module.Fail as exc:
+            require("cannot overwrite stronger registry readiness: " + field in str(exc),
+                    "unexpected stronger registry readiness rejection: " + field)
+        else:
+            raise NegativeFailure("migration registry accepted stronger readiness downgrade: " + field)
+    require_canonical_bytes_unchanged(before, "stronger registry readiness negative")
+
+
+def prove_stronger_registry_readiness_main_rejects_before_write(before: dict[Path, bytes]) -> None:
+    module = load_module(RECONCILER, "migration_registry_main_readiness_guard")
+    original_load = module.load
+    original_load_writer = module.load_writer
+    original_commit = module.commit_outputs_transactionally
+    for field in module.STRONGER_REGISTRY_READINESS_FIELDS:
+        upstream_calls: list[bool] = []
+
+        def synthetic_load(path: Path) -> dict[str, Any]:
+            value = original_load(path)
+            if path == module.REGISTRY_CONTRACT:
+                value["readiness"][field] = True
+            return value
+
+        def prevalidated_writer() -> Any:
+            writer = original_load_writer()
+
+            def accept_prevalidated_registry(_registry: dict[str, Any], _contract: dict[str, Any]) -> None:
+                upstream_calls.append(True)
+
+            writer.validate_registry_for_append = accept_prevalidated_registry
+            return writer
+
+        def forbidden_commit(_outputs: dict[Path, dict[str, Any]]) -> None:
+            raise NegativeFailure("migration registry reached write despite stronger readiness " + field)
+
+        module.load = synthetic_load
+        module.load_writer = prevalidated_writer
+        module.commit_outputs_transactionally = forbidden_commit
+        try:
+            try:
+                module.main()
+            except module.Fail as exc:
+                require("cannot overwrite stronger registry readiness: " + field in str(exc),
+                        "unexpected main-path registry readiness rejection: " + field + ": " + str(exc))
+            else:
+                raise NegativeFailure("migration registry main accepted stronger readiness: " + field)
+        finally:
+            module.load = original_load
+            module.load_writer = original_load_writer
+            module.commit_outputs_transactionally = original_commit
+        require(upstream_calls == [True], "synthetic registry precondition not reached: " + field)
+        require_canonical_bytes_unchanged(before, "main-path registry readiness " + field)
+    print("PASS stronger registry readiness main-path prewrite rejection (5 cases)")
+
+
 def main() -> int:
     before = {
         CANONICAL_REGISTRY: CANONICAL_REGISTRY.read_bytes(),
@@ -422,6 +486,8 @@ def main() -> int:
         CANONICAL_LOCAL_CONTRACT: CANONICAL_LOCAL_CONTRACT.read_bytes(),
         CANONICAL_STATUS: CANONICAL_STATUS.read_bytes(),
     }
+    prove_stronger_registry_readiness_cannot_be_downgraded(before)
+    prove_stronger_registry_readiness_main_rejects_before_write(before)
     prove_stronger_lifecycle_authority_cannot_be_downgraded(before)
     prove_stronger_lifecycle_main_rejects_before_write(before)
     prove_registry_reconcile_authorities(before)

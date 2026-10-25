@@ -187,6 +187,23 @@ def passing(record: dict[str, Any]) -> bool:
     return all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult"))
 
 
+STRONGER_REGISTRY_READINESS_FIELDS = (
+    "productionEquivalentRestoreCapabilityConfigured",
+    "productionEquivalentActualRecoveryArtifactRestoreLinked",
+    "productionShapedRehearsalCompleted",
+    "independentReviewCompleted",
+    "productionReady",
+)
+
+
+def require_no_stronger_registry_readiness_downgrade(readiness: dict[str, Any]) -> None:
+    # Local rehearsal registration cannot erase independently authorized
+    # production-equivalent restore capability, review, or readiness.
+    for field in STRONGER_REGISTRY_READINESS_FIELDS:
+        require(readiness.get(field) is False,
+                "migration registry cannot overwrite stronger registry readiness: " + field)
+
+
 STRONGER_LIFECYCLE_FIELDS = (
     "productionShapedRehearsalCompleted",
     "isolatedRestoreLinked",
@@ -239,6 +256,7 @@ def main() -> int:
     current = contract.get("currentAuthority")
     readiness = contract.get("readiness")
     require(isinstance(current, dict) and isinstance(readiness, dict), "registry contract authority missing")
+    require_no_stronger_registry_readiness_downgrade(readiness)
     records = registry["records"]
     count = registry["rehearsalEvidenceCount"]
     passing_count = registry["passingRehearsalCount"]
