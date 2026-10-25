@@ -82,7 +82,7 @@ def validate(live: str, upload: str, sigkill: str, independent: str) -> None:
         "      - name: Commit exact-source result\n",
         "      - name: Reconcile local-only authority\n",
         "      - name: Record privacy-safe failure diagnostic\n",
-        'test "$(git rev-parse origin/so)" != "$SOURCE_SHA"',
+        'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]',
     )
     independent_required = (
         "  pull_request:\n    branches:\n      - so\n",
