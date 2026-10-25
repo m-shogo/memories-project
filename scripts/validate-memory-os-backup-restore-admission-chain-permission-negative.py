@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,8 +23,17 @@ def require_publisher_event_scope(header: str) -> None:
     expected = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n    permissions:\n      contents: write\n"
     require(header.startswith(expected),
             "admission-chain publisher must scope write authority to so push/dispatch")
-    require(header.count("\n    if: ") == 0,
-            "admission-chain publisher must reject duplicate job-level if")
+    keys = []
+    for line in header.splitlines():
+        if not line.startswith("    ") or line.startswith("     "):
+            continue
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = re.fullmatch(r"    ([a-z][a-z-]*):(?:[ \t].*)?", line)
+        require(match is not None, "publisher job key inventory drift")
+        keys.append(match.group(1))
+    require(tuple(keys) == ("if", "permissions", "runs-on", "timeout-minutes"),
+            "publisher job key inventory drift")
 
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -52,6 +62,14 @@ def main() -> int:
         publish_header.replace(approved_if, approved_if + "\n    if: true", 1),
         publish_header.replace("github.event_name == 'push'",
                                "github.event_name == 'pull_request_target'", 1),
+        publish_header.replace(approved_if,
+                               approved_if + "\n    \"if\": true", 1),
+        publish_header.replace(approved_if,
+                               approved_if + "\n    'permissions':\n      contents: write", 1),
+        publish_header.replace(approved_if,
+                               approved_if + "\n    environment: production", 1),
+        publish_header.replace(approved_if,
+                               approved_if + "\n    'steps': []", 1),
     )
     for mutated in mutations:
         require(mutated != publish_header, "publisher scope negative fixture unchanged")
@@ -71,7 +89,7 @@ def main() -> int:
 
     print("PASS: end-to-end admission PR validation is exact-head and read-only")
     print("PASS: admission publication is so push/dispatch-only with job-scoped write authority")
-    print("publisher event/ref negative mutations rejected: 4")
+    print("publisher event/ref and job-key negative mutations rejected: 8")
     print("PASS: bounded full revalidation, stale-source CAS and atomic failure diagnostics remain enforced")
     print("production evidence generated: false")
     print("production decision changed: false")

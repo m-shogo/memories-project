@@ -247,6 +247,42 @@ def main() -> int:
         ),
     )
 
+    # Reject quoted/duplicate YAML job keys that can override reviewed authority.
+    cases += (
+        (
+            "publisher quoted if override",
+            replace_once(canonical, "  validate-and-publish:\n", "  validate-and-publish:\n    \"if\": true\n", "publisher quoted if override"),
+        ),
+        (
+            "publisher single-quoted if override",
+            replace_once(canonical, "  validate-and-publish:\n", "  validate-and-publish:\n    'if': true\n", "publisher single-quoted if override"),
+        ),
+        (
+            "publisher quoted permission override",
+            replace_once(canonical, "  validate-and-publish:\n", "  validate-and-publish:\n    \"permissions\":\n      contents: write\n", "publisher quoted permission override"),
+        ),
+        (
+            "publisher quoted steps override",
+            replace_once(canonical, "  validate-and-publish:\n", "  validate-and-publish:\n    \"steps\": []\n", "publisher quoted steps override"),
+        ),
+        (
+            "publisher extra environment",
+            replace_once(canonical, "  validate-and-publish:\n", "  validate-and-publish:\n    environment: production\n", "publisher extra environment"),
+        ),
+        (
+            "PR quoted permissions override",
+            replace_once(canonical, "  validate-pr:\n", "  validate-pr:\n    \"permissions\":\n      contents: write\n", "PR quoted permissions override"),
+        ),
+        (
+            "PR quoted steps override",
+            replace_once(canonical, "  validate-pr:\n", "  validate-pr:\n    'steps': []\n", "PR quoted steps override"),
+        ),
+        (
+            "PR duplicate job if",
+            replace_once(canonical, "  validate-pr:\n", "  validate-pr:\n    if: true\n", "PR duplicate job if"),
+        ),
+    )
+
     for label, mutated in cases:
         require(mutated != canonical, f"negative mutation did not change workflow: {label}")
         expect_reject(module, label, mutated)

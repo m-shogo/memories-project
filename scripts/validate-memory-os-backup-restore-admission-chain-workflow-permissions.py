@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +45,20 @@ def job_block(text: str, name: str, next_name: str | None = None) -> str:
     return text[start:end]
 
 
+def require_job_key_inventory(job: str, expected: tuple[str, ...], diagnostic: str) -> None:
+    """Reject quoted, duplicate and unreviewed job-level YAML mapping keys."""
+    keys = []
+    for line in job.splitlines():
+        if not line.startswith("    ") or line.startswith("     "):
+            continue
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = re.fullmatch(r"    ([a-z][a-z-]*):(?:[ \t].*)?", line)
+        require(match is not None, diagnostic)
+        keys.append(match.group(1))
+    require(tuple(keys) == expected, diagnostic)
+
+
 def require_atomic_diagnostic_publication(publish: str) -> None:
     required = (
         "tempfile.mkstemp(",
@@ -68,6 +83,15 @@ def main() -> int:
 
     pr = job_block(text, "validate-pr", "validate-and-publish")
     publish = job_block(text, "validate-and-publish")
+
+    require_job_key_inventory(
+        pr, ("if", "permissions", "runs-on", "timeout-minutes", "steps"),
+        "PR job key inventory drift",
+    )
+    require_job_key_inventory(
+        publish, ("if", "permissions", "runs-on", "timeout-minutes", "steps"),
+        "publication job key inventory drift",
+    )
 
     # Bind both bootstrap actions and checkout credentials to reviewed job roles.
     require(pr.count("      - name: Checkout exact PR source\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event.pull_request.head.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n") == 1 and
