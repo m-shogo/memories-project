@@ -8,6 +8,8 @@ on:
       - ".github/workflows/local-migration-recovery-artifact.yml"
       - ".github/workflows/local-migration-recovery-source-negative.yml"
       - "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
+      - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
   push:
     branches:
       - so
@@ -15,6 +17,8 @@ on:
       - ".github/workflows/local-migration-recovery-artifact.yml"
       - ".github/workflows/local-migration-recovery-source-negative.yml"
       - "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
+      - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
 
 permissions:
   contents: read
@@ -59,4 +63,15 @@ jobs:
           python scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py
           git diff --check
           git diff --exit-code
+          test -z "$(git status --porcelain)"
+      - name: Prove local recovery readiness in disposable exact-source clone
+        run: |
+          set -euo pipefail
+          temp="$(mktemp -d)"
+          trap 'rm -rf "$temp"' EXIT
+          git clone --no-hardlinks --no-checkout . "$temp/repo"
+          git -C "$temp/repo" checkout --detach "$(git rev-parse HEAD)"
+          test -z "$(git -C "$temp/repo" status --porcelain)"
+          (cd "$temp/repo" && python scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py)
+          test -z "$(git -C "$temp/repo" status --porcelain)"
           test -z "$(git status --porcelain)"

@@ -239,6 +239,71 @@ def rollback_failure_diagnostic_negative(module) -> None:
         module.CONTRACT_PATH.chmod(original_mode)
 
 
+
+def stronger_recovery_readiness_negative(module) -> None:
+    contract = module.load(module.CONTRACT_PATH)
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "canonical local recovery readiness missing")
+    for field in module.STRONGER_RECOVERY_READINESS_FIELDS:
+        require(readiness.get(field) is False, "canonical local recovery stronger readiness is not false")
+        for value in (True, None, 0, "false"):
+            candidate = copy.deepcopy(readiness)
+            candidate[field] = value
+            try:
+                module.require_no_stronger_recovery_downgrade(candidate)
+            except module.Fail as exc:
+                require(f"cannot overwrite stronger local recovery readiness authority: {field}" in str(exc),
+                        f"wrong local recovery stronger-readiness rejection: {exc}")
+            else:
+                raise Fail(f"local recovery stronger-readiness mutation accepted: {field}={value!r}")
+    print("PASS stronger local recovery readiness strict negatives (8 cases)")
+
+    run_id = select_local_run(module)
+    original = module.CONTRACT_PATH.read_bytes()
+    original_mode = stat.S_IMODE(module.CONTRACT_PATH.stat().st_mode)
+    real_load = module.load
+    real_parse_args = module.parse_args
+    real_run_validator = module.run_validator
+    real_atomic_replace = module.atomic_replace_bytes
+    for field in module.STRONGER_RECOVERY_READINESS_FIELDS:
+        writes: list[Path] = []
+
+        def stronger_contract_load(path: Path):
+            value = real_load(path)
+            if path == module.CONTRACT_PATH:
+                value = copy.deepcopy(value)
+                value["readiness"][field] = True
+            return value
+
+        def forbid_write(path: Path, payload: bytes) -> None:
+            writes.append(path)
+            raise Fail("synthetic local recovery authority write was attempted")
+
+        module.load = stronger_contract_load
+        module.parse_args = lambda: argparse.Namespace(run_id=run_id)
+        module.run_validator = lambda path, *args: None
+        module.atomic_replace_bytes = forbid_write
+        try:
+            try:
+                module.main()
+            except module.Fail as exc:
+                require(f"cannot overwrite stronger local recovery readiness authority: {field}" in str(exc),
+                        f"wrong local recovery main-path rejection for {field}: {exc}")
+            else:
+                raise Fail(f"local recovery main path accepted stronger authority: {field}")
+            require(not writes, f"local recovery main path attempted write before rejecting {field}")
+            require(module.CONTRACT_PATH.read_bytes() == original,
+                    f"local recovery main path changed canonical authority for {field}")
+            require(stat.S_IMODE(module.CONTRACT_PATH.stat().st_mode) == original_mode,
+                    f"local recovery main path changed canonical mode for {field}")
+        finally:
+            module.load = real_load
+            module.parse_args = real_parse_args
+            module.run_validator = real_run_validator
+            module.atomic_replace_bytes = real_atomic_replace
+    print("PASS stronger local recovery main-path prewrite rejection (2 cases)")
+
+
 def main() -> int:
     reconciler = load_module(
         RECONCILER,
@@ -246,12 +311,14 @@ def main() -> int:
     )
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
+    stronger_recovery_readiness_negative(reconciler)
     atomic_replace_mode_preservation(reconciler)
     atomic_replace_negative(reconciler)
     rollback_negative(reconciler)
     rollback_failure_diagnostic_negative(reconciler)
     print("Memory OS local migration recovery-artifact reconcile negative suite PASS")
     print("canonical validator identity: enforced")
+    print("stronger local recovery readiness cannot be downgraded: enforced")
     print("atomic publication preserves existing authority mode: enforced")
     print("atomic publication failure preserves canonical authority: enforced")
     print("post-write aggregate rollback: enforced")

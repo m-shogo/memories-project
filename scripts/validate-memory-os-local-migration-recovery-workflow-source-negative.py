@@ -12,7 +12,9 @@ PUBLISHER = ".github/workflows/local-migration-recovery-artifact.yml"
 INDEPENDENT = ".github/workflows/local-migration-recovery-source-negative.yml"
 SELF = "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py"
 PUBLISHER_SHA = "b41c62ea91abd8539a8154968e15403e8e99371d"
-INDEPENDENT_SHA = "826ccaaf4ab480f2234cbc09a8bf5037bf51bd8e"
+INDEPENDENT_SHA = "094d794db2d11846a4a174ac7ab976b4f81e304a"
+LOCAL_NEGATIVE = "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
+LOCAL_NEGATIVE_SHA = "a718111cfe880860c96d7784afdab2dd61fb9495"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 WRITER_SCOPE = "    if: >-\n      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&\n      github.ref == 'refs/heads/so' &&\n      (github.event_name != 'push' ||\n       (!contains(github.event.head_commit.message, 'test(migration): record local recovery artifact rehearsal') &&\n        !contains(github.event.head_commit.message, 'docs(migration): register local recovery artifact rehearsal')))"
@@ -77,6 +79,8 @@ INDEPENDENT_REQUIRED = (
     ('      - "' + PUBLISHER + '"\n', 2),
     ('      - "' + INDEPENDENT + '"\n', 2),
     ('      - "' + SELF + '"\n', 2),
+    ('      - "' + LOCAL_NEGATIVE + '"\n', 2),
+    ('      - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"\n', 2),
     (CHECKOUT, 1),
     (SETUP, 1),
     ("persist-credentials: false", 1),
@@ -84,6 +88,10 @@ INDEPENDENT_REQUIRED = (
     (WRITER_REF, 1),
     (PR_SHA, 1),
     ("python " + SELF, 1),
+    ("python " + LOCAL_NEGATIVE, 1),
+    ('git clone --no-hardlinks --no-checkout . "$temp/repo"', 1),
+    ('git -C "$temp/repo" checkout --detach "$(git rev-parse HEAD)"', 1),
+    ('test -z "$(git -C "$temp/repo" status --porcelain)"', 2),
     ("permissions:\n  contents: read\n", 1),
     ("      contents: read\n", 1),
 )
@@ -92,6 +100,7 @@ INDEPENDENT_REQUIRED = (
 def validate(publisher: str, independent: str) -> None:
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
+    check_source("local reconcile negative", read(LOCAL_NEGATIVE), LOCAL_NEGATIVE_SHA, ())
 
 
 def negative_proofs(publisher: str, independent: str) -> None:
@@ -119,6 +128,9 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("independent digest-only drift", False, "\n", "\n# unauthorized independent source drift\n"),
         ("independent credentials", False, "persist-credentials: false", "persist-credentials: true"),
         ("independent self guard", False, "python " + SELF, "echo skip"),
+        ("independent local negative invocation", False, "python " + LOCAL_NEGATIVE, "echo skip"),
+        ("independent clone exact checkout", False, 'git -C "$temp/repo" checkout --detach "$(git rev-parse HEAD)"', 'git -C "$temp/repo" checkout so'),
+        ("independent clone cleanliness", False, 'test -z "$(git -C "$temp/repo" status --porcelain)"', "true"),
     )
     for label, publisher_case, before, after in cases:
         original = publisher if publisher_case else independent
@@ -137,7 +149,16 @@ def negative_proofs(publisher: str, independent: str) -> None:
                     "negative rejected for wrong reason: " + label + ": " + reason)
             continue
         raise SystemExit("local migration recovery source negative accepted: " + label)
-    print(f"PASS: local migration recovery CI source negatives ({len(cases)} cases)")
+    suite = read(LOCAL_NEGATIVE)
+    try:
+        check_source("local reconcile negative", suite + "\n# unauthorized local negative suite drift\n",
+                     LOCAL_NEGATIVE_SHA, ())
+    except SystemExit as exc:
+        require("local reconcile negative complete Git blob drift" in str(exc),
+                "local negative suite mutation rejected for wrong reason")
+    else:
+        raise SystemExit("local negative suite complete source drift accepted")
+    print(f"PASS: local migration recovery CI source negatives ({len(cases) + 1} cases)")
 
 
 def runtime_proofs() -> None:

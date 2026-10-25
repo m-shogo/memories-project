@@ -55,6 +55,19 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+STRONGER_RECOVERY_READINESS_FIELDS = (
+    "productionEquivalentRecoveryArtifactRestoreProven",
+    "productionReady",
+)
+
+
+def require_no_stronger_recovery_downgrade(readiness: dict[str, Any]) -> None:
+    # Local-only rehearsal evidence cannot overwrite stronger external authority.
+    for field in STRONGER_RECOVERY_READINESS_FIELDS:
+        require(readiness.get(field) is False,
+                f"cannot overwrite stronger local recovery readiness authority: {field}")
+
+
 def atomic_replace_bytes(path: Path, payload: bytes) -> None:
     existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -160,6 +173,7 @@ def main() -> int:
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "local recovery artifact readiness missing")
+    require_no_stronger_recovery_downgrade(readiness)
     for flag in (
         "contractDefined", "runnerImplemented", "validatorImplemented",
         "automaticWorkflowImplemented", "exactSourceEvidenceCommitted",
