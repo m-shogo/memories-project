@@ -214,8 +214,50 @@ def require_control_negatives(job: str) -> None:
             raise Fail(f"drill unreviewed control mutation accepted: {label}")
 
 
+
+def require_root_event_inventory(source: str) -> None:
+    """Reject unreviewed root mappings and YAML-equivalent event names."""
+    roots = []
+    for line in source.splitlines():
+        if not line or line[0].isspace() or line.startswith("#"):
+            continue
+        match = re.fullmatch(r"([a-z][a-z-]*):(?:[ \t].*)?", line)
+        require(match is not None, "recovery workflow quoted/unreviewed root key")
+        roots.append(match.group(1))
+    require(roots == ["name", "on", "permissions", "concurrency", "jobs"],
+            "recovery workflow root key inventory drift")
+    sections = source.split("\non:\n", 1)
+    require(len(sections) == 2, "recovery workflow event block missing")
+    event_block = sections[1].split("\npermissions:\n", 1)
+    require(len(event_block) == 2, "recovery workflow permissions boundary missing")
+    events = re.findall(r"(?m)^  ([^ \t#\n][^\n]*)$", event_block[0])
+    require(events == ["pull_request:", "push:", "workflow_dispatch:"],
+            "recovery workflow event inventory drift")
+
+
+def require_root_event_negatives(source: str) -> None:
+    require_root_event_inventory(source)
+    mutations = (
+        ("quoted-root", source.replace("\non:\n", '\n"on":\n', 1)),
+        ("duplicate-permissions", source.replace("\npermissions:\n", "\npermissions:\npermissions:\n", 1)),
+        ("workflow-run", source.replace("  workflow_dispatch:\n", "  workflow_dispatch:\n  workflow_run:\n", 1)),
+        ("quoted-event", source.replace("  workflow_dispatch:\n", "  workflow_dispatch:\n  'pull_request_target':\n", 1)),
+        ("duplicate-push", source.replace("  push:\n", "  push:\n  push:\n", 1)),
+        ("schedule", source.replace("  workflow_dispatch:\n", "  workflow_dispatch:\n  schedule:\n", 1)),
+    )
+    for label, mutated in mutations:
+        require(mutated != source, f"recovery root/event fixture unchanged: {label}")
+        try:
+            require_root_event_inventory(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"recovery unreviewed root/event mutation accepted: {label}")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
+    require_root_event_negatives(text)
     require("pull_request_target:" not in text, "drill-request authority must not use pull_request_target")
     require("\njobs:\n  validate-pr:\n" in text, "dedicated drill-request PR validation job missing")
     require("\n  validate:\n" in text, "drill-request non-PR authority job missing")
@@ -279,6 +321,7 @@ def main() -> int:
     print("step-property negative mutations rejected: 14")
     print("step-control negative mutations rejected: 4")
     print("production evidence generated: false")
+    print("workflow root/event negative mutations rejected: 6")
     print("production decision changed: false")
     return 0
 
