@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-promotion-review-readonly.yml"
+REVIEWED_WORKFLOW_BLOB_SHA = "23c7047cc3d37aec0ac6f652b1de395a741a4984"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -22,6 +24,9 @@ REQUIRED = (
     ("clean source", '          test -z "$(git status --porcelain)"\n', 2),
     ("self-trigger", "      - 'scripts/validate-memory-os-backup-restore-promotion-review-readonly-workflow-negative.py'\n", 2),
     ("self-execution", '          python scripts/validate-memory-os-backup-restore-promotion-review-readonly-workflow-negative.py\n', 1),
+    ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", 1),
+    ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
+    ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
 )
 
 
@@ -29,6 +34,10 @@ def validate(source: str) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"promotion-review readonly workflow source boundary drift: {label}")
+    payload = source.encode("utf-8")
+    blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
+        raise SystemExit("readonly workflow complete Git source drift")
 
 
 def main() -> int:
@@ -49,6 +58,12 @@ def main() -> int:
         ("clean source", REQUIRED[11][1], ""),
         ("self-trigger", REQUIRED[12][1], ""),
         ("self-execution", REQUIRED[13][1], ""),
+        ("PR target branch", REQUIRED[14][1], "  pull_request:\n    branches: [main]\n    paths:\n"),
+        ("PR base environment", REQUIRED[15][1], ""),
+        ("PR base assertion", REQUIRED[16][1], '            test -n "${PR_BASE_REF:-}"\n'),
+        ("injected shell command", "          set -euo pipefail\n", "          set -euo pipefail\n          echo UNREVIEWED\n"),
+        ("injected action", "      - name: Assert exact clean promotion-review source\n", "      - uses: unreviewed/action@v1\n      - name: Assert exact clean promotion-review source\n"),
+        ("removed PR self-trigger", "      - \x27scripts/validate-memory-os-backup-restore-promotion-review-readonly-workflow-negative.py\x27\n", ""),
     )
     for label, old, replacement in cases:
         if old not in source:

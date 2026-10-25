@@ -25,6 +25,7 @@ on:
       - 'contracts/operations/production-operability-status.json'
       - 'docs/evidence/backup-restore/**'
   pull_request:
+    branches: [so]
     paths:
       - '.github/workflows/backup-restore-review-source-order-readonly.yml'
       - '.github/workflows/backup-restore-review-source-order.yml'
@@ -65,10 +66,13 @@ jobs:
         with:
           python-version: '3.12'
       - name: Assert exact clean review source
+        env:
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           expected="${{ github.event.pull_request.head.sha || github.sha }}"
           if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${PR_BASE_REF:-}" = "so"
             expected="${{ github.event.pull_request.head.sha }}"
             [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           elif [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
