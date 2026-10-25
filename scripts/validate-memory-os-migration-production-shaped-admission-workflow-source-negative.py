@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/migration-production-shaped-admission.yml"
 INDEPENDENT = ".github/workflows/migration-production-shaped-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py"
-PUBLISHER_SHA = "3eba8275ba319a13b0084e5712ea628f81553738"
+PUBLISHER_SHA = "80c283c3bf93934f115321d761a349a9b74648cb"
 INDEPENDENT_SHA = "f927a8d2a6a64cde09a842272aa411040c9932a3"
 D = chr(36)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -60,6 +60,15 @@ PUBLISHER_REQUIRED = (
     ("writer HEAD identity", 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', 1),
     ("redacted diagnostic", REDACTION, 1),
     ("suppressed CI log", SUPPRESS, 1),
+    ("bounded failed stage", 'if [[ "$code" != "0" ]]; then printf "Migration admission failed stage: %s\\n" "$stage"; fi', 1),
+    ("compile stage", "          stage=compile\n", 1),
+    ("generation authority stage", "            stage=generation-authority\n", 1),
+    ("ledger authority stage", "            stage=ledger-authority\n", 1),
+    ("admission negative stage", "            stage=admission-negative\n", 1),
+    ("rollback stage", "            stage=rollback\n", 1),
+    ("reconcile stage", "            stage=reconcile\n", 1),
+    ("lifecycle stage", "            stage=lifecycle\n", 1),
+    ("operability stage", "            stage=operability\n", 1),
     ("no raw tail", "text[-12000:]", 0),
     ("no raw CI log", '          cat "$log"\n', 0),
 )
@@ -186,6 +195,9 @@ def negatives(publisher: str, independent: str) -> None:
         ("checkout writer", WRITER_CHECKOUT, 'ref: ' + D + '{{ github.ref }}'),
         ("raw diagnostic", REDACTION, "'output': Path('/tmp/migration-production-shaped-admission.log').read_text(),"),
         ("raw CI echo", SUPPRESS, 'cat "$log"'),
+        ("missing failed stage", 'if [[ "$code" != "0" ]]; then printf "Migration admission failed stage: %s\\n" "$stage"; fi', ""),
+        ("skip operability stage", "            stage=operability\n", ""),
+        ("skip compile stage", "          stage=compile\n", ""),
         ("unreviewed Action", "      - name: Confirm exact clean authority source\n", "      - uses: unreviewed/action@v1\n      - name: Confirm exact clean authority source\n"),
         ("unreviewed shell", "      - name: Confirm exact clean authority source\n", "      - run: echo unreviewed\n      - name: Confirm exact clean authority source\n"),
     )
@@ -219,12 +231,32 @@ def negatives(publisher: str, independent: str) -> None:
     print(f"PASS: migration production-shaped admission source negatives ({len(publisher_cases)} publisher, {len(independent_cases)} independent)")
 
 
+
+def prove_failed_stage_runtime(publisher: str) -> None:
+    """Prove the bounded stage marker emits no validator output or success noise."""
+    token = 'if [[ "$code" != "0" ]]; then printf "Migration admission failed stage: %s\\n" "$stage"; fi'
+    if publisher.count(token) != 1:
+        raise SystemExit("migration admission bounded failure stage not uniquely reachable")
+    for code, stage, expected in (
+        ("1", "compile", "Migration admission failed stage: compile\n"),
+        ("75", "reconcile", "Migration admission failed stage: reconcile\n"),
+        ("0", "operability", ""),
+    ):
+        result = subprocess.run(["bash", "-e", "-c", token],
+                                env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "code": code, "stage": stage},
+                                capture_output=True, text=True, check=False)
+        if result.returncode != 0 or result.stdout != expected or result.stderr:
+            raise SystemExit("migration admission failed-stage runtime drift: " + stage + " code " + code)
+    print("PASS: migration admission bounded failed-stage runtime (3 cases)")
+
+
 def main() -> int:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
     validate(publisher, independent)
     runtime(publisher, independent)
     diagnostic_runtime(publisher)
+    prove_failed_stage_runtime(publisher)
     negatives(publisher, independent)
     return 0
 

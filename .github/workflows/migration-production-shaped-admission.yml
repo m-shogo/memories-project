@@ -185,6 +185,7 @@ jobs:
           log=/tmp/migration-production-shaped-admission.log
           : > "$log"
           code=0
+          stage=compile
           python -m py_compile \
             scripts/memory_os_migration_production_admission_ledger.py \
             scripts/register-memory-os-migration-production-shaped-admission.py \
@@ -206,25 +207,35 @@ jobs:
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
+            stage=generation-authority
             python scripts/validate-memory-os-migration-production-shaped-admission-generation-authority-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            stage=ledger-authority
             python scripts/validate-memory-os-migration-production-admission-ledger-authority-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            stage=admission-negative
             python scripts/validate-memory-os-migration-production-shaped-admission-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            stage=rollback
             python scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            stage=reconcile
             python scripts/reconcile-memory-os-migration-production-shaped-admission.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            stage=lifecycle
             python scripts/validate-memory-os-migration-lifecycle.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=operability
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [[ "$code" != "0" ]]; then printf "Migration admission failed stage: %s\n" "$stage"; fi
           printf "Migration production-shaped admission exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
       - name: Commit bounded migration admission authority
