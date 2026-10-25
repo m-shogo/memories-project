@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only exact-source and runtime negative proof for release compatibility pair CI."""
+"""Read-only exact-source and runtime negative proof for local migration recovery CI."""
 from __future__ import annotations
 
 import hashlib
@@ -102,6 +102,9 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("publisher PR SHA", True, PR_SHA, 'test -n "$expected"'),
         ("publisher writer SHA", True, WRITER_SHA, 'test -n "$GITHUB_SHA"'),
         ("publisher checkout pin", True, CHECKOUT, "uses: actions/checkout@v4"),
+        ("publisher setup pin", True, SETUP, "uses: actions/setup-python@v5"),
+        ("publisher event scope", True, "  workflow_dispatch:\n", "  pull_request_target:\n"),
+        ("publisher digest-only drift", True, "\n", "\n# unauthorized publisher source drift\n"),
         ("publisher credentials", True, "persist-credentials: false", "persist-credentials: true"),
         ("publisher self guard", True, "python " + SELF, "echo skip"),
         ("publisher checkout ref", True, "ref: so", "ref: main"),
@@ -111,6 +114,9 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("independent writer ref", False, WRITER_REF, "true"),
         ("independent SHA", False, PR_SHA, 'test -n "$expected"'),
         ("independent checkout pin", False, CHECKOUT, "uses: actions/checkout@v4"),
+        ("independent setup pin", False, SETUP, "uses: actions/setup-python@v5"),
+        ("independent event scope", False, "  push:\n    branches:\n      - so\n", "  workflow_dispatch:\n"),
+        ("independent digest-only drift", False, "\n", "\n# unauthorized independent source drift\n"),
         ("independent credentials", False, "persist-credentials: false", "persist-credentials: true"),
         ("independent self guard", False, "python " + SELF, "echo skip"),
     )
@@ -121,10 +127,17 @@ def negative_proofs(publisher: str, independent: str) -> None:
         require(changed != original, "mutation unchanged: " + label)
         try:
             validate(changed, independent) if publisher_case else validate(publisher, changed)
-        except SystemExit:
+        except SystemExit as exc:
+            # Require the actual source guard to reject for the expected reason.
+            expected = ("complete Git blob drift" if "digest-only" in label
+                        else "required source inventory drift")
+            reason = str(exc)
+            require(reason.startswith("local migration recovery CI source guard: ")
+                    and expected in reason,
+                    "negative rejected for wrong reason: " + label + ": " + reason)
             continue
         raise SystemExit("local migration recovery source negative accepted: " + label)
-    print("PASS: local migration recovery CI source negatives (14 cases)")
+    print(f"PASS: local migration recovery CI source negatives ({len(cases)} cases)")
 
 
 def runtime_proofs() -> None:
