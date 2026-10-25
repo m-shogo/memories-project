@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/operability-admission-inventory.yml"
 INDEPENDENT = ".github/workflows/operability-admission-inventory-source-negative.yml"
 SELF = "scripts/validate-memory-os-operability-admission-inventory-workflow-negative.py"
-REVIEWED_PUBLISHER = "340f1f1b247d8ac9ce5ef5b1ff49df4ed17371e1"
+REVIEWED_PUBLISHER = "1792edd78dc74c49d22e50145a4b1dc41b61bb24"
 REVIEWED_INDEPENDENT = "1cc32e55bcfca0d8d1d2be6f4d4222260a327123"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -43,6 +43,7 @@ MAIN_REQUIRED = (
     ("capture step", CAPTURE, 1),
     ("root read token", "permissions:\n  contents: read\n", 1),
     ("writer write token", "      contents: write\n", 1),
+    ("bounded retry job budget", "    timeout-minutes: 20\n", 1),
 )
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
@@ -141,6 +142,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("latest reset", "            git reset --hard origin/so\n", ""),
         ("root write token", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
         ("writer token removed", "      contents: write\n", "      contents: read\n"),
+        ("insufficient retry budget", "    timeout-minutes: 20\n", "    timeout-minutes: 10\n"),
         ("capture step removed", CAPTURE, ""),
         ("unreviewed Action", CAPTURE, "      - uses: unreviewed/action@v1\n" + CAPTURE),
         ("unreviewed shell", CAPTURE, "      - run: echo unreviewed\n" + CAPTURE),
