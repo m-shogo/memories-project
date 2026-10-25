@@ -103,10 +103,30 @@ jobs:
           import tempfile
           from pathlib import Path
 
+          def guarded_target(path: Path) -> Path:
+              repo = Path.cwd().resolve(strict=True)
+              if path.is_absolute() or '..' in path.parts:
+                  raise RuntimeError('incident control diagnostic path must be relative')
+              target = repo / path
+              if not target.parent.is_dir():
+                  raise RuntimeError('incident control diagnostic parent missing')
+              candidate = repo
+              for component in path.parts:
+                  candidate = candidate / component
+                  if candidate.is_symlink():
+                      raise RuntimeError('incident control diagnostic path must not be a symlink')
+              try:
+                  target.parent.resolve(strict=True).relative_to(repo)
+              except ValueError as exc:
+                  raise RuntimeError('incident control diagnostic parent escaped repository') from exc
+              if target.exists() and not target.is_file():
+                  raise RuntimeError('incident control diagnostic target must be regular')
+              return target
+
           def atomic_write_text(path: Path, text: str) -> None:
-              path.parent.mkdir(parents=True, exist_ok=True)
-              existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
-              fd, name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+              target = guarded_target(path)
+              existing_mode = (target.stat().st_mode & 0o7777) if target.exists() else None
+              fd, name = tempfile.mkstemp(prefix=f'.{target.name}.', suffix='.tmp', dir=target.parent)
               temporary = Path(name)
               try:
                   if existing_mode is not None:
@@ -115,14 +135,12 @@ jobs:
                       handle.write(text)
                       handle.flush()
                       os.fsync(handle.fileno())
-                  os.replace(temporary, path)
+                  os.replace(temporary, target)
               finally:
                   if temporary.exists():
                       temporary.unlink()
 
-          output = Path('/tmp/incident-control-exercise.log').read_text(
-              encoding='utf-8', errors='replace'
-          )[-6000:]
+          output = 'Incident control exercise completed; raw output withheld.'
           diagnostic = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'incident-control-exercise',
@@ -157,9 +175,30 @@ jobs:
           import tempfile
           from pathlib import Path
 
+          def guarded_target(path: Path) -> Path:
+              repo = Path.cwd().resolve(strict=True)
+              if path.is_absolute() or '..' in path.parts:
+                  raise RuntimeError('incident control diagnostic path must be relative')
+              target = repo / path
+              if not target.parent.is_dir():
+                  raise RuntimeError('incident control diagnostic parent missing')
+              candidate = repo
+              for component in path.parts:
+                  candidate = candidate / component
+                  if candidate.is_symlink():
+                      raise RuntimeError('incident control diagnostic path must not be a symlink')
+              try:
+                  target.parent.resolve(strict=True).relative_to(repo)
+              except ValueError as exc:
+                  raise RuntimeError('incident control diagnostic parent escaped repository') from exc
+              if target.exists() and not target.is_file():
+                  raise RuntimeError('incident control diagnostic target must be regular')
+              return target
+
           def atomic_write_text(path: Path, text: str) -> None:
-              existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
-              fd, name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+              target = guarded_target(path)
+              existing_mode = (target.stat().st_mode & 0o7777) if target.exists() else None
+              fd, name = tempfile.mkstemp(prefix=f'.{target.name}.', suffix='.tmp', dir=target.parent)
               temporary = Path(name)
               try:
                   if existing_mode is not None:
@@ -168,23 +207,19 @@ jobs:
                       handle.write(text)
                       handle.flush()
                       os.fsync(handle.fileno())
-                  os.replace(temporary, path)
+                  os.replace(temporary, target)
               finally:
                   if temporary.exists():
                       temporary.unlink()
 
           path = Path('docs/fixtures/memory-os-operability/incident-control-exercise-diagnostic.last.json')
-          diagnostic = json.loads(path.read_text(encoding='utf-8'))
-          output = Path('/tmp/incident-control-validation.log').read_text(
-              encoding='utf-8', errors='replace'
-          )[-4000:]
+          diagnostic = json.loads(guarded_target(path).read_text(encoding='utf-8'))
+          output = 'Incident control validation completed; raw output withheld.'
           diagnostic['validationResult'] = (
               'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL'
           )
           diagnostic['validationExitCode'] = int(os.environ['VALIDATION_EXIT_CODE'])
-          diagnostic['output'] = (
-              str(diagnostic.get('output', '')) + '\n--- validator ---\n' + output
-          )[-6000:]
+          diagnostic['output'] = 'Incident control exercise and validation completed; raw output withheld.'
           atomic_write_text(path, json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n')
           PY
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
