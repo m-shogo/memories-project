@@ -13,11 +13,12 @@ LIVE = ".github/workflows/regenerate-live-postgres-load-results.yml"
 UPLOAD = ".github/workflows/reconcile-upload-route-authority.yml"
 SIGKILL = ".github/workflows/deletion-worker-sigkill-recovery.yml"
 INDEPENDENT = ".github/workflows/live-dependency-bootstrap-source-negative.yml"
+STAGE_SOURCE = ".github/workflows/live-object-stage-source-negative.yml"
 SELF = "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
 REVIEWED_LIVE = "fd501a86a6e2f3ed3cb68c29d0d9ffb39162dc57"
 REVIEWED_UPLOAD = "3997403c3d93983470942909a8673aa961fc099a"
 REVIEWED_SIGKILL = "564f8dae50222dc9025ee31449c116d7f3b8345d"
-REVIEWED_INDEPENDENT = "ff92e4a807def62fefe1ad2df90f16fd9ba23aee"
+REVIEWED_INDEPENDENT = "db9d1d9d89bb3a7a02cb1587d126b503acea81e3"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
@@ -99,6 +100,7 @@ def validate(live: str, upload: str, sigkill: str, independent: str) -> None:
         '      - "' + SIGKILL + '"', '      - "' + INDEPENDENT + '"', '      - "' + SELF + '"',
         '      - "scripts/validate-memory-os-live-load.py"',
         '      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"',
+        '      - "' + STAGE_SOURCE + '"',
         CHECKOUT, SETUP, "          persist-credentials: false\n",
         PR_BASE, PUSH_REF, SHA_FORMAT, "          python " + SELF,
         "permissions:\n  contents: read\n",
@@ -377,8 +379,45 @@ def postgres_evidence_validator_runtime() -> None:
     print("PASS: live PostgreSQL actual evidence validator baseline and seven duplicate/path/symlink/privacy/readiness negatives")
 
 
+
+def validate_stage_syntax_boundary(stage: str) -> None:
+    """Run from a separate workflow even when the target workflow is invalid."""
+    expected_tail = """      - name: Prove closed live object stage vocabulary
+        run: |
+          set -euo pipefail
+          (cd services/import-api && go test ./internal/httpserver -run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter)$' -count=1)
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+"""
+    if not stage.endswith(expected_tail):
+        raise SystemExit("live object stage workflow terminal Go-test shell malformed")
+    if stage.count("      - name: Prove closed live object stage vocabulary") != 1:
+        raise SystemExit("live object stage workflow test step ambiguous")
+
+
+def stage_syntax_negative(stage: str) -> None:
+    marker = "-run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter)$' -count=1"
+    if stage.count(marker) != 1:
+        raise SystemExit("live object stage Go-test source marker ambiguous")
+    for label, altered in (
+        ("truncated Go-test regex", stage.replace(marker, "-run '^TestAtomicLocalLoadResultWriter' -count=1", 1)),
+        ("injected trailing shell", stage + " -count=1)"),
+        ("removed terminal clean guard", stage.rsplit('          test -z "$(git status --porcelain)"', 1)[0]),
+    ):
+        try:
+            validate_stage_syntax_boundary(altered)
+        except SystemExit:
+            continue
+        raise SystemExit("live object stage syntax guard accepted " + label)
+    print("PASS: independent live object stage terminal shell syntax guard (3 negatives)")
+
+
 def main() -> int:
     live, upload, sigkill, independent = source(LIVE), source(UPLOAD), source(SIGKILL), source(INDEPENDENT)
+    stage = source(STAGE_SOURCE)
+    validate_stage_syntax_boundary(stage)
+    stage_syntax_negative(stage)
     validate(live, upload, sigkill, independent)
     predicate_runtime(independent)
     source_negatives(live, upload, sigkill, independent)
