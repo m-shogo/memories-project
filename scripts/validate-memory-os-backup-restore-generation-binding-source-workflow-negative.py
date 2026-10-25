@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/backup-restore-generation-binding.yml"
 INDEPENDENT = ".github/workflows/backup-restore-generation-binding-source-negative.yml"
 SELF = "scripts/validate-memory-os-backup-restore-generation-binding-source-workflow-negative.py"
-REVIEWED_PUBLISHER = "5d000511cee9a80bf480484fd5521dd9461e9bf9"
+REVIEWED_PUBLISHER = "07a378234c080d94cee19f84bfa441c7b74b4b9b"
 REVIEWED_INDEPENDENT = "bd93725cf6b91fed44a47bd8c6a0bae8507893ab"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -45,6 +48,10 @@ MAIN_REQUIRED = (
     ("latest reset", "            git reset --hard origin/so\n", 1),
     ("root read token", "permissions:\n  contents: read\n", 1),
     ("writer write token", "      contents: write\n", 1),
+    ("diagnostic fixed redaction", "              'output': 'REDACTED: generation binding validation failed; consult CI job logs',\n", 1),
+    ("raw CI log suppression", '          printf "Generation binding validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
+    ("no raw diagnostic tail", "text[-12000:]", 0),
+    ("no raw CI log echo", '          cat "$log"\n', 0),
 )
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
@@ -142,6 +149,42 @@ def runtime_sha_proof(publisher: str, independent: str) -> None:
                 raise SystemExit("generation binding SHA predicate drift: " + source_label + " " + label)
     print(f"PASS: generation binding publisher/independent SHA runtime ({len(cases) * 2} cases)")
 
+def runtime_diagnostic_redaction(publisher: str) -> None:
+    """Execute the generation-binding inline diagnostic writer in isolation."""
+    start = "          python - <<'PY'\n"
+    end = "          PY\n"
+    if publisher.count(start) != 1 or publisher.count(end) != 1:
+        raise SystemExit("generation binding diagnostic writer not uniquely reachable")
+    inline = publisher.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="generation-binding-diagnostic-") as tmpdir:
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_SHA": "a" * 40,
+            "RESTORE_EXIT_CODE": "31",
+            "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_JKL",
+        })
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmpdir, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            raise SystemExit("generation binding isolated diagnostic failed: " + result.stderr[:500])
+        output = Path(tmpdir) / "docs/fixtures/memory-os-operability/backup-restore-generation-reconcile-diagnostic.last.json"
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        if payload.get("output") != "REDACTED: generation binding validation failed; consult CI job logs":
+            raise SystemExit("generation binding diagnostic persisted raw validator output")
+        if payload.get("sourceCommitSha") != "a" * 40 or payload.get("exitCode") != 31:
+            raise SystemExit("generation binding diagnostic source/exit drift")
+        if payload.get("containsSecrets") is not False or payload.get("productionEquivalentRestoreEvidence") is not False:
+            raise SystemExit("generation binding diagnostic secret/evidence flags drift")
+        if payload.get("productionEvidence") is not False or payload.get("productionReady") is not False:
+            raise SystemExit("generation binding diagnostic production evidence/readiness drift")
+        if "CANARY_DO_NOT_PERSIST_JKL" in output.read_text(encoding="utf-8"):
+            raise SystemExit("generation binding diagnostic persisted synthetic canary")
+    print("PASS: generation binding isolated diagnostic redaction (1 runtime case)")
+
+
 def negatives(publisher: str, independent: str) -> None:
     publisher_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -167,6 +210,9 @@ def negatives(publisher: str, independent: str) -> None:
         ("writer token removed", "      contents: write\n", "      contents: read\n"),
         ("unreviewed Action", "      - name: Capture exact generation binding authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact generation binding authority source\n"),
         ("unreviewed shell", "      - name: Capture exact generation binding authority source\n", "      - run: echo unreviewed\n      - name: Capture exact generation binding authority source\n"),
+        ("raw diagnostic", "              'output': 'REDACTED: generation binding validation failed; consult CI job logs',\n", "              'output': Path('/tmp/backup-restore-generation-binding.log').read_text(),\n"),
+        ("raw CI log", '          printf "Generation binding validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
+        ("missing redaction", "              'output': 'REDACTED: generation binding validation failed; consult CI job logs',\n", ""),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -205,6 +251,7 @@ def main() -> int:
     validate(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
+    runtime_diagnostic_redaction(publisher)
     negatives(publisher, independent)
     return 0
 

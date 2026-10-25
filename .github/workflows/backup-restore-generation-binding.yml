@@ -296,7 +296,7 @@ jobs:
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "Generation binding validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
       - name: Reject stale generation binding authority on pull requests
         if: steps.restore.outputs.exit_code == '0' && github.event_name == 'pull_request'
@@ -388,14 +388,14 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/backup-restore-generation-binding.log').read_text(encoding='utf-8', errors='replace')
+          # Never persist untrusted generation-binding validator stdout.
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'backup-restore-generation-binding',
               'result': 'FAIL',
               'exitCode': int(os.environ['RESTORE_EXIT_CODE']),
               'sourceCommitSha': os.environ['SOURCE_SHA'],
-              'output': text[-12000:],
+              'output': 'REDACTED: generation binding validation failed; consult CI job logs',
               'containsSecrets': False,
               'productionEquivalentRestoreEvidence': False,
               'productionEvidence': False,
