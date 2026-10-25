@@ -393,6 +393,20 @@ def main() -> int:
              '      - ".github/workflows/backup-restore-generation-evidence-readonly.yml"\n',
              "", 1)),
     )
+    require(independent.count(
+        '      - ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"\n'
+    ) == 2, "drill rollback trigger fixture inventory drift")
+    independent_blob_cases += (
+        ("independent removed drill rollback PR trigger",
+         independent.replace(
+             '      - ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"\n',
+             "", 1)),
+        ("independent removed drill rollback push trigger",
+         independent.split("  push:\n", 1)[0] + "  push:\n" +
+         independent.split("  push:\n", 1)[1].replace(
+             '      - ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"\n',
+             "", 1)),
+    )
     for label, mutated in independent_blob_cases:
         require(mutated != independent, f"independent blob mutation unchanged: {label}")
         try:
