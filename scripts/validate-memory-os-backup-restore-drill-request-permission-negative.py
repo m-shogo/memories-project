@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -318,7 +319,7 @@ def require_trigger_path_negatives(source: str) -> None:
 
 
 
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "59cc9fb5ede84a09339e89d263f1866ee838fe65"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "33a5089f6e629f5aaed48050a110b125532e1df5"
 
 
 def require_reviewed_workflow_blob(source: str) -> None:
@@ -495,7 +496,39 @@ def prove_diagnostic_redaction_runtime(source: str) -> None:
                 "drill diagnostic evidence/readiness flags drift")
         require("CANARY_DO_NOT_PERSIST_456" not in output.read_text(encoding="utf-8"),
                 "drill diagnostic persisted synthetic sensitive content")
-    print("PASS: drill request isolated diagnostic redaction runtime (1 case)")
+        output.chmod(0o640)
+        mode_positive = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                       capture_output=True, text=True, timeout=15, check=False)
+        require(mode_positive.returncode == 0 and stat.S_IMODE(output.stat().st_mode) == 0o640,
+                "drill diagnostic did not preserve existing mode")
+        previous = output.read_bytes()
+        for label, source, replacement in (
+            ("replace", "os.replace(tmp_name, path)", "raise OSError('synthetic drill diagnostic replace failure')"),
+            ("fsync", "os.fsync(handle.fileno())", "raise OSError('synthetic drill diagnostic fsync failure')"),
+        ):
+            require(script.count(source) == 1, "drill diagnostic failure anchor drift: " + label)
+            failure = subprocess.run([sys.executable, "-c", script.replace(source, replacement, 1)],
+                                     cwd=tmpdir, env=env, capture_output=True, text=True,
+                                     timeout=15, check=False)
+            require(failure.returncode != 0 and "synthetic drill diagnostic " + label + " failure" in failure.stderr,
+                    "drill diagnostic intended failure not reached: " + label)
+            require(output.read_bytes() == previous and stat.S_IMODE(output.stat().st_mode) == 0o640,
+                    "drill diagnostic failure mutated prior bytes/mode: " + label)
+            require(not list(output.parent.glob(".backup-restore-drill-request-diagnostic.last.json.*.tmp")),
+                    "drill diagnostic failure left temporary file: " + label)
+        outside = Path(tmpdir) / "external-drill-diagnostic-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        require(symlink.returncode != 0 and "target must not be a symlink" in symlink.stderr,
+                "drill diagnostic accepted symlinked output")
+        require(output.is_symlink() and outside.read_bytes() == previous,
+                "drill diagnostic symlink altered external file")
+        require(not list(output.parent.glob(".backup-restore-drill-request-diagnostic.last.json.*.tmp")),
+                "drill diagnostic symlink rejection left temporary file")
+    print("PASS: drill request diagnostic redaction and atomic runtime (5 cases)")
 
 
 def main() -> int:
