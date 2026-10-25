@@ -75,6 +75,17 @@ def expect_validator_rejected(
     rejected = False
     reads = 0
     original_read_text = Path.read_text
+    original_guard = validator.enforce_execution_authority
+    original_command = validator.validate_command_source
+    fixture_guard = lambda: None
+    expected_commands = tuple(validator.COMMAND_SOURCES)
+    command_calls: list[tuple[str, str, str]] = []
+
+    def record_command(relative: str, module_name: str, label: str) -> None:
+        # The mutated tracked registry makes the canonical checkout dirty.
+        # Keep the upstream call inventory, not its recursive clean-worktree subprocesses.
+        require((relative, module_name, label) in expected_commands, f"unexpected source command: {relative}")
+        command_calls.append((relative, module_name, label))
 
     def tracked_read_text(candidate: Path, *args: Any, **kwargs: Any) -> str:
         nonlocal reads
@@ -82,13 +93,19 @@ def expect_validator_rejected(
             reads += 1
         return original_read_text(candidate, *args, **kwargs)
 
+    validator.enforce_execution_authority = fixture_guard
+    validator.validate_command_source = record_command
     try:
         with patch.object(Path, "read_text", tracked_read_text):
-            validator.main()
+            validator.main(canonical_execution_guard=fixture_guard)
     except validator.Fail:
         rejected = True
     finally:
+        validator.validate_command_source = original_command
+        validator.enforce_execution_authority = original_guard
         path.write_bytes(original)
+    require(validator.validate_command_source is original_command, "source command validator not restored")
+    require(tuple(command_calls) == expected_commands, f"source command call sites skipped/reordered: {name}")
     require(reads > 0, f"source validator rejected before reading mutated authority: {name}")
     require(rejected, f"corrupt append-only authority unexpectedly accepted by validator: {name}")
     require(path.read_bytes() == original, f"validator fixture did not restore canonical authority: {name}")
@@ -109,6 +126,14 @@ def expect_generator_rejected(
     rejected = False
     reads = 0
     original_read_text = Path.read_text
+    original_guard = generator.enforce_generator_execution_authority
+    original_identity = generator.require_generator_authority_identity
+    original_command = generator.require_canonical_command_authority
+    fixture_guard = lambda: None
+
+    def record_command(script_name: str, module_name: str, label: str) -> None:
+        require(script_name.startswith("validate-memory-os-backup-restore-"), f"unexpected generator command: {script_name}")
+        require(bool(module_name) and bool(label), "generator command metadata missing")
 
     def tracked_read_text(candidate: Path, *args: Any, **kwargs: Any) -> str:
         nonlocal reads
@@ -116,9 +141,12 @@ def expect_generator_rejected(
             reads += 1
         return original_read_text(candidate, *args, **kwargs)
 
+    generator.enforce_generator_execution_authority = fixture_guard
+    generator.require_generator_authority_identity = lambda: None
+    generator.require_canonical_command_authority = record_command
     try:
         with patch.object(Path, "read_text", tracked_read_text):
-            generator.main()
+            generator.main(canonical_execution_guard=fixture_guard)
     except SystemExit as exc:
         require(exc.code not in (None, 0), f"corrupt authority produced successful SystemExit: {name}")
         rejected = True
@@ -126,7 +154,11 @@ def expect_generator_rejected(
         require(exc.__class__.__name__ in DOMAIN_REJECTIONS, f"unexpected generator RuntimeError for {name}: {exc}")
         rejected = True
     finally:
+        generator.require_canonical_command_authority = original_command
+        generator.require_generator_authority_identity = original_identity
+        generator.enforce_generator_execution_authority = original_guard
         path.write_bytes(original)
+    require(generator.require_canonical_command_authority is original_command, "generator command validator not restored")
     require(reads > 0, f"inventory generator rejected before reading mutated authority: {name}")
     require(rejected, f"corrupt append-only authority unexpectedly accepted by generator: {name}")
     require(path.read_bytes() == original, f"generator fixture did not restore canonical authority: {name}")
@@ -145,14 +177,38 @@ def expect_standalone_source_rejected(
     mutate(bad)
     path.write_text(json.dumps(bad, indent=2) + "\n", encoding="utf-8")
     rejected = False
+    reads = 0
+    original_read_text = Path.read_text
+    original_guard = standalone.enforce_runtime_authority
+    original_source = standalone.validate_source_authorities
+    fixture_guard = lambda: None
+    source_authority = load_module(VALIDATOR, "memory_os_inventory_registry_standalone_fixture")
+
+    def validate_registry_sources_only() -> None:
+        # Real source command admission was already proved in the clean baseline.
+        for row in source_authority.SOURCES:
+            source_authority.validate_source(*row)
+
+    def tracked_read_text(candidate: Path, *args: Any, **kwargs: Any) -> str:
+        nonlocal reads
+        if candidate == path:
+            reads += 1
+        return original_read_text(candidate, *args, **kwargs)
+
+    standalone.enforce_runtime_authority = fixture_guard
+    standalone.validate_source_authorities = validate_registry_sources_only
     try:
-        try:
-            standalone.main()
-        except RuntimeError as exc:
-            require(exc.__class__.__name__ in DOMAIN_REJECTIONS, f"unexpected standalone RuntimeError for {name}: {exc}")
-            rejected = True
+        with patch.object(Path, "read_text", tracked_read_text):
+            standalone.main(canonical_execution_guard=fixture_guard)
+    except RuntimeError as exc:
+        require(exc.__class__.__name__ in DOMAIN_REJECTIONS, f"unexpected standalone RuntimeError for {name}: {exc}")
+        rejected = True
     finally:
+        standalone.validate_source_authorities = original_source
+        standalone.enforce_runtime_authority = original_guard
         path.write_bytes(original)
+    require(standalone.validate_source_authorities is original_source, "standalone source validator not restored")
+    require(reads > 0, f"standalone source rejected before reading mutated authority: {name}")
     require(rejected, f"corrupt source authority unexpectedly accepted by standalone inventory validator: {name}")
     print(f"PASS standalone validator reject: {name}")
 
