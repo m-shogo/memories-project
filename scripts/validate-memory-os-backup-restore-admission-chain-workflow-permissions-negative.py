@@ -327,8 +327,8 @@ def main() -> int:
     independent_blob_cases = (
         ("independent injected shell command",
          replace_once(independent,
-                      "          python -m py_compile \\n",
-                      "          echo UNREVIEWED\n          python -m py_compile \\n",
+                      "          python -m py_compile",
+                      "          echo UNREVIEWED\n          python -m py_compile",
                       "independent injected shell command")),
         ("independent relaxed shell",
          replace_once(independent,
