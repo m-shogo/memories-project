@@ -1450,6 +1450,14 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "      - uses: actions/setup-python@v5\n",
          "ancestor workflow checkout/setup drift"),
     )
+    cases += (
+        ("      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n",
+         "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677263\n",
+         "ancestor workflow checkout/setup drift"),
+        ("      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
+         "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87066\n",
+         "ancestor workflow checkout/setup drift"),
+    )
     for original, replacement, expected in cases:
         require(workflow_source.count(original) == 1,
                 f"workflow negative anchor not unique: {expected}")
@@ -1697,6 +1705,14 @@ def independent_learning_workflow_negative_cases(source: str) -> int:
          "independent learning workflow checkout/setup drift"),
         ("      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
          "      - uses: actions/setup-python@v5\n",
+         "independent learning workflow checkout/setup drift"),
+    )
+    cases += (
+        ("      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n",
+         "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677263\n",
+         "independent learning workflow checkout/setup drift"),
+        ("      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
+         "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87066\n",
          "independent learning workflow checkout/setup drift"),
     )
     for original, replacement, expected in cases:
@@ -2102,7 +2118,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 209, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 213, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
