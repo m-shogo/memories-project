@@ -363,6 +363,39 @@ def prove_stronger_lifecycle_authority_cannot_be_downgraded(before: dict[Path, b
     require_canonical_bytes_unchanged(before, "stronger lifecycle negative")
 
 
+
+def prove_stronger_lifecycle_main_rejects_before_write(before: dict[Path, bytes]) -> None:
+    """Exercise the real reconciler main path with synthetic stronger authority, without writes."""
+    module = load_module(RECONCILER, "migration_registry_main_lifecycle_guard")
+    original_load = module.load
+    original_commit = module.commit_outputs_transactionally
+    for field in module.STRONGER_LIFECYCLE_FIELDS:
+        def synthetic_load(path: Path) -> dict[str, Any]:
+            value = original_load(path)
+            if path == module.LIFECYCLE:
+                value["readiness"][field] = True
+            return value
+
+        def forbidden_commit(_outputs: dict[Path, dict[str, Any]]) -> None:
+            raise NegativeFailure("migration registry reached authority write despite stronger " + field)
+
+        module.load = synthetic_load
+        module.commit_outputs_transactionally = forbidden_commit
+        try:
+            try:
+                module.main()
+            except module.Fail as exc:
+                require("cannot overwrite stronger lifecycle authority: " + field in str(exc),
+                        "unexpected main-path stronger lifecycle rejection: " + field + ": " + str(exc))
+            else:
+                raise NegativeFailure("migration registry main accepted stronger lifecycle: " + field)
+        finally:
+            module.load = original_load
+            module.commit_outputs_transactionally = original_commit
+        require_canonical_bytes_unchanged(before, "main-path stronger lifecycle " + field)
+    print("PASS stronger lifecycle main-path prewrite rejection (4 cases)")
+
+
 def main() -> int:
     before = {
         CANONICAL_REGISTRY: CANONICAL_REGISTRY.read_bytes(),
@@ -372,6 +405,7 @@ def main() -> int:
         CANONICAL_STATUS: CANONICAL_STATUS.read_bytes(),
     }
     prove_stronger_lifecycle_authority_cannot_be_downgraded(before)
+    prove_stronger_lifecycle_main_rejects_before_write(before)
     prove_registry_reconcile_authorities(before)
     prove_orphan_rescue_authorities(before)
     print("Memory OS migration evidence reconcile authority negative PASS")

@@ -17,7 +17,7 @@ SELF = "scripts/validate-memory-os-migration-evidence-registry-workflow-source-n
 PUBLISHER_SHA = "44cbad2f07c77bd76a2d3982a666806a340f3912"
 INDEPENDENT_SHA = "878f920daaa183087dceb1dc8c24dde0b47e2180"
 AUTHORITY_NEGATIVE = "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
-AUTHORITY_NEGATIVE_SHA = "bfa8ad1f5ab6eaf9a3445caf3279c7b38dc784e9"
+AUTHORITY_NEGATIVE_SHA = "e9eebd43c2ed84340db9ba94560a6959ca0438c2"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 WRITER_SCOPE = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
