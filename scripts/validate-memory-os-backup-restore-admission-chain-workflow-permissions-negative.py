@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -52,6 +53,30 @@ def replace_all(text: str, old: str, new: str, label: str) -> str:
     count = text.count(old)
     require(count > 0, f"negative fixture boundary drift for {label}: expected at least one match")
     return text.replace(old, new)
+
+
+def prove_independent_permission_branch_guards_runtime(source: str) -> None:
+    """Execute the reviewed permission CI PR and push predicates with synthetic refs."""
+    pr = 'test "$PR_BASE_REF" = "so"'
+    push = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
+    require(source.count(pr) == 1 and source.count(push) == 1,
+            "independent permission branch predicate source drift")
+    cases = (
+        ("PR so", pr, "PR_BASE_REF", "so", True),
+        ("PR main", pr, "PR_BASE_REF", "main", False),
+        ("PR missing", pr, "PR_BASE_REF", "", False),
+        ("push so", push, "GITHUB_REF", "refs/heads/so", True),
+        ("push main", push, "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", push, "GITHUB_REF", "refs/tags/v1", False),
+    )
+    for label, command, key, value, expected in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+        result = subprocess.run(
+            ["bash", "-e", "-c", command], env=env, capture_output=True, check=False
+        )
+        require((result.returncode == 0) == expected,
+                "independent permission branch runtime guard drift: " + label)
+    print("PASS: independent permission PR/push branch guard runtime (6 cases)")
 
 
 def run_runner_negative() -> None:
@@ -306,6 +331,7 @@ def main() -> int:
     # Independently mutate the permission-check workflow bootstrap and PR identity.
     independent = module.independent_permission_workflow()
     module.validate_independent_permission_workflow(independent)
+    prove_independent_permission_branch_guards_runtime(independent)
     independent_cases = (
         ("independent PR target branch substituted", replace_once(independent, "  pull_request:\n    branches:\n      - so\n    paths:\n", "  pull_request:\n    branches:\n      - main\n    paths:\n", "independent PR target branch substituted")),
         ("independent PR base environment removed", replace_once(independent, "          PR_BASE_REF: ${{ github.base_ref }}\n", "", "independent PR base environment removed")),
