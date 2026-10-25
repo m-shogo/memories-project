@@ -2,6 +2,7 @@ name: Backup and Restore Contracts
 
 on:
   pull_request:
+    branches: [so]
     paths:
       - ".github/workflows/backup-restore-contracts.yml"
       - ".github/workflows/local-logical-restore.yml"
@@ -51,6 +52,7 @@ on:
       - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
       - "scripts/reconcile-memory-os-backup-coherent-authority.py"
       - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-backup-restore-contracts-workflow-negative.py"
   push:
     branches:
       - so
@@ -103,6 +105,7 @@ on:
       - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
       - "scripts/reconcile-memory-os-backup-coherent-authority.py"
       - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-backup-restore-contracts-workflow-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -118,19 +121,30 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify exact source
+        env:
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          test -n "$expected"
+          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${PR_BASE_REF:-}" = "so"
+            expected="${{ github.event.pull_request.head.sha }}"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            expected="${GITHUB_SHA:-}"
+          else
+            echo "Unreviewed backup restore contracts CI event" >&2
+            exit 1
+          fi
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
-
       - name: Snapshot canonical authority modes
         run: |
           set -euo pipefail
@@ -165,10 +179,12 @@ jobs:
           PY
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
 
+      - name: Prove backup restore CI source admission
+        run: python scripts/validate-memory-os-backup-restore-contracts-workflow-negative.py
       - name: Compile validators and check shell
         run: |
           python -m py_compile \
