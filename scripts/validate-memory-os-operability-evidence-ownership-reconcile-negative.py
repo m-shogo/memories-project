@@ -159,7 +159,10 @@ def prove_transaction_rollback(reconciler) -> None:
 
 
 def validate_reconciler_atomic_source() -> None:
-    text = RECONCILER_PATH.read_text(encoding="utf-8")
+    whole = RECONCILER_PATH.read_text(encoding="utf-8")
+    if whole.count("def atomic_write(") != 1 or whole.count("\ndef transactional_write(") != 1:
+        raise RuntimeError("ownership atomic function scope drift")
+    text = whole.split("def atomic_write(", 1)[1].split("\ndef transactional_write(", 1)[0]
     required = (
         "if not path.parent.is_dir():",
         "if candidate.is_symlink():",
