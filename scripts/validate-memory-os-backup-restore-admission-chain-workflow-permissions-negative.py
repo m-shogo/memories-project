@@ -427,6 +427,23 @@ def main() -> int:
              '      - ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"\n',
              "", 1)),
     )
+    # Changes to either external permission validator must trigger this
+    # independent permission CI on both PR and so push paths.
+    for protected_path in (
+        "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py",
+        "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py",
+    ):
+        marker = f'      - "{protected_path}"\n'
+        require(independent.count(marker) == 2,
+                f"independent permission external-validator trigger inventory drift: {protected_path}")
+        before_push, after_push = independent.split("  push:\n", 1)
+        independent_blob_cases += (
+            (f"independent removed {protected_path} PR trigger",
+             before_push.replace(marker, "", 1) + "  push:\n" + after_push),
+            (f"independent removed {protected_path} push trigger",
+             before_push + "  push:\n" + after_push.replace(marker, "", 1)),
+        )
+
     for label, mutated in independent_blob_cases:
         require(mutated != independent, f"independent blob mutation unchanged: {label}")
         try:

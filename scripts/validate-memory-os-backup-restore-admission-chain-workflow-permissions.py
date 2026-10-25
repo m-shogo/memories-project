@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_REL = Path(".github/workflows/backup-restore-admission-chain.yml")
 WORKFLOW = ROOT / WORKFLOW_REL
 INDEPENDENT_PERMISSION_WORKFLOW_REL = Path(".github/workflows/backup-restore-permission-boundary-negative.yml")
-REVIEWED_INDEPENDENT_PERMISSION_WORKFLOW_BLOB_SHA = "7f89918ebc904582a0d06d5b9ecfc59df38310fc"
+REVIEWED_INDEPENDENT_PERMISSION_WORKFLOW_BLOB_SHA = "1ea416bf5f5b3a29bfdce86fce5851472d4b9613"
 
 
 class Fail(RuntimeError):
