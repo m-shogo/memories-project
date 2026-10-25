@@ -1824,7 +1824,7 @@ def prove_push_baseline_append_only_negative() -> None:
                 "push-baseline rejected genuine append-only extension")
 
 
-def prove_pr_base_append_only_negative() -> None:
+def prove_pr_base_append_only_negative(source: str) -> None:
     """PR merge SHA must be checked against the actual reviewed base SHA."""
     with tempfile.TemporaryDirectory(prefix="learning-pr-base-negative-") as tmp:
         root = Path(tmp)
@@ -1857,6 +1857,19 @@ def prove_pr_base_append_only_negative() -> None:
                 "PR-base synthetic commit invalid")
         original = git("show", f"{base}:{authority}")
 
+        def run_reviewed_pr_step() -> subprocess.CompletedProcess[str]:
+            script = reviewed_learning_append_only_script(source)
+            marker = "${{ github.event.pull_request.base.sha }}"
+            require(script.count(marker) == 1,
+                    "PR-base reviewed workflow base binding drift")
+            script = script.replace("${{ github.event_name }}", "pull_request")
+            script = script.replace(marker, base)
+            return subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=root, capture_output=True, text=True,
+                timeout=10, check=False,
+            )
+
         git("checkout", "-qb", "feature-bad")
         target.write_bytes(b"rewritten\n")
         commit("rewrite on feature")
@@ -1869,6 +1882,11 @@ def prove_pr_base_append_only_negative() -> None:
         git("merge-base", "--is-ancestor", base, "HEAD")
         require(not target.read_bytes().startswith(original),
                 "PR-base failed to reject rewritten merge result")
+        rejected = run_reviewed_pr_step()
+        require(rejected.returncode != 0 and
+                "AUTONOMOUS LEARNING APPEND-ONLY FAILED: previous authority bytes changed"
+                in rejected.stderr,
+                "PR-base reviewed workflow accepted rewritten merge result")
 
         # A clean append from the same reviewed base must remain admissible.
         git("reset", "--hard", "-q", base)
@@ -1882,29 +1900,39 @@ def prove_pr_base_append_only_negative() -> None:
         git("merge-base", "--is-ancestor", base, "HEAD")
         require(target.read_bytes().startswith(original),
                 "PR-base rejected genuine append-only merge result")
+        accepted = run_reviewed_pr_step()
+        require(accepted.returncode == 0 and
+                "Autonomous learning append-only PASS" in accepted.stdout,
+                "PR-base reviewed workflow rejected valid merge result")
 
 
 
-def prove_manual_dispatch_ref_negative(source: str) -> int:
-    """Execute the actual reviewed dispatch script with unapproved refs."""
+def reviewed_learning_append_only_script(source: str) -> str:
+    """Extract the exact validated Actions Python body for event runtime tests."""
     step_name = "      - name: Enforce append-only learning authority against parent\n"
     next_step = "      - name: Validate learning contract and executable negatives\n"
     require(source.count(step_name) == 1 and source.count(next_step) == 1,
-            "dispatch runtime proof step boundary drift")
+            "learning runtime proof step boundary drift")
     body = source.split(step_name, 1)[1].split(next_step, 1)[0]
     begin = "          python - <<'PY'\n"
     end = "          PY\n"
     require(body.count(begin) == 1 and body.count(end) == 1,
-            "dispatch runtime proof here-doc boundary drift")
+            "learning runtime proof here-doc boundary drift")
     script = body.split(begin, 1)[1].split(end, 1)[0]
     lines = script.splitlines()
     require(all(not line or line.startswith("          ") for line in lines),
-            "dispatch runtime proof indentation drift")
+            "learning runtime proof indentation drift")
     script = "\n".join(line[10:] if line else "" for line in lines) + "\n"
-    event_marker = "${{ github.event_name }}"
-    require(script.count(event_marker) == 1,
-            "dispatch runtime proof event binding drift")
-    script = script.replace(event_marker, "workflow_dispatch")
+    require(script.count("${{ github.event_name }}") == 1,
+            "learning runtime proof event binding drift")
+    return script
+
+
+def prove_manual_dispatch_ref_negative(source: str) -> int:
+    """Execute the actual reviewed dispatch script with unapproved refs."""
+    script = reviewed_learning_append_only_script(source).replace(
+        "${{ github.event_name }}", "workflow_dispatch"
+    )
     for selected_ref in ("refs/heads/main", "refs/tags/v1",
                          "refs/pull/123/merge", None):
         env = {} if selected_ref is None else {"GITHUB_REF": selected_ref}
@@ -1942,12 +1970,12 @@ def main() -> int:
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
         prove_push_baseline_append_only_negative()
         total += 1
-        prove_pr_base_append_only_negative()
-        total += 1
+        prove_pr_base_append_only_negative(learning_workflow_source)
+        total += 2
         total += prove_manual_dispatch_ref_negative(learning_workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 189, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 190, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
