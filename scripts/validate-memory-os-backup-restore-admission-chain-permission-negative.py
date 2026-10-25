@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain.yml"
 NEGATIVE_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-negative.yml"
-REVIEWED_NEGATIVE_WORKFLOW_BLOB_SHA = "18c80c27ed7d4581f776d323ea993cae211ac6e3"
+REVIEWED_NEGATIVE_WORKFLOW_BLOB_SHA = "a422a98a071a9d5dc96c5dfd5f02770bc872c2cc"
 READONLY_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-readonly.yml"
 REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "062db2ed7039fc1396fdb7aed5049c1041c0e4ad"
 
@@ -298,7 +298,11 @@ def require_negative_workflow_source_negatives(source: str) -> None:
         ("floating-checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
         ("persisted-credentials", "persist-credentials: false", "persist-credentials: true"),
         ("missing-pr-head-guard", '[[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]', "true"),
-        ("dispatch-other-branch", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("dispatch-other-branch", 'elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then\n            test "${GITHUB_REF:-}" = "refs/heads/so"', 'elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then\n            true # bypass dispatch ref'),
+        ("missing-push-ref-guard", 'elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then\n            test "${GITHUB_REF:-}" = "refs/heads/so"', 'elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then\n            true # bypass push ref'),
+        ("missing-push-sha-guard", '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]', "true # bypass push SHA"),
+        ("unreviewed-event-accepted", 'echo "Unreviewed admission negative CI event" >&2\n            exit 1', 'echo "Unreviewed admission negative CI event" >&2\n            exit 0'),
+        ("push-event-substituted", 'elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then', 'elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then'),
         ("skipped-chain-negative", "run: python scripts/validate-memory-os-backup-restore-admission-chain-negative.py", "run: echo UNREVIEWED"),
         ("injected-shell", "          python -m py_compile", "          echo UNREVIEWED\n          python -m py_compile"),
     )
@@ -444,7 +448,7 @@ def main() -> int:
     print("workflow root/event negative mutations rejected: 6")
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
-    print("independent admission negative CI source mutations rejected: 6")
+    print("independent admission negative CI source mutations rejected: 10")
     print("independent admission readonly CI source mutations rejected: 12")
     print("production decision changed: false")
     return 0
