@@ -190,7 +190,7 @@ def source_negatives(publisher: str, independent: str) -> None:
         ("credentials", "          persist-credentials: false\n", "          persist-credentials: true\n"),
         ("self trigger", '      - "' + SELF + '"', ""),
         ("publisher trigger", '      - "' + PUBLISHER + '"', ""),
-        ("root write", "permissions:\n  contents: read\n", "permissions:\n  contents: read\n", "      contents: write\n"),
+        ("root write", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
         ("job scope", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "    if: always()"),
     )
     for name, original, cases in (("publisher", publisher, p_cases), ("independent", independent, i_cases)):
