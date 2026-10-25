@@ -121,6 +121,33 @@ def runtime(publisher: str, independent: str) -> None:
     print("PASS: typed non-resurrection publisher/independent PR-push branch runtime (12 cases), writer event runtime (4 cases)")
 
 
+def runtime_sha_proof(publisher: str, independent: str) -> None:
+    """Exercise typed non-resurrection PR and writer SHA admission predicates."""
+    cases = (
+        ("lowercase hex", "a" * 40, True),
+        ("numeric hex", "0" * 40, True),
+        ("short SHA", "a" * 39, False),
+        ("long SHA", "a" * 41, False),
+        ("uppercase SHA", "A" * 40, False),
+        ("nonhex SHA", "g" * 40, False),
+        ("empty SHA", "", False),
+        ("literal shell substitution", "$(echo unexpected)", False),
+    )
+    for source_label, source_text, predicate_label, command in (
+        ("publisher", publisher, "PR", PR_SHA_FORMAT),
+        ("publisher", publisher, "writer", WRITER_SHA_FORMAT),
+        ("independent", independent, "source", PR_SHA_FORMAT),
+    ):
+        if source_text.count(command) != 1:
+            raise SystemExit("typed non-resurrection SHA predicate unreachable: " + source_label + " " + predicate_label)
+        prefix = 'EXPECTED_SOURCE_SHA="${PROBE_SHA:-}"\n' if predicate_label == "writer" else 'expected="${PROBE_SHA:-}"\n'
+        for label, value, allowed in cases:
+            env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value}
+            result = subprocess.run(["bash", "-e", "-c", prefix + command], env=env, capture_output=True, check=False)
+            if (result.returncode == 0) != allowed:
+                raise SystemExit("typed non-resurrection SHA predicate drift: " + source_label + " " + predicate_label + " " + label)
+    print(f"PASS: typed non-resurrection publisher/independent SHA runtime ({len(cases) * 3} cases)")
+
 def negatives(publisher: str, independent: str) -> None:
     publisher_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -187,6 +214,7 @@ def main() -> int:
     independent = source(INDEPENDENT)
     validate(publisher, independent)
     runtime(publisher, independent)
+    runtime_sha_proof(publisher, independent)
     negatives(publisher, independent)
     return 0
 
