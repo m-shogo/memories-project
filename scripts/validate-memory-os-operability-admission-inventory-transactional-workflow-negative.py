@@ -90,7 +90,8 @@ def runtime(main: str, guard: str) -> None:
         if (p.returncode == 0) != allowed:
             raise SystemExit("transactional independent PR base predicate drift")
     for value, allowed in (("a" * 40, True), ("0" * 40, True), ("a" * 39, False), ("A" * 40, False), ("g" * 40, False), ("", False)):
-        p = subprocess.run(["bash", "-e", "-c", 'expected="${PROBE_SHA:-}"\\n'.replace("\\\\n", "\\n") + PR_SHA], env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value}, capture_output=True, check=False)
+        script = 'expected="${PROBE_SHA:-}"' + chr(10) + PR_SHA
+        p = subprocess.run(["bash", "-e", "-c", script], env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value}, capture_output=True, check=False)
         if (p.returncode == 0) != allowed:
             raise SystemExit("transactional independent PR SHA predicate drift")
     print("PASS: transactional source branch (8), event (4), SHA (12), PR base (3) runtime cases")
