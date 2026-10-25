@@ -12,6 +12,8 @@ on:
       - "scripts/validate-memory-os-live-object-load.py"
       - "contracts/operations/live-object-load-scenario-contract.v1.json"
       - "services/import-api/internal/httpserver/live_object_load_test.go"
+      - "services/import-api/internal/httpserver/live_load_test.go"
+      - "services/import-api/internal/httpserver/live_result_atomic_test.go"
   push:
     branches:
       - so
@@ -23,6 +25,8 @@ on:
       - "scripts/validate-memory-os-live-object-load.py"
       - "contracts/operations/live-object-load-scenario-contract.v1.json"
       - "services/import-api/internal/httpserver/live_object_load_test.go"
+      - "services/import-api/internal/httpserver/live_load_test.go"
+      - "services/import-api/internal/httpserver/live_result_atomic_test.go"
 
 permissions:
   contents: read
@@ -75,7 +79,11 @@ jobs:
       - name: Prove closed live object stage vocabulary
         run: |
           set -euo pipefail
-          (cd services/import-api && go test ./internal/httpserver -run '^TestLiveObjectStageLabelClosedVocabulary$' -count=1)
+          (cd services/import-api && go test ./internal/httpserver -run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter) -count=1)
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+ -count=1)
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"

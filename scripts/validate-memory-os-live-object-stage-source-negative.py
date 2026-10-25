@@ -11,7 +11,7 @@ PUBLISHER = ".github/workflows/reconcile-live-object-stage-diagnostics.yml"
 INDEPENDENT = ".github/workflows/live-object-stage-source-negative.yml"
 SELF = "scripts/validate-memory-os-live-object-stage-source-negative.py"
 REVIEWED_PUBLISHER = "7df80744055bd48c4dd7e87137109178d1c1f185"
-REVIEWED_INDEPENDENT = "a87b554aaf9c2c011601d1f0d0d6a7390d4a614f"
+REVIEWED_INDEPENDENT = "667bb353daa04878ecafd782c8b3243174ffe78f"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP_PY = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 SETUP_GO = "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"
@@ -402,11 +402,24 @@ def main():
                    "scripts/validate-memory-os-live-object-load.py",
                    "contracts/operations/live-object-load-scenario-contract.v1.json",
                    "services/import-api/internal/httpserver/live_object_load_test.go",
+                   "services/import-api/internal/httpserver/live_load_test.go",
+                   "services/import-api/internal/httpserver/live_result_atomic_test.go",
+                   "TestAtomicLocalLoadResultWriter",
                    "TestLiveObjectStageLabelClosedVocabulary",
                    "persist-credentials: false", "contents: read",
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("live object stage independent source/reachability drift: " + marker)
+    for writer_path in ("services/import-api/internal/httpserver/live_object_load_test.go",
+                        "services/import-api/internal/httpserver/live_load_test.go"):
+        writer_source = source(writer_path)
+        if "writeAtomicLocalLoadResult(path, append(payload" not in writer_source:
+            raise AssertionError("local load result writer bypassed atomic helper: " + writer_path)
+    atomic_source = source("services/import-api/internal/httpserver/live_result_atomic_test.go")
+    for marker in ("os.Lstat(path)", "os.CreateTemp(", "file.Sync()", "defer os.Remove(tempName)",
+                   "return rename(tempName, path)", "TestAtomicLocalLoadResultWriter"):
+        if marker not in atomic_source:
+            raise AssertionError("local load atomic writer source drift: " + marker)
     go_source = source("services/import-api/internal/httpserver/live_object_load_test.go")
     reconciler_source = source("scripts/reconcile-memory-os-live-object-stage-diagnostics.py")
     for marker in ("func liveObjectStageLabel(err error) string {",

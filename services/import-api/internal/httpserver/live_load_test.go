@@ -191,7 +191,7 @@ func writeLiveLoadResults(t *testing.T, sourceCommit string, preview, applyResul
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o644); err != nil {
+	if err := writeAtomicLocalLoadResult(path, append(payload, '\n'), os.Rename); err != nil {
 		t.Fatal(err)
 	}
 }
