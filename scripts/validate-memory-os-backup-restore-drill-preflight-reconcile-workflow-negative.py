@@ -19,7 +19,7 @@ REQUIRED = (
     ("branch", '            test "${GITHUB_REF:-}" = "refs/heads/so"\n', 1),
     ("unreviewed event", '          else\n            echo "Unreviewed semantic preflight reconcile negative event" >&2\n            exit 1\n          fi\n', 1),
     ("source HEAD", '          test "$(git rev-parse HEAD)" = "$expected"\n', 1),
-    ("clean source", '          test -z "$(git status --porcelain)"\n', 2),
+    ("clean source", '          test -z "$(git status --porcelain)"', 2),
     ("self-trigger", '      - "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py"\n', 2),
     ("self-execution", '          python scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py\n', 1),
 )
@@ -29,6 +29,10 @@ def validate(source: str) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"semantic preflight reconcile workflow source boundary drift: {label}")
+
+
+    if not source.rstrip().endswith('          test -z "$(git status --porcelain)"'):
+        raise SystemExit("semantic preflight reconcile workflow source boundary drift: final read-only terminator")
 
 
 def main() -> int:
@@ -59,7 +63,15 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"semantic preflight reconcile accepted forbidden mutation: {label}")
-    print(f"PASS: semantic preflight reconcile workflow source admission ({len(cases)} negatives)")
+    # The canonical workflow may or may not end in a newline; both are valid.
+    validate(source.rstrip("\\n") + "\\n")
+    try:
+        validate(source + '\\n          echo "unreviewed final command"\\n')
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("semantic preflight reconcile accepted appended final command")
+    print(f"PASS: semantic preflight reconcile workflow source admission ({len(cases) + 1} negatives)")
     return 0
 
 
