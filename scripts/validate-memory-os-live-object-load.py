@@ -64,11 +64,11 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def require_utc_timestamp(value: Any, field: str) -> None:
+def require_utc_timestamp(value: Any, field: str) -> dt.datetime:
     require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
             f"{field} must be RFC3339 UTC")
     try:
-        dt.datetime.fromisoformat(value[:-1] + "+00:00")
+        return dt.datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
         raise ValidationError(f"{field} must be RFC3339 UTC") from exc
 
@@ -114,7 +114,7 @@ def validate() -> None:
     if expected_sha:
         require(commit_sha == expected_sha, "commitSha does not match EXPECTED_COMMIT_SHA")
 
-    require_utc_timestamp(result.get("generatedAt"), "generatedAt")
+    generated_at = require_utc_timestamp(result.get("generatedAt"), "generatedAt")
     environment = result.get("environment")
     require(isinstance(environment, dict), "environment must be an object")
     require(environment.get("databaseMode") == "LOCAL_POSTGRES",
@@ -141,7 +141,8 @@ def validate() -> None:
             "dependencyMode must be LOCAL_POSTGRES_MINIO")
     require(observed.get("result") == "PASS", "scenario result must be PASS")
     require(observed.get("integrityResult") == "PASS", "integrityResult must be PASS")
-    require_utc_timestamp(observed.get("startedAt"), "startedAt")
+    started_at = require_utc_timestamp(observed.get("startedAt"), "startedAt")
+    require(started_at <= generated_at, "startedAt cannot follow generatedAt")
 
     batch = observed.get("batch")
     require(isinstance(batch, dict), "batch must be an object")

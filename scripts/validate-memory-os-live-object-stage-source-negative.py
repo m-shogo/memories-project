@@ -419,6 +419,11 @@ def live_object_evidence_validator_runtime():
             reject("noncanonical timezone", "generatedAt must be RFC3339 UTC")
             reset()
             document = json.loads(result_text)
+            document["generatedAt"] = "2026-01-01T00:00:00Z"
+            result_path.write_text(json.dumps(document), encoding="utf-8")
+            reject("impossible generation chronology", "startedAt cannot follow generatedAt")
+            reset()
+            document = json.loads(result_text)
             document["generatedAt"] = "2026-10-26T08:00:00.123456789Z"
             document["scenarios"][0]["startedAt"] = "2026-10-26T07:59:59.987654321Z"
             result_path.write_text(json.dumps(document), encoding="utf-8")
@@ -426,7 +431,7 @@ def live_object_evidence_validator_runtime():
         finally:
             if previous_expected is not None:
                 os.environ["EXPECTED_COMMIT_SHA"] = previous_expected
-    print("PASS: live object evidence actual validator baseline, fractional-nanosecond UTC and thirteen duplicate/path/symlink/privacy/readiness/numeric/time negatives")
+    print("PASS: live object evidence actual validator baseline, fractional-nanosecond UTC and fourteen duplicate/path/symlink/privacy/readiness/numeric/time/chronology negatives")
 
 
 def main():

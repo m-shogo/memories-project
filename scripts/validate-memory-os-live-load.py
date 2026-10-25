@@ -67,11 +67,11 @@ def require(condition: bool, message: str) -> None:
         raise ValidationError(message)
 
 
-def require_utc_timestamp(value: Any, field: str) -> None:
+def require_utc_timestamp(value: Any, field: str) -> dt.datetime:
     require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
             f"{field} must be RFC3339 UTC")
     try:
-        dt.datetime.fromisoformat(value[:-1] + "+00:00")
+        return dt.datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
         raise ValidationError(f"{field} must be RFC3339 UTC") from exc
 
@@ -160,7 +160,7 @@ def validate() -> None:
         require(commit_sha == expected_sha, "result commitSha does not match EXPECTED_COMMIT_SHA")
 
     generated_at = result.get("generatedAt")
-    require_utc_timestamp(generated_at, "generatedAt")
+    generated_at_utc = require_utc_timestamp(generated_at, "generatedAt")
 
     environment = result.get("environment")
     require(isinstance(environment, dict), "environment must be an object")
@@ -210,7 +210,8 @@ def validate() -> None:
         require(scenario.get("result") == "PASS", f"{scenario_id}: result must be PASS")
         require(scenario.get("integrityResult") == "PASS",
                 f"{scenario_id}: integrityResult must be PASS")
-        require_utc_timestamp(scenario.get("startedAt"), f"{scenario_id}: startedAt")
+        started_at_utc = require_utc_timestamp(scenario.get("startedAt"), f"{scenario_id}: startedAt")
+        require(started_at_utc <= generated_at_utc, f"{scenario_id}: startedAt cannot follow generatedAt")
 
         batch = scenario.get("batch")
         require(isinstance(batch, dict), f"{scenario_id}: batch must be an object")
