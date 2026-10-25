@@ -2,6 +2,7 @@ name: Backup Restore Drill Request Reconcile Rollback
 
 on:
   pull_request:
+    branches: [so]
     paths:
       - ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"
       - "scripts/memory_os_backup_restore_blockers.py"
@@ -81,6 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${GITHUB_BASE_REF:-}" = "so"
             pr_head="${{ github.event.pull_request.head.sha }}"
             [[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]
           elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then

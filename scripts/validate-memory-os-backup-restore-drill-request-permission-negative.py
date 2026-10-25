@@ -4,13 +4,15 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-drill-request.yml"
 ROLLBACK_WORKFLOW = ROOT / ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"
-REVIEWED_ROLLBACK_WORKFLOW_BLOB_SHA = "7d8d6a2f6fab57f4258d3a5f2891e2455a363839"
+REVIEWED_ROLLBACK_WORKFLOW_BLOB_SHA = "9bb45262fb5cc1cf8121e81040a8b0107db5a1ef"
 
 
 class Fail(RuntimeError):
@@ -366,7 +368,10 @@ def require_rollback_workflow_source_negatives(source: str) -> None:
         ("push-event-substituted", 'elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then', 'elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then'),
         ("skipped-reconcile-negative", "python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py", "echo UNREVIEWED"),
         ("injected-shell", "          python -m py_compile", "          echo UNREVIEWED\n          python -m py_compile"),
+        ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", "  pull_request:\n    branches: [main]\n    paths:\n"),
+        ("PR base assertion", 'test "${GITHUB_BASE_REF:-}" = "so"', "true # bypass PR base"),
     )
+    require(len(cases) == 12, "drill rollback CI source mutation inventory drift")
     for label, before, after in cases:
         require(source.count(before) == 1, f"drill rollback CI fixture anchor drift: {label}")
         mutated = source.replace(before, after, 1)
@@ -390,6 +395,7 @@ def require_rollback_workflow_source_negatives(source: str) -> None:
         ("missing permission validator push trigger",
          before_push + "  push:\n" + after_push.replace(marker, "", 1)),
     )
+    require(len(cases) + len(trigger_mutations) == 14, "drill rollback CI total mutation inventory drift")
     for label, mutated in trigger_mutations:
         require(mutated != source, f"drill rollback trigger fixture unchanged: {label}")
         try:
@@ -400,10 +406,33 @@ def require_rollback_workflow_source_negatives(source: str) -> None:
             raise Fail(f"drill rollback CI trigger mutation accepted: {label}")
 
 
+def prove_rollback_branch_guards_runtime(source: str) -> None:
+    """Execute reviewed PR and push/dispatch predicates with synthetic refs."""
+    pr_command = 'test "${GITHUB_BASE_REF:-}" = "so"'
+    push_command = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
+    require(source.count(pr_command) == 1, "drill rollback CI PR-base predicate drift")
+    require(source.count(push_command) == 2, "drill rollback CI push/dispatch predicate drift")
+    cases = (
+        ("PR so", pr_command, "GITHUB_BASE_REF", "so", True),
+        ("PR main", pr_command, "GITHUB_BASE_REF", "main", False),
+        ("PR missing", pr_command, "GITHUB_BASE_REF", "", False),
+        ("push so", push_command, "GITHUB_REF", "refs/heads/so", True),
+        ("push main", push_command, "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", push_command, "GITHUB_REF", "refs/tags/v1", False),
+    )
+    for label, command, key, value, expected in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+        result = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+        require((result.returncode == 0) == expected, "drill rollback CI runtime branch drift: " + label)
+    print("PASS: drill rollback CI PR/push branch guard runtime (6 cases)")
+
+
 def main() -> int:
     require(ROLLBACK_WORKFLOW.is_file() and not ROLLBACK_WORKFLOW.is_symlink(),
             "drill rollback CI workflow missing or substituted")
-    require_rollback_workflow_source_negatives(ROLLBACK_WORKFLOW.read_text(encoding="utf-8"))
+    rollback_source = ROLLBACK_WORKFLOW.read_text(encoding="utf-8")
+    require_rollback_workflow_source_negatives(rollback_source)
+    prove_rollback_branch_guards_runtime(rollback_source)
     text = WORKFLOW.read_text(encoding="utf-8")
     require_root_event_negatives(text)
     require_trigger_path_negatives(text)
@@ -474,7 +503,7 @@ def main() -> int:
     print("workflow root/event negative mutations rejected: 6")
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
-    print("independent drill rollback CI source mutations rejected: 12")
+    print("independent drill rollback CI source mutations rejected: 14")
     print("production decision changed: false")
     return 0
 
