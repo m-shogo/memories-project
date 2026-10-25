@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/production-shaped-failure-drills.yml"
 INDEPENDENT = ".github/workflows/production-shaped-failure-drills-source-negative.yml"
 SELF = "scripts/validate-memory-os-production-shaped-failure-drill-workflow-source-negative.py"
-PUBLISHER_SHA = "c09e72e8367196bd7b7b72ed67171b6f5babec76"
+PUBLISHER_SHA = "16a8d603a6deb80f6ae5b6f87e64d5ad60bf6036"
 INDEPENDENT_SHA = "f6721cbf3d59d2b4e5aef1e9e324ebf0c478eb9f"
 D = chr(36)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -153,7 +154,38 @@ def diagnostic_runtime(publisher: str) -> None:
             raise SystemExit("production-shaped drill diagnostic evidence/readiness flag drift")
         if value.get("registeredDrillCount") != 0 or "CANARY_DO_NOT_PERSIST_DRILL" in raw:
             raise SystemExit("production-shaped drill diagnostic fabricated evidence or persisted canary")
-    print("PASS: production-shaped drill isolated diagnostic redaction (1 runtime case)")
+        output.chmod(0o640)
+        positive = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                  capture_output=True, text=True, timeout=15, check=False)
+        if positive.returncode or stat.S_IMODE(output.stat().st_mode) != 0o640:
+            raise SystemExit("production-shaped drill diagnostic failed to preserve existing mode")
+        previous = output.read_bytes()
+        for label, before in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            if script.count(before) != 1:
+                raise SystemExit("production-shaped drill diagnostic fault anchor drift: " + label)
+            failure = subprocess.run([sys.executable, "-c", script.replace(
+                before, "raise OSError('synthetic production-shaped drill diagnostic " + label + " failure')", 1)],
+                cwd=directory, env=env, capture_output=True, text=True, timeout=15, check=False)
+            if failure.returncode == 0 or "synthetic production-shaped drill diagnostic " + label + " failure" not in failure.stderr:
+                raise SystemExit("production-shaped drill diagnostic intended fault not reached: " + label)
+            if output.read_bytes() != previous or stat.S_IMODE(output.stat().st_mode) != 0o640:
+                raise SystemExit("production-shaped drill diagnostic fault altered prior bytes/mode: " + label)
+            if list(output.parent.glob(".production-shaped-failure-drill-diagnostic.last.json.*.tmp")):
+                raise SystemExit("production-shaped drill diagnostic fault left temporary file: " + label)
+        outside = Path(directory) / "external-production-shaped-drill-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        if symlink.returncode == 0 or "target must not be a symlink" not in symlink.stderr:
+            raise SystemExit("production-shaped drill diagnostic accepted symlink destination")
+        if not output.is_symlink() or outside.read_bytes() != previous:
+            raise SystemExit("production-shaped drill diagnostic altered external symlink canary")
+        if list(output.parent.glob(".production-shaped-failure-drill-diagnostic.last.json.*.tmp")):
+            raise SystemExit("production-shaped drill diagnostic symlink rejection left temporary file")
+    print("PASS: production-shaped drill diagnostic redaction/atomic runtime (5 cases)")
 
 
 def negatives(publisher: str, independent: str) -> None:
@@ -177,6 +209,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("checkout writer", WRITER_CHECKOUT, 'ref: ' + D + '{{ github.ref }}'),
         ("raw diagnostic", REDACTION, "'output': Path('/tmp/production-shaped-failure-drills.log').read_text(),"),
         ("raw CI echo", SUPPRESS, 'cat "$log"'),
+        ("symlink guard", "          if path.is_symlink():\n              raise SystemExit('production-shaped drill diagnostic target must not be a symlink')\n", ""),
         ("unreviewed Action", "      - name: Capture exact validation source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact validation source\n"),
         ("unreviewed shell", "      - name: Capture exact validation source\n", "      - run: echo unreviewed\n      - name: Capture exact validation source\n"),
     )
