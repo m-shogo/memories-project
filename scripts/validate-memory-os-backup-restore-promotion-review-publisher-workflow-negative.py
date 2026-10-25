@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/backup-restore-promotion-review.yml"
 INDEPENDENT = ".github/workflows/backup-restore-promotion-review-source-negative.yml"
 SELF = "scripts/validate-memory-os-backup-restore-promotion-review-publisher-workflow-negative.py"
-REVIEWED_PUBLISHER = "1d0e9a5334a3cff3c62c3699d756f3b0d2d3a6fb"
+REVIEWED_PUBLISHER = "6b572a3c17fa9724b48d62433b764ceb84c8b224"
 REVIEWED_INDEPENDENT = "5e92aa51cdfa55ea4a55bff9674d7c7496bc71d7"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -51,6 +52,7 @@ MAIN_REQUIRED = (
     ("raw CI log suppression", '          printf "Promotion review validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
     ("no raw diagnostic tail", "text[-12000:]", 0),
     ("no raw CI log echo", '          cat "$log"\n', 0),
+    ("diagnostic symlink rejection", "          if path.is_symlink():\n", 1),
 )
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
@@ -183,7 +185,39 @@ def runtime_diagnostic_redaction(publisher: str) -> None:
             raise SystemExit("human promotion diagnostic production evidence drift")
         if "CANARY_DO_NOT_PERSIST_GHI" in output.read_text(encoding="utf-8"):
             raise SystemExit("human promotion diagnostic persisted synthetic canary")
-    print("PASS: human promotion isolated diagnostic redaction (1 runtime case)")
+
+        output.chmod(0o640)
+        second = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                capture_output=True, text=True, check=False, timeout=15)
+        if second.returncode or stat.S_IMODE(output.stat().st_mode) != 0o640:
+            raise SystemExit("human promotion diagnostic failed to preserve existing mode")
+        previous = output.read_bytes()
+        for label, anchor in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            if script.count(anchor) != 1:
+                raise SystemExit("human promotion diagnostic fault anchor drift: " + label)
+            mutated = script.replace(anchor, "raise OSError('synthetic promotion " + label + " failure')", 1)
+            outcome = subprocess.run([sys.executable, "-c", mutated], cwd=tmpdir, env=env,
+                                     capture_output=True, text=True, check=False, timeout=15)
+            if outcome.returncode == 0 or "synthetic promotion " + label + " failure" not in outcome.stderr:
+                raise SystemExit("human promotion diagnostic intended fault not reached: " + label)
+            if output.read_bytes() != previous or stat.S_IMODE(output.stat().st_mode) != 0o640:
+                raise SystemExit("human promotion diagnostic failure altered previous bytes/mode: " + label)
+            if list(output.parent.glob(".backup-restore-promotion-review-diagnostic.last.json.*.tmp")):
+                raise SystemExit("human promotion diagnostic failure leaked temporary file: " + label)
+        outside = Path(tmpdir) / "external-promotion-canary"
+        outside.write_bytes(b"EXTERNAL_PROMOTION_CANARY")
+        output.unlink()
+        output.symlink_to(outside)
+        outcome = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                 capture_output=True, text=True, check=False, timeout=15)
+        if outcome.returncode == 0 or "target must not be a symlink" not in outcome.stderr:
+            raise SystemExit("human promotion diagnostic accepted symlink destination")
+        if not output.is_symlink() or outside.read_bytes() != b"EXTERNAL_PROMOTION_CANARY":
+            raise SystemExit("human promotion diagnostic followed external symlink")
+        if list(output.parent.glob(".backup-restore-promotion-review-diagnostic.last.json.*.tmp")):
+            raise SystemExit("human promotion diagnostic symlink failure leaked temporary file")
+    print("PASS: human promotion diagnostic redaction/atomic runtime (5 cases)")
 
 
 def negatives(publisher: str, independent: str) -> None:
@@ -213,6 +247,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("raw diagnostic", "              'output': 'REDACTED: promotion review validation failed; consult CI job logs',\n", "              'output': Path('/tmp/backup-restore-promotion-review.log').read_text(),\n"),
         ("raw CI log", '          printf "Promotion review validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
         ("missing redaction", "              'output': 'REDACTED: promotion review validation failed; consult CI job logs',\n", ""),
+        ("diagnostic symlink guard", "          if path.is_symlink():\n", ""),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
