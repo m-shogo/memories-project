@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -303,10 +304,44 @@ def require_trigger_path_negatives(source: str) -> None:
             raise Fail(f"recovery trigger mutation accepted: {label}")
 
 
+
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "be543c887e092ebb8de3938805fdfeccb269eefa"
+
+
+def require_reviewed_workflow_blob(source: str) -> None:
+    """Bind all workflow bytes, including executable run bodies and metadata."""
+    payload = source.encode("utf-8")
+    git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    require(hashlib.sha1(git_blob).hexdigest() == REVIEWED_WORKFLOW_GIT_BLOB_SHA,
+            "recovery publisher complete workflow blob drift")
+
+
+def require_run_body_negatives(source: str) -> None:
+    require_reviewed_workflow_blob(source)
+    anchor = "        run: |\n"
+    strict = "          set -euo pipefail\n"
+    require(anchor in source and strict in source,
+            "recovery publisher run-body negative anchors missing")
+    mutations = (
+        ("injected-command", source.replace(anchor, anchor + "          echo UNREVIEWED\n", 1)),
+        ("relaxed-shell", source.replace(strict, "          set +e\n", 1)),
+        ("inline-run", source.replace(anchor, "        run: echo UNREVIEWED\n", 1)),
+    )
+    for label, mutated in mutations:
+        require(mutated != source, f"recovery run-body fixture unchanged: {label}")
+        try:
+            require_reviewed_workflow_blob(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"recovery unreviewed run-body mutation accepted: {label}")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require_root_event_negatives(text)
     require_trigger_path_negatives(text)
+    require_run_body_negatives(text)
     require("pull_request_target:" not in text, "generation-evidence authority must not use pull_request_target")
     require("\njobs:\n  validate-pr:\n" in text, "dedicated generation-evidence PR validation job missing")
     require("\n  validate:\n" in text, "generation-evidence non-PR authority job missing")
@@ -367,6 +402,7 @@ def main() -> int:
     print("production evidence generated: false")
     print("workflow root/event negative mutations rejected: 6")
     print("workflow trigger-path negative mutations rejected: 7")
+    print("complete workflow run-body negative mutations rejected: 3")
     print("production decision changed: false")
     return 0
 
