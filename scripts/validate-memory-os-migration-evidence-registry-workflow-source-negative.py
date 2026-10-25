@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Read-only exact-source and runtime negative proof for release compatibility pair CI."""
+"""Read-only exact-source, runtime and diagnostic privacy proof for migration evidence CI."""
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,7 +125,7 @@ def negative_proofs(publisher: str, independent: str) -> None:
         except SystemExit:
             continue
         raise SystemExit("migration evidence source negative accepted: " + label)
-    print("PASS: migration evidence CI source negatives (14 cases)")
+    print("PASS: migration evidence CI source negatives (16 cases)")
 
 
 def runtime_proofs() -> None:
@@ -146,11 +149,73 @@ def runtime_proofs() -> None:
     print("PASS: migration evidence branch/SHA runtime (18 cases)")
 
 
+def require_diagnostic_payload(raw: str) -> None:
+    """Reject secret-bearing or promotion-shaped diagnostic JSON."""
+    require("CANARY_DO_NOT_PERSIST_MIGRATION_EVIDENCE" not in raw,
+            "migration evidence diagnostic persisted sensitive canary")
+    value = json.loads(raw)
+    require(value.get("schemaVersion") == "memory-os-validator-diagnostic.v1",
+            "migration evidence diagnostic schema drift")
+    require(value.get("workflow") == "migration-evidence-registry" and value.get("result") == "FAIL",
+            "migration evidence diagnostic identity drift")
+    require(value.get("sourceCommitSha") == "e" * 40 and value.get("exitCode") == 23,
+            "migration evidence diagnostic source/exit drift")
+    require(value.get("output") == "REDACTED: migration evidence registry failed; raw output withheld",
+            "migration evidence diagnostic raw output not redacted")
+    require(value.get("containsSecrets") is False and value.get("productionEvidence") is False
+            and value.get("productionReady") is False,
+            "migration evidence diagnostic asserted secrets/evidence/readiness")
+
+
+def diagnostic_runtime(publisher: str) -> None:
+    """Execute the actual reviewed inline writer with a canary in an isolated directory."""
+    marker = "      - name: Record privacy-safe diagnostic\n"
+    require(publisher.count(marker) == 1, "migration evidence diagnostic step not unique")
+    section = publisher.split(marker, 1)[1]
+    start, end = "          python - <<'PY'\n", "          PY\n"
+    require(section.count(start) == 1 and section.count(end) >= 1,
+            "migration evidence inline diagnostic writer not unique")
+    inline = section.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    marker_text = "'REDACTED: migration evidence registry failed; raw output withheld'"
+    require(script.count(marker_text) == 1, "migration evidence diagnostic marker not unique")
+    require(script.count("'productionReady': False") == 1, "migration evidence diagnostic readiness guard not unique")
+    with tempfile.TemporaryDirectory(prefix="migration-evidence-diagnostic-proof-") as temp:
+        root = Path(temp)
+        env = os.environ.copy()
+        env.update({"SOURCE_COMMIT_SHA": "e" * 40, "MIGRATION_EXIT_CODE": "23",
+                    "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_MIGRATION_EVIDENCE"})
+        variants = (
+            ("reviewed", script, True),
+            ("raw canary", script.replace(marker_text, "os.environ['SENSITIVE_CANARY']", 1), False),
+            ("readiness promotion", script.replace("'productionReady': False", "'productionReady': True", 1), False),
+        )
+        for name, program, allowed in variants:
+            directory = root / name.replace(" ", "-")
+            directory.mkdir()
+            result = subprocess.run([sys.executable, "-c", program], cwd=directory, env=env,
+                                    capture_output=True, text=True, timeout=15, check=False)
+            require(result.returncode == 0, "migration evidence diagnostic writer failed in isolation: " + name)
+            require("CANARY_DO_NOT_PERSIST_MIGRATION_EVIDENCE" not in result.stdout + result.stderr,
+                    "migration evidence diagnostic leaked canary to process output")
+            path = directory / "docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json"
+            require(path.is_file() and not path.is_symlink(), "migration evidence diagnostic output missing")
+            raw = path.read_text(encoding="utf-8")
+            try:
+                require_diagnostic_payload(raw)
+            except SystemExit:
+                require(not allowed, "migration evidence reviewed diagnostic rejected")
+            else:
+                require(allowed, "migration evidence diagnostic accepted unsafe mutation: " + name)
+    print("PASS: migration evidence actual diagnostic writer (1 positive, 2 negative runtime cases)")
+
+
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
+    diagnostic_runtime(publisher)
     return 0
 
 
