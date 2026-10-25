@@ -62,6 +62,44 @@ func liveObjectStageError(stage string, err error) error {
 	return fmt.Errorf("%s: %w", stage, err)
 }
 
+func liveObjectStageLabel(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	prefix, _, found := strings.Cut(err.Error(), ":")
+	if !found {
+		return "unknown"
+	}
+	switch prefix {
+	case "issue", "issue_read", "issue_close", "issue_decode", "issue_contract", "put", "put_read", "put_close", "complete", "complete_read", "complete_close":
+		return prefix
+	}
+	return "unknown"
+}
+
+func TestLiveObjectStageLabelClosedVocabulary(t *testing.T) {
+	for _, stage := range []string{"issue", "issue_read", "issue_close", "issue_decode", "issue_contract", "put", "put_read", "put_close", "complete", "complete_read", "complete_close"} {
+		if got := liveObjectStageLabel(fmt.Errorf("%s: synthetic error", stage)); got != stage {
+			t.Fatalf("closed stage %q classified as %q", stage, got)
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"nil", nil},
+		{"no delimiter", fmt.Errorf("synthetic transport error")},
+		{"empty prefix", fmt.Errorf(": empty")},
+		{"unreviewed stage", fmt.Errorf("credential: synthetic-secret")},
+		{"URL-shaped error", fmt.Errorf("Post \"https://example.invalid:443/private\": timeout")},
+		{"lookalike stage", fmt.Errorf("issue_extra: synthetic error")},
+	} {
+		if got := liveObjectStageLabel(tc.err); got != "unknown" {
+			t.Errorf("%s: unreviewed stage escaped closed vocabulary as %q", tc.name, got)
+		}
+	}
+}
+
 func runUploadLifecycle(
 	client *http.Client,
 	baseURL string,
@@ -210,12 +248,7 @@ func runLiveObjectBatch(
 		if sample.Err != nil {
 			result.Failures++
 			result.StatusClassCounts["transport_error"]++
-			stage := "unknown"
-			if value := sample.Err.Error(); value != "" {
-				if prefix, _, found := strings.Cut(value, ":"); found && prefix != "" {
-					stage = prefix
-				}
-			}
+			stage := liveObjectStageLabel(sample.Err)
 			result.StatusClassCounts["transport_error_"+stage]++
 			continue
 		}

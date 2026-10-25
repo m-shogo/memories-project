@@ -49,6 +49,25 @@ func liveObjectStageError(stage string, err error) error {
     changed = changed or updated != text
     text = updated
 
+    label_helper = helper + '''\nfunc liveObjectStageLabel(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	prefix, _, found := strings.Cut(err.Error(), ":")
+	if !found {
+		return "unknown"
+	}
+	switch prefix {
+	case "issue", "issue_read", "issue_close", "issue_decode", "issue_contract", "put", "put_read", "put_close", "complete", "complete_read", "complete_close":
+		return prefix
+	}
+	return "unknown"
+}
+'''
+    updated = replace_once(text, helper, label_helper, "closed stage labels")
+    changed = changed or updated != text
+    text = updated
+
     replacements = [
         (
             '''\tissueResponse, err := client.Do(issueRequest)
@@ -164,28 +183,16 @@ func liveObjectStageError(stage string, err error) error {
             "complete read",
         ),
         (
-            '''\tfor _, sample := range samples {
-\t\tif sample.Err != nil {
-\t\t\tresult.Failures++
-\t\t\tresult.StatusClassCounts["transport_error"]++
-\t\t\tcontinue
-\t\t}
-''',
-            '''\tfor _, sample := range samples {
-\t\tif sample.Err != nil {
-\t\t\tresult.Failures++
-\t\t\tresult.StatusClassCounts["transport_error"]++
-\t\t\tstage := "unknown"
-\t\t\tif value := sample.Err.Error(); value != "" {
-\t\t\t\tif prefix, _, found := strings.Cut(value, ":"); found && prefix != "" {
-\t\t\t\t\tstage = prefix
-\t\t\t\t}
-\t\t\t}
-\t\t\tresult.StatusClassCounts["transport_error_"+stage]++
-\t\t\tcontinue
-\t\t}
-''',
-            "stage accounting",
+            '''			stage := "unknown"
+			if value := sample.Err.Error(); value != "" {
+				if prefix, _, found := strings.Cut(value, ":"); found && prefix != "" {
+					stage = prefix
+				}
+			}
+			result.StatusClassCounts["transport_error_"+stage]++''',
+            '''			stage := liveObjectStageLabel(sample.Err)
+			result.StatusClassCounts["transport_error_"+stage]++''',
+            "bounded stage accounting",
         ),
     ]
 

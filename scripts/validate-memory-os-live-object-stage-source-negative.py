@@ -11,7 +11,7 @@ PUBLISHER = ".github/workflows/reconcile-live-object-stage-diagnostics.yml"
 INDEPENDENT = ".github/workflows/live-object-stage-source-negative.yml"
 SELF = "scripts/validate-memory-os-live-object-stage-source-negative.py"
 REVIEWED_PUBLISHER = "7df80744055bd48c4dd7e87137109178d1c1f185"
-REVIEWED_INDEPENDENT = "104cea3178b0f03407bd1c1e0bdcccc6bc65d6d5"
+REVIEWED_INDEPENDENT = "63a197988b1d4f413ef8d4ec74cd5b285925723f"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP_PY = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 SETUP_GO = "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"
@@ -253,11 +253,26 @@ def main():
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     if blob(publisher) != REVIEWED_PUBLISHER or blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("live object stage complete source blob drift")
-    for marker in (PUBLISHER, INDEPENDENT, SELF, CHECKOUT, SETUP_PY,
+    for marker in (PUBLISHER, INDEPENDENT, SELF, CHECKOUT, SETUP_PY, SETUP_GO,
+                   "scripts/reconcile-memory-os-live-object-stage-diagnostics.py",
+                   "services/import-api/internal/httpserver/live_object_load_test.go",
+                   "TestLiveObjectStageLabelClosedVocabulary",
                    "persist-credentials: false", "contents: read",
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("live object stage independent source/reachability drift: " + marker)
+    go_source = source("services/import-api/internal/httpserver/live_object_load_test.go")
+    reconciler_source = source("scripts/reconcile-memory-os-live-object-stage-diagnostics.py")
+    for marker in ("func liveObjectStageLabel(err error) string {",
+                   "case \"issue\", \"issue_read\", \"issue_close\", \"issue_decode\", \"issue_contract\", \"put\", \"put_read\", \"put_close\", \"complete\", \"complete_read\", \"complete_close\":",
+                   "stage := liveObjectStageLabel(sample.Err)",
+                   "func TestLiveObjectStageLabelClosedVocabulary(t *testing.T) {"):
+        if marker not in go_source:
+            raise AssertionError("live object stage closed vocabulary source drift: " + marker)
+    if 'stage = prefix' in go_source or '"transport_error_"+stage' not in go_source:
+        raise AssertionError("live object stage unbounded stage label regression")
+    if "closed stage labels" not in reconciler_source or "bounded stage accounting" not in reconciler_source:
+        raise AssertionError("live object stage reconciler label policy drift")
     policy(publisher)
     negatives(publisher)
     runtime(publisher, "Validate diagnostic source read-only", False)
