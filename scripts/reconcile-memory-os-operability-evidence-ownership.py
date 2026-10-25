@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -78,10 +79,23 @@ def validate_written_authority() -> None:
 
 
 def atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.parent.is_dir():
+        raise ReconcileFailure("ownership atomic target parent missing")
+    candidate = path
+    while True:
+        if candidate.is_symlink():
+            raise ReconcileFailure("ownership atomic target or ancestor is a symlink")
+        if candidate == candidate.parent:
+            break
+        candidate = candidate.parent
+    if path.exists() and not path.is_file():
+        raise ReconcileFailure("ownership atomic target must be a regular file")
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary)
     try:
+        if existing_mode is not None:
+            os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
             handle.flush()
