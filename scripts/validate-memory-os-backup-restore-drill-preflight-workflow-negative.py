@@ -47,6 +47,17 @@ MAIN_REQUIRED = (
     ("bounded latest source", "            git reset --hard origin/so\n", 1),
     ("root read permission", "permissions:\n  contents: read\n", 1),
     ("writer write permission", "      contents: write\n", 1),
+    ("success writer job scope", "        if: steps.preflight.outputs.exit_code == '0' && github.ref == 'refs/heads/so'\n", 1),
+    ("diagnostic failure-only scope", "        if: steps.preflight.outputs.exit_code != '0' && github.ref == 'refs/heads/so'\n", 1),
+    ("bounded source retry", "          for reconcile_attempt in 1 2; do\n", 1),
+    ("latest source CAS checks", "if [[ \"$(git rev-parse origin/so)\" != \"$SOURCE_SHA\" ]]; then", 4),
+    ("bounded authority staging", "          git add \\\n              contracts/operations/backup-restore-drill-preflight-contract.v1.json \\\n              contracts/operations/production-operability-status.json\n", 1),
+    ("nonforce writer push", "            git push origin HEAD:so", 1),
+    ("diagnostic source identity", "              'sourceCommitSha': os.environ['SOURCE_SHA'],\n", 1),
+    ("diagnostic NO_GO status", "              'productionReady': False,\n", 1),
+    ("diagnostic durability", "                  os.fsync(handle.fileno())\n", 1),
+    ("diagnostic atomic replacement", "              os.replace(tmp_name, path)\n", 1),
+    ("diagnostic bounded staging", "          git add docs/fixtures/memory-os-operability/backup-restore-drill-preflight-diagnostic.last.json\n", 1),
 )
 
 GUARD_REQUIRED = (
@@ -189,6 +200,17 @@ def prove_negative_mutations(main: str, guard: str) -> None:
         ("injected Action", "      - name: Capture exact preflight authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact preflight authority source\n"),
         ("injected shell step", "      - name: Capture exact preflight authority source\n", "      - run: echo unreviewed\n      - name: Capture exact preflight authority source\n"),
         ("appended command", '          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"\n', '          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"\n          echo unreviewed\n'),
+        ("success writer job scope", "        if: steps.preflight.outputs.exit_code == '0' && github.ref == 'refs/heads/so'\n", "        if: always()\n"),
+        ("diagnostic failure-only scope", "        if: steps.preflight.outputs.exit_code != '0' && github.ref == 'refs/heads/so'\n", "        if: always()\n"),
+        ("bounded source retry", "          for reconcile_attempt in 1 2; do\n", "          while true; do\n"),
+        ("latest source CAS checks", "if [[ \"$(git rev-parse origin/so)\" != \"$SOURCE_SHA\" ]]; then", "if false; then"),
+        ("bounded authority staging", "          git add \\\n              contracts/operations/backup-restore-drill-preflight-contract.v1.json \\\n              contracts/operations/production-operability-status.json\n", "          git add -A\n"),
+        ("nonforce writer push", "            git push origin HEAD:so", "            git push --force origin HEAD:so"),
+        ("diagnostic source identity", "              'sourceCommitSha': os.environ['SOURCE_SHA'],\n", "              'sourceCommitSha': 'unknown',\n"),
+        ("diagnostic NO_GO status", "              'productionReady': False,\n", "              'productionReady': True,\n"),
+        ("diagnostic durability", "                  os.fsync(handle.fileno())\n", "                  handle.flush()\n"),
+        ("diagnostic atomic replacement", "              os.replace(tmp_name, path)\n", "              path.write_bytes(payload)\n"),
+        ("diagnostic bounded staging", "          git add docs/fixtures/memory-os-operability/backup-restore-drill-preflight-diagnostic.last.json\n", "          git add -A\n"),
     )
     independent_cases = (
         ("independent checkout source", "ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}", "ref: ${{ github.sha }}"),
