@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/backup-restore-admission-chain.yml"
       - ".github/workflows/backup-restore-admission-chain-negative.yml"
+      - ".github/workflows/backup-restore-admission-chain-readonly.yml"
       - ".github/workflows/backup-restore-drill-request.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
       - ".github/workflows/backup-restore-permission-boundary-negative.yml"
@@ -22,6 +23,7 @@ on:
     paths:
       - ".github/workflows/backup-restore-admission-chain.yml"
       - ".github/workflows/backup-restore-admission-chain-negative.yml"
+      - ".github/workflows/backup-restore-admission-chain-readonly.yml"
       - ".github/workflows/backup-restore-drill-request.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
       - ".github/workflows/backup-restore-permission-boundary-negative.yml"
