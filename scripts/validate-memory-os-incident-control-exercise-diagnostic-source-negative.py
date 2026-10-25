@@ -86,19 +86,20 @@ def validate(publisher: str, independent: str) -> None:
 
 
 def inline_writers(publisher: str) -> tuple[str, str]:
-    marker = "          python - <<'PY'\n"
-    if publisher.count(marker) != 2:
+    markers = (
+        "          EXERCISE_EXIT_CODE=\"$code\" python - <<'PY'\n",
+        "          VALIDATION_EXIT_CODE=\"$code\" python - <<'PY'\n",
+    )
+    if any(publisher.count(marker) != 1 for marker in markers):
         raise SystemExit("incident control inline diagnostic writers missing/ambiguous")
     scripts = []
-    position = 0
-    for _ in range(2):
-        start = publisher.index(marker, position) + len(marker)
+    for marker in markers:
+        start = publisher.index(marker) + len(marker)
         end = publisher.index("\n          PY\n", start)
         lines = publisher[start:end].splitlines()
         if not lines or any(not line.startswith("          ") for line in lines):
             raise SystemExit("incident control inline writer indentation drift")
         scripts.append("\n".join(line[10:] for line in lines) + "\n")
-        position = end + len("\n          PY\n")
     return scripts[0], scripts[1]
 
 
