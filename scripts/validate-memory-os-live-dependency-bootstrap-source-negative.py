@@ -232,6 +232,14 @@ def source_negatives(live: str, upload: str, sigkill: str, independent: str) -> 
         ("publish gate", "if: env.PUBLISH_RESULTS == 'true'", "if: always()"),
         ("source guard", 'git diff --quiet "${SOURCE_SHA}"', "true"),
         ("retry", "git reset --hard origin/so", "true"),
+        ("checkout SHA", "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "uses: actions/checkout@v4"),
+        ("setup Go SHA", "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5", "uses: actions/setup-go@v5"),
+        ("setup Python SHA", "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "uses: actions/setup-python@v5"),
+        ("writer event scope", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/so'", "    if: always()"),
+        ("writer ref", "test \"${GITHUB_REF:-}\" = \"refs/heads/so\"", "true"),
+        ("writer SHA", "[[ \"${GITHUB_SHA:-}\" =~ ^[0-9a-f]{40}$ ]]", "test -n \"${GITHUB_SHA:-}\""),
+        ("writer HEAD", "test \"$(git rev-parse HEAD)\" = \"${GITHUB_SHA:-}\"", "true"),
+        ("writer credentials", "persist-credentials: true", "persist-credentials: false"),
     )
     upload_cases = (
         ("image", "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data", "quay.io/minio/minio:latest server /data"),
@@ -278,7 +286,7 @@ def source_negatives(live: str, upload: str, sigkill: str, independent: str) -> 
             except SystemExit:
                 continue
             raise SystemExit("live dependency accepted mutation: " + label + "/" + name)
-    print("PASS: live dependency source negatives (6 live + 6 upload + 4 SIGKILL + 11 independent)")
+    print("PASS: live dependency source negatives (14 live + 6 upload + 4 SIGKILL + 11 independent)")
 
 
 def main() -> int:
