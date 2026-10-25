@@ -65,6 +65,8 @@ def require_reviewed_bootstrap(job: str, *, pr: bool) -> tuple[str, str]:
         "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
         "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
     ], "drill bootstrap action inventory drift")
+    require(not re.search(r"(?m)^\s*-\s+uses\s*:", job),
+            "drill bootstrap unreviewed unnamed action step")
     return checkout, setup
 
 
