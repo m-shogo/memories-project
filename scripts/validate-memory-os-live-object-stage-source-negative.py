@@ -215,6 +215,8 @@ def publisher_runtime(text):
         racer, competing = root / "racer", root / "competing"
         git(root, "clone", "-q", "-b", "so", str(remote), str(racer))
         git(root, "clone", "-q", "-b", "so", str(remote), str(competing))
+        git(competing, "config", "user.name", "Synthetic Fixture")
+        git(competing, "config", "user.email", "fixture@example.invalid")
         mutate(racer, "racing publisher")
         mutate(competing, "concurrent race winner")
         git(competing, "add", target)
