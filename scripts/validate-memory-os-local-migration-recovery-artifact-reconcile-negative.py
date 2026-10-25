@@ -240,6 +240,68 @@ def rollback_failure_diagnostic_negative(module) -> None:
 
 
 
+def run_id_and_path_boundary_negative(module) -> None:
+    original_parse_args = module.parse_args
+    original_root = module.EVIDENCE_ROOT
+    original_load = module.load
+    original_write = module.atomic_replace_bytes
+    reads: list[Path] = []
+    writes: list[Path] = []
+
+    def forbid_read(path: Path):
+        reads.append(path)
+        raise Fail('unexpected local recovery read before run-id/path rejection')
+
+    def forbid_write(path: Path, payload: bytes) -> None:
+        writes.append(path)
+        raise Fail('unexpected local recovery write before run-id/path rejection')
+
+    module.load = forbid_read
+    module.atomic_replace_bytes = forbid_write
+    try:
+        invalid_ids = (
+            '../outside', '/tmp/outside', 'mig_20261025_../../outside',
+            'mig_20261025_', 'mig_20261025_valid/escape',
+            'mig_20261025_abc\n', 'mig_20261025_' + 'x' * 65,
+            'mig_20261025_UPPER',
+        )
+        for run_id in invalid_ids:
+            module.parse_args = lambda run_id=run_id: argparse.Namespace(run_id=run_id)
+            try:
+                module.main()
+            except module.Fail as exc:
+                require('invalid local recovery run-id' in str(exc),
+                        f'wrong local recovery run-id rejection for {run_id!r}: {exc}')
+            else:
+                raise Fail(f'local recovery accepted invalid run-id: {run_id!r}')
+            require(not reads and not writes,
+                    'local recovery read or wrote authority before rejecting invalid run-id')
+
+        with tempfile.TemporaryDirectory(prefix='local-recovery-symlink-negative-') as temp:
+            root = Path(temp) / 'recovery'
+            root.mkdir()
+            outside = Path(temp) / 'outside.json'
+            outside.write_text('{}\n', encoding='utf-8')
+            run_id = 'mig_20261025_synthetic'
+            (root / (run_id + '.json')).symlink_to(outside)
+            module.EVIDENCE_ROOT = root
+            module.parse_args = lambda: argparse.Namespace(run_id=run_id)
+            try:
+                module.main()
+            except module.Fail as exc:
+                require('missing or symlinked' in str(exc),
+                        f'wrong local recovery symlink rejection: {exc}')
+            else:
+                raise Fail('local recovery accepted symlinked evidence result')
+            require(not reads and not writes,
+                    'local recovery read or wrote authority before rejecting symlinked evidence')
+    finally:
+        module.parse_args = original_parse_args
+        module.EVIDENCE_ROOT = original_root
+        module.load = original_load
+        module.atomic_replace_bytes = original_write
+    print('PASS local recovery run-id/path pre-read negatives (9 cases)')
+
 def stronger_recovery_readiness_negative(module) -> None:
     contract = module.load(module.CONTRACT_PATH)
     readiness = contract.get("readiness")
@@ -311,6 +373,7 @@ def main() -> int:
     )
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
+    run_id_and_path_boundary_negative(reconciler)
     stronger_recovery_readiness_negative(reconciler)
     atomic_replace_mode_preservation(reconciler)
     atomic_replace_negative(reconciler)
@@ -318,6 +381,7 @@ def main() -> int:
     rollback_failure_diagnostic_negative(reconciler)
     print("Memory OS local migration recovery-artifact reconcile negative suite PASS")
     print("canonical validator identity: enforced")
+    print("run-id grammar and symlinked evidence path: fail-closed before read")
     print("stronger local recovery readiness cannot be downgraded: enforced")
     print("atomic publication preserves existing authority mode: enforced")
     print("atomic publication failure preserves canonical authority: enforced")

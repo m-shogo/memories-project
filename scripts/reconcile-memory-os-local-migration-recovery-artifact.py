@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -24,6 +25,7 @@ RECONCILE_PATH = ROOT / "scripts/reconcile-memory-os-local-migration-recovery-ar
 RUNNER_PATH = ROOT / "scripts/run-memory-os-local-migration-recovery-artifact.sh"
 WORKFLOW_PATH = ROOT / ".github/workflows/local-migration-recovery-artifact.yml"
 EVIDENCE_ROOT = ROOT / "docs/evidence/migrations/recovery"
+RUN_ID = re.compile(r"^mig_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
 
 
 class Fail(RuntimeError):
@@ -132,9 +134,14 @@ def run_validator(path: Path, *args: str) -> None:
 
 def main() -> int:
     args = parse_args()
+    require(isinstance(args.run_id, str) and RUN_ID.fullmatch(args.run_id) is not None,
+            "invalid local recovery run-id")
     validate_runtime_authority()
     result_path = EVIDENCE_ROOT / f"{args.run_id}.json"
-    require(result_path.is_file(), f"recovery artifact result missing: {result_path.relative_to(ROOT)}")
+    require(result_path.is_file() and not result_path.is_symlink(),
+            f"recovery artifact result missing or symlinked: {result_path}")
+    require(result_path.resolve(strict=True).parent == EVIDENCE_ROOT.resolve(strict=True),
+            "recovery artifact result escaped canonical evidence root")
     result = load(result_path)
     require(result.get("migrationRunId") == args.run_id, "result migrationRunId mismatch")
     source_sha = result.get("commitSha")

@@ -17,7 +17,7 @@ SELF = "scripts/validate-memory-os-local-migration-recovery-workflow-source-nega
 PUBLISHER_SHA = "86cb9e591b9ad699a7d9be98ac4c42a190e9c5fd"
 INDEPENDENT_SHA = "094d794db2d11846a4a174ac7ab976b4f81e304a"
 LOCAL_NEGATIVE = "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
-LOCAL_NEGATIVE_SHA = "a718111cfe880860c96d7784afdab2dd61fb9495"
+LOCAL_NEGATIVE_SHA = "1e5dccbbf21c0f4dcf8888f6a0e6cf7fa84aebcd"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 WRITER_SCOPE = "    if: >-\n      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&\n      github.ref == 'refs/heads/so' &&\n      (github.event_name != 'push' ||\n       (!contains(github.event.head_commit.message, 'test(migration): record local recovery artifact rehearsal') &&\n        !contains(github.event.head_commit.message, 'docs(migration): register local recovery artifact rehearsal')))"
