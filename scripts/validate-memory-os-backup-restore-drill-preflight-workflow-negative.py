@@ -131,6 +131,13 @@ def runtime_branch_proof(main: str, guard: str) -> None:
 
 def prove_negative_mutations(main: str, guard: str) -> None:
     publisher_cases = (
+        ("PR checkout ref", "ref: ${{ github.event.pull_request.head.sha }}", "ref: ${{ github.sha }}"),
+        ("writer checkout ref", "ref: ${{ github.sha }}", "ref: ${{ github.ref }}"),
+        ("PR validation scope", "    if: github.event_name == 'pull_request'\n", "    if: always()\n"),
+        ("PR job write escalation", "    permissions:\n      contents: read\n", "    permissions:\n      contents: write\n"),
+        ("push trigger branch", "  push:\n    branches:\n      - so\n", "  push:\n"),
+        ("dispatch trigger removed", "  workflow_dispatch:\n", ""),
+        ("writer HEAD source", "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"", "test \"$(git rev-parse HEAD)\" = \"$GITHUB_REF\""),
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
         ("self trigger", '      - "' + SELF_PATH + '"\n', ""),
         ("independent trigger", '      - "' + GUARD_PATH + '"\n', ""),
@@ -157,6 +164,16 @@ def prove_negative_mutations(main: str, guard: str) -> None:
         ("appended command", '          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"\n', '          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"\n          echo unreviewed\n'),
     )
     independent_cases = (
+        ("independent checkout source", "ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}", "ref: ${{ github.sha }}"),
+        ("independent push branch", "  push:\n    branches:\n      - so\n", "  push:\n"),
+        ("independent PR head env", "PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}", "PR_HEAD_SHA: ${{ github.sha }}"),
+        ("independent exact HEAD", "test \"$(git rev-parse HEAD)\" = \"$expected\"", "test \"$(git rev-parse HEAD)\" = \"$GITHUB_REF\""),
+        ("independent clean checkout", "test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -z \"$(git status --porcelain)\"", "test \"$(git rev-parse HEAD)\" = \"$expected\"\n          test -n \"$(git status --porcelain)\""),
+        ("independent root token", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
+        ("independent job token", "    permissions:\n      contents: read\n", "    permissions:\n      contents: write\n"),
+        ("independent event admission", "elif [[ \"${GITHUB_EVENT_NAME:-}\" == \"push\" ]]; then", "else"),
+        ("independent push SHA source", "expected=\"${GITHUB_SHA:-}\"", "expected=\"${GITHUB_REF:-}\""),
+        ("independent shell append", "          python scripts/validate-memory-os-backup-restore-drill-preflight-workflow-negative.py\n", "          python scripts/validate-memory-os-backup-restore-drill-preflight-workflow-negative.py\n          echo unreviewed\n"),
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
         ("main trigger", '      - "' + MAIN_PATH + '"\n', ""),
         ("self trigger", '      - "' + GUARD_PATH + '"\n', ""),
