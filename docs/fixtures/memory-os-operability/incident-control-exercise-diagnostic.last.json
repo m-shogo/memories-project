@@ -1,12 +1,12 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "incident-control-exercise",
-  "sourceCommitSha": "5be2329dde1435e194e45176f3e6bfbc87190355",
+  "sourceCommitSha": "8ea4366ba44f692050b65374b487025c00a2c72e",
   "result": "PASS",
   "exitCode": 0,
   "validationResult": "PASS",
   "validationExitCode": 0,
-  "output": "Memory OS automated incident control exercise PASS\nscenarios: 6\nresult: docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json\n\n--- validator ---\nMemory OS incident control exercise validation PASS\nscenarios: 6\nresult present: True\nproduction decision: NO_GO\n",
+  "output": "Incident control exercise and validation completed; raw output withheld.",
   "containsSecrets": false,
   "productionEvidence": false,
   "humanTabletopCompleted": false
