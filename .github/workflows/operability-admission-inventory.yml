@@ -341,7 +341,7 @@ jobs:
             python scripts/validate-memory-os-operability-status-hygiene.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          echo "Inventory validation completed with exit code $code; raw validator output withheld."
           exit 0
       - name: Commit deterministic inventory
         if: steps.inventory.outputs.exit_code == '0'
@@ -450,14 +450,13 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/operability-admission-inventory.log').read_text(encoding='utf-8', errors='replace')
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'operability-admission-inventory',
               'result': 'FAIL',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
               'exitCode': int(os.environ['INVENTORY_EXIT_CODE']),
-              'output': text[-12000:],
+              'output': 'Inventory validation failed; raw validator output withheld.',
               'containsSecrets': False,
               'preflightCreatedPrerequisite': False,
               'drillRequestCreated': False,
@@ -467,8 +466,19 @@ jobs:
               'productionEvidence': False,
               'productionReady': False,
           }
-          path = Path('docs/fixtures/memory-os-operability/operability-admission-inventory-diagnostic.last.json')
-          path.parent.mkdir(parents=True, exist_ok=True)
+          repo = Path.cwd().resolve(strict=True)
+          path = repo / 'docs/fixtures/memory-os-operability/operability-admission-inventory-diagnostic.last.json'
+          if not path.parent.is_dir():
+              raise RuntimeError('inventory diagnostic parent missing')
+          for candidate in (path, *path.parents):
+              if candidate == repo:
+                  break
+              if candidate.is_symlink():
+                  raise RuntimeError('inventory diagnostic path must not be a symlink')
+          if path.parent.resolve(strict=True).relative_to(repo) != Path('docs/fixtures/memory-os-operability'):
+              raise RuntimeError('inventory diagnostic parent escaped repository')
+          if path.exists() and not path.is_file():
+              raise RuntimeError('inventory diagnostic target must be regular')
           payload = json.dumps(value, indent=2) + '\n'
           mode = path.stat().st_mode & 0o7777 if path.exists() else None
           temp_name = None

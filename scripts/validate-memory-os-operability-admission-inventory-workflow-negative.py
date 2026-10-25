@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/operability-admission-inventory.yml"
 INDEPENDENT = ".github/workflows/operability-admission-inventory-source-negative.yml"
 SELF = "scripts/validate-memory-os-operability-admission-inventory-workflow-negative.py"
-REVIEWED_PUBLISHER = "3b8bfd146bdbbafebc92e9941870b2007c51a3af"
+REVIEWED_PUBLISHER = "340f1f1b247d8ac9ce5ef5b1ff49df4ed17371e1"
 REVIEWED_INDEPENDENT = "1cc32e55bcfca0d8d1d2be6f4d4222260a327123"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -176,10 +176,124 @@ def negatives(publisher: str, independent: str) -> None:
     print(f"PASS: operability inventory publisher source admission ({len(publisher_cases)} negatives), independent source admission ({len(independent_cases)} negatives)")
 
 
+
+def diagnostic_script(publisher: str) -> str:
+    marker = "          python - <<'PY'\n"
+    if publisher.count(marker) != 1:
+        raise SystemExit("inventory diagnostic inline writer missing or ambiguous")
+    begin = publisher.index(marker) + len(marker)
+    end = publisher.index("\n          PY\n", begin)
+    lines = publisher[begin:end].splitlines()
+    if not lines or any(not line.startswith("          ") for line in lines):
+        raise SystemExit("inventory diagnostic inline writer indentation drift")
+    return "\n".join(line[10:] for line in lines) + "\n"
+
+
+def validate_diagnostic_source(publisher: str) -> str:
+    if '          cat "$log"\n' in publisher or "text[-12000:]" in publisher:
+        raise SystemExit("inventory diagnostic raw log disclosure")
+    script = diagnostic_script(publisher)
+    required = (
+        "'output': 'Inventory validation failed; raw validator output withheld.',",
+        "if candidate.is_symlink():",
+        "if not path.parent.is_dir():",
+        "path.parent.resolve(strict=True).relative_to(repo)",
+        "if path.exists() and not path.is_file():",
+        "os.fchmod(fd, mode)",
+        "os.fsync(handle.fileno())",
+        "os.replace(temp_name, path)",
+        "os.unlink(temp_name)",
+    )
+    for token in required:
+        if script.count(token) != 1:
+            raise SystemExit("inventory diagnostic missing runtime guard: " + token)
+    if "/tmp/operability-admission-inventory.log" in script:
+        raise SystemExit("inventory diagnostic reads untrusted raw log")
+    return script
+
+
+def diagnostic_runtime(publisher: str) -> None:
+    import json
+    import stat
+    import sys
+    import tempfile
+    script = validate_diagnostic_source(publisher)
+    guard = "              if candidate.is_symlink():\n"
+    if publisher.count(guard) != 1:
+        raise SystemExit("inventory diagnostic symlink guard ambiguous")
+    try:
+        validate_diagnostic_source(publisher.replace(guard, "", 1))
+    except SystemExit as exc:
+        if "if candidate.is_symlink():" not in str(exc):
+            raise SystemExit("inventory diagnostic symlink negative wrong rejection") from exc
+    else:
+        raise SystemExit("inventory diagnostic accepted removed symlink guard")
+
+    with tempfile.TemporaryDirectory(prefix="inventory-diagnostic-") as directory:
+        root = Path(directory)
+        parent = root / "docs/fixtures/memory-os-operability"
+        parent.mkdir(parents=True)
+        path = parent / "operability-admission-inventory-diagnostic.last.json"
+        env = dict(os.environ, SOURCE_SHA="a" * 40, INVENTORY_EXIT_CODE="1")
+        def run(source: str):
+            return subprocess.run([sys.executable, "-c", source], cwd=root, env=env,
+                                  capture_output=True, text=True, check=False, timeout=15)
+        positive = run(script)
+        if positive.returncode != 0:
+            raise SystemExit("inventory diagnostic positive writer failed: " + positive.stderr[-600:])
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if value.get("output") != "Inventory validation failed; raw validator output withheld.":
+            raise SystemExit("inventory diagnostic failed redaction")
+        if value.get("productionReady") is not False or value.get("productionEvidence") is not False:
+            raise SystemExit("inventory diagnostic claimed production authority")
+        path.chmod(0o640)
+        positive = run(script)
+        if positive.returncode != 0 or stat.S_IMODE(path.stat().st_mode) != 0o640:
+            raise SystemExit("inventory diagnostic failed mode preservation")
+        previous = path.read_bytes()
+        for label, anchor in (("replace", "os.replace(temp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            if script.count(anchor) != 1:
+                raise SystemExit("inventory diagnostic fault anchor drift: " + label)
+            fault = script.replace(anchor, "raise OSError('synthetic inventory " + label + " failure')", 1)
+            result = run(fault)
+            if result.returncode == 0 or "synthetic inventory " + label + " failure" not in result.stderr:
+                raise SystemExit("inventory diagnostic fault not reached: " + label)
+            if path.read_bytes() != previous or stat.S_IMODE(path.stat().st_mode) != 0o640:
+                raise SystemExit("inventory diagnostic rollback changed bytes or mode: " + label)
+            if list(parent.glob(".operability-admission-inventory-diagnostic.last.json.*.tmp")):
+                raise SystemExit("inventory diagnostic leaked temporary file: " + label)
+        outside = root / "outside-canary"
+        outside.write_bytes(b"OUTSIDE_CANARY")
+        path.unlink()
+        path.symlink_to(outside)
+        result = run(script)
+        if result.returncode == 0 or "must not be a symlink" not in result.stderr:
+            raise SystemExit("inventory diagnostic followed target symlink")
+        if outside.read_bytes() != b"OUTSIDE_CANARY" or not path.is_symlink():
+            raise SystemExit("inventory diagnostic altered external canary")
+        path.unlink()
+        parent.rmdir()
+        outside_parent = root / "outside-parent"
+        outside_parent.mkdir()
+        parent.symlink_to(outside_parent, target_is_directory=True)
+        result = run(script)
+        if result.returncode == 0 or "must not be a symlink" not in result.stderr:
+            raise SystemExit("inventory diagnostic followed parent symlink")
+        if list(outside_parent.iterdir()):
+            raise SystemExit("inventory diagnostic wrote outside repository fixture")
+        parent.unlink()
+        result = run(script)
+        if result.returncode == 0 or "parent missing" not in result.stderr or parent.exists():
+            raise SystemExit("inventory diagnostic created missing parent")
+    print("PASS: inventory diagnostic redaction, symlink containment and atomic rollback (7 cases)")
+
+
 def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
     validate(publisher, independent)
+    diagnostic_runtime(publisher)
     runtime(publisher, independent)
     negatives(publisher, independent)
     return 0
