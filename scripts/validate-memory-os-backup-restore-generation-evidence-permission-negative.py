@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence.yml"
 READONLY_WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-readonly.yml"
-REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "623b7ea8026efd56c2f85e3b0ff7b8376211231c"
+REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "42e740f9b7d1de7b6ed6ad3881f4d3a6d9ec0caa"
 
 
 class Fail(RuntimeError):
@@ -372,6 +372,31 @@ def require_readonly_workflow_source_negatives(source: str) -> None:
         else:
             raise Fail(f"generation readonly CI source mutation accepted: {label}")
 
+    # The dedicated readonly gate must run for changes to its canonical
+    # generation-evidence validator and its independent permission validator.
+    for protected_path in (
+        "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+        "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py",
+    ):
+        marker = f'      - "{protected_path}"\n'
+        require(source.count(marker) == 2,
+                f"generation readonly executable trigger inventory drift: {protected_path}")
+        before_push, after_push = source.split("  push:\n", 1)
+        trigger_mutations = (
+            (f"removed {protected_path} PR trigger",
+             before_push.replace(marker, "", 1) + "  push:\n" + after_push),
+            (f"removed {protected_path} push trigger",
+             before_push + "  push:\n" + after_push.replace(marker, "", 1)),
+        )
+        for label, mutated in trigger_mutations:
+            require(mutated != source, f"generation readonly trigger fixture unchanged: {label}")
+            try:
+                require_reviewed_readonly_workflow_blob(mutated)
+            except Fail:
+                pass
+            else:
+                raise Fail(f"generation readonly CI trigger mutation accepted: {label}")
+
 
 def main() -> int:
     require(READONLY_WORKFLOW.is_file() and not READONLY_WORKFLOW.is_symlink(),
@@ -442,7 +467,7 @@ def main() -> int:
     print("workflow root/event negative mutations rejected: 6")
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
-    print("independent generation readonly CI source mutations rejected: 10")
+    print("independent generation readonly CI source mutations rejected: 14")
     print("production decision changed: false")
     return 0
 

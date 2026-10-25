@@ -5,6 +5,8 @@ on:
     paths:
       - ".github/workflows/backup-restore-generation-evidence-readonly.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
@@ -22,6 +24,8 @@ on:
     paths:
       - ".github/workflows/backup-restore-generation-evidence-readonly.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
