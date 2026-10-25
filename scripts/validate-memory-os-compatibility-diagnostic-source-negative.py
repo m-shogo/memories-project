@@ -62,6 +62,8 @@ def policy(text):
             raise AssertionError("compatibility source policy missing: " + marker[:55])
     if text.count(CHECKOUT) != 2 or text.count(SETUP) != 2:
         raise AssertionError("compatibility immutable Actions drift")
+    if text.count(MARKERS[8]) != 2:
+        raise AssertionError("compatibility PR and writer SHA checks both required")
     if any(x in text for x in ("checkout@v4", "setup-python@v5", 'cat "$log"', "text[-12000:]",
                                "/tmp/memory-os-compatibility-authority.log")):
         raise AssertionError("compatibility raw-output/floating Actions regression")
