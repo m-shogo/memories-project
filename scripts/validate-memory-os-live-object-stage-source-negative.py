@@ -249,6 +249,68 @@ def publisher_runtime(text):
             raise AssertionError("race fixture did not create divergent commits")
     print("PASS: live object stage actual publisher no-op, stale CAS, valid push, pre-commit rejection, and post-CAS race (5 cases)")
 
+
+def reconciler_writer_runtime():
+    """Prove actual reconciler symlink refusal, mode preservation and replace rollback."""
+    import importlib.util
+    import stat
+
+    module_path = ROOT / "scripts/reconcile-memory-os-live-object-stage-diagnostics.py"
+    spec = importlib.util.spec_from_file_location("live_object_stage_reconcile_test", module_path)
+    if spec is None or spec.loader is None:
+        raise AssertionError("live object stage reconciler import failed")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with tempfile.TemporaryDirectory(prefix="live-object-reconcile-") as tmp:
+        root = Path(tmp)
+        target = root / "target.go"
+        target.write_text("before\\n", encoding="utf-8")
+        target.chmod(0o640)
+        module.atomic_write_text(target, "after\\n")
+        if target.read_text(encoding="utf-8") != "after\\n":
+            raise AssertionError("live object stage atomic write did not publish")
+        if stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise AssertionError("live object stage atomic write lost file mode")
+        previous_replace = module.os.replace
+        def fail_replace(source, destination):
+            if Path(destination) == target:
+                raise OSError("synthetic replace failure")
+            return previous_replace(source, destination)
+        module.os.replace = fail_replace
+        try:
+            try:
+                module.atomic_write_text(target, "forbidden\\n")
+            except OSError as exc:
+                if "synthetic replace failure" not in str(exc):
+                    raise AssertionError("unexpected atomic replace failure") from exc
+            else:
+                raise AssertionError("live object stage accepted failed atomic replacement")
+        finally:
+            module.os.replace = previous_replace
+        if target.read_text(encoding="utf-8") != "after\\n":
+            raise AssertionError("live object stage failed replacement changed target")
+        if list(root.glob(".target.go.*.tmp")):
+            raise AssertionError("live object stage atomic temp leaked")
+        outside = root / "outside.go"
+        outside.write_text("external sentinel\\n", encoding="utf-8")
+        link = root / "link.go"
+        link.symlink_to(outside)
+        previous_path = module.PATH
+        module.PATH = link
+        try:
+            try:
+                module.main()
+            except RuntimeError as exc:
+                if "symlink refused" not in str(exc):
+                    raise AssertionError("unexpected target refusal: " + str(exc)) from exc
+            else:
+                raise AssertionError("live object stage reconciler followed a symlink")
+        finally:
+            module.PATH = previous_path
+        if outside.read_text(encoding="utf-8") != "external sentinel\\n":
+            raise AssertionError("live object stage symlink modified external sentinel")
+    print("PASS: live object stage actual reconciler symlink refusal, mode preservation, atomic replace rollback and temp cleanup (4 cases)")
+
 def main():
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     if blob(publisher) != REVIEWED_PUBLISHER or blob(independent) != REVIEWED_INDEPENDENT:
@@ -273,11 +335,15 @@ def main():
         raise AssertionError("live object stage unbounded stage label regression")
     if "closed stage labels" not in reconciler_source or "bounded stage accounting" not in reconciler_source:
         raise AssertionError("live object stage reconciler label policy drift")
+    for marker in ("def validate_target()", "PATH.is_symlink()", "def atomic_write_text(", "os.replace(temp_name, path)", "validate_target()"):
+        if marker not in reconciler_source:
+            raise AssertionError("live object stage reconciler write safety drift: " + marker)
     policy(publisher)
     negatives(publisher)
     runtime(publisher, "Validate diagnostic source read-only", False)
     runtime(publisher, "Reconcile stage diagnostics", True)
     publisher_runtime(publisher)
+    reconciler_writer_runtime()
     print("PASS: live object stage read-only source proof; production evidence generated: false; production decision changed: false")
 
 if __name__ == "__main__":

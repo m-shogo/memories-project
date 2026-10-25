@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import os
+import stat
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +21,37 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new)
 
 
+
+def validate_target() -> None:
+    if PATH.is_symlink():
+        raise RuntimeError("live object stage target symlink refused")
+    if not PATH.is_file():
+        raise RuntimeError("live object stage target is not a regular file")
+    try:
+        relative = PATH.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError as exc:
+        raise RuntimeError("live object stage target escaped checkout") from exc
+    if relative.as_posix() != "services/import-api/internal/httpserver/live_object_load_test.go":
+        raise RuntimeError("live object stage target identity drift")
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    mode = stat.S_IMODE(path.stat().st_mode)
+    fd, temp_name = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_name, mode)
+        os.replace(temp_name, path)
+    finally:
+        if os.path.lexists(temp_name):
+            os.unlink(temp_name)
+
+
 def main() -> int:
+    validate_target()
     text = PATH.read_text(encoding="utf-8")
     changed = False
 
@@ -204,7 +237,8 @@ func liveObjectStageError(stage string, err error) error {
     if not changed:
         print("Live object stage diagnostics already reconciled")
         return 0
-    PATH.write_text(text, encoding="utf-8")
+    validate_target()
+    atomic_write_text(PATH, text)
     print("Added privacy-safe live object lifecycle stage diagnostics")
     return 0
 
