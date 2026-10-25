@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
+import subprocess
 import importlib.util
 import os
 import shutil
@@ -92,7 +94,91 @@ def validate_atomic_diagnostic_publication() -> None:
         raise AssertionError("linkage diagnostic publication regressed to direct write_text")
 
 
+
+REVIEWED_LINKAGE_WORKFLOW_BLOB_SHA = "5ef57bdc329ecdfb9ffd7b40738c76f78dcf71ec"
+
+
+def prove_linkage_workflow_source() -> None:
+    """Authenticate reviewed executable workflow and bounded branch predicates."""
+    if not WORKFLOW_PATH.is_file() or WORKFLOW_PATH.is_symlink():
+        raise AssertionError("admission linkage workflow missing or substituted")
+    source = WORKFLOW_PATH.read_text(encoding="utf-8")
+    required = (
+        ("PR target", "  pull_request:\n    branches: [so]\n", 1),
+        ("checkout", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 2),
+        ("setup", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 2),
+        ("PR creds", "          persist-credentials: false\n", 1),
+        ("publisher creds", "          persist-credentials: true\n", 1),
+        ("PR base env", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
+        ("PR base guard", "          test \"${PR_BASE_REF:-}\" = \"so\"\n", 1),
+        ("publisher job if", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n", 1),
+        ("publisher ref", "          test \"${GITHUB_REF:-}\" = \"refs/heads/so\"\n", 1),
+        ("SHA", "          [[ \"$expected\" =~ ^[0-9a-f]{40}$ ]]\n", 2),
+        ("HEAD", "          test \"$(git rev-parse HEAD)\" = \"$expected\"\n", 2),
+        ("self guard", "          python scripts/validate-memory-os-admission-authority-linkage-negative.py", 2),
+    )
+    for label, token, count in required:
+        if source.count(token) != count:
+            raise AssertionError("admission linkage workflow source drift: " + label)
+
+    def enforce_digest(value: str) -> None:
+        payload = value.encode("utf-8")
+        blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        if hashlib.sha1(blob).hexdigest() != REVIEWED_LINKAGE_WORKFLOW_BLOB_SHA:
+            raise AssertionError("admission linkage complete workflow source drift")
+
+    enforce_digest(source)
+    mutations = (
+        ("PR target", "  pull_request:\n    branches: [so]\n", "  pull_request:\n    branches: [main]\n"),
+        ("PR base", "          test \"${PR_BASE_REF:-}\" = \"so\"\n", "          test -n \"${PR_BASE_REF:-}\"\n"),
+        ("PR base env", "          PR_BASE_REF: ${{ github.base_ref }}\n", ""),
+        ("checkout pin", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", "      - uses: actions/checkout@v4\n"),
+        ("setup pin", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", "      - uses: actions/setup-python@v5\n"),
+        ("PR credentials", "          persist-credentials: false\n", "          persist-credentials: true\n"),
+        ("publisher credentials", "          persist-credentials: true\n", "          persist-credentials: false\n"),
+        ("publisher scope", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n", "    if: github.event_name != 'pull_request'\n"),
+        ("publisher ref", "          test \"${GITHUB_REF:-}\" = \"refs/heads/so\"\n", "          true # bypass ref\n"),
+        ("SHA format", "          [[ \"$expected\" =~ ^[0-9a-f]{40}$ ]]\n", "          test -n \"$expected\"\n"),
+        ("HEAD identity", "          test \"$(git rev-parse HEAD)\" = \"$expected\"\n", ""),
+        ("guard execution", "          python scripts/validate-memory-os-admission-authority-linkage-negative.py", ""),
+        ("injected shell", "          python scripts/validate-memory-os-admission-authority-linkage.py\n", "          echo UNREVIEWED\n          python scripts/validate-memory-os-admission-authority-linkage.py\n"),
+        ("injected action", "      - name: Validate admission authority links read-only\n", "      - uses: unreviewed/action@v1\n      - name: Validate admission authority links read-only\n"),
+        ("removed PR self-trigger", "      - \"scripts/validate-memory-os-admission-authority-linkage-negative.py\"\n", ""),
+    )
+    if len(mutations) != 15:
+        raise AssertionError("admission linkage workflow negative inventory drift")
+    for label, before, after in mutations:
+        if before not in source:
+            raise AssertionError("admission linkage negative anchor missing: " + label)
+        mutated = source.replace(before, after, 1)
+        if mutated == source:
+            raise AssertionError("admission linkage negative fixture unchanged: " + label)
+        try:
+            enforce_digest(mutated)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("admission linkage accepted forbidden mutation: " + label)
+
+    cases = (
+        ("PR so", required[6][1].strip(), "PR_BASE_REF", "so", True),
+        ("PR main", required[6][1].strip(), "PR_BASE_REF", "main", False),
+        ("PR missing", required[6][1].strip(), "PR_BASE_REF", "", False),
+        ("push so", required[8][1].strip(), "GITHUB_REF", "refs/heads/so", True),
+        ("push main", required[8][1].strip(), "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", required[8][1].strip(), "GITHUB_REF", "refs/tags/v1", False),
+    )
+    for label, command, key, value, expected in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+        result = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+        if (result.returncode == 0) != expected:
+            raise AssertionError("admission linkage workflow runtime branch drift: " + label)
+    print("PASS: admission linkage workflow PR/push branch guard runtime (6 cases)")
+    print("PASS: admission linkage workflow source admission (15 negatives)")
+
+
 def main() -> int:
+    prove_linkage_workflow_source()
     module = load_validator()
     required_contracts = {
         "contracts/operations/migration-production-shaped-admission-contract.v1.json",
