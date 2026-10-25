@@ -12,6 +12,8 @@ on:
       - "contracts/operations/*registry.v1.json"
       - "contracts/operations/backup-restore-*.json"
       - ".github/workflows/operability-admission-inventory-transactional.yml"
+      - ".github/workflows/operability-admission-inventory-transactional-source-negative.yml"
+      - "scripts/validate-memory-os-operability-admission-inventory-transactional-workflow-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -23,20 +25,26 @@ concurrency:
 
 jobs:
   transactional-generation:
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Capture exact source and canonical output state
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/validate-memory-os-operability-admission-inventory-transactional-workflow-negative.py
           test -z "$(git status --porcelain)"
           sha256sum contracts/operations/operability-admission-inventory.v1.json > /tmp/inventory.before.sha256
           stat -c '%a' contracts/operations/operability-admission-inventory.v1.json > /tmp/inventory.before.mode
