@@ -42,6 +42,59 @@ def validate(source: str) -> None:
                 raise SystemExit(f"unreadable readonly {event} cannot reach executed script: {executed_script}")
 
 
+SOURCE_REQUIRED = (
+    ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
+    ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
+    ("no credentials", "          persist-credentials: false\n", 1),
+    ("PR checkout", "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n", 1),
+    ("PR event", '          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then\n', 1),
+    ("PR head", '            expected="${{ github.event.pull_request.head.sha }}"\n', 1),
+    ("SHA format", '            [[ "$expected" =~ ^[0-9a-f]{40}$ ]]\n', 2),
+    ("push event", '          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then\n', 1),
+    ("branch", '            test "${GITHUB_REF:-}" = "refs/heads/so"\n', 1),
+    ("unreviewed event", '          else\n            echo "Unreviewed unreadable-authority readonly event" >&2\n            exit 1\n          fi\n', 1),
+    ("source HEAD", '          test "$(git rev-parse HEAD)" = "$expected"\n', 1),
+    ("clean source", '          test -z "$(git status --porcelain)"\n', 2),
+    ("runner invocation", '          python scripts/validate-memory-os-backup-restore-unreadable-authority-trigger-negative.py\n', 1),
+)
+
+
+def validate_source_admission(source: str) -> None:
+    for label, token, expected in SOURCE_REQUIRED:
+        if source.count(token) != expected:
+            raise SystemExit(f"unreadable readonly source admission drift: {label}")
+
+
+def prove_source_admission_negatives(source: str) -> None:
+    cases = (
+        ("checkout SHA", SOURCE_REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
+        ("setup-python SHA", SOURCE_REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
+        ("persist credentials", SOURCE_REQUIRED[2][1], ""),
+        ("PR source checkout", SOURCE_REQUIRED[3][1], "          ref: ${{ github.sha }}\n"),
+        ("PR event admission", SOURCE_REQUIRED[4][1], ""),
+        ("PR head SHA", SOURCE_REQUIRED[5][1], '            expected="${GITHUB_SHA:-}"\n'),
+        ("SHA format", SOURCE_REQUIRED[6][1], '            test -n "$expected"\n'),
+        ("push event whitelist", SOURCE_REQUIRED[7][1], ""),
+        ("push branch", SOURCE_REQUIRED[8][1], ""),
+        ("unreviewed event rejection", SOURCE_REQUIRED[9][1], ""),
+        ("source HEAD", SOURCE_REQUIRED[10][1], ""),
+        ("clean source", SOURCE_REQUIRED[11][1], ""),
+        ("runner invocation", SOURCE_REQUIRED[12][1], ""),
+    )
+    for label, old, replacement in cases:
+        if old not in source:
+            raise SystemExit(f"unreadable readonly source negative anchor missing: {label}")
+        mutated = source.replace(old, replacement, 1)
+        try:
+            validate_source_admission(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit(f"unreadable readonly source admission accepted mutation: {label}")
+    print(f"PASS: unreadable readonly source admission ({len(cases)} negatives)")
+
+
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -59,6 +112,8 @@ def main() -> int:
                 continue
             raise SystemExit(f"unreadable readonly accepted missing {event} trigger: {path}")
     print("PASS: unreadable readonly trigger reachability (10 removal negatives; 11 executable scripts)")
+    validate_source_admission(source)
+    prove_source_admission_negatives(source)
     return 0
 
 
