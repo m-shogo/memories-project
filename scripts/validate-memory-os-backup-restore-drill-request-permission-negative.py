@@ -67,6 +67,8 @@ def require_reviewed_bootstrap(job: str, *, pr: bool) -> tuple[str, str]:
     ], "drill bootstrap action inventory drift")
     require(not re.search(r"(?m)^\s*-\s+uses\s*:", job),
             "drill bootstrap unreviewed unnamed action step")
+    require(not re.search(r"""(?m)^\s*(?:-\s*)?["\']uses["\']\s*:""", job),
+            "drill bootstrap quoted action key drift")
     return checkout, setup
 
 
@@ -83,6 +85,8 @@ def require_bootstrap_negatives(job: str, *, pr: bool) -> None:
         job.replace(f"          persist-credentials: {credential}\n", "", 1),
         job.replace(checkout, checkout.replace("fetch-depth: 0", "fetch-depth: 1"), 1),
         job.replace(checkout, checkout + "      - uses: actions/checkout@v4\n", 1),
+        job.replace(checkout, checkout + '      - "uses": actions/checkout@v4\n', 1),
+        job.replace(checkout, checkout + '      - name: Unreviewed action\n        "uses": actions/checkout@v4\n', 1),
     )
     for mutated in mutations:
         require(mutated != job, "drill bootstrap negative fixture did not mutate")
@@ -147,7 +151,7 @@ def main() -> int:
     print("PASS: reviewed requests remain planning authority only and publication excludes pull requests")
     print("PASS: downstream generation/typed gates, rollback negatives, stale-source CAS and atomic diagnostics remain enforced")
     print("publisher event/ref negative mutations rejected: 4")
-    print("immutable bootstrap/source/credential negative mutations rejected: 16")
+    print("immutable bootstrap/source/credential negative mutations rejected: 20")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0

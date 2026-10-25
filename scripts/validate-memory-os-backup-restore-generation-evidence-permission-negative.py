@@ -61,6 +61,8 @@ def require_reviewed_bootstrap(job: str, *, pr: bool) -> tuple[str, str]:
     ], "generation bootstrap action inventory drift")
     require(not re.search(r"(?m)^\s*uses\s*:", job),
             "generation bootstrap unreviewed named action step")
+    require(not re.search(r"""(?m)^\s*(?:-\s*)?["\']uses["\']\s*:""", job),
+            "generation bootstrap quoted action key drift")
     return checkout, setup
 
 
@@ -77,6 +79,8 @@ def require_bootstrap_negatives(job: str, *, pr: bool) -> None:
         job.replace(f"          persist-credentials: {credential}\n", "", 1),
         job.replace(checkout, checkout.replace("fetch-depth: 0", "fetch-depth: 1"), 1),
         job.replace(checkout, checkout + "      - name: Unreviewed action\n        uses: actions/checkout@v4\n", 1),
+        job.replace(checkout, checkout + '      - "uses": actions/checkout@v4\n', 1),
+        job.replace(checkout, checkout + '      - name: Unreviewed action\n        "uses": actions/checkout@v4\n', 1),
     )
     for index, mutated in enumerate(mutations, 1):
         require(mutated != job, f"generation bootstrap negative fixture {index} did not mutate")
@@ -136,7 +140,7 @@ def main() -> int:
     print("PASS: generation-evidence publication remains non-PR-only and source-bound")
     print("PASS: writer authority negatives, Operability validation, stale-source CAS and atomic diagnostic publication remain enforced")
     print("publisher event/ref negative mutations rejected: 4")
-    print("immutable bootstrap/source/credential negative mutations rejected: 16")
+    print("immutable bootstrap/source/credential negative mutations rejected: 20")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
