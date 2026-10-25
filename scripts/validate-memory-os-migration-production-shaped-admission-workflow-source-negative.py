@@ -263,22 +263,30 @@ def prove_failed_stage_runtime(publisher: str) -> None:
 
 
 
+def require_isolation_blob(label: str, source: str, expected: str) -> None:
+    """Use the same fail-closed check for canonical and mutated source."""
+    data = source.encode("utf-8")
+    digest = hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+    if digest != expected:
+        raise SystemExit("migration isolated negative source drift: " + label)
+
+
 def verify_isolation_blob_bindings() -> None:
-    """Independent CI binds both the disposable harness and the negative under test."""
+    """Prove the production guard rejects each mutated source, not just a different hash."""
     for label, path, expected in (
         ("isolation workflow", ISOLATION, ISOLATION_SHA),
         ("isolation runner", ISOLATION_SCRIPT, ISOLATION_SCRIPT_SHA),
         ("migration negative", NEGATIVE_SCRIPT, NEGATIVE_SCRIPT_SHA),
     ):
         source = read(path)
-        data = source.encode("utf-8")
-        digest = hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
-        if digest != expected:
-            raise SystemExit("migration isolated negative source drift: " + label)
+        require_isolation_blob(label, source, expected)
         for suffix in ("\n# inert source mutation\n", "\n# disabled test\n"):
-            altered = (source + suffix).encode("utf-8")
-            changed = hashlib.sha1(b"blob " + str(len(altered)).encode("ascii") + b"\0" + altered).hexdigest()
-            if changed == expected:
+            try:
+                require_isolation_blob(label, source + suffix, expected)
+            except SystemExit as exc:
+                if str(exc) != "migration isolated negative source drift: " + label:
+                    raise
+            else:
                 raise SystemExit("migration isolated negative mutation accepted: " + label)
     print("PASS: migration isolated workflow/runner/negative source bindings (6 mutations)")
 
