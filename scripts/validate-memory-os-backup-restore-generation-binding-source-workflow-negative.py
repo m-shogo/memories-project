@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/backup-restore-generation-binding.yml"
 INDEPENDENT = ".github/workflows/backup-restore-generation-binding-source-negative.yml"
 SELF = "scripts/validate-memory-os-backup-restore-generation-binding-source-workflow-negative.py"
-REVIEWED_PUBLISHER = "07a378234c080d94cee19f84bfa441c7b74b4b9b"
+REVIEWED_PUBLISHER = "d01915e43432927f97c9f15d3243200f1a6a5622"
 REVIEWED_INDEPENDENT = "bd93725cf6b91fed44a47bd8c6a0bae8507893ab"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -182,7 +183,38 @@ def runtime_diagnostic_redaction(publisher: str) -> None:
             raise SystemExit("generation binding diagnostic production evidence/readiness drift")
         if "CANARY_DO_NOT_PERSIST_JKL" in output.read_text(encoding="utf-8"):
             raise SystemExit("generation binding diagnostic persisted synthetic canary")
-    print("PASS: generation binding isolated diagnostic redaction (1 runtime case)")
+        output.chmod(0o640)
+        positive = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                  capture_output=True, text=True, timeout=15, check=False)
+        if positive.returncode or stat.S_IMODE(output.stat().st_mode) != 0o640:
+            raise SystemExit("generation binding diagnostic failed to preserve existing mode")
+        previous = output.read_bytes()
+        for label, before in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            if script.count(before) != 1:
+                raise SystemExit("generation binding diagnostic fault anchor drift: " + label)
+            failure = subprocess.run([sys.executable, "-c", script.replace(
+                before, "raise OSError('synthetic binding diagnostic " + label + " failure')", 1)],
+                cwd=tmpdir, env=env, capture_output=True, text=True, timeout=15, check=False)
+            if failure.returncode == 0 or "synthetic binding diagnostic " + label + " failure" not in failure.stderr:
+                raise SystemExit("generation binding diagnostic intended fault not reached: " + label)
+            if output.read_bytes() != previous or stat.S_IMODE(output.stat().st_mode) != 0o640:
+                raise SystemExit("generation binding diagnostic fault altered prior bytes/mode: " + label)
+            if list(output.parent.glob(".backup-restore-generation-reconcile-diagnostic.last.json.*.tmp")):
+                raise SystemExit("generation binding diagnostic fault left temporary file: " + label)
+        outside = Path(tmpdir) / "external-generation-binding-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        if symlink.returncode == 0 or "target must not be a symlink" not in symlink.stderr:
+            raise SystemExit("generation binding diagnostic accepted symlink destination")
+        if not output.is_symlink() or outside.read_bytes() != previous:
+            raise SystemExit("generation binding diagnostic altered external symlink canary")
+        if list(output.parent.glob(".backup-restore-generation-reconcile-diagnostic.last.json.*.tmp")):
+            raise SystemExit("generation binding diagnostic symlink rejection left temporary file")
+    print("PASS: generation binding diagnostic redaction/atomic runtime (5 cases)")
 
 
 def negatives(publisher: str, independent: str) -> None:
@@ -213,6 +245,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("raw diagnostic", "              'output': 'REDACTED: generation binding validation failed; consult CI job logs',\n", "              'output': Path('/tmp/backup-restore-generation-binding.log').read_text(),\n"),
         ("raw CI log", '          printf "Generation binding validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
         ("missing redaction", "              'output': 'REDACTED: generation binding validation failed; consult CI job logs',\n", ""),
+        ("symlink guard", "          if path.is_symlink():\n              raise SystemExit('generation binding diagnostic target must not be a symlink')\n", ""),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
