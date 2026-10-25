@@ -296,7 +296,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "Typed non-resurrection validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
       - name: Commit bounded non-resurrection authority
         if: steps.admission.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
@@ -391,14 +391,14 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/backup-restore-non-resurrection-admission.log').read_text(encoding='utf-8', errors='replace')
+          # Never publish untrusted typed-admission validator stdout.
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'backup-restore-non-resurrection-admission',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['ADMISSION_EXIT_CODE']),
-              'output': text[-12000:],
+              'output': 'REDACTED: typed non-resurrection validation failed; consult CI job logs',
               'containsSecrets': False,
               'productionEvidence': False,
               'productionReady': False,
