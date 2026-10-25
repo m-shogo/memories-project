@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import fnmatch
+import json
 import hashlib
 import subprocess
 import importlib.util
 import os
 import shutil
+import stat
+import sys
 import tempfile
 from pathlib import Path
 
@@ -86,6 +89,9 @@ def validate_atomic_diagnostic_publication() -> None:
         "os.fsync(handle.fileno())",
         "os.replace(tmp_name, path)",
         "os.unlink(tmp_name)",
+        "if path.is_symlink():",
+        "raw validator log suppressed",
+        "REDACTED: admission linkage validation failed; raw output withheld",
     )
     missing = [fragment for fragment in required_fragments if fragment not in text]
     if missing:
@@ -95,7 +101,7 @@ def validate_atomic_diagnostic_publication() -> None:
 
 
 
-REVIEWED_LINKAGE_WORKFLOW_BLOB_SHA = "5ef57bdc329ecdfb9ffd7b40738c76f78dcf71ec"
+REVIEWED_LINKAGE_WORKFLOW_BLOB_SHA = "454db6f547eae4e6c0c779c71566bbb6f65f1bda"
 
 
 def prove_linkage_workflow_source() -> None:
@@ -144,8 +150,9 @@ def prove_linkage_workflow_source() -> None:
         ("injected shell", "          python scripts/validate-memory-os-admission-authority-linkage.py\n", "          echo UNREVIEWED\n          python scripts/validate-memory-os-admission-authority-linkage.py\n"),
         ("injected action", "      - name: Validate admission authority links read-only\n", "      - uses: unreviewed/action@v1\n      - name: Validate admission authority links read-only\n"),
         ("removed PR self-trigger", "      - \"scripts/validate-memory-os-admission-authority-linkage-negative.py\"\n", ""),
+        ("diagnostic symlink guard", "          if path.is_symlink():\n", ""),
     )
-    if len(mutations) != 15:
+    if len(mutations) != 16:
         raise AssertionError("admission linkage workflow negative inventory drift")
     for label, before, after in mutations:
         if before not in source:
@@ -174,7 +181,85 @@ def prove_linkage_workflow_source() -> None:
         if (result.returncode == 0) != expected:
             raise AssertionError("admission linkage workflow runtime branch drift: " + label)
     print("PASS: admission linkage workflow PR/push branch guard runtime (6 cases)")
-    print("PASS: admission linkage workflow source admission (15 negatives)")
+    print("PASS: admission linkage workflow source admission (16 negatives)")
+
+
+
+def prove_linkage_diagnostic_runtime() -> None:
+    """Execute the real failure writer against mode, redaction and I/O fault fixtures."""
+    source = WORKFLOW_PATH.read_text(encoding="utf-8")
+    marker = "      - name: Record privacy-safe linkage diagnostic\n"
+    start, end = "          python - <<'PY'\n", "          PY\n"
+    if source.count(marker) != 1:
+        raise AssertionError("admission linkage diagnostic step is not unique")
+    section = source.split(marker, 1)[1]
+    if section.count(start) != 1 or end not in section:
+        raise AssertionError("admission linkage diagnostic inline writer extraction drift")
+    inline = section.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="admission-linkage-diagnostic-runtime-") as temp:
+        root = Path(temp)
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+        subprocess.run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                        "commit", "--allow-empty", "-qm", "fixture"],
+                       cwd=root, check=True, capture_output=True)
+        expected_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+        path = root / "docs/fixtures/memory-os-operability/admission-authority-linkage-diagnostic.last.json"
+        path.parent.mkdir(parents=True)
+        previous = b'{"previous": "preserve"}\n'
+        env = os.environ.copy()
+        env.update({"LINKAGE_EXIT_CODE": "23", "SENSITIVE_CANARY": "CANARY_LINKAGE_MUST_NOT_PERSIST"})
+
+        def run(program: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run([sys.executable, "-c", program], cwd=root, env=env,
+                                  capture_output=True, text=True, timeout=15, check=False)
+
+        def clean(label: str) -> None:
+            if list(path.parent.glob(".admission-authority-linkage-diagnostic.last.json.*.tmp")):
+                raise AssertionError("admission linkage diagnostic temporary file leaked: " + label)
+
+        path.write_bytes(previous)
+        path.chmod(0o640)
+        success = run(script)
+        if success.returncode:
+            raise AssertionError("admission linkage diagnostic positive failed: " + success.stderr[-400:])
+        payload = path.read_text(encoding="utf-8")
+        value = json.loads(payload)
+        if (set(value) != {"schemaVersion", "workflow", "result", "sourceCommitSha", "exitCode",
+                           "output", "containsSecrets", "productionEvidence", "productionReady"}
+                or value["schemaVersion"] != "memory-os-validator-diagnostic.v1"
+                or value["workflow"] != "admission-authority-linkage" or value["result"] != "FAIL"
+                or value["sourceCommitSha"] != expected_sha or value["exitCode"] != 23
+                or value["output"] != "REDACTED: admission linkage validation failed; raw output withheld"
+                or value["containsSecrets"] is not False or value["productionEvidence"] is not False
+                or value["productionReady"] is not False or "CANARY_LINKAGE" in payload):
+            raise AssertionError("admission linkage diagnostic privacy/authority drift")
+        if stat.S_IMODE(path.stat().st_mode) != 0o640:
+            raise AssertionError("admission linkage diagnostic failed to preserve mode")
+        clean("positive")
+        saved = path.read_bytes()
+        for label, anchor in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            if script.count(anchor) != 1:
+                raise AssertionError("admission linkage diagnostic fault anchor drift: " + label)
+            injection = "raise OSError('synthetic admission linkage " + label + " failure')"
+            outcome = run(script.replace(anchor, injection, 1))
+            if outcome.returncode == 0 or "synthetic admission linkage " + label + " failure" not in outcome.stderr:
+                raise AssertionError("admission linkage diagnostic fault was not reached: " + label)
+            if path.read_bytes() != saved or stat.S_IMODE(path.stat().st_mode) != 0o640:
+                raise AssertionError("admission linkage diagnostic fault altered previous bytes/mode: " + label)
+            clean(label)
+        outside = root / "external-canary"
+        outside.write_bytes(b"EXTERNAL_LINKAGE_CANARY")
+        path.unlink()
+        path.symlink_to(outside)
+        outcome = run(script)
+        if outcome.returncode == 0 or "target must not be a symlink" not in outcome.stderr:
+            raise AssertionError("admission linkage diagnostic accepted symlink target")
+        if not path.is_symlink() or outside.read_bytes() != b"EXTERNAL_LINKAGE_CANARY":
+            raise AssertionError("admission linkage diagnostic followed external symlink")
+        clean("symlink")
+    print("PASS: admission linkage diagnostic redaction/atomic runtime (4 cases)")
 
 
 def main() -> int:
@@ -212,6 +297,7 @@ def main() -> int:
     if missing:
         raise AssertionError(f"high-impact admission linkage keys are not covered: {missing}")
     validate_atomic_diagnostic_publication()
+    prove_linkage_diagnostic_runtime()
     fixture = ROOT / f".tmp-admission-authority-linkage-negative-{os.getpid()}"
     external_root = Path(tempfile.mkdtemp(prefix="memory-os-linkage-negative-"))
     try:
