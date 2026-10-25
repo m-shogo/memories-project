@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-reconcile-negative.yml"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "0917bd884f5aff53080f7e5c1efc3014ab6297be"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -25,7 +27,7 @@ REQUIRED = (
 )
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"generation evidence reconcile workflow source boundary drift: {label}")
@@ -33,6 +35,11 @@ def validate(source: str) -> None:
 
     if not source.rstrip().endswith('          test -z "$(git status --porcelain)"'):
         raise SystemExit("generation evidence reconcile workflow source boundary drift: final read-only terminator")
+    if check_blob:
+        payload = source.encode("utf-8")
+        git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        if hashlib.sha1(git_blob).hexdigest() != REVIEWED_WORKFLOW_GIT_BLOB_SHA:
+            raise SystemExit("generation evidence reconcile workflow complete source blob drift")
 
 
 def main() -> int:
@@ -64,14 +71,30 @@ def main() -> int:
             continue
         raise SystemExit(f"generation evidence reconcile accepted forbidden mutation: {label}")
     # The canonical workflow may or may not end in a newline; both are valid.
-    validate(source.rstrip("\n") + "\n")
+    validate(source.rstrip("\n") + "\n", check_blob=False)
     try:
         validate(source + '\n          echo "unreviewed final command"\n')
     except SystemExit:
         pass
     else:
         raise SystemExit("generation evidence reconcile accepted appended final command")
-    print(f"PASS: generation evidence reconcile workflow source admission ({len(cases) + 1} negatives)")
+    # Whole-source binding rejects otherwise anchor-preserving workflow changes.
+    for label, mutated in (
+        ("extra executable step", source.replace(
+            "      - name: Prove transactional generation recovery reconciliation\n",
+            "      - run: echo unreviewed\n      - name: Prove transactional generation recovery reconciliation\n", 1)),
+        ("missing domain trigger", source.replace(
+            '      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"\n',
+            "", 1)),
+    ):
+        if mutated == source:
+            raise SystemExit("generation evidence reconcile source digest negative anchor missing: " + label)
+        try:
+            validate(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("generation evidence reconcile accepted whole-source mutation: " + label)
+    print(f"PASS: generation evidence reconcile workflow source admission ({len(cases) + 3} negatives)")
     return 0
 
 

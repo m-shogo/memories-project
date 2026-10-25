@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-review-negative.yml"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "29a0fd5b067b2e69b4db0cf62540308a51743982"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -25,10 +27,15 @@ REQUIRED = (
 )
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"generation independent review workflow source boundary drift: {label}")
+    if check_blob:
+        payload = source.encode("utf-8")
+        git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        if hashlib.sha1(git_blob).hexdigest() != REVIEWED_WORKFLOW_GIT_BLOB_SHA:
+            raise SystemExit("generation independent review workflow complete source blob drift")
 
 
 def main() -> int:
@@ -59,7 +66,23 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"generation independent review accepted forbidden mutation: {label}")
-    print(f"PASS: generation independent review workflow source admission ({len(cases)} negatives)")
+    # Whole-source binding rejects otherwise anchor-preserving workflow changes.
+    for label, mutated in (
+        ("extra executable step", source.replace(
+            "      - name: Validate final-candidate independent-review authority read-only\n",
+            "      - run: echo unreviewed\n      - name: Validate final-candidate independent-review authority read-only\n", 1)),
+        ("missing domain trigger", source.replace(
+            '      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"\n',
+            "", 1)),
+    ):
+        if mutated == source:
+            raise SystemExit("generation independent review source digest negative anchor missing: " + label)
+        try:
+            validate(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("generation independent review accepted whole-source mutation: " + label)
+    print(f"PASS: generation independent review workflow source admission ({len(cases) + 2} negatives)")
     return 0
 
 
