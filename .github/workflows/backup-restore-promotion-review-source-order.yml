@@ -16,7 +16,9 @@ on:
       - 'contracts/operations/operability-admission-inventory.v1.json'
       - 'docs/evidence/backup-restore/**'
       - '.github/workflows/backup-restore-promotion-review-source-order.yml'
+      - 'scripts/validate-memory-os-backup-restore-promotion-review-source-order-workflow-negative.py'
   pull_request:
+    branches: [so]
     paths:
       - 'scripts/validate-memory-os-backup-restore-promotion-review-source-order.py'
       - 'scripts/register-memory-os-backup-restore-promotion-review.py'
@@ -30,6 +32,7 @@ on:
       - 'contracts/operations/operability-admission-inventory.v1.json'
       - 'docs/evidence/backup-restore/**'
       - '.github/workflows/backup-restore-promotion-review-source-order.yml'
+      - 'scripts/validate-memory-os-backup-restore-promotion-review-source-order-workflow-negative.py'
   workflow_dispatch:
 
 permissions:
@@ -40,20 +43,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
       - name: Assert exact promotion authority source
+        env:
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          expected="${{ github.event.pull_request.head.sha || github.sha }}"
-          test -n "$expected"
+          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${PR_BASE_REF:-}" = "so"
+            expected="${{ github.event.pull_request.head.sha }}"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            expected="${GITHUB_SHA:-}"
+          else
+            echo "Unreviewed promotion source-order CI event" >&2
+            exit 1
+          fi
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+      - name: Prove source-order CI source admission
+        run: python scripts/validate-memory-os-backup-restore-promotion-review-source-order-workflow-negative.py
       - name: Compile chronology and promotion validators
         run: |
           python -m py_compile \
