@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/backup-restore-admission-chain-readonly.yml"
+      - ".github/workflows/backup-restore-permission-boundary-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-full.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-operability.py"
@@ -17,6 +20,9 @@ on:
     branches: [so]
     paths:
       - ".github/workflows/backup-restore-admission-chain-readonly.yml"
+      - ".github/workflows/backup-restore-permission-boundary-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-full.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-operability.py"

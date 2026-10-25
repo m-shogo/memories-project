@@ -12,7 +12,7 @@ WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain.yml"
 NEGATIVE_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-negative.yml"
 REVIEWED_NEGATIVE_WORKFLOW_BLOB_SHA = "18c80c27ed7d4581f776d323ea993cae211ac6e3"
 READONLY_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-readonly.yml"
-REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "71acab9b0d61f5373b444ee71ef87c2812f22881"
+REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "3d10e5e82e2a1e46156a3dd71082901d1662054f"
 
 
 class Fail(RuntimeError):
@@ -332,6 +332,27 @@ def require_readonly_workflow_source_negatives(source: str) -> None:
         else:
             raise Fail(f"admission readonly CI source mutation accepted: {label}")
 
+    # Independent admission readonly CI must run when the permission gate or
+    # either external workflow-permission validator changes.
+    permission_trigger = '      - ".github/workflows/backup-restore-permission-boundary-negative.yml"\n'
+    require(source.count(permission_trigger) == 2,
+            "admission readonly permission trigger fixture inventory drift")
+    before_push, after_push = source.split("  push:\n", 1)
+    trigger_mutations = (
+        ("missing-permission-gate-pr-trigger",
+         before_push.replace(permission_trigger, "", 1) + "  push:\n" + after_push),
+        ("missing-permission-gate-push-trigger",
+         before_push + "  push:\n" + after_push.replace(permission_trigger, "", 1)),
+    )
+    for label, mutated in trigger_mutations:
+        require(mutated != source, f"admission readonly trigger fixture unchanged: {label}")
+        try:
+            require_reviewed_readonly_workflow_blob(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"admission readonly CI trigger mutation accepted: {label}")
+
 
 def main() -> int:
     require(NEGATIVE_WORKFLOW.is_file() and not NEGATIVE_WORKFLOW.is_symlink(),
@@ -409,7 +430,7 @@ def main() -> int:
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
     print("independent admission negative CI source mutations rejected: 6")
-    print("independent admission readonly CI source mutations rejected: 6")
+    print("independent admission readonly CI source mutations rejected: 8")
     print("production decision changed: false")
     return 0
 
