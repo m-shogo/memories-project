@@ -62,7 +62,7 @@ def validate(live: str, upload: str, independent: str) -> None:
         "      - name: Publish exact-source result documents\n        if: env.PUBLISH_RESULTS == 'true'",
         "      - name: Reconcile published evidence into current status\n        if: env.PUBLISH_RESULTS == 'true'",
         "      - name: Restore committed evidence after unchanged scheduled verification\n        if: env.PUBLISH_RESULTS == 'false'",
-        "git diff --quiet ${SOURCE_SHA}",
+        'git diff --quiet "${SOURCE_SHA}"',
         "git reset --hard origin/so",
     )
     upload_required = (
@@ -164,7 +164,7 @@ def source_negatives(live: str, upload: str, independent: str) -> None:
         ("image", "quay.io/minio/minio server /data", "quay.io/minio/minio:latest server /data"),
         ("ignore docker", "          docker run -d --name memory-os-live-load-minio", "          docker run -d --name memory-os-live-load-minio || true"),
         ("publish gate", "if: env.PUBLISH_RESULTS == 'true'", "if: always()"),
-        ("source guard", "git diff --quiet ${SOURCE_SHA}", "true"),
+        ("source guard", 'git diff --quiet "${SOURCE_SHA}"', "true"),
         ("retry", "git reset --hard origin/so", "true"),
     )
     upload_cases = (
