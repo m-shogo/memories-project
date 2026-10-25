@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/local-migration-recovery-artifact.yml"
 INDEPENDENT = ".github/workflows/local-migration-recovery-source-negative.yml"
 SELF = "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py"
-PUBLISHER_SHA = "b41c62ea91abd8539a8154968e15403e8e99371d"
+PUBLISHER_SHA = "86cb9e591b9ad699a7d9be98ac4c42a190e9c5fd"
 INDEPENDENT_SHA = "094d794db2d11846a4a174ac7ab976b4f81e304a"
 LOCAL_NEGATIVE = "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
 LOCAL_NEGATIVE_SHA = "a718111cfe880860c96d7784afdab2dd61fb9495"
@@ -69,6 +69,10 @@ PUBLISHER_REQUIRED = (
     ("ref: so", 1),
     ("'output': 'REDACTED: local migration recovery failed; raw output withheld'", 1),
     ("raw log suppressed", 1),
+    ("os.replace(temp_name, path)", 1),
+    ("os.fsync(handle.fileno())", 1),
+    ("os.fchmod(handle.fileno(), existing_mode)", 1),
+    ("os.unlink(temp_name)", 1),
     ('cat "$log"', 0),
     ("text[-10000:]", 0),
     ("python " + SELF, 2),
@@ -122,6 +126,9 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("publisher checkout ref", True, "ref: so", "ref: main"),
         ("publisher redaction", True, "'output': 'REDACTED: local migration recovery failed; raw output withheld'", "'output': text[-10000:]"),
         ("publisher log suppression", True, "raw log suppressed", "raw log exposed"),
+        ("publisher atomic diagnostic replace", True, "os.replace(temp_name, path)", "path.write_text('unsafe')"),
+        ("publisher diagnostic fsync", True, "os.fsync(handle.fileno())", "pass"),
+        ("publisher diagnostic mode", True, "os.fchmod(handle.fileno(), existing_mode)", "pass"),
         ("independent PR base", False, PR_BASE, "true"),
         ("independent writer ref", False, WRITER_REF, "true"),
         ("independent SHA", False, PR_SHA, 'test -n "$expected"'),
@@ -277,7 +284,33 @@ def diagnostic_runtime(publisher: str) -> None:
                         "local recovery diagnostic rejected for wrong reason: " + name + ": " + str(exc))
             else:
                 require(allowed, "local recovery diagnostic accepted unsafe mutation: " + name)
+    require(script.count("os.replace(temp_name, path)") == 1,
+            "local recovery diagnostic atomic replace marker not unique")
+    with tempfile.TemporaryDirectory(prefix="local-recovery-diagnostic-atomic-") as temp:
+        directory = Path(temp)
+        target = directory / "docs/fixtures/memory-os-operability/local-migration-recovery-artifact-diagnostic.last.json"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"existing diagnostic\n")
+        target.chmod(0o640)
+        normal = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                capture_output=True, text=True, timeout=15, check=False)
+        require(normal.returncode == 0, "local recovery atomic diagnostic positive writer failed")
+        require_diagnostic_payload(target.read_text(encoding="utf-8"))
+        require(target.stat().st_mode & 0o7777 == 0o640,
+                "local recovery atomic diagnostic changed existing mode")
+        original = target.read_bytes()
+        failed = script.replace("os.replace(temp_name, path)",
+                                "raise OSError('synthetic local diagnostic replace failure')", 1)
+        result = subprocess.run([sys.executable, "-c", failed], cwd=directory, env=env,
+                                capture_output=True, text=True, timeout=15, check=False)
+        require(result.returncode != 0 and "synthetic local diagnostic replace failure" in result.stderr,
+                "local recovery atomic diagnostic replace failure did not execute")
+        require(target.read_bytes() == original and target.stat().st_mode & 0o7777 == 0o640,
+                "local recovery atomic diagnostic failure mutated existing output")
+        require(not list(target.parent.glob(".local-migration-recovery-diagnostic.*.tmp")),
+                "local recovery atomic diagnostic failure left temporary files")
     print("PASS: local recovery actual diagnostic writer (1 positive, 8 negative runtime cases)")
+    print("PASS: local recovery atomic diagnostic mode and failed-replace rollback (2 cases)")
 
 
 def main() -> int:
