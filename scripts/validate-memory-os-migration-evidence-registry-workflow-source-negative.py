@@ -25,6 +25,8 @@ PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
 WRITER_REF = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
 PR_SHA = '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'
 WRITER_SHA = '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]'
+CLONE_CHECKOUT = 'git -C "$sandbox/repo" checkout --quiet --detach "$(git rev-parse HEAD)"'
+CLONE_CLEAN = '            test -z "$(git status --porcelain)"'
 
 
 def require(condition: bool, message: str) -> None:
@@ -92,6 +94,8 @@ INDEPENDENT_REQUIRED = (
     ('      - "' + "scripts/reconcile-memory-os-migration-evidence-registry.py" + '"\n', 2),
     ("python " + AUTHORITY_NEGATIVE, 1),
     ("git clone --quiet --no-hardlinks --no-checkout .", 1),
+    (CLONE_CHECKOUT, 1),
+    (CLONE_CLEAN, 1),
     ("permissions:\n  contents: read\n", 1),
     ("      contents: read\n", 1),
 )
@@ -130,6 +134,8 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("independent self guard", False, "python " + SELF, "echo skip"),
         ("independent lifecycle guard", False, "python " + AUTHORITY_NEGATIVE, "echo skip"),
         ("independent isolated clone", False, "git clone --quiet --no-hardlinks --no-checkout .", "echo skip"),
+        ("independent clone exact HEAD", False, CLONE_CHECKOUT, 'git -C "$sandbox/repo" checkout --quiet so'),
+        ("independent clone inner clean", False, CLONE_CLEAN, "            true"),
     )
     for label, publisher_case, before, after in cases:
         original = publisher if publisher_case else independent
@@ -158,7 +164,7 @@ def negative_proofs(publisher: str, independent: str) -> None:
                 "lifecycle suite mutation rejected for wrong reason: " + str(exc))
     else:
         raise SystemExit("migration evidence source negative accepted: lifecycle suite digest drift")
-    print("PASS: migration evidence CI source negatives (25 cases)")
+    print("PASS: migration evidence CI source negatives (27 cases)")
 
 
 def runtime_proofs() -> None:
