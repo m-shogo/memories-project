@@ -91,6 +91,38 @@ def require_bootstrap_negatives(job: str, *, pr: bool) -> None:
         else:
             raise Fail(f"generation bootstrap negative mutation {index} accepted")
 
+
+REVIEWED_STEP_HEADERS = {
+    True: ["      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262","      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065","      - name: Validate drill-bound generation recovery authority read-only"],
+    False: ["      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262","      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065","      - name: Capture exact recovery authority source","      - name: Write generation recovery authority manifest","      - name: Validate drill-bound generation recovery admission","      - name: Reject stale generation recovery authority on pull requests","      - name: Commit bounded recovery authority","      - name: Record privacy-safe generation recovery diagnostic","      - name: Enforce generation recovery admission"],
+}
+
+
+def require_reviewed_step_inventory(job: str, *, pr: bool) -> None:
+    actual = [line for line in job.splitlines() if line.startswith("      - ")]
+    require(actual == REVIEWED_STEP_HEADERS[pr],
+            "generation executable step header inventory drift")
+
+
+def require_step_inventory_negatives(job: str, *, pr: bool) -> None:
+    require_reviewed_step_inventory(job, pr=pr)
+    anchor = "    steps:\n"
+    require(job.count(anchor) == 1, "generation reviewed steps anchor drift")
+    mutations = (
+        job.replace(anchor, anchor + "      - run: echo unreviewed\n", 1),
+        job.replace(anchor, anchor + "      - name: Unreviewed shell\n        run: echo unreviewed\n", 1),
+        job.replace(anchor, anchor + '      - "run": echo unreviewed\n', 1),
+    )
+    for index, mutated in enumerate(mutations, 1):
+        require(mutated != job, "generation step inventory negative fixture unchanged")
+        try:
+            require_reviewed_step_inventory(mutated, pr=pr)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"generation step inventory negative mutation {index} accepted")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("pull_request_target:" not in text, "generation-evidence authority must not use pull_request_target")
@@ -101,6 +133,8 @@ def main() -> int:
     validate_pr, validate = jobs.split("\n  validate:\n", 1)
     require_bootstrap_negatives(validate_pr, pr=True)
     require_bootstrap_negatives(validate, pr=False)
+    require_step_inventory_negatives(validate_pr, pr=True)
+    require_step_inventory_negatives(validate, pr=False)
 
     require("if: github.event_name == 'pull_request'" in validate_pr, "generation-evidence PR validator must be pull-request-only")
     require("permissions:\n      contents: read" in validate_pr, "generation-evidence PR validator must explicitly remain contents: read")
@@ -141,6 +175,7 @@ def main() -> int:
     print("PASS: writer authority negatives, Operability validation, stale-source CAS and atomic diagnostic publication remain enforced")
     print("publisher event/ref negative mutations rejected: 4")
     print("immutable bootstrap/source/credential negative mutations rejected: 20")
+    print("executable step header negative mutations rejected: 6")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0

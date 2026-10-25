@@ -97,6 +97,38 @@ def require_bootstrap_negatives(job: str, *, pr: bool) -> None:
         else:
             raise Fail("drill bootstrap negative mutation accepted")
 
+
+REVIEWED_STEP_HEADERS = {
+    True: ["      - name: Checkout exact pull request source","      - name: Set up Python","      - name: Validate drill planning authority read-only"],
+    False: ["      - name: Checkout exact source","      - name: Set up Python","      - name: Capture exact drill planning authority source","      - name: Validate and reconcile planning authority","      - name: Reject stale drill planning authority on pull requests","      - name: Commit bounded drill planning authority","      - name: Record privacy-safe drill request diagnostic","      - name: Enforce drill request admission validation","      - name: Re-read canonical authority after reconciliation"],
+}
+
+
+def require_reviewed_step_inventory(job: str, *, pr: bool) -> None:
+    actual = [line for line in job.splitlines() if line.startswith("      - ")]
+    require(actual == REVIEWED_STEP_HEADERS[pr],
+            "drill executable step header inventory drift")
+
+
+def require_step_inventory_negatives(job: str, *, pr: bool) -> None:
+    require_reviewed_step_inventory(job, pr=pr)
+    anchor = "    steps:\n"
+    require(job.count(anchor) == 1, "drill reviewed steps anchor drift")
+    mutations = (
+        job.replace(anchor, anchor + "      - run: echo unreviewed\n", 1),
+        job.replace(anchor, anchor + "      - name: Unreviewed shell\n        run: echo unreviewed\n", 1),
+        job.replace(anchor, anchor + '      - "run": echo unreviewed\n', 1),
+    )
+    for index, mutated in enumerate(mutations, 1):
+        require(mutated != job, "drill step inventory negative fixture unchanged")
+        try:
+            require_reviewed_step_inventory(mutated, pr=pr)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"drill step inventory negative mutation {index} accepted")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("pull_request_target:" not in text, "drill-request authority must not use pull_request_target")
@@ -107,6 +139,8 @@ def main() -> int:
     validate_pr, validate = jobs.split("\n  validate:\n", 1)
     require_bootstrap_negatives(validate_pr, pr=True)
     require_bootstrap_negatives(validate, pr=False)
+    require_step_inventory_negatives(validate_pr, pr=True)
+    require_step_inventory_negatives(validate, pr=False)
 
     require("if: github.event_name == 'pull_request'" in validate_pr, "drill-request PR validator must be pull-request-only")
     require("permissions:\n      contents: read" in validate_pr, "drill-request PR validator must explicitly remain contents: read")
@@ -152,6 +186,7 @@ def main() -> int:
     print("PASS: downstream generation/typed gates, rollback negatives, stale-source CAS and atomic diagnostics remain enforced")
     print("publisher event/ref negative mutations rejected: 4")
     print("immutable bootstrap/source/credential negative mutations rejected: 20")
+    print("executable step header negative mutations rejected: 6")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
