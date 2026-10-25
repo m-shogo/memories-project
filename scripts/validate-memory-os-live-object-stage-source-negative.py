@@ -11,7 +11,7 @@ PUBLISHER = ".github/workflows/reconcile-live-object-stage-diagnostics.yml"
 INDEPENDENT = ".github/workflows/live-object-stage-source-negative.yml"
 SELF = "scripts/validate-memory-os-live-object-stage-source-negative.py"
 REVIEWED_PUBLISHER = "7df80744055bd48c4dd7e87137109178d1c1f185"
-REVIEWED_INDEPENDENT = "63a197988b1d4f413ef8d4ec74cd5b285925723f"
+REVIEWED_INDEPENDENT = "a87b554aaf9c2c011601d1f0d0d6a7390d4a614f"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP_PY = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 SETUP_GO = "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"
@@ -311,12 +311,96 @@ def reconciler_writer_runtime():
             raise AssertionError("live object stage symlink modified external sentinel")
     print("PASS: live object stage actual reconciler symlink refusal, mode preservation, atomic replace rollback and temp cleanup (4 cases)")
 
+
+def live_object_evidence_validator_runtime():
+    """Exercise actual canonical local-evidence validator with disposable negative JSON."""
+    import importlib.util
+    import json
+
+    module_path = ROOT / "scripts/validate-memory-os-live-object-load.py"
+    spec = importlib.util.spec_from_file_location("live_object_evidence_validator", module_path)
+    if spec is None or spec.loader is None:
+        raise AssertionError("live object evidence validator import failed")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    contract_text = source("contracts/operations/live-object-load-scenario-contract.v1.json")
+    result_text = source("docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json")
+    with tempfile.TemporaryDirectory(prefix="live-object-evidence-negative-") as tmp:
+        root = Path(tmp)
+        contract_path = root / "contracts/operations/live-object-load-scenario-contract.v1.json"
+        result_path = root / "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json"
+        contract_path.parent.mkdir(parents=True)
+        result_path.parent.mkdir(parents=True)
+        module.ROOT = root
+        module.CONTRACT_PATH = contract_path
+        previous_expected = os.environ.pop("EXPECTED_COMMIT_SHA", None)
+        try:
+            def reset():
+                if result_path.is_symlink():
+                    result_path.unlink()
+                contract_path.write_text(contract_text, encoding="utf-8")
+                result_path.write_text(result_text, encoding="utf-8")
+
+            def reject(label, expected):
+                try:
+                    module.validate()
+                except module.ValidationError as exc:
+                    if expected not in str(exc):
+                        raise AssertionError("live object evidence wrong rejection for " + label + ": " + str(exc)) from exc
+                else:
+                    raise AssertionError("live object evidence accepted " + label)
+
+            reset()
+            module.validate()
+            reset()
+            result_path.write_text('{"schemaVersion":"synthetic-duplicate",' + result_text.lstrip()[1:], encoding="utf-8")
+            reject("duplicate top-level JSON key", "duplicate JSON key")
+            reset()
+            result_path.write_text(result_text.replace('"productionEvidence": false',
+                                '"productionEvidence": true, "productionEvidence": false', 1), encoding="utf-8")
+            reject("duplicate nested JSON key", "duplicate JSON key")
+            reset()
+            contract = json.loads(contract_text)
+            contract["resultPath"] = "../../outside.json"
+            contract_path.write_text(json.dumps(contract), encoding="utf-8")
+            reject("result path traversal", "resultPath authority drift")
+            reset()
+            outside = root / "outside.json"
+            outside.write_text(result_text, encoding="utf-8")
+            result_path.unlink()
+            result_path.symlink_to(outside)
+            reject("symlink evidence", "symlink")
+            if outside.read_text(encoding="utf-8") != result_text:
+                raise AssertionError("live object symlink modified outside sentinel")
+            reset()
+            document = json.loads(result_text)
+            document["scenarios"][0]["batch"]["statusClassCounts"]["transport_error_credential"] = 0
+            result_path.write_text(json.dumps(document), encoding="utf-8")
+            reject("unbounded status label", "invalid status class")
+            reset()
+            document = json.loads(result_text)
+            document["environment"]["productionEvidence"] = True
+            result_path.write_text(json.dumps(document), encoding="utf-8")
+            reject("false production evidence", "ephemeral MinIO results cannot claim production evidence")
+            reset()
+            contract = json.loads(contract_text)
+            contract["readiness"]["productionTLS"] = True
+            contract_path.write_text(json.dumps(contract), encoding="utf-8")
+            reject("false production TLS readiness", "productionTLS cannot be true")
+        finally:
+            if previous_expected is not None:
+                os.environ["EXPECTED_COMMIT_SHA"] = previous_expected
+    print("PASS: live object evidence actual validator baseline and seven duplicate/path/symlink/privacy/readiness negatives")
+
+
 def main():
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     if blob(publisher) != REVIEWED_PUBLISHER or blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("live object stage complete source blob drift")
     for marker in (PUBLISHER, INDEPENDENT, SELF, CHECKOUT, SETUP_PY, SETUP_GO,
                    "scripts/reconcile-memory-os-live-object-stage-diagnostics.py",
+                   "scripts/validate-memory-os-live-object-load.py",
+                   "contracts/operations/live-object-load-scenario-contract.v1.json",
                    "services/import-api/internal/httpserver/live_object_load_test.go",
                    "TestLiveObjectStageLabelClosedVocabulary",
                    "persist-credentials: false", "contents: read",
@@ -335,6 +419,10 @@ def main():
         raise AssertionError("live object stage unbounded stage label regression")
     if "closed stage labels" not in reconciler_source or "bounded stage accounting" not in reconciler_source:
         raise AssertionError("live object stage reconciler label policy drift")
+    evidence_validator = source("scripts/validate-memory-os-live-object-load.py")
+    for marker in ("object_pairs_hook=reject_duplicate_json_keys", "resultPath authority drift", "path.is_symlink()"):
+        if marker not in evidence_validator:
+            raise AssertionError("live object evidence validator authority drift: " + marker)
     for marker in ("def validate_target()", "PATH.is_symlink()", "def atomic_write_text(", "os.replace(temp_name, path)", "validate_target()"):
         if marker not in reconciler_source:
             raise AssertionError("live object stage reconciler write safety drift: " + marker)
@@ -344,6 +432,7 @@ def main():
     runtime(publisher, "Reconcile stage diagnostics", True)
     publisher_runtime(publisher)
     reconciler_writer_runtime()
+    live_object_evidence_validator_runtime()
     print("PASS: live object stage read-only source proof; production evidence generated: false; production decision changed: false")
 
 if __name__ == "__main__":

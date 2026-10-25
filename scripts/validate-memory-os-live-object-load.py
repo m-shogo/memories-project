@@ -29,9 +29,25 @@ def require(condition: bool, message: str) -> None:
         fail(message)
 
 
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in document:
+            fail("duplicate JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
+    if path.is_symlink() or not path.is_file():
+        fail("required JSON path is missing or symlink")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (ValueError, OSError) as exc:
+        raise ValidationError("JSON path escaped canonical checkout") from exc
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_json_keys)
     except FileNotFoundError as exc:
         raise ValidationError(f"missing required evidence: {path.relative_to(ROOT)}") from exc
     except json.JSONDecodeError as exc:
@@ -55,6 +71,8 @@ def positive(value: Any, field: str) -> float:
 
 def validate() -> None:
     contract = load(CONTRACT_PATH)
+    require(contract.get("resultPath") == "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json",
+            "resultPath authority drift")
     result = load(ROOT / contract["resultPath"])
 
     require(contract.get("schemaVersion") == "memory-os-live-object-load-scenario.v1",

@@ -9,6 +9,8 @@ on:
       - ".github/workflows/live-object-stage-source-negative.yml"
       - "scripts/validate-memory-os-live-object-stage-source-negative.py"
       - "scripts/reconcile-memory-os-live-object-stage-diagnostics.py"
+      - "scripts/validate-memory-os-live-object-load.py"
+      - "contracts/operations/live-object-load-scenario-contract.v1.json"
       - "services/import-api/internal/httpserver/live_object_load_test.go"
   push:
     branches:
@@ -18,6 +20,8 @@ on:
       - ".github/workflows/live-object-stage-source-negative.yml"
       - "scripts/validate-memory-os-live-object-stage-source-negative.py"
       - "scripts/reconcile-memory-os-live-object-stage-diagnostics.py"
+      - "scripts/validate-memory-os-live-object-load.py"
+      - "contracts/operations/live-object-load-scenario-contract.v1.json"
       - "services/import-api/internal/httpserver/live_object_load_test.go"
 
 permissions:
