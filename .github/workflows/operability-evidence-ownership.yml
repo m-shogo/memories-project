@@ -64,7 +64,7 @@ jobs:
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          echo "Ownership validation completed; raw validator output withheld."
           exit 0
       - name: Commit ownership authority
         if: steps.ownership.outputs.exit_code == '0'
@@ -102,25 +102,40 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os, tempfile
+          import json, os, stat, tempfile
           from pathlib import Path
-          text = Path('/tmp/operability-evidence-ownership.log').read_text(encoding='utf-8', errors='replace')
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'operability-evidence-ownership',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['OWNERSHIP_EXIT_CODE']),
-              'output': text[-12000:],
+              'output': 'Ownership validation failed; raw validator output withheld.',
               'containsSecrets': False,
               'productionEvidence': False,
               'productionReady': False,
           }
-          path = Path('docs/fixtures/memory-os-operability/operability-evidence-ownership-diagnostic.last.json')
-          path.parent.mkdir(parents=True, exist_ok=True)
+          repo = Path.cwd().resolve(strict=True)
+          path = repo / 'docs/fixtures/memory-os-operability/operability-evidence-ownership-diagnostic.last.json'
+          if not path.parent.is_dir():
+              raise RuntimeError('ownership diagnostic parent missing')
+          candidate = repo
+          for component in path.relative_to(repo).parts:
+              candidate = candidate / component
+              if candidate.is_symlink():
+                  raise RuntimeError('ownership diagnostic path must not be a symlink')
+          try:
+              path.parent.resolve(strict=True).relative_to(repo)
+          except ValueError as exc:
+              raise RuntimeError('ownership diagnostic parent escaped repository') from exc
+          if path.exists() and not path.is_file():
+              raise RuntimeError('ownership diagnostic target must be regular')
+          mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
           payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
           fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
           try:
+              if mode is not None:
+                  os.fchmod(fd, mode)
               with os.fdopen(fd, 'wb') as handle:
                   handle.write(payload)
                   handle.flush()
