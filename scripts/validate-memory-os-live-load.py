@@ -10,6 +10,7 @@ capacity evidence.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -36,6 +37,10 @@ def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return document
 
 
+def reject_non_finite_json_constant(value: str) -> None:
+    raise ValidationError("non-finite JSON constant rejected: " + value)
+
+
 def load_json(path: Path) -> dict[str, Any]:
     if path.is_symlink() or not path.is_file():
         raise ValidationError("required JSON path is missing or symlink")
@@ -44,7 +49,8 @@ def load_json(path: Path) -> dict[str, Any]:
     except (ValueError, OSError) as exc:
         raise ValidationError("JSON path escaped canonical checkout") from exc
     try:
-        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_json_keys)
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_json_keys,
+                           parse_constant=reject_non_finite_json_constant)
     except FileNotFoundError as exc:
         raise ValidationError(f"missing required evidence: {path.relative_to(ROOT)}") from exc
     except json.JSONDecodeError as exc:
@@ -67,7 +73,11 @@ def integer(value: Any, field: str, *, minimum: int = 0) -> int:
 
 def positive_number(value: Any, field: str) -> float:
     require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
-    number = float(value)
+    try:
+        number = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValidationError(f"{field} must be finite") from exc
+    require(math.isfinite(number), f"{field} must be finite")
     require(number > 0, f"{field} must be > 0")
     return number
 

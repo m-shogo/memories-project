@@ -376,10 +376,25 @@ def postgres_evidence_validator_runtime() -> None:
             contract["readiness"]["capacityBoundaryEstablished"] = True
             contract_path.write_text(json.dumps(contract), encoding="utf-8")
             reject("false capacity readiness", "capacityBoundaryEstablished cannot be true")
+            reset()
+            document = json.loads(result_text)
+            document["scenarios"][0]["batch"]["latencyP99Ms"] = float("inf")
+            result_path.write_text(json.dumps(document), encoding="utf-8")
+            reject("nonstandard Infinity latency", "non-finite JSON constant")
+            reset()
+            document = json.loads(result_text)
+            document["scenarios"][0]["batch"]["latencyP99Ms"] = "SYNTHETIC_OVERFLOW_LATENCY"
+            result_path.write_text(json.dumps(document).replace('"SYNTHETIC_OVERFLOW_LATENCY"', "1e999"), encoding="utf-8")
+            reject("overflowing exponent latency", "must be finite")
+            reset()
+            document = json.loads(result_text)
+            document["scenarios"][0]["batch"]["latencyP99Ms"] = 10 ** 500
+            result_path.write_text(json.dumps(document), encoding="utf-8")
+            reject("overflowing integer latency", "must be finite")
         finally:
             if previous_expected is not None:
                 os.environ["EXPECTED_COMMIT_SHA"] = previous_expected
-    print("PASS: live PostgreSQL actual evidence validator baseline and seven duplicate/path/symlink/privacy/readiness negatives")
+    print("PASS: live PostgreSQL actual evidence validator baseline and ten duplicate/path/symlink/privacy/readiness/numeric negatives")
 
 
 
