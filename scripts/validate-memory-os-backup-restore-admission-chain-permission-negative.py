@@ -18,6 +18,13 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_publisher_event_scope(header: str) -> None:
+    expected = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n    permissions:\n      contents: write\n"
+    require(header.startswith(expected),
+            "admission-chain publisher must scope write authority to so push/dispatch")
+    require(header.count("\n    if: ") == 0,
+            "admission-chain publisher must reject duplicate job-level if")
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("pull_request_target:" not in text, "backup/restore admission chain must not use pull_request_target")
@@ -37,7 +44,23 @@ def main() -> int:
     require("git diff --exit-code" in validate_pr, "admission-chain PR validator must reject deterministic authority drift")
 
     publish_header = publish.split("steps:", 1)[0]
-    require("if: github.event_name != 'pull_request'" in publish_header, "admission-chain publisher must explicitly exclude pull requests")
+    require_publisher_event_scope(publish_header)
+    approved_if = "    " + "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
+    mutations = (
+        publish_header.replace(approved_if, "    if: github.event_name != 'pull_request'", 1),
+        publish_header.replace("refs/heads/so", "refs/heads/main", 1),
+        publish_header.replace(approved_if, approved_if + "\n    if: true", 1),
+        publish_header.replace("github.event_name == 'push'",
+                               "github.event_name == 'pull_request_target'", 1),
+    )
+    for mutated in mutations:
+        require(mutated != publish_header, "publisher scope negative fixture unchanged")
+        try:
+            require_publisher_event_scope(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail("publisher scope negative mutation accepted")
     require("permissions:\n      contents: write" in publish_header, "admission-chain publisher must hold write authority only at job scope")
     require("ref: ${{ github.sha }}" in publish, "admission-chain publisher must checkout exact event SHA")
     require("git rev-parse origin/so" in publish, "admission-chain publisher must retain stale-source CAS")
@@ -47,7 +70,8 @@ def main() -> int:
     require("'productionReady': False" in publish, "admission-chain failure diagnostic must not claim production readiness")
 
     print("PASS: end-to-end admission PR validation is exact-head and read-only")
-    print("PASS: admission publication is non-PR-only with job-scoped write authority")
+    print("PASS: admission publication is so push/dispatch-only with job-scoped write authority")
+    print("publisher event/ref negative mutations rejected: 4")
     print("PASS: bounded full revalidation, stale-source CAS and atomic failure diagnostics remain enforced")
     print("production evidence generated: false")
     print("production decision changed: false")
