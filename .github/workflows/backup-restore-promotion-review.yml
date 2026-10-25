@@ -2,6 +2,8 @@ name: Backup Restore Promotion Review
 
 on:
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/backup-restore-promotion-review.yml"
       - "contracts/operations/backup-restore-promotion-review-contract.v1.json"
@@ -38,6 +40,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-promotion-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-operability.py"
+      - ".github/workflows/backup-restore-promotion-review-source-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-promotion-review-publisher-workflow-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
   push:
     branches:
@@ -78,6 +82,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-promotion-review-source-order.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-operability.py"
+      - ".github/workflows/backup-restore-promotion-review-source-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-promotion-review-publisher-workflow-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
   workflow_dispatch:
 
@@ -96,20 +102,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Verify exact clean promotion PR source
         run: |
           set -euo pipefail
+          test "${GITHUB_BASE_REF:-}" = "so"
           expected="${{ github.event.pull_request.head.sha }}"
-          test -n "$expected"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$expected"
+          python scripts/validate-memory-os-backup-restore-promotion-review-publisher-workflow-negative.py
       - name: Validate human promotion review read-only
         run: |
           set -euo pipefail
@@ -140,26 +149,30 @@ jobs:
           test -z "$(git status --porcelain)"
 
   validate-and-publish:
-    if: github.event_name != 'pull_request'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     permissions:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Capture exact promotion authority source
         run: |
           set -euo pipefail
-          expected="${{ github.sha }}"
-          test -n "$expected"
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          expected="${GITHUB_SHA:-}"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$expected"
+          python scripts/validate-memory-os-backup-restore-promotion-review-publisher-workflow-negative.py
           echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"
       - name: Reconcile and validate human promotion review
         id: validation
