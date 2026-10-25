@@ -8,6 +8,7 @@ on:
       - ".github/workflows/deletion-worker-host-failure-admission.yml"
       - ".github/workflows/deletion-worker-host-failure-permission-negative.yml"
       - ".github/workflows/deletion-worker-host-failure-source-negative.yml"
+      - "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - ".github/workflows/deletion-worker-host-failure-admission.yml"
       - ".github/workflows/deletion-worker-host-failure-permission-negative.yml"
       - ".github/workflows/deletion-worker-host-failure-source-negative.yml"
+      - "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
 
 permissions:

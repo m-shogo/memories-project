@@ -16,10 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-worker-host-failure-admission.yml"
 INDEPENDENT = ".github/workflows/deletion-worker-host-failure-source-negative.yml"
 PERMISSION = ".github/workflows/deletion-worker-host-failure-permission-negative.yml"
+PERMISSION_VALIDATOR = "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
 SELF = "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
 REVIEWED_PUBLISHER = "01f3c5116119e5bc49b6b4431196dce39795be99"
-REVIEWED_INDEPENDENT = "906835e3156a95bedc7cf925dba5bfd2bb8e8418"
+REVIEWED_INDEPENDENT = "0250231a5b1ef21b4423f9e7c0b97d3af5552a37"
 REVIEWED_PERMISSION = "c2549cdc7a939dcaa7c91720724e61d31ee9d685"
+REVIEWED_PERMISSION_VALIDATOR = "f145162df13bb60d64ae457cc86f4ca59e1a8d2e"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
@@ -71,7 +73,8 @@ def validate(publisher: str, independent: str) -> None:
         "  pull_request:\n    branches:\n      - so\n",
         "  push:\n    branches:\n      - so\n",
         '      - "' + PUBLISHER + '"', '      - "' + INDEPENDENT + '"',
-        '      - "' + SELF + '"', '      - "' + PERMISSION + '"', CHECKOUT, SETUP,
+        '      - "' + SELF + '"', '      - "' + PERMISSION + '"',
+        '      - "' + PERMISSION_VALIDATOR + '"', CHECKOUT, SETUP,
         "          persist-credentials: false\n", PR_BASE, PUSH_REF, SHA_FORMAT,
         "          python " + SELF, "permissions:\n  contents: read\n",
         "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
@@ -113,6 +116,51 @@ def validate_permission(content: str) -> None:
             raise SystemExit("deletion-host-failure permission CI source missing: " + token)
     if blob(content) != REVIEWED_PERMISSION:
         raise SystemExit("deletion-host-failure permission CI complete Git blob drift")
+
+
+def validate_permission_validator(content: str) -> None:
+    required = (
+        "pull requests must target so",
+        "both checkouts must be immutable",
+        "both Python setups must be immutable",
+        "PR checkout must not persist credentials",
+        "PR base identity missing",
+        "PR head SHA format missing",
+        "publication job must be scoped to so push/dispatch",
+        "writer event identity missing",
+        "writer branch identity missing",
+        "writer SHA format missing",
+        "physical host failure evidence fabricated: false",
+    )
+    for token in required:
+        if token not in content:
+            raise SystemExit("deletion-host-failure permission validator missing guard: " + token)
+    if blob(content) != REVIEWED_PERMISSION_VALIDATOR:
+        raise SystemExit("deletion-host-failure permission validator complete Git blob drift")
+
+
+def permission_validator_negatives(content: str) -> None:
+    cases = (
+        ("PR base guard", "pull requests must target so", "PR base ignored"),
+        ("checkout pin guard", "both checkouts must be immutable", "checkout floating"),
+        ("setup pin guard", "both Python setups must be immutable", "setup floating"),
+        ("PR credentials guard", "PR checkout must not persist credentials", "PR credentials allowed"),
+        ("writer event guard", "writer event identity missing", "writer event ignored"),
+        ("writer SHA guard", "writer SHA format missing", "writer SHA ignored"),
+        ("host-failure evidence guard", "physical host failure evidence fabricated: false", "physical host evidence accepted"),
+    )
+    for label, old, new in cases:
+        if old not in content:
+            raise SystemExit("deletion-host-failure permission validator fixture missing: " + label)
+        altered = content.replace(old, new, 1)
+        if altered == content:
+            raise SystemExit("deletion-host-failure permission validator fixture unchanged: " + label)
+        try:
+            validate_permission_validator(altered)
+        except SystemExit:
+            continue
+        raise SystemExit("deletion-host-failure permission validator accepted mutation: " + label)
+    print("PASS: deletion-host-failure permission validator source mutations (7 cases)")
 
 
 def permission_negatives(content: str) -> None:
@@ -321,6 +369,7 @@ def source_negatives(publisher: str, independent: str) -> None:
         ("self trigger", '      - "' + SELF + '"', ""),
         ("publisher trigger", '      - "' + PUBLISHER + '"', ""),
         ("permission trigger", '      - "' + PERMISSION + '"', ""),
+        ("permission validator trigger", '      - "' + PERMISSION_VALIDATOR + '"', ""),
         ("root write", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
         ("job scope", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "    if: always()"),
     )
@@ -336,7 +385,7 @@ def source_negatives(publisher: str, independent: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("deletion-host-failure accepted mutation: " + name + "/" + label)
-    print("PASS: deletion-host-failure publisher (17) and independent (11) source mutations")
+    print("PASS: deletion-host-failure publisher (17) and independent (12) source mutations")
 
 
 def predicate_runtime(independent: str) -> None:
@@ -368,8 +417,11 @@ def predicate_runtime(independent: str) -> None:
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     permission = source(PERMISSION)
+    permission_validator = source(PERMISSION_VALIDATOR)
     validate(publisher, independent)
     validate_permission(permission)
+    validate_permission_validator(permission_validator)
+    permission_validator_negatives(permission_validator)
     permission_negatives(permission)
     permission_runtime(permission)
     predicate_runtime(independent)
