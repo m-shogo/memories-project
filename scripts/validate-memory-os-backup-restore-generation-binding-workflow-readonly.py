@@ -77,6 +77,59 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 
 
+SOURCE_REQUIRED = (
+    ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
+    ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
+    ("no credentials", "          persist-credentials: false\n", 1),
+    ("PR checkout", "          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n", 1),
+    ("PR event", '          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then\n', 1),
+    ("PR head", '            expected="${{ github.event.pull_request.head.sha }}"\n', 1),
+    ("SHA format", '            [[ "$expected" =~ ^[0-9a-f]{40}$ ]]\n', 2),
+    ("event whitelist", '          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then\n', 1),
+    ("branch", '            test "${GITHUB_REF:-}" = "refs/heads/so"\n', 1),
+    ("unreviewed event", '          else\n            echo "Unreviewed generation-binding readonly event" >&2\n            exit 1\n          fi\n', 1),
+    ("source HEAD", '          test "$(git rev-parse HEAD)" = "$expected"\n', 1),
+    ("clean source", '          test -z "$(git status --porcelain)"\n', 2),
+    ("runner invocation", '          python scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py\n', 1),
+)
+
+
+def validate_source_admission(source: str) -> None:
+    for label, token, expected in SOURCE_REQUIRED:
+        if source.count(token) != expected:
+            raise SystemExit(f"generation-binding readonly source admission drift: {label}")
+
+
+def prove_source_admission_negatives(source: str) -> None:
+    cases = (
+        ("checkout SHA", SOURCE_REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
+        ("setup-python SHA", SOURCE_REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
+        ("persist credentials", SOURCE_REQUIRED[2][1], ""),
+        ("PR source checkout", SOURCE_REQUIRED[3][1], "          ref: ${{ github.sha }}\n"),
+        ("PR event admission", SOURCE_REQUIRED[4][1], ""),
+        ("PR head SHA", SOURCE_REQUIRED[5][1], '            expected="${GITHUB_SHA:-}"\n'),
+        ("SHA format", SOURCE_REQUIRED[6][1], '            test -n "$expected"\n'),
+        ("event whitelist", SOURCE_REQUIRED[7][1], ""),
+        ("push/dispatch branch", SOURCE_REQUIRED[8][1], ""),
+        ("unreviewed event rejection", SOURCE_REQUIRED[9][1], ""),
+        ("source HEAD", SOURCE_REQUIRED[10][1], ""),
+        ("clean source", SOURCE_REQUIRED[11][1], ""),
+        ("runner invocation", SOURCE_REQUIRED[12][1], ""),
+    )
+    for label, old, replacement in cases:
+        if old not in source:
+            raise SystemExit(f"generation-binding source negative anchor missing: {label}")
+        mutated = source.replace(old, replacement, 1)
+        try:
+            validate_source_admission(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit(f"generation-binding source admission accepted mutation: {label}")
+    print(f"PASS: generation-binding readonly source admission ({len(cases)} negatives)")
+
+
+
+
 def snapshot() -> dict[Path, tuple[bytes, int]]:
     result: dict[Path, tuple[bytes, int]] = {}
     for path in AUTHORITIES:
@@ -90,6 +143,8 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate_trigger_reachability(source)
     prove_trigger_reachability_negatives(source)
+    validate_source_admission(source)
+    prove_source_admission_negatives(source)
     before = snapshot()
     for script in SUITE:
         subprocess.run(["python", str(script)], cwd=ROOT, check=True)
