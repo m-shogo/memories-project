@@ -186,7 +186,7 @@ jobs:
           test -z "$(git status --porcelain)"
 
   validate:
-    if: github.event_name != 'pull_request'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     permissions:
       contents: write
     runs-on: ubuntu-latest
