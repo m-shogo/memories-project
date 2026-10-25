@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Fail-closed executable-source and event/ref negatives for independent review CI."""
+"""Fail-closed executable-source and event/ref negatives for review independence CI."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/production-equivalent-environment-review-independence.yml"
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "97edcfd25b4a639d524fd574f7b0914d71780a05"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "56d15ffd78c816ccecd0ff27c9e159f78c913bf4"
 REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
     ("self trigger", '      - "scripts/validate-memory-os-production-equivalent-environment-review-independence-workflow-negative.py"\n', 2),
@@ -19,17 +22,21 @@ REQUIRED = (
     ("PR no credentials", "          persist-credentials: false\n", 1),
     ("publisher credentials", "          persist-credentials: true\n", 1),
     ("PR base", '          test "${GITHUB_BASE_REF:-}" = "so"\n', 1),
-    ("SHA format", '          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]\n', 2),
+    ("PR SHA format", '          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]\n', 2),
     ("publisher branch", '          test "${GITHUB_REF:-}" = "refs/heads/so"\n', 1),
     ("publisher event", '          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]\n', 1),
     ("publisher scope", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n", 1),
     ("self execution", "\n          python scripts/validate-memory-os-production-equivalent-environment-review-independence-workflow-negative.py\n", 2),
-    ("retry self execution", "\n            python scripts/validate-memory-os-production-equivalent-environment-review-independence-workflow-negative.py\n", 1),
+    ("retry self execution", "            python scripts/validate-memory-os-production-equivalent-environment-review-independence-workflow-negative.py\n", 1),
     ("writer SHA", '          expected="${GITHUB_SHA:-}"\n', 1),
     ("PR SHA", '          expected="${{ github.event.pull_request.head.sha }}"\n', 1),
     ("HEAD check", '          test "$(git rev-parse HEAD)" = "$expected"\n', 2),
     ("write scope", "      contents: write\n", 1),
     ("retry latest", "            git reset --hard origin/so\n", 1),
+    ("redacted diagnostic", "              'output': 'REDACTED: environment review-independence validation failed; raw output withheld',\n", 1),
+    ("suppressed CI log", '          printf "Environment review-independence validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
+    ("no raw diagnostic tail", "text[-12000:]", 0),
+    ("no raw CI log", '          cat "$log"\n', 0),
 )
 
 
@@ -62,10 +69,42 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: review independence CI PR/push branch guard runtime (6 cases)")
 
 
+
+def prove_diagnostic_redaction_runtime(source: str) -> None:
+    """Run the actual inline diagnostic writer in an isolated temporary directory."""
+    start, end = "          python - <<'PY'\n", "          PY\n"
+    if source.count(start) != 1 or source.count(end) != 1:
+        raise SystemExit("review independence diagnostic writer is not uniquely reachable")
+    inline = source.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="semantic-eligibility-diagnostic-") as directory:
+        env = os.environ.copy()
+        env.update({"SOURCE_SHA": "e" * 40, "VALIDATION_EXIT_CODE": "23",
+                    "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_REVIEW"})
+        result = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                capture_output=True, text=True, check=False)
+        if result.returncode:
+            raise SystemExit("review independence isolated diagnostic failed: " + result.stderr[:500])
+        output = Path(directory) / "docs/fixtures/memory-os-operability/production-equivalent-environment-review-independence-diagnostic.last.json"
+        raw = output.read_text(encoding="utf-8")
+        value = json.loads(raw)
+        if value.get("output") != "REDACTED: environment review-independence validation failed; raw output withheld":
+            raise SystemExit("review independence diagnostic persisted raw validator output")
+        if value.get("sourceCommitSha") != "e" * 40 or value.get("exitCode") != 23:
+            raise SystemExit("review independence diagnostic source/exit binding drift")
+        for field in ("containsSecrets", "generationCreated", "reviewEvidenceCreated", "productionEvidence", "productionReady"):
+            if value.get(field) is not False:
+                raise SystemExit("review independence diagnostic evidence/readiness drift: " + field)
+        if "CANARY_DO_NOT_PERSIST_REVIEW" in raw:
+            raise SystemExit("review independence diagnostic persisted synthetic canary")
+    print("PASS: review independence isolated diagnostic redaction (1 runtime case)")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
+    prove_diagnostic_redaction_runtime(source)
     cases = (
         ("PR target", REQUIRED[0][1], "  pull_request:\n    paths:\n"),
         ("self trigger", REQUIRED[1][1], ""),
@@ -85,6 +124,9 @@ def main() -> int:
         ("HEAD check", REQUIRED[15][1], ""),
         ("write scope", REQUIRED[16][1], "      contents: read\n"),
         ("retry latest", REQUIRED[17][1], ""),
+        ("raw diagnostic", REQUIRED[18][1], "              'output': Path('/tmp/production-equivalent-environment-review-independence.log').read_text(),\n"),
+        ("raw CI log", REQUIRED[19][1], '          cat "$log"\n'),
+        ("missing redaction", REQUIRED[18][1], ""),
         ("inserted Action", "      - name: Capture exact review-independence authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact review-independence authority source\n"),
         ("inserted shell", "      - name: Capture exact review-independence authority source\n", "      - run: echo unreviewed\n      - name: Capture exact review-independence authority source\n"),
     )
