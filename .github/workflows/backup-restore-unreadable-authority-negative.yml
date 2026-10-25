@@ -2,6 +2,7 @@ name: Backup Restore Unreadable Authority Negatives
 
 on:
   pull_request:
+    branches: [so]
     paths:
       - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
       - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
@@ -96,10 +97,13 @@ jobs:
         with:
           python-version: "3.12"
       - name: Confirm exact clean authority source
+        env:
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${PR_BASE_REF:-}" = "so"
             expected="${{ github.event.pull_request.head.sha }}"
             [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           elif [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then

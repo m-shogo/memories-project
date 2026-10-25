@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+REVIEWED_WORKFLOW_BLOB_SHA = "f1a8c3d7b2503c5192ca3de57892ae31ab521ba7"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -22,6 +26,9 @@ REQUIRED = (
     ("clean source", '          test -z "$(git status --porcelain)"\n', 2),
     ("self-trigger", '      - "scripts/validate-memory-os-backup-restore-unreadable-authority-workflow-negative.py"\n', 2),
     ("self-execution", '          python scripts/validate-memory-os-backup-restore-unreadable-authority-workflow-negative.py\n', 1),
+    ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", 1),
+    ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
+    ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
 )
 
 
@@ -29,11 +36,34 @@ def validate(source: str) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"unreadable-authority negative workflow source boundary drift: {label}")
+    payload = source.encode("utf-8")
+    blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
+        raise SystemExit("unreadable-authority negative complete workflow source drift")
+
+
+def prove_branch_guards_runtime() -> None:
+    """Execute reviewed PR and push branch guards with disposable refs."""
+    cases = (
+        ("PR so", REQUIRED[16][1].strip(), "PR_BASE_REF", "so", True),
+        ("PR main", REQUIRED[16][1].strip(), "PR_BASE_REF", "main", False),
+        ("PR missing", REQUIRED[16][1].strip(), "PR_BASE_REF", "", False),
+        ("push so", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/heads/so", True),
+        ("push main", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/heads/main", False),
+        ("push tag", REQUIRED[8][1].strip(), "GITHUB_REF", "refs/tags/v1", False),
+    )
+    for label, command, key, value, expected in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+        result = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+        if (result.returncode == 0) != expected:
+            raise SystemExit("unreadable-authority negative runtime branch guard drift: " + label)
+    print("PASS: unreadable-authority negative PR/push branch guard runtime (6 cases)")
 
 
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
@@ -49,6 +79,12 @@ def main() -> int:
         ("clean source", REQUIRED[11][1], ""),
         ("self-trigger", REQUIRED[12][1], ""),
         ("self-execution", REQUIRED[13][1], ""),
+        ("PR target", REQUIRED[14][1], "  pull_request:\n    branches: [main]\n    paths:\n"),
+        ("PR base environment", REQUIRED[15][1], ""),
+        ("PR base assertion", REQUIRED[16][1], '            test -n "${PR_BASE_REF:-}"\n'),
+        ("injected shell", "          python scripts/validate-memory-os-backup-restore-unreadable-authority-workflow-negative.py\n", "          echo UNREVIEWED\n          python scripts/validate-memory-os-backup-restore-unreadable-authority-workflow-negative.py\n"),
+        ("injected action", "      - name: Compile unreadable-authority boundaries\n", "      - uses: unreviewed/action@v1\n      - name: Compile unreadable-authority boundaries\n"),
+        ("removed PR self-trigger", '      - "scripts/validate-memory-os-backup-restore-unreadable-authority-workflow-negative.py"\n', ""),
     )
     for label, old, replacement in cases:
         if old not in source:
