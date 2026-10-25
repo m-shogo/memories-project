@@ -123,6 +123,49 @@ def require_step_inventory_negatives(job: str, *, pr: bool) -> None:
             raise Fail(f"generation step inventory negative mutation {index} accepted")
 
 
+REVIEWED_STEP_KEYS = {True: [["with"],["with"],["run"]], False: [["with"],["with"],["run"],["run"],["id","run"],["if","run"],["if","run"],["if","env","run"],["run"]]}
+
+
+def require_reviewed_step_keys(job: str, *, pr: bool) -> None:
+    """Bind ordered step-level YAML keys, including duplicate and quoted keys."""
+    blocks = re.split(r"(?m)(?=^      - (?:uses|name): )", job)
+    steps = [block for block in blocks if block.startswith("      - ")]
+    actual = []
+    for block in steps:
+        properties = []
+        for line in re.findall(r"(?m)^        ([^ \t#\n][^\n]*)$", block):
+            match = re.fullmatch(r"([a-z][a-z-]*):(?:[ \t].*)?", line)
+            require(match is not None, "generation unreviewed or quoted step property")
+            properties.append(match.group(1))
+        actual.append(properties)
+    require(actual == REVIEWED_STEP_KEYS[pr], "generation step property inventory drift")
+
+
+def require_step_key_negatives(job: str, *, pr: bool) -> None:
+    require_reviewed_step_keys(job, pr=pr)
+    anchor = "        run: |\n"
+    require(anchor in job, "generation step-property fixture anchor missing")
+    mutations = (
+        ("continue-on-error", "        continue-on-error: true\n" + anchor),
+        ("quoted-key", '        "continue-on-error": true\n' + anchor),
+        ("env", "        env:\n          UNREVIEWED: yes\n" + anchor),
+        ("working-directory", "        working-directory: /tmp\n" + anchor),
+        ("timeout", "        timeout-minutes: 1\n" + anchor),
+        ("duplicate-run", "        run: echo unreviewed\n" + anchor),
+        ("quoted-run", '        "run": echo unreviewed\n' + anchor),
+    )
+    for label, replacement in mutations:
+        mutated = job.replace(anchor, replacement, 1)
+        require(mutated != job, f"generation negative fixture unchanged: {label}")
+        try:
+            require_reviewed_step_keys(mutated, pr=pr)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"generation unreviewed step-property accepted: {label}")
+
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("pull_request_target:" not in text, "generation-evidence authority must not use pull_request_target")
@@ -135,6 +178,8 @@ def main() -> int:
     require_bootstrap_negatives(validate, pr=False)
     require_step_inventory_negatives(validate_pr, pr=True)
     require_step_inventory_negatives(validate, pr=False)
+    require_step_key_negatives(validate_pr, pr=True)
+    require_step_key_negatives(validate, pr=False)
 
     require("if: github.event_name == 'pull_request'" in validate_pr, "generation-evidence PR validator must be pull-request-only")
     require("permissions:\n      contents: read" in validate_pr, "generation-evidence PR validator must explicitly remain contents: read")
@@ -176,6 +221,7 @@ def main() -> int:
     print("publisher event/ref negative mutations rejected: 4")
     print("immutable bootstrap/source/credential negative mutations rejected: 20")
     print("executable step header negative mutations rejected: 6")
+    print("step-property negative mutations rejected: 14")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
