@@ -64,10 +64,34 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: semantic preflight reconcile PR/push branch guard runtime (6 cases)")
 
 
+def prove_sha_guard_runtime() -> None:
+    """Execute the shared PR and push/dispatch 40-hex predicate on synthetic input."""
+    cases = (
+        ("lowercase SHA", "a" * 40, True),
+        ("numeric SHA", "0" * 40, True),
+        ("short SHA", "a" * 39, False),
+        ("long SHA", "a" * 41, False),
+        ("uppercase SHA", "A" * 40, False),
+        ("nonhex SHA", "g" * 40, False),
+        ("missing SHA", "", False),
+        ("literal substitution", "$(echo unexpected)", False),
+    )
+    command = 'expected="${PROBE_SHA:-}"\n' + REQUIRED[6][1].strip()
+    for label, value, accepted in cases:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value}
+        result = subprocess.run(
+            ["bash", "-e", "-c", command], env=env, capture_output=True, check=False
+        )
+        if (result.returncode == 0) != accepted:
+            raise SystemExit("semantic preflight reconcile SHA guard drift: " + label)
+    print(f"PASS: semantic preflight reconcile shared PR/push SHA runtime ({len(cases)} cases)")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
+    prove_sha_guard_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
@@ -93,6 +117,20 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"semantic preflight reconcile accepted forbidden mutation: {label}")
+    sha_token = REQUIRED[6][1]
+    second_sha = source.rfind(sha_token)
+    if second_sha == source.find(sha_token):
+        raise SystemExit("semantic preflight reconcile second SHA predicate missing")
+    mutated_second_sha = (
+        source[:second_sha] + '            test -n "$expected"\n' +
+        source[second_sha + len(sha_token):]
+    )
+    try:
+        validate(mutated_second_sha)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("semantic preflight reconcile accepted weakened second SHA predicate")
     # The canonical workflow may or may not end in a newline; both are valid.
     validate(source.rstrip("\n") + "\n", check_blob=False)
     try:
@@ -123,7 +161,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("semantic preflight reconcile accepted forbidden whole-source mutation: " + label)
-    print(f"PASS: semantic preflight reconcile workflow source admission ({len(cases) + 5} negatives)")
+    print(f"PASS: semantic preflight reconcile workflow source admission ({len(cases) + 6} negatives)")
     return 0
 
 
