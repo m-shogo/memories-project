@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
+import os
 import re
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -298,7 +301,7 @@ def executable_diagnostic_calls(publish: str) -> tuple[dict[str, ast.Call], list
     expressions = {
         "sourceCommitSha": "os.environ['SOURCE_SHA']",
         "exitCode": "int(os.environ['SNAPSHOT_EXIT_CODE'])",
-        "output": "text[-12000:]",
+        "output": "'REDACTED: strict OPS-P0-007 snapshot validation failed; raw output withheld'",
     }
     require(
         all(
@@ -570,7 +573,7 @@ def prove_diagnostic_privacy_boundary_rejected(publish: str) -> None:
          "'sourceCommitSha': 'unbound'"),
         ("exit code", "'exitCode': int(os.environ['SNAPSHOT_EXIT_CODE'])",
          "'exitCode': 0"),
-        ("log bound", "'output': text[-12000:]", "'output': text"),
+        ("raw diagnostic", "'output': 'REDACTED: strict OPS-P0-007 snapshot validation failed; raw output withheld'", "'output': text"),
         ("diagnostic path",
          "Path('docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json')",
          "Path('docs/evidence/backup-restore/production-evidence.json')"),
@@ -2018,7 +2021,7 @@ def require_publisher_compile_stage(publish: str) -> None:
         *(f'if [[ "$code" == "0" ]]; then python {path} >> "$log" 2>&1 || code=$?; fi'
           for path in PUBLISH_REVALIDATION_CHAIN),
         'echo "exit_code=$code" >> "$GITHUB_OUTPUT"',
-        'cat "$log"',
+        'printf "OPS-P0-007 snapshot validation exit code: %s (raw validator log suppressed)\\n" "$code"',
         "exit 0",
     ]
     require(body == expected, "strict snapshot publisher compile stage authority drift")
@@ -2064,6 +2067,7 @@ def prove_publisher_compile_stage_negative(publish: str) -> None:
     check("comment inside continuation", step.replace(first, first + "            # breaks shell continuation\n", 1))
     check("early exit before compile", step.replace(command, "          exit 0\n" + command, 1))
     check("duplicate compile", step.replace(command, command + command, 1))
+    check("raw CI log", step.replace('          printf "OPS-P0-007 snapshot validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n', 1))
     check("forged status reset", step.replace(redirect, redirect + "          code=0\n", 1))
 
 
@@ -2094,7 +2098,7 @@ def require_publisher_capture_status_chain(publish: str) -> None:
         "python -m py_compile \\" in commands
         and '>> "$log" 2>&1 || code=$?' in commands
         and commands.index('>> "$log" 2>&1 || code=$?') < commands.index(expected[0])
-        and commands[-3:] == ['echo "exit_code=$code" >> "$GITHUB_OUTPUT"', 'cat "$log"', "exit 0"],
+        and commands[-3:] == ['echo "exit_code=$code" >> "$GITHUB_OUTPUT"', 'printf "OPS-P0-007 snapshot validation exit code: %s (raw validator log suppressed)\\n" "$code"', "exit 0"],
         "strict snapshot publisher capture output/compile status binding drift",
     )
 
@@ -2930,6 +2934,37 @@ def prove_snapshot_permission_gate_source_negatives() -> None:
             raise Fail(f"strict snapshot permission gate source mutation accepted: {label}")
 
 
+
+def prove_snapshot_diagnostic_redaction_runtime(publish: str) -> None:
+    """Execute the real diagnostic writer in a sandbox without touching repository authority."""
+    start, end = "          python - <<'PY'\n", "          PY\n"
+    require(publish.count(start) == 1 and publish.count(end) == 1,
+            "strict snapshot diagnostic writer not uniquely reachable")
+    inline = publish.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="strict-snapshot-diagnostic-") as directory:
+        env = os.environ.copy()
+        env.update({"SOURCE_SHA": "e" * 40, "SNAPSHOT_EXIT_CODE": "23",
+                    "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_SNAPSHOT"})
+        result = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                capture_output=True, text=True, check=False)
+        require(result.returncode == 0,
+                "strict snapshot isolated diagnostic failed: " + result.stderr[:500])
+        path = Path(directory) / "docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json"
+        raw = path.read_text(encoding="utf-8")
+        value = json.loads(raw)
+        require(value.get("output") == "REDACTED: strict OPS-P0-007 snapshot validation failed; raw output withheld",
+                "strict snapshot diagnostic persisted raw validator output")
+        require(value.get("sourceCommitSha") == "e" * 40 and value.get("exitCode") == 23,
+                "strict snapshot diagnostic source/exit binding drift")
+        for field in ("containsSecrets", "generationCreated", "objectiveCreated", "requestCreated",
+                      "restoreExecuted", "productionEvidence", "productionReady"):
+            require(value.get(field) is False, "strict snapshot diagnostic non-production drift: " + field)
+        require("CANARY_DO_NOT_PERSIST_SNAPSHOT" not in raw,
+                "strict snapshot diagnostic persisted synthetic canary")
+    print("PASS: strict OPS-P0-007 isolated diagnostic redaction (1 runtime case)")
+
+
 def main() -> int:
     prove_snapshot_permission_gate_source_negatives()
     require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
@@ -2981,6 +3016,7 @@ def main() -> int:
     prove_diagnostic_comment_and_dead_code_rejected(publish)
     prove_diagnostic_unconditional_exit_rejected(publish)
     prove_diagnostic_privacy_boundary_rejected(publish)
+    prove_snapshot_diagnostic_redaction_runtime(publish)
 
     print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
     print("snapshot permission gate complete-source mutations rejected: 6")

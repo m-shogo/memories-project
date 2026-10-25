@@ -120,7 +120,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot-generator-execution-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "OPS-P0-007 snapshot validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
       - name: Commit deterministic strict snapshot
         if: steps.snapshot.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
@@ -206,14 +206,13 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/ops-p0-007-admission-snapshot.log').read_text(encoding='utf-8', errors='replace')
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'ops-p0-007-admission-snapshot',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['SNAPSHOT_EXIT_CODE']),
-              'output': text[-12000:],
+              'output': 'REDACTED: strict OPS-P0-007 snapshot validation failed; raw output withheld',
               'containsSecrets': False,
               'generationCreated': False,
               'objectiveCreated': False,
