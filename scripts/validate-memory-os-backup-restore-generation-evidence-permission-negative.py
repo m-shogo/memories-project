@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import re
 import subprocess
 import sys
@@ -312,7 +313,7 @@ def require_trigger_path_negatives(source: str) -> None:
 
 
 
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "eba6236596d9b36f37635e7e13b2b9fc8e018f46"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "b2c9e1073211d85d3f373fb95ef66c9d263f7a04"
 
 
 def require_reviewed_workflow_blob(source: str) -> None:
@@ -333,6 +334,7 @@ def require_run_body_negatives(source: str) -> None:
         ("injected-command", source.replace(anchor, anchor + "          echo UNREVIEWED\n", 1)),
         ("relaxed-shell", source.replace(strict, "          set +e\n", 1)),
         ("inline-run", source.replace(anchor, "        run: echo UNREVIEWED\n", 1)),
+        ("diagnostic-symlink-guard", source.replace("          if path.is_symlink():\n              raise SystemExit('generation evidence diagnostic target must not be a symlink')\n", "", 1)),
     )
     for label, mutated in mutations:
         require(mutated != source, f"recovery run-body fixture unchanged: {label}")
@@ -468,7 +470,37 @@ def prove_diagnostic_redaction_runtime(source: str) -> None:
                 "generation diagnostic production evidence/readiness drift")
         require("CANARY_DO_NOT_PERSIST_ABC" not in output.read_text(encoding="utf-8"),
                 "generation diagnostic persisted synthetic canary")
-    print("PASS: generation evidence isolated diagnostic redaction runtime (1 case)")
+        output.chmod(0o640)
+        positive = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                  capture_output=True, text=True, timeout=15, check=False)
+        require(positive.returncode == 0 and stat.S_IMODE(output.stat().st_mode) == 0o640,
+                "generation diagnostic failed to preserve existing mode")
+        previous = output.read_bytes()
+        for label, before in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            require(script.count(before) == 1, "generation diagnostic fault anchor drift: " + label)
+            failure = subprocess.run([sys.executable, "-c", script.replace(
+                before, "raise OSError('synthetic generation diagnostic " + label + " failure')", 1)],
+                cwd=tmpdir, env=env, capture_output=True, text=True, timeout=15, check=False)
+            require(failure.returncode != 0 and "synthetic generation diagnostic " + label + " failure" in failure.stderr,
+                    "generation diagnostic intended fault not reached: " + label)
+            require(output.read_bytes() == previous and stat.S_IMODE(output.stat().st_mode) == 0o640,
+                    "generation diagnostic fault altered previous bytes/mode: " + label)
+            require(not list(output.parent.glob(".backup-restore-generation-evidence-diagnostic.last.json.*.tmp")),
+                    "generation diagnostic fault left temporary file: " + label)
+        outside = Path(tmpdir) / "external-generation-evidence-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        require(symlink.returncode != 0 and "target must not be a symlink" in symlink.stderr,
+                "generation diagnostic accepted symlink destination")
+        require(output.is_symlink() and outside.read_bytes() == previous,
+                "generation diagnostic altered external symlink canary")
+        require(not list(output.parent.glob(".backup-restore-generation-evidence-diagnostic.last.json.*.tmp")),
+                "generation diagnostic symlink rejection left temporary file")
+    print("PASS: generation evidence diagnostic redaction/atomic runtime (5 cases)")
 
 
 def main() -> int:
