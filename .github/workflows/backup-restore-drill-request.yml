@@ -272,7 +272,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat "$log"
+          printf "Drill request validation exit code: %s (raw validator log suppressed)\n" "$code"
           exit 0
 
       - name: Reject stale drill planning authority on pull requests
@@ -330,14 +330,14 @@ jobs:
           python - <<'PY'
           import json, os, tempfile
           from pathlib import Path
-          text = Path('/tmp/backup-restore-drill-request.log').read_text(encoding='utf-8', errors='replace')
+          # Persist only a fixed marker; validator output is not a trusted public artifact.
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'backup-restore-drill-request',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['ADMISSION_EXIT_CODE']),
-              'output': text[-12000:],
+              'output': 'REDACTED: drill request validation failed; consult CI job logs',
               'containsSecrets': False,
               'requestCreated': False,
               'restoreExecuted': False,

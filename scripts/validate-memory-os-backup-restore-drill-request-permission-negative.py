@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -315,7 +318,7 @@ def require_trigger_path_negatives(source: str) -> None:
 
 
 
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "553b4698f824879a49ac0dd2faea1f7a39306ed2"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "59cc9fb5ede84a09339e89d263f1866ee838fe65"
 
 
 def require_reviewed_workflow_blob(source: str) -> None:
@@ -427,6 +430,74 @@ def prove_rollback_branch_guards_runtime(source: str) -> None:
     print("PASS: drill rollback CI PR/push branch guard runtime (6 cases)")
 
 
+def require_diagnostic_privacy_source(source: str) -> None:
+    """Reject raw validator output in committed diagnostics or public CI logs."""
+    marker = "              'output': 'REDACTED: drill request validation failed; consult CI job logs',\n"
+    suppressed = '          printf "Drill request validation exit code: %s (raw validator log suppressed)\\n" "$code"\n'
+    require(source.count(marker) == 1, "drill diagnostic fixed-redaction marker drift")
+    require(source.count(suppressed) == 1, "drill raw CI log suppression drift")
+    require("text[-12000:]" not in source, "drill diagnostic raw output tail restored")
+    require('          cat "$log"\n' not in source, "drill raw validator CI log echo restored")
+
+
+def require_diagnostic_privacy_negatives(source: str) -> None:
+    require_diagnostic_privacy_source(source)
+    cases = (
+        ("raw diagnostic", "              'output': 'REDACTED: drill request validation failed; consult CI job logs',\n",
+         "              'output': Path('/tmp/backup-restore-drill-request.log').read_text(),\n"),
+        ("raw CI log", '          printf "Drill request validation exit code: %s (raw validator log suppressed)\\n" "$code"\n',
+         '          cat "$log"\n'),
+        ("diagnostic removed", "              'output': 'REDACTED: drill request validation failed; consult CI job logs',\n", ""),
+    )
+    for label, old, new in cases:
+        require(source.count(old) == 1, "drill diagnostic fixture anchor drift: " + label)
+        mutated = source.replace(old, new, 1)
+        require(mutated != source, "drill diagnostic fixture unchanged: " + label)
+        try:
+            require_diagnostic_privacy_source(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail("drill diagnostic accepted privacy regression: " + label)
+    print(f"PASS: drill request diagnostic privacy negatives ({len(cases)} cases)")
+
+
+def prove_diagnostic_redaction_runtime(source: str) -> None:
+    """Execute the actual inline writer in an isolated temporary directory."""
+    start = "          python - <<'PY'\n"
+    end = "          PY\n"
+    require(source.count(start) == 1 and source.count(end) == 1,
+            "drill diagnostic inline writer must be uniquely reachable")
+    inline = source.split(start, 1)[1].split(end, 1)[0]
+    script = "\n".join(line[10:] for line in inline.splitlines()) + "\n"
+    with tempfile.TemporaryDirectory(prefix="drill-request-diagnostic-redaction-") as tmpdir:
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_SHA": "b" * 40,
+            "ADMISSION_EXIT_CODE": "13",
+            "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_456",
+        })
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmpdir, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        require(result.returncode == 0,
+                "drill diagnostic isolated writer failed: " + result.stderr[:500])
+        output = Path(tmpdir) / "docs/fixtures/memory-os-operability/backup-restore-drill-request-diagnostic.last.json"
+        data = json.loads(output.read_text(encoding="utf-8"))
+        require(data.get("output") == "REDACTED: drill request validation failed; consult CI job logs",
+                "drill diagnostic persisted unreviewed validator output")
+        require(data.get("sourceCommitSha") == "b" * 40 and data.get("exitCode") == 13,
+                "drill diagnostic source/exit binding drift")
+        require(data.get("containsSecrets") is False and data.get("requestCreated") is False,
+                "drill diagnostic secret/request flags drift")
+        require(data.get("productionEvidence") is False and data.get("productionReady") is False,
+                "drill diagnostic evidence/readiness flags drift")
+        require("CANARY_DO_NOT_PERSIST_456" not in output.read_text(encoding="utf-8"),
+                "drill diagnostic persisted synthetic sensitive content")
+    print("PASS: drill request isolated diagnostic redaction runtime (1 case)")
+
+
 def main() -> int:
     require(ROLLBACK_WORKFLOW.is_file() and not ROLLBACK_WORKFLOW.is_symlink(),
             "drill rollback CI workflow missing or substituted")
@@ -437,6 +508,8 @@ def main() -> int:
     require_root_event_negatives(text)
     require_trigger_path_negatives(text)
     require_run_body_negatives(text)
+    require_diagnostic_privacy_negatives(text)
+    prove_diagnostic_redaction_runtime(text)
     require("pull_request_target:" not in text, "drill-request authority must not use pull_request_target")
     require("\njobs:\n  validate-pr:\n" in text, "dedicated drill-request PR validation job missing")
     require("\n  validate:\n" in text, "drill-request non-PR authority job missing")
