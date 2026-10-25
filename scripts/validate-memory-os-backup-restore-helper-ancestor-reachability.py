@@ -1435,11 +1435,11 @@ def workflow_runtime_negative_cases(workflow_source: str) -> int:
          "ancestor exact-source workflow check drift"),
     )
     cases += (
-        ('          if [ \\"${GITHUB_EVENT_NAME:-}\\" = \\"pull_request\\" ]; then\\n',
-         '          if false; then\\n',
+        ('          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then\n',
+         '          if false; then\n',
          "ancestor exact-source workflow check drift"),
-        ('            if [[ ! \\"$pr_head\\" =~ ^[0-9a-f]{40}$ ]]; then\\n',
-         '            if false; then\\n',
+        ('            if [[ ! "$pr_head" =~ ^[0-9a-f]{40}$ ]]; then\n',
+         '            if false; then\n',
          "ancestor exact-source workflow check drift"),
     )
     for original, replacement, expected in cases:
@@ -2017,17 +2017,17 @@ def prove_ancestor_dispatch_ref_negative(source: str) -> int:
 
 def prove_ancestor_pr_head_negative(source: str) -> int:
     """A missing or malformed PR head must not fall back to github.sha."""
-    step_name = "      - name: Confirm exact clean source\\n"
-    next_step = "      - name: Prove seven canonical ancestor negatives remain reachable\\n"
+    step_name = "      - name: Confirm exact clean source\n"
+    next_step = "      - name: Prove seven canonical ancestor negatives remain reachable\n"
     require(source.count(step_name) == 1 and source.count(next_step) == 1,
             "ancestor PR runtime step boundary drift")
     block = source.split(step_name, 1)[1].split(next_step, 1)[0]
-    require(block.count("        run: |\\n") == 1,
+    require(block.count("        run: |\n") == 1,
             "ancestor PR runtime run body drift")
-    lines = block.split("        run: |\\n", 1)[1].splitlines()
+    lines = block.split("        run: |\n", 1)[1].splitlines()
     require(all(not line or line.startswith("          ") for line in lines),
             "ancestor PR runtime indentation drift")
-    script = "\\n".join(line[10:] if line else "" for line in lines) + "\\n"
+    script = "\n".join(line[10:] if line else "" for line in lines) + "\n"
     pr_marker = "${{ github.event.pull_request.head.sha }}"
     expected_marker = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
     require(script.count(pr_marker) == 1 and script.count(expected_marker) == 1,
