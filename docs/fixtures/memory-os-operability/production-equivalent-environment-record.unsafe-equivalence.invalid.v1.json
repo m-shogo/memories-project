@@ -51,6 +51,7 @@
     "productionEvidence": false,
     "productionEquivalentDependencies": true,
     "independentReviewCompleted": false,
+    "independentReviewRef": null,
     "productionReady": false
   }
 }

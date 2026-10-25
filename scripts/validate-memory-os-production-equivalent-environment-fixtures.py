@@ -20,11 +20,13 @@ def load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def expect_invalid(validator: jsonschema.Draft202012Validator, path: Path, label: str) -> None:
+def expect_invalid(validator: jsonschema.Draft202012Validator, path: Path, label: str, expected_path: tuple[str | int, ...]) -> None:
     errors = list(validator.iter_errors(load(path)))
     if not errors:
         raise SystemExit(f"unsafe fixture unexpectedly accepted: {label}")
-    print(f"{label}: rejected as required ({len(errors)} schema errors)")
+    if not any(tuple(error.absolute_path) == expected_path for error in errors):
+        raise SystemExit(f"{label}: rejection did not exercise intended authority path {expected_path!r}")
+    print(f"{label}: rejected at intended authority path ({len(errors)} schema errors)")
 
 
 def main() -> int:
@@ -41,10 +43,12 @@ def main() -> int:
     boundary = valid.get("evidenceBoundary", {})
     if boundary.get("productionEquivalentDependencies") is not False or boundary.get("productionReady") is not False:
         raise SystemExit("safe fixture must remain non-equivalent and non-ready")
+    if boundary.get("independentReviewCompleted") is not False or boundary.get("independentReviewRef", "MISSING") is not None:
+        raise SystemExit("safe PLANNED fixture must not claim independent review")
     print("safe PLANNED fixture: accepted")
 
-    expect_invalid(validator, INVALID_EQUIVALENCE, "unsafe equivalence promotion")
-    expect_invalid(validator, INVALID_DELTA, "unreviewed accepted MATERIAL delta")
+    expect_invalid(validator, INVALID_EQUIVALENCE, "unsafe equivalence promotion", ("status",))
+    expect_invalid(validator, INVALID_DELTA, "unreviewed accepted MATERIAL delta", ("materialDeltas", 0, "independentReviewRef"))
 
     print("Memory OS production-equivalent environment fixture validation PASS")
     print("production-equivalent promotion without evidence: rejected")
