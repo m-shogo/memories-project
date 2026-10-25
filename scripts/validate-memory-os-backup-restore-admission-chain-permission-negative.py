@@ -241,7 +241,7 @@ def require_trigger_path_negatives(source: str) -> None:
 
 
 
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "41171ea91128d09e13a69b042f3cd23651bf2e53"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "68df8bc2c6edb7b06083ce5771ea9112c469a806"
 
 
 def require_reviewed_workflow_blob(source: str) -> None:
