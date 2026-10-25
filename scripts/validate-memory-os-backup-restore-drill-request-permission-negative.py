@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-drill-request.yml"
 ROLLBACK_WORKFLOW = ROOT / ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"
-REVIEWED_ROLLBACK_WORKFLOW_BLOB_SHA = "3505c8d0607735109801bfe69946f5d96b2c90d6"
+REVIEWED_ROLLBACK_WORKFLOW_BLOB_SHA = "7d8d6a2f6fab57f4258d3a5f2891e2455a363839"
 
 
 class Fail(RuntimeError):
@@ -378,6 +378,27 @@ def require_rollback_workflow_source_negatives(source: str) -> None:
         else:
             raise Fail(f"drill rollback CI source mutation accepted: {label}")
 
+    # This dedicated rollback proof must run when its external permission
+    # negative validator changes, independently of the broader permission CI.
+    marker = '      - "scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py"\n'
+    require(source.count(marker) == 2,
+            "drill rollback permission-validator trigger inventory drift")
+    before_push, after_push = source.split("  push:\n", 1)
+    trigger_mutations = (
+        ("missing permission validator PR trigger",
+         before_push.replace(marker, "", 1) + "  push:\n" + after_push),
+        ("missing permission validator push trigger",
+         before_push + "  push:\n" + after_push.replace(marker, "", 1)),
+    )
+    for label, mutated in trigger_mutations:
+        require(mutated != source, f"drill rollback trigger fixture unchanged: {label}")
+        try:
+            require_reviewed_rollback_workflow_blob(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"drill rollback CI trigger mutation accepted: {label}")
+
 
 def main() -> int:
     require(ROLLBACK_WORKFLOW.is_file() and not ROLLBACK_WORKFLOW.is_symlink(),
@@ -453,7 +474,7 @@ def main() -> int:
     print("workflow root/event negative mutations rejected: 6")
     print("workflow trigger-path negative mutations rejected: 7")
     print("complete workflow run-body negative mutations rejected: 3")
-    print("independent drill rollback CI source mutations rejected: 10")
+    print("independent drill rollback CI source mutations rejected: 12")
     print("production decision changed: false")
     return 0
 
