@@ -328,7 +328,7 @@ def require_readonly_workflow_source_negatives(source: str) -> None:
         ("floating-checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
         ("persisted-credentials", "persist-credentials: false", "persist-credentials: true"),
         ("missing-pr-head-guard", '[[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]', "true"),
-        ("dispatch-other-branch", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("dispatch-other-branch", 'elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then\n            test "${GITHUB_REF:-}" = "refs/heads/so"', 'elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then\n            true # bypass dispatch ref'),
         ("missing-push-ref-guard", 'elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then\n            test "${GITHUB_REF:-}" = "refs/heads/so"', 'elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then\n            true # bypass push ref'),
         ("missing-push-sha-guard", '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]', "true # bypass push SHA"),
         ("unreviewed-event-accepted", 'echo "Unreviewed admission readonly event" >&2\n            exit 1', 'echo "Unreviewed admission readonly event" >&2\n            exit 0'),
