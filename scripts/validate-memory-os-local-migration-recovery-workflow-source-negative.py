@@ -246,6 +246,22 @@ def diagnostic_runtime(publisher: str) -> None:
         })
         variants = (
             ("reviewed", script, True, None),
+            ("secrets flag promotion", script.replace("'containsSecrets': False", "'containsSecrets': True", 1),
+             False, "unsafe flag: containsSecrets"),
+            ("schema version", script.replace("'schemaVersion': 'memory-os-validator-diagnostic.v1'",
+                 "'schemaVersion': 'unreviewed.v1'", 1), False, "diagnostic schema drift"),
+            ("workflow identity", script.replace("'workflow': 'local-migration-recovery-artifact'",
+                 "'workflow': 'unreviewed-writer'", 1), False, "diagnostic identity drift"),
+            ("result identity", script.replace("'result': 'FAIL'", "'result': 'PASS'", 1),
+             False, "diagnostic identity drift"),
+            ("source identity", script.replace("'sourceCommitSha': os.environ.get('SOURCE_SHA', '')",
+                 "'sourceCommitSha': '0' * 40", 1), False, "diagnostic source/stage/exit drift"),
+            ("stage identity", script.replace("'failureStage': os.environ.get('FAILURE_STAGE', 'unknown')",
+                 "'failureStage': 'unreviewed'", 1), False, "diagnostic source/stage/exit drift"),
+            ("exit code identity", script.replace("'exitCode': int(os.environ['EXIT_CODE'])",
+                 "'exitCode': 0", 1), False, "diagnostic source/stage/exit drift"),
+            ("output redaction", script.replace(redacted, "'unreviewed output'", 1),
+             False, "raw output not redacted"),
             ("raw canary", script.replace(redacted, "os.environ['SENSITIVE_CANARY']", 1),
              False, "persisted sensitive canary"),
             ("readiness promotion", script.replace("'productionReady': False", "'productionReady': True", 1),
@@ -313,7 +329,7 @@ def diagnostic_runtime(publisher: str) -> None:
                 "local recovery atomic diagnostic failure mutated existing output")
         require(not list(target.parent.glob(".local-migration-recovery-diagnostic.*.tmp")),
                 "local recovery atomic diagnostic failure left temporary files")
-    print("PASS: local recovery actual diagnostic writer (1 positive, 8 negative runtime cases)")
+    print("PASS: local recovery actual diagnostic writer (1 positive, 16 negative runtime cases)")
     print("PASS: local recovery atomic diagnostic mode and failed-replace rollback (2 cases)")
 
 
