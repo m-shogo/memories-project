@@ -64,6 +64,8 @@ jobs:
           expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           [[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.pull_request.head.sha }}" =~ ^[0-9a-f]{40}$ ]]
           [[ "${{ github.event_name }}" != "workflow_dispatch" || "$GITHUB_REF" == "refs/heads/so" ]]
+          [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "push" || "${{ github.event_name }}" == "workflow_dispatch" ]]
+          [[ "${{ github.event_name }}" != "push" || "$GITHUB_REF" == "refs/heads/so" ]]
           [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"

@@ -2595,11 +2595,13 @@ def require_readonly_workflow_authority(readonly: str) -> None:
     )
     compiled = PR_COMPILE_FILES[-6:]
     require(
-        body[:8] == [
+        body[:10] == [
             "set -euo pipefail",
             'expected="' + READONLY_SOURCE_REF + '"',
             '[[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.pull_request.head.sha }}" =~ ^[0-9a-f]{40}$ ]]',
             '[[ "${{ github.event_name }}" != "workflow_dispatch" || "$GITHUB_REF" == "refs/heads/so" ]]',
+            '[[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "push" || "${{ github.event_name }}" == "workflow_dispatch" ]]',
+            '[[ "${{ github.event_name }}" != "push" || "$GITHUB_REF" == "refs/heads/so" ]]',
             '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]',
             'test -n "$expected"',
             'test "$(git rev-parse HEAD)" = "$expected"',
@@ -2663,6 +2665,10 @@ def prove_readonly_workflow_negative(readonly: str) -> None:
          '          [[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.pull_request.head.sha }}" =~ ^[0-9a-f]{40}$ ]]\n'),
         ("missing dispatch ref guard",
          '          [[ "${{ github.event_name }}" != "workflow_dispatch" || "$GITHUB_REF" == "refs/heads/so" ]]\n'),
+        ("missing event-family whitelist",
+         '          [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "push" || "${{ github.event_name }}" == "workflow_dispatch" ]]\n'),
+        ("missing push ref guard",
+         '          [[ "${{ github.event_name }}" != "push" || "$GITHUB_REF" == "refs/heads/so" ]]\n'),
         ("missing event SHA format guard",
          '          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]\n'),
     )
