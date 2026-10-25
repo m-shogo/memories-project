@@ -76,8 +76,10 @@ def step(text, title):
     if text.count(marker) != 1:
         raise AssertionError("live object stage source step ambiguous")
     start = text.index("        run: |\n", text.index(marker)) + len("        run: |\n")
-    end = text.find("\n      - name:", start)
-    lines = text[start:end if end >= 0 else len(text)].splitlines()
+    boundaries = [i for marker in ("\n      - name:", "\n  reconcile:", "\n  validate-pr:")
+                  if (i := text.find(marker, start)) >= 0]
+    end = min(boundaries) if boundaries else len(text)
+    lines = text[start:end].splitlines()
     if not lines or any(line and not line.startswith("          ") for line in lines):
         raise AssertionError("live object stage step indentation drift")
     return "\n".join(line[10:] if line else "" for line in lines) + "\n"
