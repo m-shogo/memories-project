@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""Independent fail-closed source and event/ref admission for restore preflight publisher."""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+MAIN_PATH = ".github/workflows/backup-restore-drill-preflight.yml"
+GUARD_PATH = ".github/workflows/backup-restore-drill-preflight-source-negative.yml"
+SELF_PATH = "scripts/validate-memory-os-backup-restore-drill-preflight-workflow-negative.py"
+MAIN_BLOB = "245847c8b296bd72cb847be9baa211ef70b90aed"
+GUARD_BLOB = "cdcfc001168b18173441671f1fe30417984f3bba"
+D = chr(36)
+PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
+PUSH_REF = 'test "' + D + '{GITHUB_REF:-}" = "refs/heads/so"'
+EVENT = '[[ "' + D + '{GITHUB_EVENT_NAME:-}" == "push" || "' + D + '{GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]'
+PR_HEAD = 'expected="' + D + '{{ github.event.pull_request.head.sha }}"'
+PR_SHA_FORMAT = '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'
+WRITER_SHA_FORMAT = '[[ "' + D + '{GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]'
+PUBLISHER_SCOPE = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n"
+CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+
+MAIN_REQUIRED = (
+    ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
+    ("self trigger", '      - "' + SELF_PATH + '"\n', 2),
+    ("independent trigger", '      - "' + GUARD_PATH + '"\n', 2),
+    ("checkout pin", CHECKOUT, 2),
+    ("setup pin", SETUP, 2),
+    ("PR no credentials", "          persist-credentials: false\n", 1),
+    ("publisher credentials", "          persist-credentials: true\n", 1),
+    ("PR base", PR_BASE, 1),
+    ("PR head source", PR_HEAD, 1),
+    ("PR SHA format", PR_SHA_FORMAT, 1),
+    ("writer SHA format", WRITER_SHA_FORMAT, 1),
+    ("writer event", EVENT, 1),
+    ("writer branch", PUSH_REF, 1),
+    ("publisher scope", PUBLISHER_SCOPE, 1),
+    ("PR and writer self execution", "\n          python " + SELF_PATH + "\n", 2),
+    ("retry self execution", "\n            python " + SELF_PATH + "\n", 1),
+    ("PR HEAD", 'test "$(git rev-parse HEAD)" = "$expected"', 1),
+    ("writer HEAD", 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', 1),
+    ("bounded latest source", "            git reset --hard origin/so\n", 1),
+    ("root read permission", "permissions:\n  contents: read\n", 1),
+    ("writer write permission", "      contents: write\n", 1),
+)
+
+GUARD_REQUIRED = (
+    ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
+    ("main trigger", '      - "' + MAIN_PATH + '"\n', 2),
+    ("self trigger", '      - "' + GUARD_PATH + '"\n', 2),
+    ("script trigger", '      - "' + SELF_PATH + '"\n', 2),
+    ("checkout pin", CHECKOUT, 1),
+    ("setup pin", SETUP, 1),
+    ("no checkout credentials", "          persist-credentials: false\n", 1),
+    ("PR base", PR_BASE, 1),
+    ("push branch", PUSH_REF, 1),
+    ("SHA format", PR_SHA_FORMAT, 1),
+    ("self execution", "          python " + SELF_PATH + "\n", 1),
+    ("root and job read permission", "  contents: read\n", 2),
+    ("exact event job", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n", 1),
+    ("clean source", '          test -z "$(git status --porcelain)"\n', 2),
+)
+
+
+def checked_source(relative: str) -> str:
+    path = ROOT / relative
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("not a regular source file")
+        if path.resolve(strict=True).relative_to(ROOT.resolve(strict=True)).as_posix() != relative:
+            raise ValueError("source escapes repository")
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError, RuntimeError, ValueError) as exc:
+        raise SystemExit("preflight CI source unavailable or substituted: " + relative) from exc
+
+
+def validate(main: str, guard: str) -> None:
+    for label, token, expected in MAIN_REQUIRED:
+        if main.count(token) != expected:
+            raise SystemExit("preflight publisher source drift: " + label)
+    for label, token, expected in GUARD_REQUIRED:
+        if guard.count(token) != expected:
+            raise SystemExit("preflight independent guard source drift: " + label)
+    for label, source, reviewed in (
+        ("publisher", main, MAIN_BLOB),
+        ("independent guard", guard, GUARD_BLOB),
+    ):
+        payload = source.encode("utf-8")
+        blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        if hashlib.sha1(blob).hexdigest() != reviewed:
+            raise SystemExit("preflight " + label + " complete source drift")
+
+
+def runtime_branch_proof(main: str, guard: str) -> None:
+    for source_label, source in (("publisher", main), ("independent", guard)):
+        for label, command, key, value, allowed in (
+            ("PR so", PR_BASE, "GITHUB_BASE_REF", "so", True),
+            ("PR main", PR_BASE, "GITHUB_BASE_REF", "main", False),
+            ("PR missing", PR_BASE, "GITHUB_BASE_REF", "", False),
+            ("push so", PUSH_REF, "GITHUB_REF", "refs/heads/so", True),
+            ("push main", PUSH_REF, "GITHUB_REF", "refs/heads/main", False),
+            ("push tag", PUSH_REF, "GITHUB_REF", "refs/tags/v1", False),
+        ):
+            if source.count(command) != 1:
+                raise SystemExit("preflight runtime guard unreachable: " + source_label + " " + label)
+            env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), key: value}
+            result = subprocess.run(["bash", "-e", "-c", command], env=env, capture_output=True, check=False)
+            if (result.returncode == 0) != allowed:
+                raise SystemExit("preflight runtime branch guard drift: " + source_label + " " + label)
+    for label, event, allowed in (
+        ("push", "push", True),
+        ("dispatch", "workflow_dispatch", True),
+        ("PR", "pull_request", False),
+        ("unknown", "", False),
+    ):
+        result = subprocess.run(
+            ["bash", "-e", "-c", EVENT],
+            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "GITHUB_EVENT_NAME": event},
+            capture_output=True,
+            check=False,
+        )
+        if (result.returncode == 0) != allowed:
+            raise SystemExit("preflight publisher runtime event drift: " + label)
+    print("PASS: preflight publisher/independent PR-push branch runtime (12 cases), publisher event runtime (4 cases)")
+
+
+def prove_negative_mutations(main: str, guard: str) -> None:
+    publisher_cases = (
+        ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
+        ("self trigger", '      - "' + SELF_PATH + '"\n', ""),
+        ("independent trigger", '      - "' + GUARD_PATH + '"\n', ""),
+        ("checkout floating", CHECKOUT, "uses: actions/checkout@v4"),
+        ("setup floating", SETUP, "uses: actions/setup-python@v5"),
+        ("PR credential persistence", "          persist-credentials: false\n", "          persist-credentials: true\n"),
+        ("publisher credentials removed", "          persist-credentials: true\n", ""),
+        ("PR base removed", PR_BASE, 'test -n "$GITHUB_BASE_REF"'),
+        ("PR head source", PR_HEAD, 'expected="$GITHUB_SHA"'),
+        ("PR SHA weakened", PR_SHA_FORMAT, 'test -n "$expected"'),
+        ("writer SHA weakened", WRITER_SHA_FORMAT, 'test -n "$GITHUB_SHA"'),
+        ("publisher event removed", EVENT, ""),
+        ("publisher branch removed", PUSH_REF, ""),
+        ("publisher broad admission", PUBLISHER_SCOPE, "    if: github.event_name != 'pull_request'\n"),
+        ("PR self check removed", "\n          python " + SELF_PATH + "\n", "\n"),
+        ("retry self check removed", "\n            python " + SELF_PATH + "\n", "\n"),
+        ("PR HEAD removed", 'test "$(git rev-parse HEAD)" = "$expected"', "true"),
+        ("writer HEAD removed", 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', "true"),
+        ("latest reset removed", "            git reset --hard origin/so\n", ""),
+        ("root permission widened", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
+        ("writer permission weakened", "      contents: write\n", "      contents: read\n"),
+        ("injected Action", "      - name: Capture exact preflight authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact preflight authority source\n"),
+        ("injected shell step", "      - name: Capture exact preflight authority source\n", "      - run: echo unreviewed\n      - name: Capture exact preflight authority source\n"),
+        ("appended command", '          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"\n', '          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"\n          echo unreviewed\n'),
+    )
+    independent_cases = (
+        ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
+        ("main trigger", '      - "' + MAIN_PATH + '"\n', ""),
+        ("self trigger", '      - "' + GUARD_PATH + '"\n', ""),
+        ("script trigger", '      - "' + SELF_PATH + '"\n', ""),
+        ("checkout floating", CHECKOUT, "uses: actions/checkout@v4"),
+        ("setup floating", SETUP, "uses: actions/setup-python@v5"),
+        ("credential persistence", "          persist-credentials: false\n", "          persist-credentials: true\n"),
+        ("PR base removed", PR_BASE, ""),
+        ("push branch removed", PUSH_REF, ""),
+        ("job scope widened", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n", "    if: always()\n"),
+        ("guard self execution removed", "          python " + SELF_PATH + "\n", ""),
+        ("injected Action", "      - name: Prove preflight publisher source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove preflight publisher source admission\n"),
+        ("injected shell", "      - name: Prove preflight publisher source admission\n", "      - run: echo unreviewed\n      - name: Prove preflight publisher source admission\n"),
+    )
+    for target, cases in (("publisher", publisher_cases), ("independent", independent_cases)):
+        for label, old, new in cases:
+            source = main if target == "publisher" else guard
+            if old not in source:
+                raise SystemExit("preflight source negative fixture missing: " + target + " " + label)
+            mutated = source.replace(old, new, 1)
+            if mutated == source:
+                raise SystemExit("preflight source negative fixture unchanged: " + target + " " + label)
+            try:
+                validate(mutated, guard) if target == "publisher" else validate(main, mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("preflight source negative accepted mutation: " + target + " " + label)
+    print(f"PASS: preflight publisher source admission ({len(publisher_cases)} negatives), independent source admission ({len(independent_cases)} negatives)")
+
+
+def main() -> int:
+    publisher = checked_source(MAIN_PATH)
+    independent = checked_source(GUARD_PATH)
+    validate(publisher, independent)
+    runtime_branch_proof(publisher, independent)
+    prove_negative_mutations(publisher, independent)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
