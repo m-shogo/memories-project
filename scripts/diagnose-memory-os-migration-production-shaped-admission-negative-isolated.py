@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import runpy
 import subprocess
@@ -119,6 +120,41 @@ def inner(stage_path: Path) -> int:
     return 0
 
 
+
+def probe_append_lock(clone: Path, env: dict[str, str]) -> tuple[str, str]:
+    """Classify a known negative failure using fixed labels; never print validator output."""
+    validator = clone / "scripts/validate-memory-os-migration-production-shaped-admission.py"
+    contract = clone / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
+    original = contract.read_bytes()
+    try:
+        baseline = subprocess.run([sys.executable, str(validator)], cwd=clone, env=env,
+                                  capture_output=True, text=True, timeout=120, check=False)
+        baseline_label = "PASS" if baseline.returncode == 0 else "FAIL"
+        data = json.loads(original.decode("utf-8"))
+        data["appendLockPath"] = "contracts/operations/.migration-production-shaped-admission-negative.lock"
+        contract.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        result = subprocess.run([sys.executable, str(validator)], cwd=clone, env=env,
+                                capture_output=True, text=True, timeout=120, check=False)
+        output = result.stdout + result.stderr
+        if result.returncode == 0:
+            label = "UNEXPECTED_ACCEPTANCE"
+        elif "append lock binding drift" in output:
+            label = "EXPECTED_LOCK_REJECTION"
+        elif "canonical release baseline authority validation failed" in output:
+            label = "UPSTREAM_RELEASE_VALIDATION"
+        elif "canonical environment generation authority validation failed" in output:
+            label = "UPSTREAM_GENERATION_VALIDATION"
+        elif "working tree must be clean" in output:
+            label = "WORKTREE_PRECONDITION"
+        else:
+            label = "OTHER_FAILURE"
+        return baseline_label, label
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return "UNKNOWN", "PROBE_ERROR"
+    finally:
+        contract.write_bytes(original)
+
+
 def run_isolated() -> int:
     original = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
     require(len(original) == 40, "source commit unavailable")
@@ -140,6 +176,9 @@ def run_isolated() -> int:
         stage = stage_path.read_text(encoding="ascii").strip() if stage_path.is_file() else "bootstrap"
         require(stage == "bootstrap" or stage in STAGES, "unreviewed diagnostic stage")
         if completed.returncode != 0:
+            if stage == "expect_append_lock_contract_drift_rejected":
+                baseline, classification = probe_append_lock(clone, env)
+                print("Migration append-lock probe: baseline=" + baseline + " mutated=" + classification)
             print("FAIL: migration negative isolated stage=" + stage + " (raw validator output suppressed)")
             return 1
         print("PASS: migration negative in disposable clone; last_stage=" + stage)
