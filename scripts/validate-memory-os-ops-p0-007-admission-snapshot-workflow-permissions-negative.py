@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 import sys
 import tempfile
@@ -15,6 +16,8 @@ PR_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-pr.yml"
 PUBLISH_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot.yml"
 
 READONLY_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"
+SNAPSHOT_PERMISSION_WORKFLOW = ROOT / ".github/workflows/ops-p0-007-snapshot-permission-boundary.yml"
+REVIEWED_SNAPSHOT_PERMISSION_WORKFLOW_BLOB_SHA = "5f29fdb29280b9e9b46c65c703d6cefa6fee643a"
 READONLY_SOURCE_REF = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
 
 
@@ -2833,7 +2836,44 @@ def prove_write_all_permissions_rejected() -> None:
 
 
 
+def prove_snapshot_permission_gate_source_negatives() -> None:
+    """Independently bind the complete permission-gate workflow executable bytes."""
+    require_canonical_workflow(
+        SNAPSHOT_PERMISSION_WORKFLOW,
+        Path(".github/workflows/ops-p0-007-snapshot-permission-boundary.yml"),
+    )
+    source = SNAPSHOT_PERMISSION_WORKFLOW.read_text(encoding="utf-8")
+
+    def require_reviewed_blob(candidate: str) -> None:
+        payload = candidate.encode("utf-8")
+        git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        require(hashlib.sha1(git_blob).hexdigest() == REVIEWED_SNAPSHOT_PERMISSION_WORKFLOW_BLOB_SHA,
+                "strict snapshot permission CI complete source drift")
+
+    require_reviewed_blob(source)
+    cases = (
+        ("floating-checkout", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
+        ("persisted-credentials", "persist-credentials: false", "persist-credentials: true"),
+        ("missing-so-ref", 'test "$GITHUB_REF" = "refs/heads/so"', "true"),
+        ("missing-source-sha-format", '[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]', "true"),
+        ("skipped-permission-validator", "python scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py", "echo UNREVIEWED"),
+        ("injected-shell", "          python -m py_compile scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py",
+         "          echo UNREVIEWED\n          python -m py_compile scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py"),
+    )
+    for label, before, after in cases:
+        require(source.count(before) == 1, f"strict snapshot permission gate fixture drift: {label}")
+        mutated = source.replace(before, after, 1)
+        require(mutated != source, f"strict snapshot permission gate fixture unchanged: {label}")
+        try:
+            require_reviewed_blob(mutated)
+        except Fail:
+            pass
+        else:
+            raise Fail(f"strict snapshot permission gate source mutation accepted: {label}")
+
+
 def main() -> int:
+    prove_snapshot_permission_gate_source_negatives()
     require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
     require_canonical_workflow(PUBLISH_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot.yml"))
     require_canonical_workflow(READONLY_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"))
@@ -2885,6 +2925,7 @@ def main() -> int:
     prove_diagnostic_privacy_boundary_rejected(publish)
 
     print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
+    print("snapshot permission gate complete-source mutations rejected: 6")
     print("pull request write token exposed: false")
     print("top-level read-only permissions and write-all rejection proven: true")
     print("pull request authority publication allowed: false")
