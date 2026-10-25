@@ -16,13 +16,17 @@ PUBLISHER = ".github/workflows/migration-production-shaped-admission.yml"
 INDEPENDENT = ".github/workflows/migration-production-shaped-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py"
 PUBLISHER_SHA = "80c283c3bf93934f115321d761a349a9b74648cb"
-INDEPENDENT_SHA = "11ef68d69908b1f58056b2b36188ae67eb69da9c"
+INDEPENDENT_SHA = "6e5d70153437516601b00c9d6d542dc90abf7191"
 ISOLATION = ".github/workflows/migration-production-shaped-negative-isolation.yml"
 ISOLATION_SCRIPT = "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
 NEGATIVE_SCRIPT = "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
 ISOLATION_SHA = "e439088b4ac8ab0fce2a08bfd46f38a2a8b33933"
 ISOLATION_SCRIPT_SHA = "00dcd7e95896b7352f682d8d1eeefbd3f8920755"
 NEGATIVE_SCRIPT_SHA = "3366455aa1140f464d7442b2b788ed3240ee898b"
+PERMISSION_CI = ".github/workflows/migration-production-shaped-admission-permission-negative.yml"
+PERMISSION_SCRIPT = "scripts/validate-memory-os-migration-production-shaped-admission-permission-negative.py"
+PERMISSION_CI_SHA = "97cf42f2e0a206a9fb489a43e9c16e9f941fc9e3"
+PERMISSION_SCRIPT_SHA = "be584a02b612a7df2d399beefcd6defa760764e3"
 D = chr(36)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -86,6 +90,8 @@ INDEPENDENT_REQUIRED = (
     ("isolation workflow trigger", '      - "' + ISOLATION + '"\n', 2),
     ("isolation runner trigger", '      - "' + ISOLATION_SCRIPT + '"\n', 2),
     ("migration negative trigger", '      - "' + NEGATIVE_SCRIPT + '"\n', 2),
+    ("permission CI trigger", '      - "' + PERMISSION_CI + '"\n', 2),
+    ("permission script trigger", '      - "' + PERMISSION_SCRIPT + '"\n', 2),
     ("checkout pin", CHECKOUT, 1),
     ("setup pin", SETUP, 1),
     ("no credentials", "          persist-credentials: false\n", 1),
@@ -218,6 +224,8 @@ def negatives(publisher: str, independent: str) -> None:
         ("isolation workflow trigger", '      - "' + ISOLATION + '"\n', ""),
         ("isolation runner trigger", '      - "' + ISOLATION_SCRIPT + '"\n', ""),
         ("migration negative trigger", '      - "' + NEGATIVE_SCRIPT + '"\n', ""),
+        ("permission CI trigger", '      - "' + PERMISSION_CI + '"\n', ""),
+        ("permission script trigger", '      - "' + PERMISSION_SCRIPT + '"\n', ""),
         ("floating checkout", CHECKOUT, "uses: actions/checkout@v4"),
         ("floating setup", SETUP, "uses: actions/setup-python@v5"),
         ("persist credentials", "          persist-credentials: false\n", "          persist-credentials: true\n"),
@@ -291,11 +299,31 @@ def verify_isolation_blob_bindings() -> None:
     print("PASS: migration isolated workflow/runner/negative source bindings (6 mutations)")
 
 
+def verify_permission_blob_bindings() -> None:
+    """Independent proof for the permission CI and its executable validator."""
+    for label, path, expected in (
+        ("permission workflow", PERMISSION_CI, PERMISSION_CI_SHA),
+        ("permission validator", PERMISSION_SCRIPT, PERMISSION_SCRIPT_SHA),
+    ):
+        source = read(path)
+        require_isolation_blob(label, source, expected)
+        for suffix in ("\n# inert permission mutation\n", "\n# disabled permission guard\n"):
+            try:
+                require_isolation_blob(label, source + suffix, expected)
+            except SystemExit as exc:
+                if str(exc) != "migration isolated negative source drift: " + label:
+                    raise
+            else:
+                raise SystemExit("migration permission source mutation accepted: " + label)
+    print("PASS: migration permission workflow/validator source bindings (4 mutations)")
+
+
 def main() -> int:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
     validate(publisher, independent)
     verify_isolation_blob_bindings()
+    verify_permission_blob_bindings()
     runtime(publisher, independent)
     diagnostic_runtime(publisher)
     prove_failed_stage_runtime(publisher)

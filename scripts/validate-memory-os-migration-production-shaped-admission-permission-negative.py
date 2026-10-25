@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 """Pin least-privilege and crash-safe publication for migration production admission."""
+import hashlib
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/migration-production-shaped-admission.yml"
+PERMISSION_CI = ROOT / ".github/workflows/migration-production-shaped-admission-permission-negative.yml"
+PERMISSION_CI_SHA = "97cf42f2e0a206a9fb489a43e9c16e9f941fc9e3"
+CHECKOUT_PIN = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+SETUP_PIN = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+PERMISSION_SCOPE = "if: github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so')"
 WRITER_SCOPE = "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
 
 
@@ -46,7 +54,71 @@ def prove_writer_scope_negatives(reconcile: str) -> None:
     print("PASS: migration writer push/dispatch so-only scope (5 negatives)")
 
 
+def verify_permission_ci_source(source: str) -> None:
+    required = (
+        "  pull_request:\n    branches:\n      - so\n",
+        "  push:\n    branches:\n      - so\n",
+        "  workflow_dispatch:\n",
+        "permissions:\n  contents: read\n",
+        "      contents: read\n",
+        "persist-credentials: false",
+        CHECKOUT_PIN,
+        SETUP_PIN,
+        PERMISSION_SCOPE,
+        'test "${GITHUB_BASE_REF:-}" = "so"',
+        'test "${GITHUB_REF:-}" = "refs/heads/so"',
+        '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$(git rev-parse HEAD)" = "$expected"',
+        'test -z "$(git status --porcelain)"',
+        "python scripts/validate-memory-os-migration-production-shaped-admission-permission-negative.py",
+    )
+    for token in required:
+        require(source.count(token) >= 1, "migration permission CI source guard missing reviewed token")
+    for forbidden in ("contents: write", "persist-credentials: true", "pull_request_target:", "secrets."):
+        require(forbidden not in source, "migration permission CI unreviewed privilege")
+    data = source.encode("utf-8")
+    digest = hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+    require(digest == PERMISSION_CI_SHA, "migration permission CI complete source drift")
+
+
+def prove_permission_ci_source_negatives(source: str) -> None:
+    cases = (
+        ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
+        ("floating checkout", CHECKOUT_PIN, "uses: actions/checkout@v4"),
+        ("floating setup", SETUP_PIN, "uses: actions/setup-python@v5"),
+        ("checkout credentials", "persist-credentials: false", "persist-credentials: true"),
+        ("broad event scope", PERMISSION_SCOPE, "if: always()"),
+        ("missing PR base", 'test "${GITHUB_BASE_REF:-}" = "so"', "true"),
+        ("missing push ref", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("weak SHA", '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]', 'test -n "$expected"'),
+        ("unreviewed shell", "      - name: Require exact clean source", "      - run: echo unreviewed\n      - name: Require exact clean source"),
+    )
+    for label, before, after in cases:
+        require(source.count(before) == 1, "migration permission CI mutation anchor drift: " + label)
+        changed = source.replace(before, after, 1)
+        try:
+            verify_permission_ci_source(changed)
+        except Fail:
+            continue
+        raise Fail("migration permission CI accepted weakened source: " + label)
+    print("PASS: migration permission CI source negatives (9 cases)")
+
+
+def prove_permission_ci_sha_runtime() -> None:
+    for value, allowed in (("a" * 40, True), ("0" * 40, True), ("A" * 40, False),
+                           ("g" * 40, False), ("a" * 39, False), ("a" * 41, False), ("", False)):
+        result = subprocess.run(["bash", "-e", "-c", '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'],
+                                env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "expected": value},
+                                capture_output=True, check=False)
+        require((result.returncode == 0) == allowed, "migration permission CI SHA runtime drift")
+    print("PASS: migration permission CI SHA runtime (7 cases)")
+
+
 def main() -> int:
+    permission_ci_source = PERMISSION_CI.read_text(encoding="utf-8")
+    verify_permission_ci_source(permission_ci_source)
+    prove_permission_ci_source_negatives(permission_ci_source)
+    prove_permission_ci_sha_runtime()
     text = WORKFLOW.read_text(encoding="utf-8")
     require("pull_request_target:" not in text, "pull_request_target must never carry migration admission authority")
     require("permissions:\n  contents: read\n" in text, "workflow default must remain contents: read")
