@@ -192,6 +192,25 @@ def prove_generator_post_validation_rollback_mode(generator: Any) -> None:
     original_guard = generator.enforce_generator_execution_authority
     original_identity = generator.require_generator_authority_identity
     original_post_validator = generator.validate_generated_inventory
+    original_command_validator = generator.require_canonical_command_authority
+    expected_commands = (
+        "validate-memory-os-backup-restore-generation-binding.py",
+        "validate-memory-os-recovery-objectives.py",
+        "validate-memory-os-backup-restore-drill-request.py",
+        "validate-memory-os-backup-restore-drill-preflight.py",
+        "validate-memory-os-backup-restore-generation-evidence.py",
+        "validate-memory-os-backup-restore-non-resurrection-admission.py",
+        "validate-memory-os-backup-restore-promotion-review.py",
+    )
+    command_calls: list[str] = []
+
+    def record_prevalidated_command(script_name: str, module_name: str, label: str) -> None:
+        # Synthetic rollback fixture is untracked until cleanup. Verify all
+        # command call sites, but do not invoke the real clean-worktree suites
+        # while the fixture itself makes the canonical checkout dirty.
+        require(script_name in expected_commands, f"inventory rollback command authority drift: {script_name}")
+        require(bool(module_name) and bool(label), "inventory rollback command metadata missing")
+        command_calls.append(script_name)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-inventory-rollback-", dir=ROOT / "contracts/operations") as tmpdir:
         output = Path(tmpdir) / canonical_output.name
@@ -207,6 +226,7 @@ def prove_generator_post_validation_rollback_mode(generator: Any) -> None:
         generator.enforce_generator_execution_authority = fixture_guard
         generator.require_generator_authority_identity = lambda: None
         generator.validate_generated_inventory = reject_post_validation
+        generator.require_canonical_command_authority = record_prevalidated_command
         try:
             rejected = False
             try:
@@ -220,11 +240,14 @@ def prove_generator_post_validation_rollback_mode(generator: Any) -> None:
             require(output.stat().st_mode & 0o7777 == 0o640, "post-write inventory fixture rollback changed mode")
             require(not list(output.parent.glob(f".{output.name}.*.tmp")), "post-write inventory rollback left temporary fixture files")
         finally:
+            generator.require_canonical_command_authority = original_command_validator
             generator.validate_generated_inventory = original_post_validator
             generator.require_generator_authority_identity = original_identity
             generator.enforce_generator_execution_authority = original_guard
             generator.OUTPUT = original_output
 
+    require(generator.require_canonical_command_authority is original_command_validator, "inventory rollback command validator was not restored")
+    require(tuple(command_calls) == expected_commands, "inventory rollback skipped or reordered canonical command authority call sites")
     require(canonical_output.read_bytes() == canonical_output_before, "post-write rollback negative mutated canonical inventory bytes")
     require(canonical_output.stat().st_mode & 0o7777 == canonical_output_mode_before, "post-write rollback negative mutated canonical inventory mode")
     require(INVENTORY_VALIDATOR.is_file() and not INVENTORY_VALIDATOR.is_symlink(), "canonical inventory validator identity changed during rollback negative")
