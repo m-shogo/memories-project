@@ -125,6 +125,28 @@ def require_reconciler_second_replace_rollback(reconciler: Any) -> None:
         original_contract = reconciler.CONTRACT
         original_status = reconciler.STATUS
         original_replace = reconciler.os.replace
+        original_loader = reconciler.load_validator_module
+        canonical_validator = original_loader()
+        expected_upstream = (
+            (canonical_validator.GEN_VALIDATOR, "environment generation"),
+            (canonical_validator.OBJECTIVE_VALIDATOR, "recovery objectives"),
+            (canonical_validator.DRILL_VALIDATOR, "restore drill request"),
+        )
+        upstream_calls: list[tuple[Path, str]] = []
+
+        def isolated_rollback_validator():
+            # This synthetic rollback test creates untracked fixtures inside ROOT.
+            # Preserve the three upstream call sites, but do not invoke the
+            # canonical clean-worktree source-binding negative while fixtures exist.
+            validator = original_loader()
+
+            def record_prevalidated(path: Path, name: str) -> None:
+                require((path, name) in expected_upstream, f"rollback fixture upstream validator drift: {name}")
+                upstream_calls.append((path, name))
+
+            validator.run_validator = record_prevalidated
+            return validator
+
         replace_calls = 0
 
         def fail_second_replace(src: str | Path, dst: str | Path) -> None:
@@ -137,6 +159,7 @@ def require_reconciler_second_replace_rollback(reconciler: Any) -> None:
         reconciler.CONTRACT = contract
         reconciler.STATUS = status
         reconciler.os.replace = fail_second_replace
+        reconciler.load_validator_module = isolated_rollback_validator
         try:
             try:
                 reconciler._reconcile()
@@ -145,10 +168,13 @@ def require_reconciler_second_replace_rollback(reconciler: Any) -> None:
             else:
                 raise Fail("restore drill preflight reconciler accepted injected second replace failure")
         finally:
+            reconciler.load_validator_module = original_loader
             reconciler.os.replace = original_replace
             reconciler.CONTRACT = original_contract
             reconciler.STATUS = original_status
 
+        require(reconciler.load_validator_module is original_loader, "rollback fixture validator loader was not restored")
+        require(tuple(upstream_calls) == expected_upstream, "rollback fixture skipped or reordered upstream validation call sites")
         require(replace_calls >= 4, f"restore drill preflight rollback did not replace both authorities: {replace_calls}")
         require(contract.read_bytes() == contract_bytes, "restore drill preflight contract bytes changed after second replace rollback")
         require(status.read_bytes() == status_bytes, "production operability status bytes changed after second replace rollback")
