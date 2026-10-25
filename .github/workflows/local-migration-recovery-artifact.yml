@@ -444,6 +444,8 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/local-migration-recovery-artifact-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
+          if path.is_symlink():
+              raise SystemExit('local recovery diagnostic target must not be a symlink')
           existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
           descriptor, temp_name = tempfile.mkstemp(
               prefix='.local-migration-recovery-diagnostic.', suffix='.tmp', dir=path.parent)

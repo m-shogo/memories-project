@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/local-migration-recovery-artifact.yml"
 INDEPENDENT = ".github/workflows/local-migration-recovery-source-negative.yml"
 SELF = "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py"
-PUBLISHER_SHA = "86cb9e591b9ad699a7d9be98ac4c42a190e9c5fd"
+PUBLISHER_SHA = "c28a2f7cc363bf8c787c7f1670d484e569dbc1b3"
 INDEPENDENT_SHA = "094d794db2d11846a4a174ac7ab976b4f81e304a"
 LOCAL_NEGATIVE = "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
 LOCAL_NEGATIVE_SHA = "1e5dccbbf21c0f4dcf8888f6a0e6cf7fa84aebcd"
@@ -329,8 +329,31 @@ def diagnostic_runtime(publisher: str) -> None:
                 "local recovery atomic diagnostic failure mutated existing output")
         require(not list(target.parent.glob(".local-migration-recovery-diagnostic.*.tmp")),
                 "local recovery atomic diagnostic failure left temporary files")
+        fsync_failed = script.replace("os.fsync(handle.fileno())",
+                                      "raise OSError('synthetic local diagnostic fsync failure')", 1)
+        require(fsync_failed != script, "local recovery fsync mutation anchor missing")
+        fsync_result = subprocess.run([sys.executable, "-c", fsync_failed], cwd=directory, env=env,
+                                      capture_output=True, text=True, timeout=15, check=False)
+        require(fsync_result.returncode != 0 and "synthetic local diagnostic fsync failure" in fsync_result.stderr,
+                "local recovery diagnostic fsync failure did not execute")
+        require(target.read_bytes() == original and target.stat().st_mode & 0o7777 == 0o640,
+                "local recovery diagnostic fsync failure mutated existing output")
+        require(not list(target.parent.glob(".local-migration-recovery-diagnostic.*.tmp")),
+                "local recovery diagnostic fsync failure left temporary files")
+        outside = directory / "external-local-diagnostic-canary"
+        outside.write_bytes(original)
+        target.unlink()
+        target.symlink_to(outside)
+        symlink_result = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                        capture_output=True, text=True, timeout=15, check=False)
+        require(symlink_result.returncode != 0 and "target must not be a symlink" in symlink_result.stderr,
+                "local recovery diagnostic accepted symlinked output")
+        require(target.is_symlink() and outside.read_bytes() == original,
+                "local recovery diagnostic symlink mutated external output")
+        require(not list(target.parent.glob(".local-migration-recovery-diagnostic.*.tmp")),
+                "local recovery diagnostic symlink failure left temporary files")
     print("PASS: local recovery actual diagnostic writer (1 positive, 16 negative runtime cases)")
-    print("PASS: local recovery atomic diagnostic mode and failed-replace rollback (2 cases)")
+    print("PASS: local recovery atomic diagnostic mode, replace/fsync failure and symlink guard (4 cases)")
 
 
 def main() -> int:
