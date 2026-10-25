@@ -64,9 +64,9 @@ def main() -> int:
             continue
         raise SystemExit(f"semantic preflight reconcile accepted forbidden mutation: {label}")
     # The canonical workflow may or may not end in a newline; both are valid.
-    validate(source.rstrip("\\n") + "\\n")
+    validate(source.rstrip("\n") + "\n")
     try:
-        validate(source + '\\n          echo "unreviewed final command"\\n')
+        validate(source + '\n          echo "unreviewed final command"\n')
     except SystemExit:
         pass
     else:
