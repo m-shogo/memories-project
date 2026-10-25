@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/recovery-objectives-admission.yml"
 INDEPENDENT = ".github/workflows/recovery-objectives-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-recovery-objectives-admission-workflow-negative.py"
-REVIEWED_PUBLISHER = "f6b10d56be369de46098f9798fc686322eb90302"
+REVIEWED_PUBLISHER = "d7afd013ab3fe0d91e66913bc1fe335176d923c6"
 REVIEWED_INDEPENDENT = "16c74a57a5e8b0f983a95e36aa3055c0ab96adae"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -178,7 +179,38 @@ def runtime_diagnostic_redaction(publisher: str) -> None:
             raise SystemExit("recovery objective diagnostic evidence/readiness flags drift")
         if "CANARY_DO_NOT_PERSIST_789" in output.read_text(encoding="utf-8"):
             raise SystemExit("recovery objective diagnostic leaked synthetic canary")
-    print("PASS: recovery objective isolated diagnostic redaction (1 runtime case)")
+        output.chmod(0o640)
+        positive = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                  capture_output=True, text=True, timeout=15, check=False)
+        if positive.returncode or stat.S_IMODE(output.stat().st_mode) != 0o640:
+            raise SystemExit("recovery objective diagnostic failed to preserve existing mode")
+        previous = output.read_bytes()
+        for label, before in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            if script.count(before) != 1:
+                raise SystemExit("recovery objective diagnostic fault anchor drift: " + label)
+            failure = subprocess.run([sys.executable, "-c", script.replace(
+                before, "raise OSError('synthetic recovery objective diagnostic " + label + " failure')", 1)],
+                cwd=tmpdir, env=env, capture_output=True, text=True, timeout=15, check=False)
+            if failure.returncode == 0 or "synthetic recovery objective diagnostic " + label + " failure" not in failure.stderr:
+                raise SystemExit("recovery objective diagnostic intended fault not reached: " + label)
+            if output.read_bytes() != previous or stat.S_IMODE(output.stat().st_mode) != 0o640:
+                raise SystemExit("recovery objective diagnostic fault altered prior bytes/mode: " + label)
+            if list(output.parent.glob(".recovery-objectives-admission-diagnostic.last.json.*.tmp")):
+                raise SystemExit("recovery objective diagnostic fault left temporary file: " + label)
+        outside = Path(tmpdir) / "external-recovery-objective-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=tmpdir, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        if symlink.returncode == 0 or "target must not be a symlink" not in symlink.stderr:
+            raise SystemExit("recovery objective diagnostic accepted symlink destination")
+        if not output.is_symlink() or outside.read_bytes() != previous:
+            raise SystemExit("recovery objective diagnostic altered external symlink canary")
+        if list(output.parent.glob(".recovery-objectives-admission-diagnostic.last.json.*.tmp")):
+            raise SystemExit("recovery objective diagnostic symlink rejection left temporary file")
+    print("PASS: recovery objective diagnostic redaction/atomic runtime (5 cases)")
 
 
 def negatives(publisher: str, independent: str) -> None:
@@ -207,6 +239,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("raw diagnostic", "              'output': 'REDACTED: recovery objective validation failed; consult CI job logs',\n", "              'output': Path('/tmp/recovery-objectives-admission.log').read_text(),\n"),
         ("raw CI log", '          printf "Recovery objective validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
         ("missing redaction", "              'output': 'REDACTED: recovery objective validation failed; consult CI job logs',\n", ""),
+        ("symlink guard", "          if path.is_symlink():\n              raise SystemExit('recovery objective diagnostic target must not be a symlink')\n", ""),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
