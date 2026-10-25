@@ -8,13 +8,14 @@ import os
 import subprocess
 import sys
 import tempfile
+import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/migration-evidence-registry.yml"
 INDEPENDENT = ".github/workflows/migration-evidence-registry-source-negative.yml"
 SELF = "scripts/validate-memory-os-migration-evidence-registry-workflow-source-negative.py"
-PUBLISHER_SHA = "44cbad2f07c77bd76a2d3982a666806a340f3912"
+PUBLISHER_SHA = "7770a3774201a492d18b90ed96f7feadfcd82788"
 INDEPENDENT_SHA = "878f920daaa183087dceb1dc8c24dde0b47e2180"
 AUTHORITY_NEGATIVE = "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
 AUTHORITY_NEGATIVE_SHA = "e7a730b30064e069efc969a1b7e9715725911815"
@@ -295,12 +296,73 @@ def diagnostic_runtime(publisher: str) -> None:
     print("PASS: migration evidence actual diagnostic writer (1 positive, 16 negative runtime cases)")
 
 
+
+def diagnostic_atomic_runtime(publisher: str) -> None:
+    """Execute the reviewed writer against preexisting modes and injected atomic failures."""
+    marker = "      - name: Record privacy-safe diagnostic\\n"
+    require(publisher.count(marker) == 1, "migration evidence diagnostic atomic step not unique")
+    section = publisher.split(marker, 1)[1]
+    start, end = "          python - <<'PY'\\n", "          PY\\n"
+    require(section.count(start) == 1 and section.count(end) >= 1,
+            "migration evidence atomic writer extraction drift")
+    script = "\\n".join(line[10:] for line in section.split(start, 1)[1].split(end, 1)[0].splitlines()) + "\\n"
+    with tempfile.TemporaryDirectory(prefix="migration-evidence-diagnostic-atomic-") as temp:
+        directory = Path(temp)
+        path = directory / "docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json"
+        path.parent.mkdir(parents=True)
+        original = b'{"previous": "preserve-on-failure"}\\n'
+        env = os.environ.copy()
+        env.update({"SOURCE_COMMIT_SHA": "e" * 40, "MIGRATION_EXIT_CODE": "23"})
+        def reset() -> None:
+            path.write_bytes(original)
+            path.chmod(0o640)
+        def check_mode_and_cleanup(label: str) -> None:
+            require(stat.S_IMODE(path.stat().st_mode) == 0o640,
+                    "migration evidence diagnostic mode drift: " + label)
+            require(not list(path.parent.glob(".migration-evidence-registry-diagnostic.*.tmp")),
+                    "migration evidence diagnostic temporary file remained: " + label)
+        def execute(program: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run([sys.executable, "-c", program], cwd=directory, env=env,
+                                  capture_output=True, text=True, timeout=15, check=False)
+        reset()
+        positive = execute(script)
+        require(positive.returncode == 0, "migration evidence diagnostic atomic positive failed")
+        require_diagnostic_payload(path.read_text(encoding="utf-8"))
+        check_mode_and_cleanup("successful replacement")
+        failures = (
+            ("replace", "def fail_replace(*_args):\\n    raise OSError('synthetic migration diagnostic replace failure')\\nos.replace = fail_replace\\n"),
+            ("fsync", "def fail_fsync(*_args):\\n    raise OSError('synthetic migration diagnostic fsync failure')\\nos.fsync = fail_fsync\\n"),
+        )
+        for label, injection in failures:
+            reset()
+            outcome = execute("import os\\n" + injection + script)
+            require(outcome.returncode != 0 and "synthetic migration diagnostic " + label + " failure" in outcome.stderr,
+                    "migration evidence diagnostic did not reach intended atomic failure: " + label)
+            require(path.read_bytes() == original,
+                    "migration evidence diagnostic failure mutated existing bytes: " + label)
+            check_mode_and_cleanup(label)
+        reset()
+        outside = directory / "external-diagnostic-canary"
+        outside.write_bytes(original)
+        path.unlink()
+        path.symlink_to(outside)
+        symlink_result = execute(script)
+        require(symlink_result.returncode != 0 and "target must not be a symlink" in symlink_result.stderr,
+                "migration evidence diagnostic accepted symlinked output")
+        require(path.is_symlink() and outside.read_bytes() == original,
+                "migration evidence diagnostic followed or replaced symlinked output")
+        require(not list(path.parent.glob(".migration-evidence-registry-diagnostic.*.tmp")),
+                "migration evidence diagnostic left temporary file after symlink rejection")
+    print("PASS: migration evidence diagnostic atomic runtime (mode, replace, fsync, symlink)")
+
+
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
     diagnostic_runtime(publisher)
+    diagnostic_atomic_runtime(publisher)
     return 0
 
 
