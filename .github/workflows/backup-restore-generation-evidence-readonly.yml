@@ -43,15 +43,22 @@ jobs:
   prove-readonly:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Prove generation evidence authorities are byte and mode immutable
         run: |
           set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            pr_head="${{ github.event.pull_request.head.sha }}"
+            [[ "$pr_head" =~ ^[0-9a-f]{40}$ ]]
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+          fi
           expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          test -n "$expected"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
           authorities=(
