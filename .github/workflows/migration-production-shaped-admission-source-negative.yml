@@ -8,6 +8,9 @@ on:
       - ".github/workflows/migration-production-shaped-admission.yml"
       - ".github/workflows/migration-production-shaped-admission-source-negative.yml"
       - "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py"
+      - ".github/workflows/migration-production-shaped-negative-isolation.yml"
+      - "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
   push:
     branches:
       - so
@@ -15,6 +18,9 @@ on:
       - ".github/workflows/migration-production-shaped-admission.yml"
       - ".github/workflows/migration-production-shaped-admission-source-negative.yml"
       - "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py"
+      - ".github/workflows/migration-production-shaped-negative-isolation.yml"
+      - "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
 
 permissions:
   contents: read

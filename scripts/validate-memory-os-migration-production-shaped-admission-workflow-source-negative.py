@@ -16,7 +16,13 @@ PUBLISHER = ".github/workflows/migration-production-shaped-admission.yml"
 INDEPENDENT = ".github/workflows/migration-production-shaped-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py"
 PUBLISHER_SHA = "80c283c3bf93934f115321d761a349a9b74648cb"
-INDEPENDENT_SHA = "f927a8d2a6a64cde09a842272aa411040c9932a3"
+INDEPENDENT_SHA = "11ef68d69908b1f58056b2b36188ae67eb69da9c"
+ISOLATION = ".github/workflows/migration-production-shaped-negative-isolation.yml"
+ISOLATION_SCRIPT = "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
+NEGATIVE_SCRIPT = "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
+ISOLATION_SHA = "e439088b4ac8ab0fce2a08bfd46f38a2a8b33933"
+ISOLATION_SCRIPT_SHA = "382129aaeaecaee72a75ef8642e26878cae3b250"
+NEGATIVE_SCRIPT_SHA = "3366455aa1140f464d7442b2b788ed3240ee898b"
 D = chr(36)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -38,6 +44,9 @@ PUBLISHER_REQUIRED = (
     ("publisher trigger", '      - "' + PUBLISHER + '"\n', 2),
     ("independent trigger", '      - "' + INDEPENDENT + '"\n', 2),
     ("validator trigger", '      - "' + SELF + '"\n', 2),
+    ("isolation workflow trigger", '      - "' + ISOLATION + '"\n', 2),
+    ("isolation runner trigger", '      - "' + ISOLATION_SCRIPT + '"\n', 2),
+    ("migration negative trigger", '      - "' + NEGATIVE_SCRIPT + '"\n', 2),
     ("permission validator trigger", '      - "scripts/validate-memory-os-migration-production-shaped-admission-permission-negative.py"\n', 2),
     ("checkout pin", CHECKOUT, 2),
     ("setup pin", SETUP, 2),
@@ -77,6 +86,9 @@ INDEPENDENT_REQUIRED = (
     ("publisher trigger", '      - "' + PUBLISHER + '"\n', 2),
     ("independent trigger", '      - "' + INDEPENDENT + '"\n', 2),
     ("validator trigger", '      - "' + SELF + '"\n', 2),
+    ("isolation workflow trigger", '      - "' + ISOLATION + '"\n', 2),
+    ("isolation runner trigger", '      - "' + ISOLATION_SCRIPT + '"\n', 2),
+    ("migration negative trigger", '      - "' + NEGATIVE_SCRIPT + '"\n', 2),
     ("checkout pin", CHECKOUT, 1),
     ("setup pin", SETUP, 1),
     ("no credentials", "          persist-credentials: false\n", 1),
@@ -178,6 +190,9 @@ def negatives(publisher: str, independent: str) -> None:
         ("publisher trigger", '      - "' + PUBLISHER + '"\n', ""),
         ("independent trigger", '      - "' + INDEPENDENT + '"\n', ""),
         ("validator trigger", '      - "' + SELF + '"\n', ""),
+        ("isolation workflow trigger", '      - "' + ISOLATION + '"\n', ""),
+        ("isolation runner trigger", '      - "' + ISOLATION_SCRIPT + '"\n', ""),
+        ("migration negative trigger", '      - "' + NEGATIVE_SCRIPT + '"\n', ""),
         ("permission validator trigger", '      - "scripts/validate-memory-os-migration-production-shaped-admission-permission-negative.py"\n', ""),
         ("floating checkout", CHECKOUT, "uses: actions/checkout@v4"),
         ("floating setup", SETUP, "uses: actions/setup-python@v5"),
@@ -206,6 +221,9 @@ def negatives(publisher: str, independent: str) -> None:
         ("publisher trigger", '      - "' + PUBLISHER + '"\n', ""),
         ("independent trigger", '      - "' + INDEPENDENT + '"\n', ""),
         ("validator trigger", '      - "' + SELF + '"\n', ""),
+        ("isolation workflow trigger", '      - "' + ISOLATION + '"\n', ""),
+        ("isolation runner trigger", '      - "' + ISOLATION_SCRIPT + '"\n', ""),
+        ("migration negative trigger", '      - "' + NEGATIVE_SCRIPT + '"\n', ""),
         ("floating checkout", CHECKOUT, "uses: actions/checkout@v4"),
         ("floating setup", SETUP, "uses: actions/setup-python@v5"),
         ("persist credentials", "          persist-credentials: false\n", "          persist-credentials: true\n"),
@@ -250,10 +268,32 @@ def prove_failed_stage_runtime(publisher: str) -> None:
     print("PASS: migration admission bounded failed-stage runtime (3 cases)")
 
 
+
+def verify_isolation_blob_bindings() -> None:
+    """Independent CI binds both the disposable harness and the negative under test."""
+    for label, path, expected in (
+        ("isolation workflow", ISOLATION, ISOLATION_SHA),
+        ("isolation runner", ISOLATION_SCRIPT, ISOLATION_SCRIPT_SHA),
+        ("migration negative", NEGATIVE_SCRIPT, NEGATIVE_SCRIPT_SHA),
+    ):
+        source = read(path)
+        data = source.encode("utf-8")
+        digest = hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+        if digest != expected:
+            raise SystemExit("migration isolated negative source drift: " + label)
+        for suffix in ("\n# inert source mutation\n", "\n# disabled test\n"):
+            altered = (source + suffix).encode("utf-8")
+            changed = hashlib.sha1(b"blob " + str(len(altered)).encode("ascii") + b"\0" + altered).hexdigest()
+            if changed == expected:
+                raise SystemExit("migration isolated negative mutation accepted: " + label)
+    print("PASS: migration isolated workflow/runner/negative source bindings (6 mutations)")
+
+
 def main() -> int:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
     validate(publisher, independent)
+    verify_isolation_blob_bindings()
     runtime(publisher, independent)
     diagnostic_runtime(publisher)
     prove_failed_stage_runtime(publisher)
