@@ -1,0 +1,83 @@
+name: Operability Admission Inventory Atomic Replacement Negative
+
+on:
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/operability-admission-inventory-atomic-replacement-negative.yml"
+      - "scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/operability-admission-inventory-atomic-replacement-negative.yml"
+      - "scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+
+permissions:
+  contents: read
+
+jobs:
+  atomic-replacement:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Verify exact clean source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${GITHUB_BASE_REF:-}" = "so"
+            expected="$PR_HEAD_SHA"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            expected="${GITHUB_SHA:-}"
+          else
+            echo "Unreviewed inventory atomic negative event" >&2
+            exit 1
+          fi
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Prove isolated atomic replacement and rollback
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py \
+            scripts/generate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory-source-authorities.py
+          python scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py
+      - name: Verify protected authorities and read-only postcondition
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          status = json.loads(Path("contracts/operations/production-operability-status.json").read_text())
+          assert status["productionDecision"] == "NO_GO"
+          snapshot = json.loads(Path("contracts/operations/ops-p0-007-admission-snapshot.v1.json").read_text())
+          assert snapshot.get("productionDecision") == "NO_GO"
+          print("PASS: NO_GO production and OPS-P0-007 snapshot remain fail-closed")
+          PY
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
