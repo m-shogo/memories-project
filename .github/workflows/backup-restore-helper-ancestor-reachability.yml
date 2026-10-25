@@ -15,6 +15,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
   pull_request:
+    branches: [so]
     paths:
       - ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
       - ".github/workflows/autonomous-learning-guard.yml"

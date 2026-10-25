@@ -311,6 +311,11 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
         is not None,
         "ancestor workflow so push trigger drift",
     )
+    require(
+        re.search(r"(?m)^  pull_request:\n    branches: \[so\]\n", workflow_source)
+        is not None,
+        "ancestor workflow so PR trigger drift",
+    )
     for event in ("push", "pull_request"):
         section = re.search(
             r"(?m)^  " + event + r":\n(?P<body>(?:    [^\n]*\n)+)",
@@ -338,7 +343,7 @@ def validate_target_matrix(targets: dict[str, str], workflow_source: str) -> Non
                 == required_authority_paths,
                 "ancestor workflow authority trigger drift")
         event_options = re.findall(r"(?m)^    ([a-z][a-z-]*):", section.group("body"))
-        require(event_options == (["branches", "paths"] if event == "push" else ["paths"]),
+        require(event_options == ["branches", "paths"],
                 "ancestor workflow event options drift")
 
 
@@ -365,7 +370,7 @@ def validate_workflow_runtime_reachability(workflow_source: str) -> None:
             "ancestor workflow dispatch options drift")
     validate_event_key_inventory(
         workflow_source,
-        (("push", ("branches", "paths")), ("pull_request", ("paths",)),
+        (("push", ("branches", "paths")), ("pull_request", ("branches", "paths")),
          ("workflow_dispatch", ())),
         "ancestor workflow event key inventory drift",
     )
@@ -1197,6 +1202,14 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
     wrong_branch = workflow_source.replace(
         "    branches: [so]\n", "    branches: [main]\n", 1
     )
+    wrong_pr_branch = workflow_source.replace(
+        "  pull_request:\n    branches: [so]\n",
+        "  pull_request:\n    branches: [main]\n", 1,
+    )
+    missing_pr_branch = workflow_source.replace(
+        "  pull_request:\n    branches: [so]\n",
+        "  pull_request:\n", 1,
+    )
     learning_anchor = '      - ".github/workflows/autonomous-learning-guard.yml"\n'
     require(workflow_source.count(learning_anchor) == 2,
             "ancestor learning trigger fixture must cover push and pull_request")
@@ -1217,6 +1230,10 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
          "ancestor target matrix workflow trigger drift"),
         (TARGETS, wrong_branch,
          "ancestor workflow so push trigger drift"),
+        (TARGETS, wrong_pr_branch,
+         "ancestor workflow so PR trigger drift"),
+        (TARGETS, missing_pr_branch,
+         "ancestor workflow so PR trigger drift"),
         (TARGETS, untriggered_learning_push,
          "ancestor independent learning workflow trigger drift"),
         (TARGETS, untriggered_learning_pr,
@@ -1240,11 +1257,11 @@ def target_matrix_negative_cases(workflow_source: str) -> int:
         (TARGETS, workflow_source.replace("    branches: [so]\n    paths:\n",
          "    branches: [so]\n    types: [created]\n    paths:\n", 1),
          "ancestor workflow event options drift"),
-        (TARGETS, workflow_source.replace("  pull_request:\n    paths:\n",
-         "  pull_request:\n    types: [opened]\n    paths:\n", 1),
+        (TARGETS, workflow_source.replace("  pull_request:\n    branches: [so]\n    paths:\n",
+         "  pull_request:\n    branches: [so]\n    types: [opened]\n    paths:\n", 1),
          "ancestor workflow event options drift"),
-        (TARGETS, workflow_source.replace("  pull_request:\n    paths:\n",
-         "  pull_request:\n    paths: []\n    paths:\n", 1),
+        (TARGETS, workflow_source.replace("  pull_request:\n    branches: [so]\n    paths:\n",
+         "  pull_request:\n    branches: [so]\n    paths: []\n    paths:\n", 1),
          "ancestor workflow event options drift"),
     )
     commented_validator = "    # " + validator_path.strip() + "\n"
@@ -2017,7 +2034,7 @@ def main() -> int:
         total += prove_ancestor_dispatch_ref_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 197, "ancestor negative count mismatch")
+        require(total == 46 * len(TARGETS) + 199, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
