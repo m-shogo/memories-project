@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/production-equivalent-environment-generation.yml"
 INDEPENDENT = ".github/workflows/production-equivalent-environment-generation-source-negative.yml"
 SELF = "scripts/validate-memory-os-production-equivalent-environment-generation-workflow-source-negative.py"
-PUBLISHER_SHA = "09813a99afcf1d8e5a16ade46507300b121bab1b"
+PUBLISHER_SHA = "0f3afcb9eddab9f8d5c8cce44c58ae5266ac2af4"
 INDEPENDENT_SHA = "8622b888b020e075df415c91f144e9eef7939c62"
 D = chr(36)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -153,7 +154,38 @@ def diagnostic_runtime(publisher: str) -> None:
             raise SystemExit("environment generation diagnostic evidence/readiness flag drift")
         if value.get("generationCreated") is not False or value.get("preflightEligibilityFabricated") is not False or "CANARY_DO_NOT_PERSIST_ENVIRONMENT" in raw:
             raise SystemExit("environment generation diagnostic fabricated evidence or persisted canary")
-    print("PASS: environment generation isolated diagnostic redaction (1 runtime case)")
+        output.chmod(0o640)
+        positive = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                  capture_output=True, text=True, timeout=15, check=False)
+        if positive.returncode or stat.S_IMODE(output.stat().st_mode) != 0o640:
+            raise SystemExit("environment generation diagnostic failed to preserve existing file mode")
+        previous = output.read_bytes()
+        for label, before in (("replace", "os.replace(tmp_name, path)"),
+                              ("fsync", "os.fsync(handle.fileno())")):
+            if script.count(before) != 1:
+                raise SystemExit("environment generation diagnostic failure fixture anchor drift: " + label)
+            failure = subprocess.run([sys.executable, "-c", script.replace(
+                before, "raise OSError('synthetic environment diagnostic " + label + " failure')", 1)],
+                cwd=directory, env=env, capture_output=True, text=True, timeout=15, check=False)
+            if failure.returncode == 0 or "synthetic environment diagnostic " + label + " failure" not in failure.stderr:
+                raise SystemExit("environment generation diagnostic intended failure not reached: " + label)
+            if output.read_bytes() != previous or stat.S_IMODE(output.stat().st_mode) != 0o640:
+                raise SystemExit("environment generation diagnostic failed atomic rollback: " + label)
+            if list(output.parent.glob(".production-equivalent-environment-generation-diagnostic.last.json.*.tmp")):
+                raise SystemExit("environment generation diagnostic left temporary file: " + label)
+        outside = Path(directory) / "external-environment-diagnostic-canary"
+        outside.write_bytes(previous)
+        output.unlink()
+        output.symlink_to(outside)
+        symlink = subprocess.run([sys.executable, "-c", script], cwd=directory, env=env,
+                                 capture_output=True, text=True, timeout=15, check=False)
+        if symlink.returncode == 0 or "target must not be a symlink" not in symlink.stderr:
+            raise SystemExit("environment generation diagnostic followed symlink destination")
+        if not output.is_symlink() or outside.read_bytes() != previous:
+            raise SystemExit("environment generation diagnostic altered external symlink canary")
+        if list(output.parent.glob(".production-equivalent-environment-generation-diagnostic.last.json.*.tmp")):
+            raise SystemExit("environment generation diagnostic symlink rejection left temporary file")
+    print("PASS: environment generation diagnostic redaction/atomic runtime (5 cases)")
 
 
 def negatives(publisher: str, independent: str) -> None:
@@ -177,6 +209,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("checkout writer", WRITER_CHECKOUT, 'ref: ' + D + '{{ github.ref }}'),
         ("raw diagnostic", REDACTION, "'output': Path('/tmp/production-equivalent-environment-generation.log').read_text(),"),
         ("raw CI echo", SUPPRESS, 'cat "$log"'),
+        ("symlink guard", "          if path.is_symlink():\n              raise SystemExit('environment generation diagnostic target must not be a symlink')\n", ""),
         ("unreviewed Action", "      - name: Capture exact generation authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact generation authority source\n"),
         ("unreviewed shell", "      - name: Capture exact generation authority source\n", "      - run: echo unreviewed\n      - name: Capture exact generation authority source\n"),
     )
