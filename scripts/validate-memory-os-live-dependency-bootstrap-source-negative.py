@@ -180,10 +180,11 @@ def live_source_identity_runtime(live: str) -> None:
         root = Path(tmp)
         git = root / "git"
         git.write_text(
-            "#!/bin/sh\\n"
-            "if [ \\"$1\\" = \\"status\\" ]; then exit 0; fi\\n"
-            "if [ \\"$1\\" = \\"rev-parse\\" ]; then printf '%s\\\\n' \\"$STUB_HEAD\\"; exit 0; fi\\n"
-            "exit 1\\n", encoding="utf-8"
+            '''#!/bin/sh
+if [ "$1" = "status" ]; then exit 0; fi
+if [ "$1" = "rev-parse" ]; then printf '%s' "$STUB_HEAD"; exit 0; fi
+exit 1
+''', encoding="utf-8"
         )
         git.chmod(0o755)
         for event, ref, sha, stub_head, accepted in cases:
