@@ -262,7 +262,18 @@ def require_run_body_negatives(source: str) -> None:
         ("injected-command", source.replace(anchor, anchor + "          echo UNREVIEWED\n", 1)),
         ("relaxed-shell", source.replace(strict, "          set +e\n", 1)),
         ("inline-run", source.replace(anchor, "        run: echo UNREVIEWED\n", 1)),
+        ("pr-head-format", source.replace("[[ \"$expected\" =~ ^[0-9a-f]{40}$ ]]", "test -n \"$expected\"", 1)),
+        ("publisher-ref", source.replace("test \"${GITHUB_REF:-}\" = \"refs/heads/so\"", "true # bypass publisher ref", 1)),
+        ("publisher-event", source.replace("[[ \"${GITHUB_EVENT_NAME:-}\" == \"push\" || \"${GITHUB_EVENT_NAME:-}\" == \"workflow_dispatch\" ]]", "true # bypass publisher event", 1)),
+        ("publisher-sha-format", source.replace("[[ \"${GITHUB_SHA:-}\" =~ ^[0-9a-f]{40}$ ]]", "test -n \"$GITHUB_SHA\"", 1)),
     )
+    for label, before, _ in (
+        ("pr-head-format", "[[ \"$expected\" =~ ^[0-9a-f]{40}$ ]]", None),
+        ("publisher-ref", "test \"${GITHUB_REF:-}\" = \"refs/heads/so\"", None),
+        ("publisher-event", "[[ \"${GITHUB_EVENT_NAME:-}\" == \"push\" || \"${GITHUB_EVENT_NAME:-}\" == \"workflow_dispatch\" ]]", None),
+        ("publisher-sha-format", "[[ \"${GITHUB_SHA:-}\" =~ ^[0-9a-f]{40}$ ]]", None),
+    ):
+        require(source.count(before) == 1, f"recovery source identity fixture anchor drift: {label}")
     for label, mutated in mutations:
         require(mutated != source, f"recovery run-body fixture unchanged: {label}")
         try:
