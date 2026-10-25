@@ -2,8 +2,11 @@ name: Backup Restore Drill Generation Eligibility Binding
 
 on:
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/backup-restore-drill-generation-eligibility-binding.yml"
+      - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-workflow-negative.py"
       - "contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -33,6 +36,7 @@ on:
       - so
     paths:
       - ".github/workflows/backup-restore-drill-generation-eligibility-binding.yml"
+      - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-workflow-negative.py"
       - "contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -74,20 +78,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Validate semantic generation binding read-only
         run: |
           set -euo pipefail
+          test "${GITHUB_BASE_REF:-}" = "so"
           expected="${{ github.event.pull_request.head.sha }}"
-          test -n "$expected"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
+          python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-workflow-negative.py
           python -m py_compile \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
@@ -109,25 +116,30 @@ jobs:
           test -z "$(git status --porcelain)"
 
   validate:
-    if: github.event_name != 'pull_request'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     permissions:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Capture exact semantic binding authority source
         run: |
           set -euo pipefail
-          EXPECTED_SOURCE_SHA="${{ github.sha }}"
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          EXPECTED_SOURCE_SHA="${GITHUB_SHA:-}"
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-workflow-negative.py
           echo "SOURCE_SHA=$EXPECTED_SOURCE_SHA" >> "$GITHUB_ENV"
       - name: Reconcile and validate semantic generation binding
         id: validation
@@ -165,6 +177,7 @@ jobs:
           revalidate_latest_semantic_binding() {
             git fetch origin so
             git reset --hard origin/so
+            python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-workflow-negative.py
             SOURCE_SHA="$(git rev-parse HEAD)"
             export SOURCE_SHA
             : > "$log"
