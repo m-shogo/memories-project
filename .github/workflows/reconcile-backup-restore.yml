@@ -2,6 +2,8 @@ name: Reconcile Backup Restore Policy
 
 on:
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/reconcile-backup-restore.yml"
       - "contracts/operations/backup-restore-contract.v1.json"
@@ -17,6 +19,8 @@ on:
       - "scripts/validate-memory-os-local-object-version-restore.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-entry-docs.py"
+      - ".github/workflows/reconcile-backup-restore-source-negative.yml"
+      - "scripts/validate-memory-os-reconcile-backup-restore-workflow-negative.py"
   push:
     branches:
       - so
@@ -35,6 +39,8 @@ on:
       - "scripts/validate-memory-os-local-object-version-restore.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-entry-docs.py"
+      - ".github/workflows/reconcile-backup-restore-source-negative.yml"
+      - "scripts/validate-memory-os-reconcile-backup-restore-workflow-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -53,23 +59,26 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout exact pull request head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
 
       - name: Confirm exact pull request source state
         run: |
           set -euo pipefail
+          test "${GITHUB_BASE_REF:-}" = "so"
           expected="${{ github.event.pull_request.head.sha }}"
-          test -n "$expected"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$expected"
+          python scripts/validate-memory-os-reconcile-backup-restore-workflow-negative.py
 
       - name: Compile backup authority tools
         run: |
@@ -98,30 +107,34 @@ jobs:
           test -z "$(git status --porcelain)"
 
   reconcile:
-    if: github.event_name != 'pull_request'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     permissions:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout exact validation head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
 
       - name: Confirm exact source state
         run: |
           set -euo pipefail
-          expected="${{ github.sha }}"
-          test -n "$expected"
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          expected="${GITHUB_SHA:-}"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$expected"
+          python scripts/validate-memory-os-reconcile-backup-restore-workflow-negative.py
           SOURCE_SHA="$expected"
           echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
 
@@ -154,6 +167,7 @@ jobs:
           revalidate_latest_restore_policy() {
             git fetch origin so
             git reset --hard origin/so
+            python scripts/validate-memory-os-reconcile-backup-restore-workflow-negative.py
             SOURCE_SHA="$(git rev-parse HEAD)"
             export SOURCE_SHA
             python scripts/validate-memory-os-backup-restore-reconcile-negative.py
