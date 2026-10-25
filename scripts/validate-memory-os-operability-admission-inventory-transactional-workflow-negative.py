@@ -18,6 +18,7 @@ REF = 'test "' + D + '{GITHUB_REF:-}" = "refs/heads/so"'
 EVENT = '[[ "' + D + '{GITHUB_EVENT_NAME:-}" == "push" || "' + D + '{GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]'
 SHA = '[[ "' + D + '{GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]'
 BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
+PR_SHA = '[[ "' + D + 'expected" =~ ^[0-9a-f]{40}$ ]]'
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 
@@ -47,7 +48,7 @@ def validate(main: str, guard: str) -> None:
             ('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', 1),
         )),
         ("independent", guard, GUARD_BLOB, (
-            (CHECKOUT, 1), (SETUP, 1), (BASE, 1), (REF, 1),
+            (CHECKOUT, 1), (SETUP, 1), (BASE, 1), (REF, 1), (PR_SHA, 1),
             ("          persist-credentials: false\n", 1),
             ("    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n", 1),
             ("  contents: read\n", 2),
@@ -82,7 +83,17 @@ def runtime(main: str, guard: str) -> None:
         p = subprocess.run(["bash", "-e", "-c", SHA], env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "GITHUB_SHA": sha}, capture_output=True, check=False)
         if (p.returncode == 0) != allowed:
             raise SystemExit("transactional SHA predicate drift")
-    print("PASS: transactional source branch (8), event (4), SHA (6) runtime cases")
+    if guard.count(BASE) != 1 or guard.count(PR_SHA) != 1:
+        raise SystemExit("transactional independent PR predicates unreachable")
+    for value, allowed in (("so", True), ("main", False), ("", False)):
+        p = subprocess.run(["bash", "-e", "-c", BASE], env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "GITHUB_BASE_REF": value}, capture_output=True, check=False)
+        if (p.returncode == 0) != allowed:
+            raise SystemExit("transactional independent PR base predicate drift")
+    for value, allowed in (("a" * 40, True), ("0" * 40, True), ("a" * 39, False), ("A" * 40, False), ("g" * 40, False), ("", False)):
+        p = subprocess.run(["bash", "-e", "-c", 'expected="${PROBE_SHA:-}"\\n'.replace("\\\\n", "\\n") + PR_SHA], env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PROBE_SHA": value}, capture_output=True, check=False)
+        if (p.returncode == 0) != allowed:
+            raise SystemExit("transactional independent PR SHA predicate drift")
+    print("PASS: transactional source branch (8), event (4), SHA (12), PR base (3) runtime cases")
 
 
 def negatives(main: str, guard: str) -> None:
@@ -98,6 +109,8 @@ def negatives(main: str, guard: str) -> None:
         ("independent", guard, CHECKOUT, "uses: actions/checkout@v4"),
         ("independent", guard, SETUP, "uses: actions/setup-python@v5"),
         ("independent", guard, BASE, "true"),
+        ("independent", guard, PR_SHA, 'test -n "$expected"'),
+        ("independent", guard, 'PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}', 'PR_HEAD_SHA: ${{ github.sha }}'),
         ("independent", guard, REF, "true"),
         ("independent", guard, "          persist-credentials: false\n", "          persist-credentials: true\n"),
         ("independent", guard, "          python " + SELF + "\n", "          true\n"),
@@ -112,7 +125,7 @@ def negatives(main: str, guard: str) -> None:
         except SystemExit:
             continue
         raise SystemExit("transactional source accepted mutation: " + label)
-    print("PASS: transactional source 15 negative mutations")
+    print("PASS: transactional source 17 negative mutations")
 
 
 def main() -> int:
