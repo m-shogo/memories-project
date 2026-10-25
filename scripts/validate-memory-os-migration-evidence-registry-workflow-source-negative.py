@@ -234,6 +234,22 @@ def diagnostic_runtime(publisher: str) -> None:
                     "SENSITIVE_CANARY": "CANARY_DO_NOT_PERSIST_MIGRATION_EVIDENCE"})
         variants = (
             ("reviewed", script, True, None),
+            ("secrets flag promotion", script.replace("'containsSecrets': False", "'containsSecrets': True", 1),
+             False, "asserted secrets/evidence/readiness"),
+            ("evidence flag promotion", script.replace("'productionEvidence': False", "'productionEvidence': True", 1),
+             False, "asserted secrets/evidence/readiness"),
+            ("schema version", script.replace("'schemaVersion': 'memory-os-validator-diagnostic.v1'",
+                 "'schemaVersion': 'unreviewed.v1'", 1), False, "diagnostic schema drift"),
+            ("workflow identity", script.replace("'workflow': 'migration-evidence-registry'",
+                 "'workflow': 'unreviewed-writer'", 1), False, "diagnostic identity drift"),
+            ("result identity", script.replace("'result': 'FAIL'", "'result': 'PASS'", 1),
+             False, "diagnostic identity drift"),
+            ("source identity", script.replace("'sourceCommitSha': os.environ['SOURCE_COMMIT_SHA']",
+                 "'sourceCommitSha': '0' * 40", 1), False, "diagnostic source/exit drift"),
+            ("exit code identity", script.replace("'exitCode': int(os.environ['MIGRATION_EXIT_CODE'])",
+                 "'exitCode': 0", 1), False, "diagnostic source/exit drift"),
+            ("output redaction", script.replace(marker_text, "'unreviewed output'", 1),
+             False, "raw output not redacted"),
             ("raw canary", script.replace(marker_text, "os.environ['SENSITIVE_CANARY']", 1),
              False, "persisted sensitive canary"),
             ("readiness promotion", script.replace("'productionReady': False", "'productionReady': True", 1),
@@ -276,7 +292,7 @@ def diagnostic_runtime(publisher: str) -> None:
                         "migration evidence diagnostic rejected for wrong reason: " + name + ": " + str(exc))
             else:
                 require(allowed, "migration evidence diagnostic accepted unsafe mutation: " + name)
-    print("PASS: migration evidence actual diagnostic writer (1 positive, 8 negative runtime cases)")
+    print("PASS: migration evidence actual diagnostic writer (1 positive, 16 negative runtime cases)")
 
 
 def main() -> int:
