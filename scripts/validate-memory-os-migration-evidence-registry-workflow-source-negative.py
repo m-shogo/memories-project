@@ -299,18 +299,18 @@ def diagnostic_runtime(publisher: str) -> None:
 
 def diagnostic_atomic_runtime(publisher: str) -> None:
     """Execute the reviewed writer against preexisting modes and injected atomic failures."""
-    marker = "      - name: Record privacy-safe diagnostic\\n"
+    marker = "      - name: Record privacy-safe diagnostic\n"
     require(publisher.count(marker) == 1, "migration evidence diagnostic atomic step not unique")
     section = publisher.split(marker, 1)[1]
-    start, end = "          python - <<'PY'\\n", "          PY\\n"
+    start, end = "          python - <<'PY'\n", "          PY\n"
     require(section.count(start) == 1 and section.count(end) >= 1,
             "migration evidence atomic writer extraction drift")
-    script = "\\n".join(line[10:] for line in section.split(start, 1)[1].split(end, 1)[0].splitlines()) + "\\n"
+    script = "\n".join(line[10:] for line in section.split(start, 1)[1].split(end, 1)[0].splitlines()) + "\n"
     with tempfile.TemporaryDirectory(prefix="migration-evidence-diagnostic-atomic-") as temp:
         directory = Path(temp)
         path = directory / "docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json"
         path.parent.mkdir(parents=True)
-        original = b'{"previous": "preserve-on-failure"}\\n'
+        original = b'{"previous": "preserve-on-failure"}\n'
         env = os.environ.copy()
         env.update({"SOURCE_COMMIT_SHA": "e" * 40, "MIGRATION_EXIT_CODE": "23"})
         def reset() -> None:
@@ -330,12 +330,12 @@ def diagnostic_atomic_runtime(publisher: str) -> None:
         require_diagnostic_payload(path.read_text(encoding="utf-8"))
         check_mode_and_cleanup("successful replacement")
         failures = (
-            ("replace", "def fail_replace(*_args):\\n    raise OSError('synthetic migration diagnostic replace failure')\\nos.replace = fail_replace\\n"),
-            ("fsync", "def fail_fsync(*_args):\\n    raise OSError('synthetic migration diagnostic fsync failure')\\nos.fsync = fail_fsync\\n"),
+            ("replace", "def fail_replace(*_args):\n    raise OSError('synthetic migration diagnostic replace failure')\nos.replace = fail_replace\n"),
+            ("fsync", "def fail_fsync(*_args):\n    raise OSError('synthetic migration diagnostic fsync failure')\nos.fsync = fail_fsync\n"),
         )
         for label, injection in failures:
             reset()
-            outcome = execute("import os\\n" + injection + script)
+            outcome = execute("import os\n" + injection + script)
             require(outcome.returncode != 0 and "synthetic migration diagnostic " + label + " failure" in outcome.stderr,
                     "migration evidence diagnostic did not reach intended atomic failure: " + label)
             require(path.read_bytes() == original,
