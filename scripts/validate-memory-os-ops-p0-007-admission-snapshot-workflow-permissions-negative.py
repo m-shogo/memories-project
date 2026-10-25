@@ -630,12 +630,14 @@ def require_exact_checkout_ref(workflow: str, expected: str, label: str) -> None
         r"""(?m)^(?:      - uses:|        uses:)[ \t]*['"]?(actions/checkout@[^\s'"#]+)""",
         workflow,
     )
+    action = ("actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+              if label == "strict snapshot publisher" else "actions/checkout@v4")
     require(
-        checkout_steps == ["actions/checkout@v4"],
+        checkout_steps == [action],
         f"{label} checkout must bind to exact event source SHA",
     )
     matches = re.findall(
-        r"(?m)^      - uses: actions/checkout@v4[ \t]*\n        with:[ \t]*\n          ref:[ \t]*(.+?)[ \t]*$",
+        r"(?m)^      - uses: " + re.escape(action) + r"[ \t]*\n        with:[ \t]*\n          ref:[ \t]*(.+?)[ \t]*$",
         workflow,
     )
     require(
@@ -660,7 +662,7 @@ def prove_checkout_comment_bypass_rejected(pr: str, publish: str) -> None:
             require("checkout must bind" in str(exc), f"{label} rejected outside checkout guard: {exc}")
         else:
             raise Fail(f"{label} accepted substituted checkout with comment-only source")
-        for extra_ref in ("actions/checkout@v4", "actions/checkout@v3", "actions/checkout@v4.2.0", "actions/checkout@main"):
+        for extra_ref in ("actions/checkout@v4", "actions/checkout@v3", "actions/checkout@v4.2.0", "actions/checkout@main", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"):
             duplicate = workflow + f"\n      - uses: {extra_ref}\n        with:\n          ref: {expected}\n"
             try:
                 require_exact_checkout_ref(duplicate, expected, label)
@@ -1414,12 +1416,13 @@ def require_publisher_step_allowlist(publish: str) -> None:
     require(len(steps) == 7, "strict snapshot publisher step allowlist authority drift")
     require(
         steps[0] == [
-            "      - uses: actions/checkout@v4",
+            "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
             "        with:",
             "          ref: ${{ github.sha }}",
             "          fetch-depth: 0",
+            "          persist-credentials: true",
         ] and steps[1] == [
-            "      - uses: actions/setup-python@v5",
+            "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
             "        with:",
             '          python-version: "3.12"',
         ] and steps[2][:2] == [
@@ -1457,13 +1460,14 @@ def require_publisher_step_allowlist(publish: str) -> None:
 def prove_publisher_step_allowlist_negative(publish: str) -> None:
     require_publisher_step_allowlist(publish)
     checkout = (
-        "      - uses: actions/checkout@v4\n"
+        "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n"
         "        with:\n"
         "          ref: ${{ github.sha }}\n"
         "          fetch-depth: 0\n"
+        "          persist-credentials: true\n"
     )
     setup = (
-        "      - uses: actions/setup-python@v5\n"
+        "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
         "        with:\n"
         '          python-version: "3.12"\n'
     )
@@ -1499,9 +1503,13 @@ def prove_publisher_step_allowlist_negative(publish: str) -> None:
         else:
             raise Fail(f"strict snapshot publisher accepted trailing step metadata: {label}")
     mutations = (
+        ("floating checkout", publish.replace(checkout, checkout.replace("checkout@11d5960a326750d5838078e36cf38b85af677262", "checkout@v4"), 1)),
+        ("floating setup", publish.replace(setup, setup.replace("setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "setup-python@v5"), 1)),
+        ("checkout credential removed", publish.replace(checkout, checkout.replace("          persist-credentials: true\n", ""), 1)),
+        ("checkout credential disabled", publish.replace(checkout, checkout.replace("persist-credentials: true", "persist-credentials: false"), 1)),
         ("extra action", publish.replace(capture, "      - uses: unreviewed/action@v1\n" + capture, 1)),
         ("extra run", publish.replace(capture, "      - name: Unreviewed shell\n        run: echo bypass\n" + capture, 1)),
-        ("wrong setup action", publish.replace(setup, setup.replace("setup-python@v5", "setup-python@v4"), 1)),
+        ("wrong setup action", publish.replace(setup, setup.replace("setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "setup-python@v5"), 1)),
         ("wrong Python version", publish.replace(setup, setup.replace('"3.12"', '"3.11"'), 1)),
         ("shallow checkout", publish.replace(checkout, checkout.replace("fetch-depth: 0", "fetch-depth: 1"), 1)),
         ("duplicate setup", publish.replace(setup, setup + setup, 1)),
