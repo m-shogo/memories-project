@@ -259,14 +259,16 @@ def diagnostic_runtime(publisher: str) -> None:
             ("unreviewed field", script.replace("'productionReady': False,",
                 "'productionReady': False,\n    'rawSql': 'SELECT 1',", 1),
              False, "diagnostic field inventory drift"),
-            ("array root", script.replace("json.dumps(value, indent=2)",
-                "json.dumps([value], indent=2)", 1),
+            ("array root", script.replace("json.dump(value, handle, indent=2)",
+                "json.dump([value], handle, indent=2)", 1),
              False, "diagnostic root must be object"),
-            ("invalid JSON", script.replace("json.dumps(value, indent=2)",
-                "'{invalid json'", 1),
+            ("invalid JSON", script.replace("json.dump(value, handle, indent=2)",
+                "handle.write('{invalid json')", 1),
              False, "diagnostic invalid JSON"),
         )
         for name, program, allowed, expected_failure in variants:
+            require(allowed or program != script,
+                    "local recovery diagnostic negative mutation anchor missing: " + name)
             directory = root / name.replace(" ", "-")
             directory.mkdir()
             result = subprocess.run([sys.executable, "-c", program], cwd=directory, env=env,
@@ -286,6 +288,8 @@ def diagnostic_runtime(publisher: str) -> None:
                 require(allowed, "local recovery diagnostic accepted unsafe mutation: " + name)
     require(script.count("os.replace(temp_name, path)") == 1,
             "local recovery diagnostic atomic replace marker not unique")
+    require(script.count("json.dump(value, handle, indent=2)") == 1,
+            "local recovery diagnostic JSON writer marker not unique")
     with tempfile.TemporaryDirectory(prefix="local-recovery-diagnostic-atomic-") as temp:
         directory = Path(temp)
         target = directory / "docs/fixtures/memory-os-operability/local-migration-recovery-artifact-diagnostic.last.json"
