@@ -2436,6 +2436,7 @@ def readonly_trigger_paths() -> tuple[str, ...]:
     return (
         ".github/workflows/ops-p0-007-admission-snapshot-readonly.yml",
         ".github/workflows/ops-p0-007-admission-snapshot-pr.yml",
+        ".github/workflows/ops-p0-007-snapshot-permission-boundary.yml",
         *PR_COMPILE_FILES[-6:],
         "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
         "contracts/operations/operability-admission-inventory.v1.json",
