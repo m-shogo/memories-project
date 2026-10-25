@@ -14,11 +14,13 @@ UPLOAD = ".github/workflows/reconcile-upload-route-authority.yml"
 SIGKILL = ".github/workflows/deletion-worker-sigkill-recovery.yml"
 INDEPENDENT = ".github/workflows/live-dependency-bootstrap-source-negative.yml"
 STAGE_SOURCE = ".github/workflows/live-object-stage-source-negative.yml"
+LIVE_AUTHORITY = ".github/workflows/reconcile-live-load-authority-v2.yml"
+REVIEWED_LIVE_AUTHORITY = "4b19c418bfe5e0b502caf8671c479f7309e1ef87"
 SELF = "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py"
 REVIEWED_LIVE = "fd501a86a6e2f3ed3cb68c29d0d9ffb39162dc57"
 REVIEWED_UPLOAD = "3997403c3d93983470942909a8673aa961fc099a"
 REVIEWED_SIGKILL = "564f8dae50222dc9025ee31449c116d7f3b8345d"
-REVIEWED_INDEPENDENT = "db9d1d9d89bb3a7a02cb1587d126b503acea81e3"
+REVIEWED_INDEPENDENT = "2acc928d7682a6e4b88bf37e6cc98fd6473e568a"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
@@ -101,6 +103,7 @@ def validate(live: str, upload: str, sigkill: str, independent: str) -> None:
         '      - "scripts/validate-memory-os-live-load.py"',
         '      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"',
         '      - "' + STAGE_SOURCE + '"',
+        '      - "' + LIVE_AUTHORITY + '"',
         CHECKOUT, SETUP, "          persist-credentials: false\n",
         PR_BASE, PUSH_REF, SHA_FORMAT, "          python " + SELF,
         "permissions:\n  contents: read\n",
@@ -413,9 +416,93 @@ def stage_syntax_negative(stage: str) -> None:
     print("PASS: independent live object stage terminal shell syntax guard (3 negatives)")
 
 
+
+def validate_live_authority_source(authority: str) -> None:
+    required = (
+        "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        "persist-credentials: true",
+        "github.ref == 'refs/heads/so'",
+        'test "${GITHUB_REF:-}" = "refs/heads/so"',
+        '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$(git rev-parse HEAD)" = "${GITHUB_SHA:-}"',
+        "      - name: Commit bounded diagnostic",
+        "      - name: Reconcile validated evidence into status",
+    )
+    for marker in required:
+        if marker not in authority:
+            raise SystemExit("live load authority writer source drift: " + marker)
+    if blob(authority) != REVIEWED_LIVE_AUTHORITY:
+        raise SystemExit("live load authority complete workflow Git blob drift")
+
+
+def live_authority_source_runtime(authority: str) -> None:
+    code = step_script(authority, "Capture exact live authority source")
+    if 'echo "SOURCE_SHA=' not in code:
+        raise SystemExit("live load authority source capture drift")
+    code = code.split('echo "SOURCE_SHA=', 1)[0]
+    head = "a" * 40
+    cases = (
+        ("push", "refs/heads/so", head, True),
+        ("workflow_dispatch", "refs/heads/so", head, True),
+        ("schedule", "refs/heads/so", head, True),
+        ("pull_request", "refs/heads/so", head, False),
+        ("push", "refs/heads/main", head, False),
+        ("push", "refs/tags/v1", head, False),
+        ("push", "refs/heads/so", "A" * 40, False),
+        ("push", "refs/heads/so", "a" * 39, False),
+        ("push", "refs/heads/so", "b" * 40, False),
+        ("schedule", "", head, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="live-load-authority-source-") as tmp:
+        root = Path(tmp)
+        git = root / "git"
+        git.write_text(
+            '''#!/bin/sh
+if [ "$1" = "status" ]; then exit 0; fi
+if [ "$1" = "rev-parse" ]; then printf '%s' "$STUB_HEAD"; exit 0; fi
+exit 1
+''', encoding="utf-8"
+        )
+        git.chmod(0o755)
+        for event, ref, sha, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_REF=ref, GITHUB_SHA=sha, STUB_HEAD=head)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", code],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise SystemExit("live load authority actual writer source shell drift: " + event + "/" + ref)
+    print("PASS: live load authority actual writer event/ref/SHA shell (10 cases)")
+
+
+def live_authority_source_negatives(authority: str) -> None:
+    cases = (
+        ("floating checkout", "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "uses: actions/checkout@v4"),
+        ("floating setup", "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", "uses: actions/setup-python@v5"),
+        ("persist credentials", "persist-credentials: true", "persist-credentials: false"),
+        ("job ref", "github.ref == 'refs/heads/so'", "github.ref != 'refs/heads/so'"),
+        ("source ref", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("source SHA", '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]', "true"),
+        ("source HEAD", 'test "$(git rev-parse HEAD)" = "${GITHUB_SHA:-}"', "true"),
+    )
+    for label, old, replacement in cases:
+        if authority.count(old) != 1:
+            raise SystemExit("live load authority mutation marker multiplicity: " + label)
+        try:
+            validate_live_authority_source(authority.replace(old, replacement, 1))
+        except SystemExit:
+            continue
+        raise SystemExit("live load authority source accepted mutation: " + label)
+    print("PASS: live load authority writer source negatives (7 cases)")
+
+
 def main() -> int:
     live, upload, sigkill, independent = source(LIVE), source(UPLOAD), source(SIGKILL), source(INDEPENDENT)
     stage = source(STAGE_SOURCE)
+    authority = source(LIVE_AUTHORITY)
+    validate_live_authority_source(authority)
+    live_authority_source_negatives(authority)
+    live_authority_source_runtime(authority)
     validate_stage_syntax_boundary(stage)
     stage_syntax_negative(stage)
     validate(live, upload, sigkill, independent)

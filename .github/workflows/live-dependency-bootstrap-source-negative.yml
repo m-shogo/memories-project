@@ -6,6 +6,7 @@ on:
       - so
     paths:
       - ".github/workflows/regenerate-live-postgres-load-results.yml"
+      - ".github/workflows/reconcile-live-load-authority-v2.yml"
       - ".github/workflows/live-object-stage-source-negative.yml"
       - ".github/workflows/reconcile-upload-route-authority.yml"
       - ".github/workflows/deletion-worker-sigkill-recovery.yml"
@@ -18,6 +19,7 @@ on:
       - so
     paths:
       - ".github/workflows/regenerate-live-postgres-load-results.yml"
+      - ".github/workflows/reconcile-live-load-authority-v2.yml"
       - ".github/workflows/live-object-stage-source-negative.yml"
       - ".github/workflows/reconcile-upload-route-authority.yml"
       - ".github/workflows/deletion-worker-sigkill-recovery.yml"
