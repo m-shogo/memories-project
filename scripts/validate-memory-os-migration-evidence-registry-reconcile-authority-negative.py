@@ -351,16 +351,18 @@ def prove_stronger_lifecycle_authority_cannot_be_downgraded(before: dict[Path, b
     original = json.loads(before[CANONICAL_LIFECYCLE].decode("utf-8"))["readiness"]
     module.require_no_stronger_lifecycle_downgrade(original)
     for field in module.STRONGER_LIFECYCLE_FIELDS:
-        candidate = dict(original)
-        candidate[field] = True
-        try:
-            module.require_no_stronger_lifecycle_downgrade(candidate)
-        except module.Fail as exc:
-            require("cannot overwrite stronger lifecycle authority: " + field in str(exc),
-                    "unexpected stronger lifecycle rejection: " + field)
-        else:
-            raise NegativeFailure("migration registry accepted stronger lifecycle downgrade: " + field)
+        for invalid in (True, None, 0, "false"):
+            candidate = dict(original)
+            candidate[field] = invalid
+            try:
+                module.require_no_stronger_lifecycle_downgrade(candidate)
+            except module.Fail as exc:
+                require("cannot overwrite stronger lifecycle authority: " + field in str(exc),
+                        "unexpected stronger lifecycle rejection: " + field)
+            else:
+                raise NegativeFailure("migration registry accepted invalid lifecycle " + field + ": " + repr(invalid))
     require_canonical_bytes_unchanged(before, "stronger lifecycle negative")
+    print("PASS stronger lifecycle strict negatives (16 cases)")
 
 
 
@@ -420,16 +422,18 @@ def prove_stronger_registry_readiness_cannot_be_downgraded(before: dict[Path, by
     original = json.loads(before[CANONICAL_CONTRACT].decode("utf-8"))["readiness"]
     module.require_no_stronger_registry_readiness_downgrade(original)
     for field in module.STRONGER_REGISTRY_READINESS_FIELDS:
-        candidate = dict(original)
-        candidate[field] = True
-        try:
-            module.require_no_stronger_registry_readiness_downgrade(candidate)
-        except module.Fail as exc:
-            require("cannot overwrite stronger registry readiness: " + field in str(exc),
-                    "unexpected stronger registry readiness rejection: " + field)
-        else:
-            raise NegativeFailure("migration registry accepted stronger readiness downgrade: " + field)
+        for invalid in (True, None, 0, "false"):
+            candidate = dict(original)
+            candidate[field] = invalid
+            try:
+                module.require_no_stronger_registry_readiness_downgrade(candidate)
+            except module.Fail as exc:
+                require("cannot overwrite stronger registry readiness: " + field in str(exc),
+                        "unexpected stronger registry readiness rejection: " + field)
+            else:
+                raise NegativeFailure("migration registry accepted invalid readiness " + field + ": " + repr(invalid))
     require_canonical_bytes_unchanged(before, "stronger registry readiness negative")
+    print("PASS stronger registry readiness strict negatives (20 cases)")
 
 
 def prove_stronger_registry_readiness_main_rejects_before_write(before: dict[Path, bytes]) -> None:
