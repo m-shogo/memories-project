@@ -35,9 +35,11 @@ def main() -> int:
     before_temps = {p.name for p in target.parent.glob(f"{temp_prefix}*.tmp")}
 
     real_replace = os.replace
+    replacement_attempts: list[tuple[Path, Path]] = []
 
     def reject_replace(src, dst):
         if Path(dst) == target:
+            replacement_attempts.append((Path(src), Path(dst)))
             raise OSError("injected atomic replacement failure")
         return real_replace(src, dst)
 
@@ -45,10 +47,20 @@ def main() -> int:
         with mock.patch.object(module.os, "replace", side_effect=reject_replace):
             atomic_write(target, before.decode("utf-8") + "\n")
     except SystemExit as exc:
-        if "cannot atomically write" not in str(exc):
-            raise SystemExit(f"unexpected atomic-write failure: {exc}") from exc
+        expected = (
+            "cannot atomically write contracts/operations/operability-admission-inventory.v1.json: "
+            "injected atomic replacement failure"
+        )
+        if str(exc) != expected:
+            raise SystemExit(f"unexpected atomic-write failure boundary: {exc}") from exc
     else:
         raise SystemExit("injected atomic replacement failure was accepted")
+
+    if len(replacement_attempts) != 1:
+        raise SystemExit(f"atomic replace injection did not reach the target exactly once: {replacement_attempts}")
+    temporary, destination = replacement_attempts[0]
+    if destination != target or temporary.parent != target.parent or not temporary.name.startswith(temp_prefix):
+        raise SystemExit("atomic replace injection targeted the wrong canonical authority or temporary file")
 
     if target.read_bytes() != before:
         raise SystemExit("failed atomic replacement mutated canonical inventory bytes")
@@ -59,6 +71,8 @@ def main() -> int:
         raise SystemExit("failed atomic replacement left temporary residue")
 
     print("operability admission inventory atomic replacement negative proof: PASS")
+    print("exact canonical atomic replacement attempt: 1")
+    print("exact synthetic failure diagnostic: true")
     return 0
 
 
