@@ -573,7 +573,9 @@ def validate_trend_child_output_privacy() -> None:
         (consumer, consumer.validate_run),
     ):
         original_run = module.subprocess.run
+        original_path_guard = module.require_local_run_path
         try:
+            module.require_local_run_path = lambda path: None  # Isolate child-output failure.
             module.subprocess.run = lambda *args, **kwargs: SyntheticChildResult()
             try:
                 method(ROOT / "docs/fixtures/memory-os-operability/synthetic-run.json")
@@ -584,6 +586,7 @@ def validate_trend_child_output_privacy() -> None:
                 raise AssertionError("trend child failure accepted")
         finally:
             module.subprocess.run = original_run
+            module.require_local_run_path = original_path_guard
         for valid in ("2026-10-26T11:00:00Z", "2026-10-26T11:00:00.123456789Z"):
             positive = module.utc_timestamp(valid, "positive")
             if positive.year != 2026:
@@ -662,7 +665,48 @@ def validate_status_reconciler_admission_negatives() -> None:
     print("PASS: status reconciler 8 JSON, 1 child-output and 1 serialization negatives")
 
 
+def validate_trend_run_path_negatives() -> None:
+    """Prove both real trend consumers reject symlink, missing and escaped run files."""
+    producer = load_trend_reviewer()
+    consumer = load_module(
+        ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py",
+        "memory_os_sustained_local_soak_run_path_negative",
+    )
+    for module in (producer, consumer):
+        with tempfile.TemporaryDirectory(prefix=".sustained-soak-run-path-", dir=ROOT) as temp:
+            directory = Path(temp) / "runs"
+            directory.mkdir()
+            outside = Path(temp) / "external-canary.json"
+            outside.write_text("EXTERNAL_CANARY", encoding="utf-8")
+            good = directory / "good.json"
+            good.write_text("{}", encoding="utf-8")
+            original_dir = module.RESULT_DIR
+            module.RESULT_DIR = directory
+            try:
+                module.require_local_run_path(good)
+                bad_link = directory / "link.json"
+                bad_link.symlink_to(outside)
+                for label, path in (
+                    ("symlink target", bad_link),
+                    ("wrong parent", outside),
+                    ("missing", directory / "missing.json"),
+                    ("directory target", directory),
+                ):
+                    try:
+                        module.require_local_run_path(path)
+                    except module.Fail:
+                        pass
+                    else:
+                        raise AssertionError("trend run path accepted " + label)
+                if outside.read_text(encoding="utf-8") != "EXTERNAL_CANARY":
+                    raise AssertionError("trend run path changed external canary")
+            finally:
+                module.RESULT_DIR = original_dir
+    print("PASS: trend producer/consumer canonical run path positives and 8 path negatives")
+
+
 def main() -> int:
+    validate_trend_run_path_negatives()
     validate_status_reconciler_admission_negatives()
     validate_trend_child_output_privacy()
     validate_reconcile_diagnostic_runtime()

@@ -14,7 +14,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
-RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+CANONICAL_RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+RESULT_DIR = CANONICAL_RESULT_DIR
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
 REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
@@ -94,7 +95,19 @@ def utc_timestamp(value: Any, field: str) -> datetime:
     return parsed
 
 
+def require_local_run_path(path: Path) -> None:
+    """Do not admit a symlink or noncanonical run before invoking child validators."""
+    require(path.parent == RESULT_DIR, "run path must be in canonical result directory")
+    require(not path.is_symlink() and path.is_file(), "run path missing or symlinked")
+    try:
+        require(path.resolve(strict=True).parent == RESULT_DIR.resolve(strict=True),
+                "run path escaped canonical result directory")
+    except OSError:
+        raise Fail("run path cannot be resolved") from None
+
+
 def validate_run(path: Path) -> dict[str, Any]:
+    require_local_run_path(path)
     completed = subprocess.run(
         [sys.executable, str(RESULT_VALIDATOR), str(path)],
         cwd=ROOT,
@@ -193,6 +206,9 @@ def review_trend_projection(trend: dict[str, Any], index: int) -> dict[str, Any]
 
 
 def main() -> int:
+    require(RESULT_DIR == CANONICAL_RESULT_DIR and RESULT_DIR.is_dir() and not RESULT_DIR.is_symlink(),
+            "canonical result directory authority drift")
+    require(RESULT_DIR.resolve(strict=True) == CANONICAL_RESULT_DIR, "result directory escaped repository")
     contract = load(CONTRACT_PATH)
     paths = sorted(RESULT_DIR.glob(RESULT_GLOB))
     minimum_runs = int(contract.get("minimumIndependentRuns", 2))

@@ -141,7 +141,19 @@ def utc_timestamp(value: Any, field: str) -> datetime:
     return parsed
 
 
+def require_local_run_path(path: Path) -> None:
+    """Do not admit a symlink or noncanonical run before invoking child validators."""
+    require(path.parent == RESULT_DIR, "run path must be in canonical result directory")
+    require(not path.is_symlink() and path.is_file(), "run path missing or symlinked")
+    try:
+        require(path.resolve(strict=True).parent == RESULT_DIR.resolve(strict=True),
+                "run path escaped canonical result directory")
+    except OSError:
+        raise Fail("run path cannot be resolved") from None
+
+
 def summarize_run(path: Path) -> tuple[datetime, dict[str, Any]]:
+    require_local_run_path(path)
     completed = subprocess.run(
         [sys.executable, str(RESULT_VALIDATOR), str(path)],
         cwd=ROOT,
