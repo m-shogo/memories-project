@@ -185,10 +185,23 @@ def canonical_ref(value: Any, field: str) -> tuple[str, Path]:
 
 
 def git_history(ref: str, field: str) -> list[str]:
-    completed = subprocess.run(["git", "log", "--format=%H", "--follow", "--", ref], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"cannot inspect {field} Git history")
+    # Only the two most recent changes are needed to reject rewritten review evidence.
+    # Do not let Git stderr, a stalled subprocess or an unbounded history enter CI diagnostics.
+    try:
+        completed = subprocess.run(
+            ["git", "log", "--format=%H", "--max-count=2", "--follow", "--", ref],
+            cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot inspect {field} Git history") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"cannot inspect {field} Git history")
+    require(isinstance(completed.stdout, str), f"{field} Git history output invalid")
     commits = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
     require(commits, f"{field} must be committed review evidence")
+    require(len(commits) <= 2 and all(re.fullmatch(r"[0-9a-f]{40}", sha) for sha in commits),
+            f"{field} Git history output invalid")
     return commits
 
 

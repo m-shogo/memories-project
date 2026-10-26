@@ -778,6 +778,64 @@ def prove_independent_review_json_reader(module) -> None:
     print("PASS: actual independent review JSON reader positive and 16 fail-closed negatives")
 
 
+
+def exercise_bounded_review_git_history(module) -> None:
+    """Exercise the real history consumer with private-output and timeout negatives."""
+    original_run = module.subprocess.run
+    ref = "docs/evidence/backup-restore/synthetic-review.json"
+    marker = "PRIVATE_REVIEW_MARKER_DO_NOT_LOG"
+    state = {"stdout": "a" * 40 + "\\n", "returncode": 0, "error": None}
+    calls = []
+
+    def fake_git(args, **kwargs):
+        require(args == ["git", "log", "--format=%H", "--max-count=2", "--follow", "--", ref],
+                "independent review Git history must use bounded canonical pathspec")
+        require(kwargs.get("cwd") == module.ROOT and kwargs.get("text") is True,
+                "independent review Git history execution context drift")
+        require(kwargs.get("stdout") is subprocess.PIPE and kwargs.get("stderr") is subprocess.DEVNULL,
+                "independent review Git history output privacy drift")
+        require(kwargs.get("timeout") == 20 and kwargs.get("check") is False,
+                "independent review Git history timeout/check drift")
+        calls.append(args)
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(args, state["returncode"],
+                                           stdout=state["stdout"], stderr=marker)
+
+    module.subprocess.run = fake_git
+    try:
+        require(module.git_history(ref, "securityReviewRef") == ["a" * 40],
+                "bounded Git history positive control failed")
+        state["stdout"] = "a" * 40 + "\\n" + "b" * 40 + "\\n"
+        require(module.git_history(ref, "securityReviewRef") == ["a" * 40, "b" * 40],
+                "bounded two-change Git history control failed")
+        cases = [
+            ("nonzero", {"returncode": 1}, "cannot inspect securityReviewRef Git history"),
+            ("bool-exit", {"returncode": True}, "cannot inspect securityReviewRef Git history"),
+            ("nonstring", {"stdout": b"a" * 40}, "securityReviewRef Git history output invalid"),
+            ("malformed", {"stdout": "PRIVATE_REVIEW_MARKER_DO_NOT_LOG\\n"}, "securityReviewRef Git history output invalid"),
+            ("oversized", {"stdout": ("a" * 40 + "\\n") * 3}, "securityReviewRef Git history output invalid"),
+            ("empty", {"stdout": ""}, "securityReviewRef must be committed review evidence"),
+            ("timeout", {"error": subprocess.TimeoutExpired(["git", "log"], 20, stderr=marker)},
+             "cannot inspect securityReviewRef Git history"),
+            ("unavailable", {"error": OSError(marker)}, "cannot inspect securityReviewRef Git history"),
+        ]
+        for label, changes, expected in cases:
+            state.update({"stdout": "a" * 40 + "\\n", "returncode": 0, "error": None})
+            state.update(changes)
+            try:
+                module.git_history(ref, "securityReviewRef")
+            except module.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"bounded Git history {label} rejected at wrong private diagnostic")
+            else:
+                raise Fail(f"bounded Git history {label} unexpectedly accepted")
+        require(len(calls) == 10, "bounded Git history negative multiplicity drift")
+    finally:
+        module.subprocess.run = original_run
+    print("PASS: independent review Git history bounded, private and fail-closed with eight negatives")
+
+
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
@@ -964,6 +1022,8 @@ def main() -> int:
         ),
         "independent review promotion boundary disabled", "independent review promotion boundary drift",
     )
+
+    exercise_bounded_review_git_history(module)
 
     original_history = module.git_history
     original_transport = module.subprocess.run
