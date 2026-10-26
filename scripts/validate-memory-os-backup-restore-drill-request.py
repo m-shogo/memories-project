@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -103,15 +104,56 @@ def require_repo_file(path: Path, message: str) -> Path:
     return relative
 
 
-def load(path: Path) -> dict[str, Any]:
-    relative = repo_relative(path)
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
-    return value
+MAX_JSON_BYTES = 1024 * 1024
 
+
+def load(path: Path) -> dict[str, Any]:
+    """Admit bounded, unambiguous reviewed drill-request planning JSON."""
+    require(isinstance(path, Path) and path.is_absolute(), "drill request JSON path invalid")
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("drill request JSON path missing or outside repository") from None
+    require(
+        relative == resolved and path.is_file() and not path.is_symlink(),
+        "drill request JSON path unsafe",
+    )
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "drill request JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("drill request JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "drill request JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "drill request JSON integer too large")
+        return int(value)
+
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "drill request JSON size limit exceeded")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("drill request JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "drill request JSON root must be object")
+    return value
 
 def load_module(path: Path, name: str):
     relative = repo_relative(path)

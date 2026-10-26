@@ -475,6 +475,58 @@ def exercise_validator_execution_transport(validator) -> None:
         validator.enforce_execution_transport = original_guard
 
 
+def prove_drill_request_json_reader(validator) -> None:
+    """Exercise the actual drill planning reader with no protected-authority writes."""
+    protected_paths = (validator.CONTRACT, validator.REGISTRY, validator.GEN_REGISTRY, validator.OBJECTIVES_REGISTRY)
+    before = tuple(path.read_bytes() for path in protected_paths)
+    with guarded_temporary_directory(".tmp-drill-request-json-reader-", TMP_PARENT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}}, "drill request JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "drill request JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "drill request JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "drill request JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "drill request JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "drill request JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "drill request JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "drill request JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * validator.MAX_JSON_BYTES + b'"}', "drill request JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "drill request JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"synthetic-secret",', "drill request JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "drill request JSON root must be object"),
+        )
+        def rejected(candidate, expected: str, label: str) -> None:
+            try:
+                validator.load(candidate)
+            except validator.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong drill request JSON rejection boundary")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe drill request JSON accepted")
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "drill request JSON path unsafe", "symlink")
+        rejected(Path(directory), "drill request JSON path unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "drill request JSON path missing or outside repository", "missing")
+        rejected("candidate.json", "drill request JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-drill-request-json-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "escaped.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "drill request JSON path missing or outside repository", "external symlink")
+            require(canary.read_bytes() == positive, "drill request JSON modified external canary")
+        require(path.read_bytes() == positive, "drill request JSON modified positive fixture")
+    require(tuple(path.read_bytes() for path in protected_paths) == before, "drill request JSON mutated protected authorities")
+    print("PASS: actual drill request JSON reader positive and 16 fail-closed negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "drill-request writer missing")
     require(VALIDATOR.is_file(), "drill-request validator missing")
@@ -487,6 +539,7 @@ def main() -> int:
     prove_file_swap_before_unlink_rejected()
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
+    prove_drill_request_json_reader(validator)
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
     require(writer.canonical_repo_file(writer.ELIGIBILITY_HELPER, "environment generation eligibility helper") == writer.ELIGIBILITY_HELPER, "canonical eligibility helper rejected")
     exercise_registry_corruption(writer)
