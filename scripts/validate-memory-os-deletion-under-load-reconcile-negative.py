@@ -1259,6 +1259,7 @@ def exercise_deletion_load_authority_gate_source() -> None:
         'test -z "$(git status --porcelain)"',
         '      - "services/import-api/internal/httpserver/deletion_under_load_test.go"',
         "python scripts/validate-memory-os-deletion-under-load-reconcile-negative.py",
+        '      - "scripts/reconcile-memory-os-deletion-under-load-source.py"',
     )
     def policy(value: str) -> None:
         for marker in required:
@@ -1270,6 +1271,8 @@ def exercise_deletion_load_authority_gate_source() -> None:
                 "deletion-load clean-worktree source checks must run before and after")
         require(value.count(required[6]) == 2,
                 "deletion-load Go runner not in both CI path filters")
+        require(value.count(required[8]) == 2,
+                "deletion-load source reconciler not in both CI path filters")
         require(value.count("    branches:" + chr(10) + "      - so") == 2,
                 "deletion-load CI branch scope drift")
         require("checkout@v4" not in value and "setup-python@v5" not in value,
