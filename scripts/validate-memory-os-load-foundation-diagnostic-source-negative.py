@@ -40,7 +40,7 @@ def reviewed_blob_negatives(publisher: str, independent: str) -> None:
         except AssertionError:
             continue
         raise AssertionError("load foundation reviewed Git blob accepted synthetic source drift: " + label)
-    print("PASS: load foundation PR and independent CI complete Git blob source negatives (2 cases)")
+    print("PASS: load foundation publisher and independent CI complete Git blob source negatives (2 cases)")
 
 def read(path: str) -> str:
     p = ROOT / path
@@ -244,6 +244,45 @@ def independent_identity_runtime(source: str) -> None:
                 raise AssertionError("load foundation independent CI event/base/ref/SHA drift: " + str((event, base, ref, result.returncode)))
     print("PASS: load foundation independent CI event/base/ref/SHA shell runtime (12 cases)")
 
+def writer_identity_runtime(authority: str) -> None:
+    code = step(authority, "Confirm exact clean authority source")
+    if 'echo "SOURCE_SHA=' not in code:
+        raise SystemExit("load foundation writer source capture drift")
+    code = code.split('echo "SOURCE_SHA=', 1)[0]
+    head = "a" * 40
+    cases = (
+        ("push", "refs/heads/so", head, True),
+        ("workflow_dispatch", "refs/heads/so", head, True),
+        ("schedule", "refs/heads/so", head, True),
+        ("pull_request", "refs/heads/so", head, False),
+        ("push", "refs/heads/main", head, False),
+        ("push", "refs/tags/v1", head, False),
+        ("push", "refs/heads/so", "A" * 40, False),
+        ("push", "refs/heads/so", "a" * 39, False),
+        ("push", "refs/heads/so", "b" * 40, False),
+        ("schedule", "", head, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="load-foundation-writer-source-") as tmp:
+        root = Path(tmp)
+        git = root / "git"
+        git.write_text(
+            '''#!/bin/sh
+if [ "$1" = "status" ]; then exit 0; fi
+if [ "$1" = "rev-parse" ]; then printf '%s' "$STUB_HEAD"; exit 0; fi
+exit 1
+''', encoding="utf-8"
+        )
+        git.chmod(0o755)
+        for event, ref, sha, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_REF=ref, GITHUB_SHA=sha, STUB_HEAD=head)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", code],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise SystemExit("load foundation writer actual writer source shell drift: " + event + "/" + ref)
+    print("PASS: load foundation writer actual writer event/ref/SHA shell (10 cases)")
+
+
 def main() -> None:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
@@ -255,6 +294,7 @@ def main() -> None:
             raise AssertionError("load foundation independent CI reachability drift: " + marker)
     reviewed_blob_negatives(publisher, independent)
     pr_identity_runtime(publisher)
+    writer_identity_runtime(publisher)
     independent_identity_runtime(independent)
     policy(publisher)
     mutations(publisher)
