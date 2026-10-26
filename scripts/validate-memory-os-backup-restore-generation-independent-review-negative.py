@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import copy
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -47,20 +48,19 @@ def with_virtual_registry(module, registry: dict, action) -> None:
     canonical = module.REGISTRY.read_bytes()
     canonical_mode = module.REGISTRY.stat().st_mode & 0o777
     payload = json.dumps(registry, indent=2) + "\n"
-    original_read_text = Path.read_text
+    original_open = Path.open
 
-    def virtual_read_text(path: Path, *args, **kwargs) -> str:
-        if path == module.REGISTRY:
-            encoding = kwargs.get("encoding")
-            require(encoding in (None, "utf-8"), "synthetic generation registry requested with unexpected encoding")
-            return payload
-        return original_read_text(path, *args, **kwargs)
+    def virtual_open(path: Path, *args, **kwargs):
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if path == module.REGISTRY and mode == "rb":
+            return io.BytesIO(payload.encode("utf-8"))
+        return original_open(path, *args, **kwargs)
 
-    Path.read_text = virtual_read_text
+    Path.open = virtual_open
     try:
         action()
     finally:
-        Path.read_text = original_read_text
+        Path.open = original_open
     require(module.REGISTRY.read_bytes() == canonical, "canonical generation evidence registry mutated during negative exercise")
     require((module.REGISTRY.stat().st_mode & 0o777) == canonical_mode, "canonical generation evidence registry mode mutated during negative exercise")
 
@@ -727,11 +727,63 @@ def prove_runtime_review_pair_controls() -> None:
     print("PASS: isolated Git same/cross-generation positive pairs and exact reviewer/ref, chronology and material-delta runtime negatives")
 
 
+def prove_independent_review_json_reader(module) -> None:
+    """Exercise the actual independent-review reader without producing approval evidence."""
+    before = (module.CONTRACT.read_bytes(), module.REGISTRY.read_bytes())
+    with tempfile.TemporaryDirectory(prefix="memory-os-independent-review-json-", dir=ROOT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(module.load_json(path, "synthetic") == {"safe": True, "nested": {"count": 1}}, "independent review JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "independent review JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "independent review JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "independent review JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "independent review JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "independent review JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "independent review JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "independent review JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * module.MAX_JSON_BYTES + b'"}', "independent review JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "independent review JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"synthetic-secret",', "independent review JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "independent review JSON root must be object"),
+        )
+        def rejected(candidate, expected: str, label: str) -> None:
+            try:
+                module.load_json(candidate, "synthetic-secret")
+            except module.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong independent review JSON rejection boundary")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe independent review JSON accepted")
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "independent review JSON path missing or unsafe", "symlink")
+        rejected(Path(directory), "independent review JSON path missing or unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "independent review JSON path missing or unsafe", "missing")
+        rejected("candidate.json", "independent review JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-independent-review-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "escaped.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "independent review JSON path missing or unsafe", "external symlink")
+            require(canary.read_bytes() == positive, "independent review JSON modified external canary")
+        require(path.read_bytes() == positive, "independent review JSON modified positive fixture")
+    require((module.CONTRACT.read_bytes(), module.REGISTRY.read_bytes()) == before, "independent review JSON mutated protected authorities")
+    print("PASS: actual independent review JSON reader positive and 16 fail-closed negatives")
+
+
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
     module = load_validator()
     prove_runtime_review_pair_controls()
+    prove_independent_review_json_reader(module)
     expect_source_order_execution(module)
 
     for field, substitute in (
