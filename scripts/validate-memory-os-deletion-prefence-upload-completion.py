@@ -20,6 +20,30 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 MAX_JSON_BYTES = 1024 * 1024
 MAX_RUNNER_BYTES = 1024 * 1024
 
+EXPECTED_CONTRACT_KEYS = (
+    "contractId",
+    "schemaVersion",
+    "resultsSchemaVersion",
+    "description",
+    "scenarioId",
+    "dependencyMode",
+    "inFlightCompletionRequests",
+    "surface",
+    "pausePoint",
+    "resultPath",
+    "runner",
+    "validator",
+    "reconcile",
+    "workflow",
+    "validationRules",
+    "requiredSequence",
+    "successCriteria",
+    "abortCriteria",
+    "evidenceBoundary",
+    "readiness",
+    "limitations",
+)
+
 EXPECTED_RESULT_KEYS = ("schemaVersion", "commitSha", "generatedAt", "environment", "scenario", "limitations",)
 EXPECTED_RESULT_LIMITATIONS = ("one synthetic account and 16 in-flight upload-completion requests", "local PostgreSQL 16 and versioned MinIO on a GitHub-hosted runner", "does not prove process or host failure during deletion-worker erasure", "not production deletion-capacity evidence",)
 EXPECTED_ENVIRONMENT_KEYS = ("os", "arch", "goVersion", "dependencyMode", "syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "containsSecrets",)
@@ -168,6 +192,8 @@ def read_runner() -> str:
 
 
 def validate_contract(contract: dict[str, Any]) -> None:
+    require(type(contract) is dict and contract.keys() == set(EXPECTED_CONTRACT_KEYS),
+            "reviewed contract top-level key set drift")
     require(contract.get("contractId") == "memory-os.operability.deletion-prefence-upload-completion.v1", "contract identity drift")
     require(contract.get("schemaVersion") == "memory-os-deletion-prefence-upload-completion.v1", "contract schema drift")
     require(contract.get("resultsSchemaVersion") == "memory-os-deletion-prefence-upload-completion-results.v1", "result schema drift")

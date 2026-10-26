@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "03906bae9fc8b633028c317ae22577198347da5f"
+REVIEWED_VALIDATOR = "42668972c0b558ab6bc7025f1a4e5f138423b243"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -528,6 +528,23 @@ def typed_criteria_runtime():
     validator.validate_result(contract, None)
     canonical = validator.load(validator.RESULT_PATH)
     cases = 0
+
+    # A local proof contract cannot add unreviewed production or human approval authority.
+    for label, mutate in (
+        ("productionReady injection", lambda d: d.update({"productionReady": True})),
+        ("human approval injection", lambda d: d.update({"humanPromotionApproved": True})),
+        ("missing description", lambda d: d.pop("description")),
+        ("missing schema", lambda d: d.pop("resultsSchemaVersion")),
+    ):
+        candidate = copy.deepcopy(contract)
+        mutate(candidate)
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence upload accepted contract top-level " + label)
+        cases += 1
 
     # Exact reviewed contract identity must not be replaceable by schema/scenario aliases.
     for label, value in (("missing", None), ("substitute", "synthetic.unreviewed"), ("non-string", True)):
