@@ -7,6 +7,8 @@ import copy
 import hashlib
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -221,10 +223,64 @@ def prove_promotion_reader() -> None:
     print(f"PASS: actual promotion review JSON reader positive and {len(cases) + 2} fail-closed negatives")
 
 
+def prove_private_negative_suite_transport() -> None:
+    """Test the real promotion subprocess consumer with private error canaries."""
+    validator = load_module(VALIDATOR, "memory_os_promotion_private_suite_negative")
+    original_run = validator.subprocess.run
+    marker = "PRIVATE_PROMOTION_SUBPROCESS_CANARY_DO_NOT_LOG"
+    state = {"returncode": 0, "error": None}
+    calls = []
+
+    def fake_run(args, **kwargs):
+        require(args == [sys.executable, str(validator.NEGATIVE)],
+                "promotion negative suite command authority drift")
+        require(
+            kwargs.get("cwd") == validator.ROOT
+            and kwargs.get("stdout") is subprocess.DEVNULL
+            and kwargs.get("stderr") is subprocess.DEVNULL
+            and kwargs.get("check") is False and kwargs.get("timeout") == 60
+            and "text" not in kwargs,
+            "promotion negative suite subprocess privacy/timeout drift",
+        )
+        calls.append(args)
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(args, state["returncode"], stdout=marker, stderr=marker)
+
+    validator.subprocess.run = fake_run
+    try:
+        validator.run_negative_suite()
+        cases = (
+            ("nonzero", {"returncode": 1}, "promotion review negative suite failed"),
+            ("boolean-exit", {"returncode": True}, "promotion review negative suite failed"),
+            ("timeout", {"error": subprocess.TimeoutExpired(
+                ["python"], 60, stderr=marker)},
+             "promotion review negative suite unavailable or timed out"),
+            ("unavailable", {"error": OSError(marker)},
+             "promotion review negative suite unavailable or timed out"),
+        )
+        for label, changes, expected in cases:
+            state.update({"returncode": 0, "error": None})
+            state.update(changes)
+            try:
+                validator.run_negative_suite()
+            except validator.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"promotion negative suite {label} wrong/private failure class: {exc}")
+            else:
+                raise Fail(f"promotion negative suite {label} unexpectedly accepted")
+        require(len(calls) == len(cases) + 1,
+                "promotion negative suite subprocess case multiplicity drift")
+    finally:
+        validator.subprocess.run = original_run
+    print("PASS: actual promotion negative-suite subprocess bounded/private with four negatives")
+
+
 def main() -> int:
     global EXPECTED_FAILURE
     require(WRITER.is_file() and VALIDATOR.is_file(), "promotion review authority scripts missing")
     prove_promotion_reader()
+    prove_private_negative_suite_transport()
     writer = load_module(WRITER, "memory_os_promotion_review_writer_negative")
     validator = load_module(VALIDATOR, "memory_os_promotion_review_validator_negative")
     EXPECTED_FAILURE = writer.Fail

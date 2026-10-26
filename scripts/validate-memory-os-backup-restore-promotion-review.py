@@ -229,6 +229,20 @@ def inventory_area(inventory: dict[str, Any], area_id: str) -> dict[str, Any]:
     return matches[0]
 
 
+def run_negative_suite() -> None:
+    """Bound the private negative-suite subprocess; never surface its raw output."""
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(NEGATIVE)], cwd=ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("promotion review negative suite unavailable or timed out") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            "promotion review negative suite failed")
+
+
 def main() -> int:
     enforce_runtime_authorities()
     contract = load(CONTRACT)
@@ -336,8 +350,7 @@ def main() -> int:
     require(backup_area.get("humanProductionPromotionAuthorized") is False, "promotion review cannot authorize production in OPS-P0-007 inventory")
 
     require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "promotion review negative validator")
-    completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"promotion review negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+    run_negative_suite()
     print("Memory OS backup/restore promotion review validation PASS")
     print("promotion review validator canonical runtime authorities enforced: true")
     print("ephemeral append lock may be absent but path authority remains canonical: true")
