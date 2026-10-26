@@ -143,11 +143,64 @@ def derive_registry(helper, value: dict[str, Any]) -> dict[str, Any]:
         helper.independent_review_ref_for_row = real_review_ref
 
 
+def prove_strict_json_reader(helper: Any) -> None:
+    """Exercise the actual shared eligibility reader with disposable positive/negative JSON."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-eligibility-json-", dir=ROOT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(helper.load(path) == {"safe": True, "nested": {"count": 1}}, "eligibility JSON positive control failed")
+
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "generation eligibility JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "generation eligibility JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "generation eligibility JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "generation eligibility JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "generation eligibility JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "generation eligibility JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "generation eligibility JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * helper.MAX_JSON_BYTES + b'"}', "generation eligibility JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "generation eligibility JSON unreadable or invalid"),
+            ("malformed secret", b'{"private":"synthetic-secret",', "generation eligibility JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "generation eligibility JSON root must be object"),
+        )
+
+        def rejected(candidate: Any, expected: str, label: str) -> None:
+            try:
+                helper.load(candidate)
+            except helper.Fail as exc:
+                require(str(exc) == expected, f"{label}: rejected outside intended fixed-message guard")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe eligibility JSON accepted")
+
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "generation eligibility JSON path missing or unsafe", "symlink")
+        rejected(Path(directory), "generation eligibility JSON path missing or unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "generation eligibility JSON path missing or unsafe", "missing")
+        rejected("candidate.json", "generation eligibility JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-eligibility-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "escaped.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "generation eligibility JSON path missing or unsafe", "external symlink")
+            require(canary.read_bytes() == positive, "eligibility JSON negative mutated external canary")
+        require(path.read_bytes() == positive, "eligibility JSON negative mutated positive control")
+    print("PASS: actual eligibility JSON reader positive and 16 fail-closed negatives")
+
+
 def main() -> int:
     require(HELPER.is_file(), "generation eligibility helper missing")
     helper = load_helper()
     require(helper.canonical_repo_file(helper.GEN_WRITER, "generation writer") == helper.GEN_WRITER, "canonical generation writer rejected")
     helper.enforce_runtime_execution_authority()
+    prove_strict_json_reader(helper)
 
     repo_substitute = ROOT / "scripts/validate-memory-os-operability.py"
     require(repo_substitute.is_file(), "repo-contained writer substitute missing")

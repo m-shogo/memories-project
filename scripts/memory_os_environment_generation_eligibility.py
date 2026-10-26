@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -23,14 +24,55 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path}")
-    return value
+MAX_JSON_BYTES = 1024 * 1024
 
+
+def load(path: Path) -> dict[str, Any]:
+    """Admit bounded, unambiguous generation JSON without exposing private bytes."""
+    require(isinstance(path, Path) and path.is_absolute(), "generation eligibility JSON path invalid")
+    try:
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("generation eligibility JSON path missing or unsafe") from None
+    require(
+        resolved == path and path.is_file() and not path.is_symlink(),
+        "generation eligibility JSON path missing or unsafe",
+    )
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "generation eligibility JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("generation eligibility JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "generation eligibility JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "generation eligibility JSON integer too large")
+        return int(value)
+
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "generation eligibility JSON size limit exceeded")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("generation eligibility JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "generation eligibility JSON root must be object")
+    return value
 
 def canonical_repo_file(path: Path, field: str) -> Path:
     try:
