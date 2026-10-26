@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -77,14 +78,55 @@ def enforce_runtime_authorities() -> None:
         require_exact_repo_file(path, expected, field)
 
 
-def load(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {display_path(path)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {display_path(path)}")
-    return value
+MAX_JSON_BYTES = 1024 * 1024
 
+
+def load(path: Path) -> dict[str, Any]:
+    """Reject ambiguous or oversized eligibility authority JSON before semantic checks."""
+    require(isinstance(path, Path) and path.is_absolute(), "eligibility authority JSON path invalid")
+    try:
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("eligibility authority JSON path missing or unsafe") from None
+    require(
+        resolved == path and path.is_file() and not path.is_symlink(),
+        "eligibility authority JSON path missing or unsafe",
+    )
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "eligibility authority JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("eligibility authority JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "eligibility authority JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "eligibility authority JSON integer too large")
+        return int(value)
+
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "eligibility authority JSON size limit exceeded")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("eligibility authority JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "eligibility authority JSON root must be object")
+    return value
 
 def load_helper():
     require_exact_repo_file(HELPER, HELPER_REL, "environment generation eligibility helper")

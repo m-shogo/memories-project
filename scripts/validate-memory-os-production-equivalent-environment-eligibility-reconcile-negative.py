@@ -68,6 +68,61 @@ def expect_validator_substitution_rejected(validator: Any, field: str, replaceme
         setattr(validator, field, original)
 
 
+def prove_validator_json_reader() -> None:
+    """Exercise the canonical validator reader; never mutate reviewed authority."""
+    validator = load_target(VALIDATOR, "memory_os_eligibility_validator_json_negative")
+    before = canonical_bytes()
+    with tempfile.TemporaryDirectory(prefix="memory-os-eligibility-validator-json-", dir=TMP_PARENT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}}, "eligibility validator JSON positive control failed")
+
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "eligibility authority JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "eligibility authority JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "eligibility authority JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "eligibility authority JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "eligibility authority JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "eligibility authority JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "eligibility authority JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * validator.MAX_JSON_BYTES + b'"}', "eligibility authority JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "eligibility authority JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"synthetic-secret",', "eligibility authority JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "eligibility authority JSON root must be object"),
+        )
+
+        def rejected(candidate: Any, expected: str, label: str) -> None:
+            try:
+                validator.load(candidate)
+            except validator.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong eligibility JSON rejection boundary")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: invalid eligibility JSON accepted")
+
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "eligibility authority JSON path missing or unsafe", "symlink")
+        rejected(Path(directory), "eligibility authority JSON path missing or unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "eligibility authority JSON path missing or unsafe", "missing")
+        rejected("candidate.json", "eligibility authority JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-eligibility-validator-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "external.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "eligibility authority JSON path missing or unsafe", "external symlink")
+            require(canary.read_bytes() == positive, "eligibility validator JSON modified external canary")
+        require(path.read_bytes() == positive, "eligibility validator JSON mutated positive fixture")
+    assert_canonical_unchanged(before, "strict eligibility validator JSON reader")
+    print("PASS: actual eligibility validator JSON reader positive and 16 fail-closed negatives")
+
+
 def prove_validator_execution_identity() -> None:
     validator = load_target(VALIDATOR, "memory_os_environment_generation_eligibility_validator_negative")
     path_cases = (
@@ -189,6 +244,7 @@ def main() -> int:
     require(VALIDATOR.is_file(), "generation eligibility validator missing")
     require(RECONCILER.is_file(), "generation eligibility reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_validator_json_reader()
     prove_validator_execution_identity()
     reconciler = load_reconciler()
     prove_direct_authority_identity(reconciler)
