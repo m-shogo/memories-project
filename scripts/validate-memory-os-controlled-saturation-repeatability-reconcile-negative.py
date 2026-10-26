@@ -967,6 +967,21 @@ def run_repeatability_nonfinite_negatives() -> None:
     with contextlib.redirect_stdout(io.StringIO()):
         if validator.main() != 0:
             raise RuntimeError("repeatability numeric validator positive control failed")
+    for label, mutate in (
+        ("invented failure signal", lambda run: run["scenario"].update({"firstSaturationSignal": 16})),
+        ("wrong first contention", lambda run: run["scenario"].update({"firstPoolContentionSignal": 8})),
+        ("inconsistent failures", lambda run: run["scenario"]["steps"][0]["batch"].update({"failures": 1})),
+        ("boolean successes", lambda run: run["scenario"]["steps"][0]["batch"].update({"successes": True})),
+        ("status count mismatch", lambda run: run["scenario"]["steps"][0]["batch"]["statusClassCounts"].update({"2xx": 63})),
+    ):
+        fixture = copy.deepcopy(run)
+        mutate(fixture)
+        try:
+            analyzer.signal_for(fixture)
+        except analyzer.Fail:
+            pass
+        else:
+            raise RuntimeError(f"repeatability analyzer accepted {label}")
     for section, field, value in (
         ("batch", "throughput", float("inf")),
         ("batch", "latencyP95Ms", float("inf")),
@@ -1011,7 +1026,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator nonfinite, integrity and signal negatives (13 cases)")
+    print("PASS: repeatability analyzer/validator nonfinite, integrity and signal negatives (18 cases)")
 
 
 
