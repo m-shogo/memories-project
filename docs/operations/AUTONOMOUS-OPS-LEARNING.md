@@ -13961,3 +13961,31 @@ a promotion decision, a recovery objective, or drill evidence.
 - Outcome/evidence: `7ff687f` changed only source reconciler and CI-reachable negative suite; both exact-source read-only Authority Gate and source reconciliation succeeded.
 - Why safe/reusable mechanism: pre-stage and pre-replace original-content comparison, synthetic race injection, fail-closed stale rejection and atomic cleanup; no source Go runner, production status or registry mutation.
 - Protected-authority check: production status `b918ae84e9ac82cfb434e903379e9685137384c2` remains `NO_GO`; OPS-P0-007 `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; objective `f4d74f333a4884f9aba2284a31ac011aae8b71bd`, reviewed request `acebcd02de9d4ec44891e70ff00b6898174451dd`, generation evidence `ae7e57efce7ca21d546c1cb336d3ee7bb7ebf93a`, and typed eight-domain non-resurrection `26bb1cc70c64ab3dfa09bee011545a52d46afc00` registries unchanged. Eligible generations must be unsuperseded and from distinct environments, current objective explicitly human-approved, new generation evidence bound to a current executable reviewed request, final candidates complete in eight domains with independent review, and promotion remains separately human-controlled. Learning never supplies these gates.
+
+## 2026-10-27 — Deletion-load standalone numeric negatives gain observed CI reachability
+
+### Material failure: symptom, evidence, root cause, failed approach, correction, recurrence guard, retry condition
+- Symptom/evidence: at `so` `2b16a9770490c62ffd83a396d5cb1046791b1da0`, `validate-memory-os-deletion-under-load-authority-negative.py` contained actual-validator nonfinite/overflow numeric negatives, but the established read-only Deletion Under Load Authority Gate invoked the separate reconcile-negative suite, which did not exercise `positive_number` against NaN, Infinity, boolean and huge integer, nor its JSON reader against NaN/Infinity/1e999. This was a CI execution-coverage gap, not an observed validator bypass.
+- Verified root cause: standalone negative coverage was counted as available but not transitive-runtime-reachable from the existing CI command. Failed approach: assuming a checked-in standalone test is equivalent to a CI-invoked guard.
+- Correction: `f59aa27faa21390f2d96a878d8bf067bdd4e5200` adds actual-validator numeric controls and seven typed plus four JSON nonfinite negatives to the existing invoked reconcile-negative suite; the standalone historical tests are retained.
+- Executable recurrence guard/evidence: exact-source Deletion Under Load Authority Gate `40386056123` SUCCESS, job log explicitly prints `PASS: deletion-under-load numeric positive, 7 typed and 4 JSON nonfinite negatives`.
+- Retry condition: validator numeric/JSON policy change, negative invocation change or observed exact-source regression. Do not retry unchanged MinIO image/authentication blocker.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: `f59aa27` modified only the existing CI-reachable negative suite; exact-source `40386056123` SUCCESS and no production evidence created.
+- Why safe/reusable mechanism: reuses canonical validator, isolated synthetic JSON fixtures, and the existing read-only workflow invocation rather than duplicating authority or touching production.
+- Protected-authority check: production status blob `b918ae84e9ac82cfb434e903379e9685137384c2` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract and recovery registries unchanged. Learning cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-27 — Deletion-load source-substitution negatives share the CI invocation chain
+
+### Material failure: symptom, evidence, root cause, failed approach, correction, recurrence guard, retry condition
+- Symptom/evidence: at `f59aa27`, the standalone authority-negative suite tested substitution of `LOAD_PATH`, `RESULT_PATH`, `LOAD_VALIDATOR` and `OPERABILITY_VALIDATOR`, while the CI-reachable reconcile-negative suite tested only some other direct substitutions. The reconciler already enforced these identities, but the four negative proofs were not established as runtime-invoked by that read-only CI path.
+- Verified root cause: duplicated standalone and CI-reachable suites had diverged in direct-substitution coverage. Failed approach: treating declared source-substitution tests as equivalent to observed execution.
+- Correction: `283759e2852cca60709c60f8f741c8eb37b0b87c` adds the four missing actual-reconciler substitutions to the existing invoked suite without deleting historical standalone cases.
+- Executable recurrence guard/evidence: each substitution must raise `ReconcileFailure` while canonical bytes and modes remain unchanged; exact-source Deletion Under Load Authority Gate `40386168320` SUCCESS, including the full fail-closed transaction step.
+- Retry condition: reviewed reconciler source identity change, CI call-chain change or observed negative regression; no unchanged external MinIO retry.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: `283759e` changed only the CI-reachable negative suite; exact-source `40386168320` SUCCESS.
+- Why safe/reusable mechanism: reuse the actual `enforce_runtime_authorities` implementation and existing canonical snapshot/mode checks, keeping all substitutions in-memory and read-only.
+- Protected-authority check: production status `b918ae84e9ac82cfb434e903379e9685137384c2` remains `NO_GO`, OPS-P0-007 `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; registered/eligible generations, human-approved objective, current executable reviewed drill request, generation evidence, typed eight-domain non-resurrection, independent review and separate human promotion gates are unchanged and unsatisfied. Learning is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
