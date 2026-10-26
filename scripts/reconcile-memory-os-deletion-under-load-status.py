@@ -122,8 +122,8 @@ def run_validator(path: Path, label: str, *args: str) -> None:
         check=False,
     )
     require(
-        completed.returncode == 0,
-        f"canonical {label} validation failed: {completed.stdout[-2000:]}",
+        type(completed.returncode) is int and completed.returncode == 0,
+        f"canonical {label} validation failed (exit code {completed.returncode})",
     )
 
 
@@ -220,7 +220,7 @@ def write_and_validate_transactionally(
             try:
                 CANONICAL_ATOMIC_WRITE_BYTES(path, data)
             except BaseException as rollback_exc:
-                rollback_errors.append(f"{path.relative_to(CANONICAL_ROOT)}: {rollback_exc}")
+                rollback_errors.append(f"{path.relative_to(CANONICAL_ROOT)}: {type(rollback_exc).__name__}")
         if rollback_errors:
             raise ReconcileFailure(
                 f"{primary_exc}; deletion-under-load authority rollback incomplete: "

@@ -10,6 +10,7 @@ import os
 import stat
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from types import ModuleType
 from typing import Callable
 
@@ -140,8 +141,10 @@ def exercise_rollback_failure(module: ModuleType) -> None:
                     "rollback failure masked primary validator diagnostic")
             require("rollback incomplete" in diagnostic,
                     "rollback failure did not report incomplete rollback")
-            require("synthetic rollback writer failure" in diagnostic,
-                    "rollback failure diagnostic missing")
+            require("RuntimeError" in diagnostic,
+                    "rollback failure exception class missing")
+            require("synthetic rollback writer failure" not in diagnostic,
+                    "rollback failure exposed raw exception text")
         else:
             raise RuntimeError("synthetic rollback failure was accepted")
     finally:
@@ -205,6 +208,30 @@ def exercise_atomic_path_substitution_rejection(module: ModuleType) -> None:
         require(canary.read_bytes() == b"external-canary\\n",
                 "regular target write changed external canary")
         require(not list(root.rglob("*.tmp")), "positive write left temporary residue")
+
+
+
+def exercise_validator_output_redaction(module: ModuleType) -> None:
+    original_run = module.CANONICAL_SUBPROCESS_RUN
+    original_guard = module.enforce_runtime_authorities
+
+    def synthetic_run(*args: object, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=17, stdout="SYNTHETIC_VALIDATOR_SECRET_DO_NOT_LOG")
+
+    module.CANONICAL_SUBPROCESS_RUN = synthetic_run
+    module.enforce_runtime_authorities = lambda: None
+    try:
+        try:
+            module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+        except module.ReconcileFailure as exc:
+            require("exit code 17" in str(exc), "validator exit code was lost")
+            require("SYNTHETIC_VALIDATOR_SECRET_DO_NOT_LOG" not in str(exc),
+                    "raw validator stdout escaped into diagnostic")
+        else:
+            raise RuntimeError("failing synthetic validator was accepted")
+    finally:
+        module.CANONICAL_SUBPROCESS_RUN = original_run
+        module.enforce_runtime_authorities = original_guard
 
 
 def main() -> int:
@@ -283,6 +310,7 @@ def main() -> int:
         require(stat.S_IMODE(path.stat().st_mode) == 0o640, "atomic writer changed existing file mode")
         require(not list(path.parent.glob(f".{path.name}.*.tmp")), "atomic writer left temporary residue")
 
+    exercise_validator_output_redaction(module)
     exercise_atomic_path_substitution_rejection(module)
     exercise_rollback_failure(module)
     require_snapshots_unchanged(canonical_snapshots(module))
