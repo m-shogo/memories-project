@@ -15,9 +15,10 @@ SELF = "scripts/validate-memory-os-deletion-container-kill-authority-source-nega
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_PUBLISHER = "3284fc4bd9626bcac46a88b6c571d9db01dd3cf2"
-REVIEWED_INDEPENDENT = "a80e0ac19422a6be164a229a95afc816c3b8d72c"
+REVIEWED_INDEPENDENT = "3a3549fce360edc9a72c558a02a13db7cdf09d60"
 RECONCILER = "scripts/reconcile-memory-os-deletion-container-kill-authority.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py"
+CROSS_NEGATIVE = "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
 REVIEWED_RECONCILER = "8ebb43ea9b39bfbb5c287d0e61b87e2334ab6867"
 REVIEWED_RECONCILE_NEGATIVE = "2b05b1757ee2563a3e436b8d83cd74c069ba3cbe"
 
@@ -208,12 +209,14 @@ else:
 
 def main() -> None:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SELF, RECONCILER, RECONCILE_NEGATIVE, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, INDEPENDENT, SELF, RECONCILER, RECONCILE_NEGATIVE, CROSS_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    'test "$(git rev-parse HEAD)" = "$expected"',
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("container-kill independent CI reachability drift: " + marker)
+    if independent.count(CROSS_NEGATIVE) != 2:
+        raise AssertionError("cross-publisher negative must trigger on PR and push")
     reviewed_source(read(RECONCILER), REVIEWED_RECONCILER, "container-kill reconciler")
     reviewed_source(read(RECONCILE_NEGATIVE), REVIEWED_RECONCILE_NEGATIVE, "container-kill reconcile negative")
     reviewed_negatives(publisher, independent)
