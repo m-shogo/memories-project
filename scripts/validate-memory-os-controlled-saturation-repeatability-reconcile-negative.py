@@ -1207,6 +1207,7 @@ def run_load_index_json_negatives() -> None:
                 b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
                 b'{"a":1,"a":2}', b'{"outer":{"a":1,"a":2}}',
                 b'{"value":' + b'9' * 5000 + b'}',
+                b'{"pad":"' + b'x' * (module.MAX_JSON_BYTES + 1) + b'"}',
                 b'{"' + secret.encode() + b'":', bytes((0xFF, 0xFE)),
                 b'[1,2,3]',
             ):
@@ -1234,7 +1235,7 @@ def run_load_index_json_negatives() -> None:
                     raise RuntimeError("load index accepted unsafe JSON path")
         if canary.read_text(encoding="utf-8") != '{"canary":true}':
             raise RuntimeError("load index changed external JSON canary")
-    print("PASS: load evidence index strict JSON and path negatives (14 cases)")
+    print("PASS: load evidence index strict JSON and path negatives (15 cases)")
 
 
 def run_load_index_reference_negatives() -> None:
@@ -1317,6 +1318,7 @@ def run_operability_validator_json_negatives() -> None:
             b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
             b'{"a":1,"a":2}', b'{"outer":{"a":1,"a":2}}',
             b'{"value":' + b'9' * 5000 + b'}',
+            b'{"pad":"' + b'x' * (module.MAX_JSON_BYTES + 1) + b'"}',
             b'{"' + secret.encode() + b'":', bytes((0xFF, 0xFE)),
             b'[1,2,3]',
         ):
@@ -1357,7 +1359,7 @@ def run_operability_validator_json_negatives() -> None:
     finally:
         module.validate = original_validate
         sys.argv = original_argv
-    print("PASS: operability strict JSON, symlink and unexpected-error privacy negatives (14 cases)")
+    print("PASS: operability strict JSON, symlink and unexpected-error privacy negatives (15 cases)")
 
 
 def run_load_validator_json_negatives() -> None:
@@ -1383,6 +1385,7 @@ def run_load_validator_json_negatives() -> None:
                 b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
                 b'{"a":1,"a":2}', b'{"outer":{"a":1,"a":2}}',
                 b'{"value":' + b'9' * 5000 + b'}',
+                b'{"pad":"' + b'x' * (module.MAX_JSON_BYTES + 1) + b'"}',
                 b'{"' + secret.encode() + b'":', bytes((0xFF, 0xFE)),
                 b'[1,2,3]',
             ):
@@ -1421,7 +1424,7 @@ def run_load_validator_json_negatives() -> None:
             raise RuntimeError("load validator unexpected-error diagnostic leaked source")
     finally:
         module.load = original_load
-    print("PASS: load validator strict JSON, path and unexpected-error privacy negatives (15 cases)")
+    print("PASS: load validator strict JSON, path and unexpected-error privacy negatives (16 cases)")
 
 
 def run_repeatability_nonfinite_negatives() -> None:

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+MAX_JSON_BYTES = 1024 * 1024
 INDEX_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 CONTROLLED_CONTRACT_PATH = ROOT / "contracts/operations/controlled-saturation-ramp-contract.v1.json"
 SOAK_CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
@@ -122,8 +123,11 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         raise ValidationFailure("load index JSON path escaped repository") from None
     try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "load index JSON exceeds reviewed read limit")
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             parse_constant=reject_nonfinite_constant,
             parse_float=parse_finite_float,
             object_pairs_hook=reject_duplicate_json_keys,

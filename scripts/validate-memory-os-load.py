@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+MAX_JSON_BYTES = 1024 * 1024
 SCENARIOS = REPO / "contracts/operations/load-test-scenario-contract.v1.json"
 EXEMPTIONS = REPO / "contracts/operations/load-results-exemptions.v1.json"
 RESULTS = REPO / "docs/fixtures/memory-os-operability/load-results.sample.v1.json"
@@ -82,8 +83,12 @@ def load(path: Path) -> dict:
     except (OSError, ValueError):
         raise Fail("load JSON path escaped repository") from None
     try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        if len(raw) > MAX_JSON_BYTES:
+            raise Fail("load JSON exceeds reviewed read limit")
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             parse_constant=reject_nonfinite_constant,
             parse_float=parse_finite_float,
             object_pairs_hook=reject_duplicate_json_keys,

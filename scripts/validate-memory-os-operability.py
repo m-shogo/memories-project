@@ -10,6 +10,7 @@ import math
 import sys
 from pathlib import Path
 from typing import Any
+MAX_JSON_BYTES = 1024 * 1024
 
 STATUS_PATH = Path("contracts/operations/production-operability-status.json")
 AUDIT_PATH = Path("docs/memory-os-production-operability-audit-2026-07-24.md")
@@ -100,8 +101,12 @@ def load_json(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise ValidationFailure("operability JSON file missing or unsafe")
     try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        if len(raw) > MAX_JSON_BYTES:
+            raise ValidationFailure("operability JSON exceeds reviewed read limit")
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             parse_constant=reject_nonfinite_constant,
             parse_float=parse_finite_float,
             object_pairs_hook=reject_duplicate_json_keys,
