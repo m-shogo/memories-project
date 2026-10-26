@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +83,61 @@ def expect_rejected(module: Any, field: str, replacement: Any) -> None:
     require(STATUS.stat().st_mode & 0o7777 == status_mode, f"{field} rejection changed Production Status file mode")
 
 
+def prove_json_reader_negative(module: Any) -> None:
+    """Exercise the real strict snapshot JSON reader using disposable files only."""
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-json-reader-", dir=ROOT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(
+            module.load(path) == {"safe": True, "nested": {"count": 1}},
+            "strict snapshot JSON reader positive control failed",
+        )
+
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "strict snapshot JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "strict snapshot JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "strict snapshot JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "strict snapshot JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "strict snapshot JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "strict snapshot JSON nonfinite number refused"),
+            ("oversized integer", b'{"number":' + b"9" * 5000 + b"}", "strict snapshot JSON integer too large"),
+            ("oversized JSON", b'{"payload":"' + b"x" * module.MAX_JSON_BYTES + b'"}', "strict snapshot JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\\xff"}'.replace(b"\\xff", bytes([255])), "strict snapshot JSON unreadable or invalid"),
+            ("malformed private input", b'{"private":"synthetic-secret",', "strict snapshot JSON unreadable or invalid"),
+            ("non-object root", b"[]", "strict snapshot JSON root must be object"),
+        )
+
+        def rejected(candidate: Any, expected: str, label: str) -> None:
+            try:
+                module.load(candidate)
+            except module.Fail as exc:
+                require(str(exc) == expected, f"{label}: rejected outside exact JSON reader guard")
+            else:
+                raise Fail(f"{label}: unsafe JSON accepted")
+
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "strict snapshot JSON path unsafe", "symlink")
+        alias_dir = Path(directory) / "alias-dir"
+        alias_dir.symlink_to(Path(directory), target_is_directory=True)
+        rejected(alias_dir / path.name, "strict snapshot JSON path unsafe", "symlink ancestor")
+        rejected(Path(directory), "strict snapshot JSON path unsafe", "directory")
+        rejected("candidate.json", "strict snapshot JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="ops-p0-007-external-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            rejected(canary, "strict snapshot JSON path missing or outside repository", "external path")
+            require(canary.read_bytes() == positive, "external canary modified by JSON reader")
+        path.unlink()
+        rejected(path, "strict snapshot JSON path missing or outside repository", "missing path")
+
+
 def main() -> int:
     module = load_module()
     baseline_snapshot = SNAPSHOT.read_bytes()
@@ -112,6 +168,7 @@ def main() -> int:
         ("NEXT_ACTIONS", {}),
     )
     module.enforce_runtime_authority()
+    prove_json_reader_negative(module)
     for field, replacement in substitutions:
         expect_rejected(module, field, replacement)
 
