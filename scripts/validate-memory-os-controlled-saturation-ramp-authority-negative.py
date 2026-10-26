@@ -119,7 +119,7 @@ def verify_nonfinite_ramp_measurements() -> None:
             raise RuntimeError(f"controlled saturation accepted {label}")
     with tempfile.TemporaryDirectory(prefix=".saturation-numeric-negative-", dir=ROOT) as temp:
         path = Path(temp) / "synthetic.json"
-        for raw in ('{"value": Infinity}', '{"value": 1e999}'):
+        for raw in ('{"value": Infinity}', '{"value": 1e999}', '{"value": 1, "value": 2}'):
             path.write_text(raw, encoding="utf-8")
             try:
                 validator.load(path)
@@ -127,7 +127,7 @@ def verify_nonfinite_ramp_measurements() -> None:
                 pass
             else:
                 raise RuntimeError("controlled saturation accepted nonfinite JSON")
-    print("PASS: controlled saturation numeric parser and measurement negatives (8 cases)")
+    print("PASS: controlled saturation numeric parser and measurement negatives (9 cases)")
 
 
 

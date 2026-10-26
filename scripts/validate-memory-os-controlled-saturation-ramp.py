@@ -42,11 +42,21 @@ def parse_finite_float(value: str) -> float:
     return parsed
 
 
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in document:
+            raise ValidationFailure("duplicate JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"),
                            parse_constant=reject_nonfinite_constant,
-                           parse_float=parse_finite_float)
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
     except FileNotFoundError as exc:
         raise ValidationFailure(f"missing file: {path.relative_to(ROOT)}") from exc
     except json.JSONDecodeError as exc:
