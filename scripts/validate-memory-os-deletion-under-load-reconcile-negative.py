@@ -789,9 +789,16 @@ def exercise_deletion_load_utc_seconds_boundary() -> None:
     canonical = validator.load(ROOT / validator.REVIEWED_RESULT_PATH)
     validator.validate_deletion_timestamps(copy.deepcopy(canonical))
     cases = (
-        ("startedAt", ("scenario", "startedAt"), "2026-09-23T22:17:18.123Z"),
-        ("completedAt", ("scenario", "completedAt"), "2026-09-23T22:17:18.500Z"),
-        ("generatedAt", ("generatedAt",), "2026-09-23T22:17:19.123Z"),
+        ("impossible date", ("scenario", "startedAt"), "2026-02-30T22:17:18Z"),
+        ("timezone offset", ("scenario", "startedAt"), "2026-09-23T22:17:18+00:00"),
+        ("missing seconds", ("scenario", "startedAt"), "2026-09-23T22:17Z"),
+        ("fraction without digits", ("scenario", "startedAt"), "2026-09-23T22:17:18.Z"),
+        ("fractional startedAt", ("scenario", "startedAt"), "2026-09-23T22:17:18.123Z"),
+        ("fractional completedAt", ("scenario", "completedAt"), "2026-09-23T22:17:18.500Z"),
+        ("fractional generatedAt", ("generatedAt",), "2026-09-23T22:17:19.123Z"),
+        ("nonstring", ("scenario", "startedAt"), None),
+        ("completion before start", ("scenario", "completedAt"), "2026-09-23T22:17:17Z"),
+        ("generation before completion", ("generatedAt",), "2026-09-23T22:17:18Z"),
     )
     for label, keys, value in cases:
         altered = copy.deepcopy(canonical)
@@ -804,8 +811,46 @@ def exercise_deletion_load_utc_seconds_boundary() -> None:
         except validator.ValidationFailure:
             pass
         else:
-            raise RuntimeError(f"deletion load accepted fractional {label}")
-    print("PASS: deletion-under-load UTC-second positive and 3 fractional negatives")
+            raise RuntimeError(f"deletion load accepted invalid timestamp: {label}")
+    print("PASS: deletion-under-load UTC positive and 10 timestamp negatives")
+
+
+def exercise_deletion_load_batch_accounting() -> None:
+    """Exercise exact status, typed counts and throughput in the CI-reachable suite."""
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_batch_reachable", validator_path)
+    require(spec is not None and spec.loader is not None, "deletion load batch validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(ROOT / validator.REVIEWED_RESULT_PATH)
+    pre = canonical["scenario"]["preFence"]
+    post = canonical["scenario"]["postFence"]
+    validator.validate_batch(copy.deepcopy(pre), "synthetic-pre-positive", 120, 200, 120, 0)
+    validator.validate_batch(copy.deepcopy(post), "synthetic-post-positive", 400, 401, 0, 400)
+    cases = (
+        ("float requests", ("summary", "requests"), 120.0),
+        ("float successes", ("summary", "successes"), 120.0),
+        ("float exact status count", ("statusCodeCounts", "200"), 120.0),
+        ("float 2xx class", ("summary", "statusClassCounts", "2xx"), 120.0),
+        ("boolean 5xx class", ("summary", "statusClassCounts", "5xx"), False),
+        ("unknown class", ("summary", "statusClassCounts", "6xx"), 1),
+        ("unreported 3xx", ("summary", "statusClassCounts", "3xx"), 1),
+        ("invented low throughput", ("summary", "throughput"), 0.001),
+        ("derived throughput overflow", ("summary", "durationSeconds"), 5e-324),
+    )
+    for label, keys, value in cases:
+        altered = copy.deepcopy(pre)
+        cursor = altered
+        for key in keys[:-1]:
+            cursor = cursor[key]
+        cursor[keys[-1]] = value
+        try:
+            validator.validate_batch(altered, "synthetic-negative", 120, 200, 120, 0)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"deletion load accepted invalid batch accounting: {label}")
+    print("PASS: deletion-under-load batch 2 positives and 9 accounting negatives")
 
 
 def exercise_deletion_load_git_ancestry_boundary() -> None:
@@ -904,6 +949,7 @@ def main() -> int:
     exercise_deletion_load_json_reader()
     exercise_deletion_load_optional_result_path()
     exercise_deletion_load_utc_seconds_boundary()
+    exercise_deletion_load_batch_accounting()
     exercise_deletion_load_git_ancestry_boundary()
     exercise_deletion_load_reviewed_schema()
     module = load_target()
