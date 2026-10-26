@@ -81,7 +81,7 @@ def policy(source: str) -> None:
             raise AssertionError("rate-limit publisher policy missing: " + marker[:70])
     if source.count(CHECKOUT) != 2 or source.count(SETUP) != 2:
         raise AssertionError("rate-limit immutable Action count drift")
-    if source.count('test -z "$(git status --porcelain)"') != 2:
+    if source.count('test -z "$(git status --porcelain)"') != 3:
         raise AssertionError("rate-limit clean worktree boundary count drift")
     if "actions/checkout@v4" in source or "actions/setup-python@v5" in source:
         raise AssertionError("rate-limit floating Action regression")
