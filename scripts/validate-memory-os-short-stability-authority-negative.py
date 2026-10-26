@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import tempfile
 from pathlib import Path
 
@@ -108,10 +109,68 @@ def verify_short_timestamp_semantics() -> None:
     print("PASS: short stability UTC positive and 9 timestamp negatives")
 
 
+
+def verify_short_slope_and_delta_provenance() -> None:
+    """Exercise canonical full validator on disposable forged summary mutations."""
+    validator_path = ROOT / "scripts/validate-memory-os-short-stability-sample.py"
+    spec = importlib.util.spec_from_file_location("short_stability_slope_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("short stability slope validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical_contract = validator.load(validator.CONTRACT_PATH)
+    canonical_result = validator.load(ROOT / canonical_contract["resultPath"])
+    summary_fields = (
+        "finalMinusBaselineHeapAllocBytes",
+        "finalMinusBaselineHeapInuseBytes",
+        "finalMinusBaselineRssBytes",
+        "finalMinusBaselineGoroutines",
+        "heapAllocSlopeBytesPerWindow",
+        "heapInuseSlopeBytesPerWindow",
+        "rssSlopeBytesPerWindow",
+        "goroutineSlopePerWindow",
+    )
+    original_contract = validator.CONTRACT_PATH
+    with tempfile.TemporaryDirectory(prefix=".short-stability-slope-negative-", dir=ROOT) as tmp:
+        contract_path = Path(tmp) / "contract.json"
+        result_path = Path(tmp) / "result.json"
+        contract = copy.deepcopy(canonical_contract)
+        contract["resultPath"] = str(result_path.relative_to(ROOT))
+        contract_path.write_text(json.dumps(contract), encoding="utf-8")
+        validator.CONTRACT_PATH = contract_path
+        try:
+            result_path.write_text(json.dumps(canonical_result), encoding="utf-8")
+            if validator.main() != 0:
+                raise RuntimeError("short stability slope positive control failed")
+            for field in summary_fields:
+                mutated = copy.deepcopy(canonical_result)
+                mutated["scenario"][field] += 1
+                result_path.write_text(json.dumps(mutated), encoding="utf-8")
+                try:
+                    validator.main()
+                except validator.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError(f"short stability accepted forged {field}")
+            mutated = copy.deepcopy(canonical_result)
+            mutated["scenario"]["observations"][0]["heapAllocBytes"] += 1
+            result_path.write_text(json.dumps(mutated), encoding="utf-8")
+            try:
+                validator.main()
+            except validator.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError("short stability accepted observation/summary provenance drift")
+        finally:
+            validator.CONTRACT_PATH = original_contract
+    print("PASS: short stability slope/delta positive and 9 provenance negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_short_numeric_boundary()
     verify_short_timestamp_semantics()
+    verify_short_slope_and_delta_provenance()
     substitutions = {
         "CONTRACT_PATH": module.LOAD_PATH,
         "LOAD_PATH": module.CONTRACT_PATH,

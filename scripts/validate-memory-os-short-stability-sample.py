@@ -76,6 +76,24 @@ def positive_number(value: Any, field: str) -> float:
     return number
 
 
+def linear_slope(values: list[int]) -> float:
+    """Recompute the producer's least-squares slope from baseline and windows."""
+    n = len(values)
+    require(n >= 2, "short stability slope needs baseline and observations")
+    sum_x = sum(range(n))
+    sum_y = sum(values)
+    sum_xy = sum(index * value for index, value in enumerate(values))
+    sum_xx = sum(index * index for index in range(n))
+    denominator = n * sum_xx - sum_x * sum_x
+    require(denominator > 0, "short stability slope denominator invalid")
+    try:
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
+    except OverflowError:
+        raise ValidationFailure("short stability slope overflow") from None
+    require(math.isfinite(slope), "short stability derived slope must be finite")
+    return slope
+
+
 def is_ancestor(value: str) -> bool:
     return subprocess.run(
         ["git", "merge-base", "--is-ancestor", value, "HEAD"],
@@ -243,14 +261,18 @@ def main() -> int:
     observations = scenario.get("observations")
     require(isinstance(observations, list) and len(observations) == window_count,
             "short stability observation count drift")
+    metric_series = {
+        "heapAllocBytes": [baseline_heap_alloc],
+        "heapInuseBytes": [baseline_heap_inuse],
+        "rssBytes": [baseline_rss],
+        "goroutines": [baseline_goroutines],
+    }
     for index, observation in enumerate(observations, start=1):
         require(isinstance(observation, dict), f"observation {index} must be an object")
         require(observation.get("window") == index,
                 f"observation {index} window order drift")
-        integer(observation.get("heapAllocBytes"), f"observation[{index}].heapAllocBytes", 1)
-        integer(observation.get("heapInuseBytes"), f"observation[{index}].heapInuseBytes", 1)
-        integer(observation.get("rssBytes"), f"observation[{index}].rssBytes", 1)
-        integer(observation.get("goroutines"), f"observation[{index}].goroutines", 1)
+        for name, series in metric_series.items():
+            series.append(integer(observation.get(name), f"observation[{index}].{name}", 1))
         batch = observation.get("batch")
         require(isinstance(batch, dict), f"observation {index} batch missing")
         require(batch.get("requests") == requests_per_window and
@@ -274,18 +296,30 @@ def main() -> int:
         require(p50 <= p95 <= p99,
                 f"observation {index} latency percentiles are not monotonic")
 
-    for field in (
-        "finalMinusBaselineHeapAllocBytes", "finalMinusBaselineHeapInuseBytes",
-        "finalMinusBaselineRssBytes", "finalMinusBaselineGoroutines",
-    ):
-        require(isinstance(scenario.get(field), int) and
-                not isinstance(scenario.get(field), bool),
+    delta_bindings = {
+        "finalMinusBaselineHeapAllocBytes": "heapAllocBytes",
+        "finalMinusBaselineHeapInuseBytes": "heapInuseBytes",
+        "finalMinusBaselineRssBytes": "rssBytes",
+        "finalMinusBaselineGoroutines": "goroutines",
+    }
+    for field, metric in delta_bindings.items():
+        reported = scenario.get(field)
+        require(isinstance(reported, int) and not isinstance(reported, bool),
                 f"{field} must be an integer delta")
-    for field in (
-        "heapAllocSlopeBytesPerWindow", "heapInuseSlopeBytesPerWindow",
-        "rssSlopeBytesPerWindow", "goroutineSlopePerWindow",
-    ):
-        finite_number(scenario.get(field), field)
+        series = metric_series[metric]
+        require(reported == series[-1] - series[0],
+                f"{field} does not match final observation minus baseline")
+    slope_bindings = {
+        "heapAllocSlopeBytesPerWindow": "heapAllocBytes",
+        "heapInuseSlopeBytesPerWindow": "heapInuseBytes",
+        "rssSlopeBytesPerWindow": "rssBytes",
+        "goroutineSlopePerWindow": "goroutines",
+    }
+    for field, metric in slope_bindings.items():
+        reported = finite_number(scenario.get(field), field)
+        derived = linear_slope(metric_series[metric])
+        require(math.isclose(reported, derived, rel_tol=1e-9, abs_tol=1e-6),
+                f"{field} does not match measured baseline/window slope")
 
     assertions = scenario.get("assertions")
     require(isinstance(assertions, dict), "short stability assertions missing")
