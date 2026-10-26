@@ -90,7 +90,14 @@ def run_validator(path: Path, label: str, *args: str) -> None:
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    require(path.parent.is_dir(), "short stability atomic parent missing")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "short stability atomic symlink path rejected")
+    require(not path.exists() or path.is_file(), "short stability atomic target must be regular")
+    try:
+        path.parent.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise ReconcileFailure("short stability atomic path escaped repository") from None
     original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     tmp_path: Path | None = None
     try:
@@ -102,11 +109,11 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             delete=False,
         ) as handle:
             tmp_path = Path(handle.name)
+            if original_mode is not None:
+                os.fchmod(handle.fileno(), original_mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        if original_mode is not None:
-            os.chmod(tmp_path, original_mode)
         os.replace(tmp_path, path)
         tmp_path = None
     finally:

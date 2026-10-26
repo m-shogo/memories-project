@@ -8,6 +8,7 @@ import json
 import os
 import stat
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -96,6 +97,44 @@ def run_short_preservation_case(module: ModuleType) -> None:
             os.environ.pop("EXPECTED_COMMIT_SHA", None)
         else:
             os.environ["EXPECTED_COMMIT_SHA"] = previous_sha
+
+
+def run_short_atomic_path_negatives(module: ModuleType) -> None:
+    """The short authority writer must reject unsafe file identities intrinsically."""
+    with tempfile.TemporaryDirectory(prefix="short-atomic-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary"
+        secret = b"SYNTHETIC_SHORT_ATOMIC_CANARY"
+        canary.write_bytes(secret)
+        with tempfile.TemporaryDirectory(prefix=".short-atomic-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            valid = inside / "valid.json"
+            valid.write_bytes(b"before")
+            os.chmod(valid, 0o640)
+            module.atomic_write_bytes(valid, b"after")
+            require(valid.read_bytes() == b"after" and stat.S_IMODE(valid.stat().st_mode) == 0o640,
+                    "short atomic regular write/mode positive control failed")
+            linked = inside / "linked"
+            linked.symlink_to(canary)
+            parent_link = inside / "linked-parent"
+            parent_link.symlink_to(outside, target_is_directory=True)
+            directory = inside / "directory"
+            directory.mkdir()
+            fifo = inside / "fifo"
+            os.mkfifo(fifo)
+            for unsafe in (linked, parent_link / "canary", directory, fifo,
+                           inside / "missing-parent" / "target", canary):
+                try:
+                    module.atomic_write_bytes(unsafe, b"forbidden")
+                except module.ReconcileFailure:
+                    pass
+                else:
+                    raise NegativeFailure("short atomic writer accepted unsafe file identity")
+            require(stat.S_ISFIFO(fifo.stat().st_mode),
+                    "short atomic writer replaced rejected FIFO")
+            require(not list(inside.glob(".*.tmp")),
+                    "short atomic writer left temporary file residue")
+        require(canary.read_bytes() == secret, "short atomic writer changed external canary")
 
 
 def run_short_rollback_case(module: ModuleType) -> None:
@@ -339,6 +378,7 @@ def main() -> int:
     deletion = load_module("deletion_load_reconcile", DELETION_SCRIPT)
     run_short_preservation_case(short)
     run_short_rollback_case(short)
+    run_short_atomic_path_negatives(short)
     run_capacity_rollback_case(capacity)
     run_controlled_saturation_preservation_case(controlled)
     run_controlled_saturation_rollback_case(controlled)
