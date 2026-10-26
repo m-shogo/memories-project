@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -199,7 +200,10 @@ def run_controlled_saturation_preservation_case(module: ModuleType) -> None:
 
 
 def run_controlled_saturation_rollback_case(module: ModuleType) -> None:
-    originals = {path: path.read_bytes() for path in (CONTROLLED_CONTRACT, LOAD, STATUS)}
+    originals = {
+        path: (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+        for path in (CONTROLLED_CONTRACT, LOAD, STATUS)
+    }
     controlled = load_json(CONTROLLED_CONTRACT)
     load_contract = load_json(LOAD)
     status = load_json(STATUS)
@@ -210,25 +214,33 @@ def run_controlled_saturation_rollback_case(module: ModuleType) -> None:
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and len(source_sha) == 40, "controlled saturation result commitSha missing")
     original_validator = module.validate_post_write
+    synthetic_secret = "SYNTHETIC_CONTROLLED_SATURATION_PRIMARY_SECRET"
 
     def controlled_validator(expected_sha: str) -> None:
         require(expected_sha == source_sha, "controlled saturation rollback used wrong source SHA")
-        raise RuntimeError("controlled post-write saturation validation failure")
+        raise RuntimeError(synthetic_secret)
 
     module.validate_post_write = controlled_validator
     try:
         try:
             module.write_transactionally(controlled, load_contract, status, source_sha)
         except RuntimeError as exc:
-            require("controlled post-write saturation validation failure" in str(exc),
-                    f"unexpected controlled saturation rollback failure: {exc}")
+            require(type(exc) is RuntimeError
+                    and str(exc) == "controlled saturation authority transaction failed: RuntimeError"
+                    and exc.__suppress_context__,
+                    "controlled saturation rollback class-only failure boundary drift")
+            require(synthetic_secret not in str(exc),
+                    "controlled saturation rollback disclosed synthetic primary error")
         else:
             raise NegativeFailure("controlled saturation post-write failure was accepted")
     finally:
         module.validate_post_write = original_validator
 
-    for path, data in originals.items():
-        require(path.read_bytes() == data, f"controlled saturation rollback failed for {path.relative_to(ROOT)}")
+    for path, (data, mode) in originals.items():
+        require(path.read_bytes() == data and stat.S_IMODE(path.stat().st_mode) == mode,
+                f"controlled saturation rollback bytes/mode drift: {path.relative_to(ROOT)}")
+        require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                "controlled saturation rollback left temporary authority residue")
 
 
 def run_deletion_preservation_case(module: ModuleType) -> None:
