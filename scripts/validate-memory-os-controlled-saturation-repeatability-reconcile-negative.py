@@ -827,6 +827,15 @@ def run_repeatability_matrix_boundary_negatives() -> None:
 
 
 def run_repeatability_nonfinite_negatives() -> None:
+    workflow = (ROOT / ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml").read_text(encoding="utf-8")
+    for path in ("scripts/analyze-memory-os-controlled-saturation-repeatability.py",
+                 "scripts/validate-memory-os-controlled-saturation-repeatability.py",
+                 "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"):
+        trigger = '      - "' + path + '"'
+        if workflow.count(trigger) != 2:
+            raise RuntimeError("repeatability numeric source CI trigger drift: " + path)
+        if workflow.replace(trigger, "# removed numeric trigger", 1).count(trigger) == 2:
+            raise RuntimeError("repeatability numeric source trigger negative failed")
     def imported(name, path):
         spec = importlib.util.spec_from_file_location(name, ROOT / path)
         if spec is None or spec.loader is None:
