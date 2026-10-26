@@ -1170,6 +1170,46 @@ def run_repeatability_nonfinite_negatives() -> None:
             pass
         else:
             raise RuntimeError(f"repeatability analyzer accepted {label}")
+    # These fields were previously ignored by the repeatability consumer but
+    # are mandatory for every source ramp under the canonical validator.
+    for label, mutate in (
+        ("recovery probe failure", lambda run: run["scenario"]["postRampRecoveryProbe"].update(
+            {"successes": 0, "failures": 1, "statusClassCounts": {"5xx": 1}})),
+        ("pool delta mismatch", lambda run: run["scenario"]["steps"][0]["poolDelta"].update(
+            {"emptyAcquireCount": 4})),
+        ("final database accounting mismatch", lambda run: run["scenario"]["finalDatabaseAssertions"].update(
+            {"consumedAuthorizations": 0})),
+        ("timestamp chronology", lambda run: run.update({"generatedAt": "2020-01-01T00:00:00Z"})),
+        ("throughput duration mismatch", lambda run: run["scenario"]["steps"][0]["batch"].update(
+            {"throughput": 999999})),
+        ("latency percentile inversion", lambda run: run["scenario"]["steps"][0]["batch"].update(
+            {"latencyP50Ms": 99999})),
+    ):
+        fixture = copy.deepcopy(run)
+        mutate(fixture)
+        try:
+            analyzer.signal_for(fixture)
+        except analyzer.Fail:
+            pass
+        else:
+            raise RuntimeError(f"repeatability analyzer accepted canonical-only {label}")
+    original_canonical = analyzer.validate_canonical_ramp
+    calls = []
+    def synthetic_canonical_veto(document):
+        calls.append(document)
+        raise analyzer.Fail("synthetic canonical ramp veto")
+    analyzer.validate_canonical_ramp = synthetic_canonical_veto
+    try:
+        try:
+            analyzer.signal_for(run)
+        except analyzer.Fail:
+            pass
+        else:
+            raise RuntimeError("repeatability analyzer bypassed canonical ramp veto")
+        if len(calls) != 1 or calls[0] is not run:
+            raise RuntimeError("repeatability analyzer canonical ramp call count drift")
+    finally:
+        analyzer.validate_canonical_ramp = original_canonical
     for section, field, value in (
         ("batch", "throughput", float("inf")),
         ("batch", "latencyP95Ms", float("inf")),
@@ -1250,7 +1290,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator nonfinite, integrity, path and signal negatives (33 cases)")
+    print("PASS: repeatability analyzer/validator canonical ramp, nonfinite, integrity, path and signal negatives (40 cases)")
 
 
 

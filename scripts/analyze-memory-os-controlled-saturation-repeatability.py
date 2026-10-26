@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import os
@@ -132,7 +133,22 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 pass
 
 
+def validate_canonical_ramp(result: dict[str, Any]) -> None:
+    """Reapply the full canonical ramp validator at the repeatability consumer."""
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+    try:
+        spec = importlib.util.spec_from_file_location("repeatability_canonical_ramp", validator_path)
+        require(spec is not None and spec.loader is not None, "canonical ramp validator unavailable")
+        validator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(validator)
+        validator.validate_result_document(result)
+    except Exception as exc:
+        # Never surface validator exception text or potentially sensitive source material.
+        raise Fail(f"source ramp canonical validation failed: {type(exc).__name__}") from None
+
+
 def signal_for(result: dict[str, Any]) -> dict[str, Any]:
+    validate_canonical_ramp(result)
     env = result.get("environment")
     scenario = result.get("scenario")
     require(isinstance(env, dict) and isinstance(scenario, dict), "result environment/scenario missing")

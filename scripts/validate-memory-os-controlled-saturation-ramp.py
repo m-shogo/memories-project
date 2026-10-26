@@ -139,14 +139,13 @@ def validate_batch(batch: Any, concurrency: int, total: int, field: str) -> bool
     return failures == 0 and two_xx == total and five_xx == 0 and transport == 0
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--expected-commit-sha", default=os.environ.get("EXPECTED_COMMIT_SHA", ""))
-    parser.add_argument("--require-reconciled", action="store_true")
-    args = parser.parse_args()
+def validate_result_document(result: dict[str, Any], expected_commit_sha: str = "",
+                             require_reconciled: bool = False) -> dict[str, Any]:
+    """Validate any admitted ramp document against the canonical ramp contract.
 
+    This is a pure validation boundary: no readiness, evidence or status is written.
+    """
     contract = load(CONTRACT_PATH)
-    result = load(RESULT_PATH)
 
     require(contract.get("schemaVersion") == "memory-os-controlled-saturation-ramp.v1", "contract schema drift")
     require(contract.get("resultsSchemaVersion") == "memory-os-controlled-saturation-ramp-results.v1", "results schema binding drift")
@@ -175,9 +174,9 @@ def main() -> int:
     require(result.get("schemaVersion") == "memory-os-controlled-saturation-ramp-results.v1", "result schema drift")
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA_RE.fullmatch(commit_sha) is not None, "result commitSha must be full lowercase SHA")
-    if args.expected_commit_sha:
-        require(SHA_RE.fullmatch(args.expected_commit_sha) is not None, "expected commit SHA must be full lowercase SHA")
-        require(commit_sha == args.expected_commit_sha, "result is stale for expected source commit")
+    if expected_commit_sha:
+        require(SHA_RE.fullmatch(expected_commit_sha) is not None, "expected commit SHA must be full lowercase SHA")
+        require(commit_sha == expected_commit_sha, "result is stale for expected source commit")
 
     environment = result.get("environment")
     require(isinstance(environment, dict), "environment must be object")
@@ -303,7 +302,7 @@ def main() -> int:
         "productionReady",
     ):
         require(readiness.get(key) is False, f"contract readiness cannot enable {key}")
-    if args.require_reconciled:
+    if require_reconciled:
         for key in (
             "contractDefined",
             "runnerImplemented",
@@ -316,11 +315,28 @@ def main() -> int:
         require(readiness.get("localSaturationSignalObserved") is (first_failure is not None), "reconciled saturation signal drift")
         require(readiness.get("poolContentionSignalObserved") is (first_contention is not None), "reconciled pool contention signal drift")
 
+    return {
+        "commitSha": commit_sha,
+        "firstSaturationSignal": first_failure,
+        "firstPoolContentionSignal": first_contention,
+        "decision": expected_decision,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--expected-commit-sha", default=os.environ.get("EXPECTED_COMMIT_SHA", ""))
+    parser.add_argument("--require-reconciled", action="store_true")
+    args = parser.parse_args()
+    summary = validate_result_document(
+        load(RESULT_PATH), expected_commit_sha=args.expected_commit_sha,
+        require_reconciled=args.require_reconciled,
+    )
     print("Memory OS controlled saturation ramp validation PASS")
-    print(f"source: {commit_sha}")
-    print(f"first saturation signal: {first_failure}")
-    print(f"first pool contention signal: {first_contention}")
-    print(f"decision: {expected_decision}")
+    print(f"source: {summary['commitSha']}")
+    print(f"first saturation signal: {summary['firstSaturationSignal']}")
+    print(f"first pool contention signal: {summary['firstPoolContentionSignal']}")
+    print(f"decision: {summary['decision']}")
     print("production evidence: false")
     return 0
 
