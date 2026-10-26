@@ -162,8 +162,9 @@ def transaction_rollback_rejected() -> None:
         try:
             module.main()
         except module.Fail as exc:
-            if "synthetic post-write load projection rejection" not in str(exc):
-                raise AssertionError(f"unexpected transactional rejection: {exc}") from exc
+            if ("transaction failed: Fail" not in str(exc)
+                    or "synthetic post-write" in str(exc) or not exc.__suppress_context__):
+                raise AssertionError("local long-soak primary failure leaked raw exception") from None
         else:
             raise AssertionError("post-write load projection validator failure was accepted")
         if CANONICAL_LOAD.read_bytes() != original_bytes:
@@ -175,6 +176,75 @@ def transaction_rollback_rejected() -> None:
         module.validate_projected_load_authority = original_load_validator
         if CANONICAL_LOAD.read_bytes() != original_bytes or file_mode(CANONICAL_LOAD) != original_mode:
             module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes, original_mode)
+
+
+
+def validator_output_and_rollback_redaction_negative() -> None:
+    marker = "SYNTHETIC_LOCAL_LONG_SOAK_SECRET"
+    original_run = module.subprocess.run
+
+    def failed_validator(command, **kwargs):
+        if (kwargs.get("stdout") != subprocess.DEVNULL
+                or kwargs.get("stderr") != subprocess.DEVNULL or kwargs.get("check") is not True):
+            raise AssertionError("local long-soak validator output not suppressed")
+        raise subprocess.CalledProcessError(17, command, output=marker, stderr=marker)
+
+    try:
+        module.subprocess.run = failed_validator
+        for validator, label in ((module.SOAK_VALIDATOR, "sustained-soak"),
+                                 (module.LOAD_VALIDATOR, "load")):
+            try:
+                module.run_validator(validator, label)
+            except module.Fail as exc:
+                if marker in str(exc) or "exit 17" not in str(exc) or not exc.__suppress_context__:
+                    raise AssertionError("local long-soak validator leaked output or lost exit code") from None
+            else:
+                raise AssertionError("local long-soak accepted failing validator")
+        module.subprocess.run = lambda *args, **kwargs: (_ for _ in ()).throw(OSError(marker))
+        try:
+            module.run_validator(module.SOAK_VALIDATOR, "sustained-soak")
+        except module.Fail as exc:
+            if marker in str(exc) or "execution failed: OSError" not in str(exc) or not exc.__suppress_context__:
+                raise AssertionError("local long-soak validator startup leaked raw exception") from None
+        else:
+            raise AssertionError("local long-soak accepted validator startup failure")
+    finally:
+        module.subprocess.run = original_run
+
+    original_bytes = CANONICAL_LOAD.read_bytes()
+    original_mode = file_mode(CANONICAL_LOAD)
+    original_source_validator = module.validate_source_authority
+    original_load_validator = module.validate_projected_load_authority
+    original_atomic = module.atomic_replace_bytes
+    attempts = []
+    module.validate_source_authority = lambda: None
+    module.validate_projected_load_authority = lambda: (_ for _ in ()).throw(RuntimeError(marker))
+    try:
+        for fail_rollback in (False, True):
+            attempts.clear()
+            def synthetic_atomic(path, payload, mode=None):
+                attempts.append((path, mode))
+                if fail_rollback and len(attempts) == 2:
+                    raise OSError(marker)
+            module.atomic_replace_bytes = synthetic_atomic
+            try:
+                module.main()
+            except module.Fail as exc:
+                expected = ("rollback incomplete: OSError; primary RuntimeError" if fail_rollback
+                            else "transaction failed: RuntimeError")
+                if marker in str(exc) or expected not in str(exc) or not exc.__suppress_context__:
+                    raise AssertionError("local long-soak transaction leaked primary/rollback exception") from None
+            else:
+                raise AssertionError("local long-soak accepted synthetic transaction failure")
+            if len(attempts) != 2 or attempts[0][0] != CANONICAL_LOAD or attempts[1][0] != CANONICAL_LOAD:
+                raise AssertionError("local long-soak transaction did not attempt rollback")
+    finally:
+        module.validate_source_authority = original_source_validator
+        module.validate_projected_load_authority = original_load_validator
+        module.atomic_replace_bytes = original_atomic
+    if CANONICAL_LOAD.read_bytes() != original_bytes or file_mode(CANONICAL_LOAD) != original_mode:
+        raise AssertionError("local long-soak synthetic transaction changed canonical load authority")
+    print("PASS: local long-soak validator and transaction secret redaction (5 cases)")
 
 
 def delegated_local_soak_negatives_pass() -> None:
@@ -237,6 +307,7 @@ def main() -> int:
     atomic_replacement_failure_rejected()
     successful_replacement_preserves_mode()
     transaction_rollback_rejected()
+    validator_output_and_rollback_redaction_negative()
     delegated_local_soak_negatives_pass()
 
     print("Memory OS local long-soak load projection negative suite PASS")

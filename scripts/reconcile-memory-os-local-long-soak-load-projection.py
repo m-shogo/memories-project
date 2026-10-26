@@ -55,9 +55,12 @@ def validate_authorities() -> None:
 def run_validator(path: Path, label: str) -> None:
     validate_authorities()
     try:
-        subprocess.run([sys.executable, str(path)], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, str(path)], cwd=ROOT, check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError as exc:
-        raise Fail(f"canonical {label} rejected authority: {exc}") from exc
+        raise Fail(f"canonical {label} rejected authority (exit {exc.returncode}); raw output withheld") from None
+    except OSError as exc:
+        raise Fail(f"canonical {label} validator execution failed: {type(exc).__name__}") from None
 
 
 def validate_source_authority() -> None:
@@ -229,9 +232,17 @@ def main() -> int:
     try:
         atomic_replace_bytes(LOAD_PATH, (json.dumps(load_contract, indent=2) + "\n").encode("utf-8"))
         validate_projected_load_authority()
-    except BaseException:
-        atomic_replace_bytes(LOAD_PATH, original_load_bytes, original_load_mode)
-        raise
+    except BaseException as primary_error:
+        try:
+            atomic_replace_bytes(LOAD_PATH, original_load_bytes, original_load_mode)
+        except BaseException as rollback_error:
+            raise Fail(
+                "local long-soak load projection rollback incomplete: "
+                f"{type(rollback_error).__name__}; primary {type(primary_error).__name__}"
+            ) from None
+        raise Fail(
+            f"local long-soak load projection transaction failed: {type(primary_error).__name__}"
+        ) from None
     print(f"{SCENARIO_ID} load projection reconciled: {'registered' if first_run else 'withheld'}")
     print(f"legacy {LEGACY_ALIAS_ID} alias present after reconcile: false")
     print(f"local sustained-soak evidence: {str(local_evidence).lower()}")
