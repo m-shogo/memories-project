@@ -1250,7 +1250,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator nonfinite, integrity, path and signal negatives (32 cases)")
+    print("PASS: repeatability analyzer/validator nonfinite, integrity, path and signal negatives (33 cases)")
 
 
 
