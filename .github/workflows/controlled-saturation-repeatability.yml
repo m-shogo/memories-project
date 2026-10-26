@@ -293,7 +293,7 @@ jobs:
           a="docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-a.v1.json"
           b="docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-b.v1.json"
           test -f "$a" && test -f "$b"
-          python scripts/analyze-memory-os-controlled-saturation-repeatability.py --run-a "$a" --run-b "$b"
+          python scripts/analyze-memory-os-controlled-saturation-repeatability.py --run-a "$a" --run-b "$b" --expected-commit-sha "${GITHUB_SHA}"
           python scripts/validate-memory-os-controlled-saturation-repeatability.py
           python scripts/reconcile-memory-os-controlled-saturation-repeatability.py
           python scripts/validate-memory-os-controlled-saturation-repeatability.py
