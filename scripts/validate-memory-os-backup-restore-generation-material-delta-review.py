@@ -11,6 +11,7 @@ not create review evidence or production authority.
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 from datetime import datetime
@@ -66,14 +67,55 @@ def enforce_runtime_authorities() -> None:
         require_exact_repo_file(path, expected, field)
 
 
-def load_json(path: Path, field: str) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"{field} unreadable or invalid JSON: {exc}") from exc
-    require(isinstance(value, dict), f"{field} root must be object")
-    return value
+MAX_JSON_BYTES = 1024 * 1024
 
+
+def load_json(path: Path, field: str) -> dict[str, Any]:
+    """Reject ambiguous or oversized material-delta review JSON before admission."""
+    require(isinstance(path, Path) and path.is_absolute(), "material-delta JSON path invalid")
+    try:
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("material-delta JSON path missing or unsafe") from None
+    require(
+        resolved == path and path.is_file() and not path.is_symlink(),
+        "material-delta JSON path missing or unsafe",
+    )
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "material-delta JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("material-delta JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "material-delta JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "material-delta JSON integer too large")
+        return int(value)
+
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "material-delta JSON size limit exceeded")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("material-delta JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "material-delta JSON root must be object")
+    return value
 
 def validate_contract_authority() -> dict[str, Any]:
     require_exact_repo_file(CONTRACT, CONTRACT_REL, "generation evidence contract")

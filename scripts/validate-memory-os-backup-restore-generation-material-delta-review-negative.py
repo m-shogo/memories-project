@@ -147,8 +147,60 @@ def expect_payload_fail(module, mutate, label: str, expected: str) -> None:
     module.validate_material_delta_payload(row, base_payload(module), 0, fields)
 
 
+def prove_material_delta_json_reader(module) -> None:
+    """Exercise the actual material-delta reader on disposable fixtures."""
+    before = (module.CONTRACT.read_bytes(), module.REGISTRY.read_bytes())
+    with tempfile.TemporaryDirectory(prefix="memory-os-material-delta-json-", dir=ROOT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(module.load_json(path, "synthetic") == {"safe": True, "nested": {"count": 1}}, "material-delta JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "material-delta JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "material-delta JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "material-delta JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "material-delta JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "material-delta JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "material-delta JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "material-delta JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * module.MAX_JSON_BYTES + b'"}', "material-delta JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "material-delta JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"synthetic-secret",', "material-delta JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "material-delta JSON root must be object"),
+        )
+        def rejected(candidate, expected: str, label: str) -> None:
+            try:
+                module.load_json(candidate, "synthetic-secret")
+            except module.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong material-delta JSON rejection boundary")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe material-delta JSON accepted")
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "material-delta JSON path missing or unsafe", "symlink")
+        rejected(Path(directory), "material-delta JSON path missing or unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "material-delta JSON path missing or unsafe", "missing")
+        rejected("candidate.json", "material-delta JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-material-delta-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "escaped.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "material-delta JSON path missing or unsafe", "external symlink")
+            require(canary.read_bytes() == positive, "material-delta JSON reader modified external canary")
+        require(path.read_bytes() == positive, "material-delta JSON reader modified positive fixture")
+    require((module.CONTRACT.read_bytes(), module.REGISTRY.read_bytes()) == before, "material-delta JSON reader mutated canonical authorities")
+    print("PASS: actual material-delta JSON reader positive and 16 fail-closed negatives")
+
+
 def main() -> int:
     module = load_validator()
+    prove_material_delta_json_reader(module)
 
     for field, substitute in (
         ("CONTRACT", module.REGISTRY),
