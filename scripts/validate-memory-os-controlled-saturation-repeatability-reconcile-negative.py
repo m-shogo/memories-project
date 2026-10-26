@@ -723,10 +723,54 @@ def run_authority_path_negatives(module) -> None:
     print("PASS: repeatability authority ancestor symlink/repository escape negatives (3 cases)")
 
 
+
+def run_repeatability_runref_path_negatives() -> None:
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+    source = validator_path.read_text(encoding="utf-8")
+    if 'run_path = safe_repo_ref(ref, "runRef")' not in source or 'run = load(run_path)' not in source:
+        raise RuntimeError("repeatability runRef did not use canonical safe path resolver")
+    spec = importlib.util.spec_from_file_location("repeatability_validator_path_negative", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("repeatability validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    good = "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
+    if validator.safe_repo_ref(good, "test") != ROOT / good:
+        raise RuntimeError("canonical repeatability reference rejected")
+    with tempfile.TemporaryDirectory(prefix="repeatability-external-ref-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_bytes(b"SYNTHETIC_REPEATABILITY_REF_CANARY")
+        with tempfile.TemporaryDirectory(prefix=".repeatability-ref-negative-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            refs = (
+                linked_file.relative_to(ROOT).as_posix(),
+                (linked_parent / "canary.json").relative_to(ROOT).as_posix(),
+                "../external.json",
+                str(canary),
+                (inside / "missing.json").relative_to(ROOT).as_posix(),
+            )
+            for ref in refs:
+                try:
+                    validator.safe_repo_ref(ref, "runRef")
+                except validator.Fail:
+                    pass
+                else:
+                    raise RuntimeError("repeatability unsafe runRef accepted")
+        if canary.read_bytes() != b"SYNTHETIC_REPEATABILITY_REF_CANARY":
+            raise RuntimeError("repeatability runRef negative changed external canary")
+    print("PASS: repeatability runRef symlink/ancestor/traversal/absolute/missing negatives (5 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
     run_authority_path_negatives(module)
+    run_repeatability_runref_path_negatives()
     run_prewrite_failure(module)
     run_postwrite_failure(module)
     run_atomic_replace_failure(module)
