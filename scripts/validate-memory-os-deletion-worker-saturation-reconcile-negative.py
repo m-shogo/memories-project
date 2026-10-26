@@ -146,6 +146,7 @@ def main() -> int:
     expect_callable_rejection(reconciler, "atomic_write_bytes", lambda *args, **kwargs: None)
     expect_callable_rejection(reconciler, "load_validator", lambda: None)
     expect_callable_rejection(reconciler, "validate_canonical", lambda *args, **kwargs: None)
+    expect_callable_rejection(reconciler, "require_strict_local_readiness", lambda *args, **kwargs: None)
     expect_import_transport_rejection(reconciler)
     expect_atomic_transport_rejection(reconciler)
 
@@ -214,6 +215,31 @@ def main() -> int:
             raise AssertionError(f"rollback failure injection was not exercised: {fsync_calls}")
         if list(reconciler.CONTRACT_PATH.parent.glob(f".{reconciler.CONTRACT_PATH.name}.*.tmp")):
             raise AssertionError("rollback failure left atomic temporary authority")
+
+        # Prove the reconciler's own prewrite guard, independently of validator policy.
+        permissive_validator = (
+            "def validate_contract(candidate): pass\\n"
+            "def validate_result(candidate, expected_sha): pass\\n"
+        )
+        reconciler.VALIDATOR_PATH.write_text(permissive_validator, encoding="utf-8")
+        for key in ("productionDependenciesTested", "independentReviewCompleted", "productionReady"):
+            for stronger in (True, None, 0, 1, "false", [], {}):
+                candidate = json.loads(original_contract.decode("utf-8"))
+                candidate["readiness"][key] = stronger
+                payload = (json.dumps(candidate, indent=2) + "\\n").encode("utf-8")
+                reconciler.atomic_write_bytes(reconciler.CONTRACT_PATH, payload)
+                before = reconciler.CONTRACT_PATH.read_bytes()
+                try:
+                    reconciler.main()
+                except reconciler.Fail as exc:
+                    if "local proof cannot downgrade readiness." + key not in str(exc):
+                        raise AssertionError("unexpected stronger-readiness rejection: " + key) from None
+                else:
+                    raise AssertionError("reconciler downgraded stronger readiness: " + key)
+                if reconciler.CONTRACT_PATH.read_bytes() != before:
+                    raise AssertionError("stronger-readiness prewrite guard mutated contract: " + key)
+                if list(reconciler.CONTRACT_PATH.parent.glob(f".{reconciler.CONTRACT_PATH.name}.*.tmp")):
+                    raise AssertionError("stronger-readiness prewrite guard left temp authority")
     finally:
         reconciler.atomic_write_bytes(reconciler.CONTRACT_PATH, original_contract)
         reconciler.VALIDATOR_PATH.write_bytes(original_validator)
@@ -322,7 +348,7 @@ def main() -> int:
             if list(Path(tmp).rglob(".*.tmp")):
                 raise AssertionError("unsafe atomic writer left temp residue: " + label)
 
-    print("PASS: deletion-worker saturation authority, secret-free validator/rollback diagnostics, mode-preserving atomic publication, path rejection and rollback are fail-closed")
+    print("PASS: deletion-worker saturation authority, secret-free validator/rollback diagnostics, stronger-readiness prewrite, mode-preserving atomic publication, path rejection and rollback are fail-closed")
     return 0
 
 
