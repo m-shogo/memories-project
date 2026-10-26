@@ -6,6 +6,7 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml"
+      - ".github/workflows/controlled-saturation-repeatability.yml"
       - "contracts/operations/controlled-saturation-ramp-contract.v1.json"
       - "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
@@ -28,6 +29,7 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml"
+      - ".github/workflows/controlled-saturation-repeatability.yml"
       - "contracts/operations/controlled-saturation-ramp-contract.v1.json"
       - "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
