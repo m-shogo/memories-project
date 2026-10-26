@@ -164,8 +164,14 @@ def main() -> int:
         write(STATUS, status)
         validate(LOAD_VALIDATOR)
         validate(OPERABILITY_VALIDATOR)
-    except BaseException:
-        atomic_write_bytes(STATUS, status_bytes)
+    except BaseException as primary:
+        try:
+            atomic_write_bytes(STATUS, status_bytes)
+        except BaseException as rollback:
+            raise RuntimeError(
+                "load missing-evidence post-write validation failed; rollback incomplete: "
+                + type(rollback).__name__
+            ) from primary
         raise
 
     print("Memory OS load missing-evidence reconciliation PASS")

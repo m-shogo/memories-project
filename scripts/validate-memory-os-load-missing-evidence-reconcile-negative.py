@@ -130,6 +130,46 @@ def substituted_atomic_targets_are_rejected(module: ModuleType) -> None:
         require(not list(root.rglob(".*.tmp")), "missing-evidence rejected target left temp residue")
 
 
+def rollback_failure_is_explicit(module: ModuleType, original_status: bytes) -> None:
+    original_validate = module.validate
+    original_writer = module.atomic_write_bytes
+    calls: list[Path] = []
+
+    def fail_after_write(path: Path) -> None:
+        if path == module.OPERABILITY_VALIDATOR:
+            raise RuntimeError("synthetic missing-evidence post-write rejection")
+
+    def reject_rollback(path: Path, data: bytes) -> None:
+        calls.append(path)
+        if len(calls) == 2:
+            raise OSError("synthetic missing-evidence rollback denied")
+        original_writer(path, data)
+
+    module.validate = fail_after_write
+    module.atomic_write_bytes = reject_rollback
+    try:
+        try:
+            module.main()
+        except RuntimeError as exc:
+            require("rollback incomplete: OSError" in str(exc),
+                    f"missing-evidence rollback failure was not explicit: {exc}")
+            require(isinstance(exc.__cause__, RuntimeError) and
+                    "synthetic missing-evidence post-write rejection" in str(exc.__cause__),
+                    "missing-evidence rollback failure masked primary cause")
+        else:
+            raise NegativeFailure("missing-evidence incomplete rollback was accepted")
+        require(calls == [module.STATUS, module.STATUS],
+                f"missing-evidence writer/rollback order drift: {calls}")
+    finally:
+        module.validate = original_validate
+        module.atomic_write_bytes = original_writer
+        original_writer(STATUS, original_status)
+    require(STATUS.read_bytes() == original_status,
+            "missing-evidence synthetic rollback failure left canonical status mutated")
+    require(not list(STATUS.parent.glob(f".{STATUS.name}.*.tmp")),
+            "missing-evidence synthetic rollback failure left temporary files")
+
+
 def main() -> int:
     module = load_module()
     canonical_bytes = STATUS.read_bytes()
@@ -137,6 +177,7 @@ def main() -> int:
     authority_substitution_rejected(module)
     atomic_replacement_is_fail_closed(module)
     substituted_atomic_targets_are_rejected(module)
+    rollback_failure_is_explicit(module, canonical_bytes)
     status = load_json(STATUS)
     area = next(
         (row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-006"),
