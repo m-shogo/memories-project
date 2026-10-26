@@ -2,6 +2,8 @@ name: Reconcile Live Load Formatting
 
 on:
   pull_request:
+    branches:
+      - so
     paths:
       - ".github/workflows/reconcile-live-load-gofmt.yml"
       - "services/import-api/internal/httpserver/live_load_test.go"
@@ -24,23 +26,35 @@ concurrency:
 
 jobs:
   validate-pr:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'so'
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout exact pull request head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with:
           go-version: "1.23.x"
           cache: false
+
+      - name: Verify exact clean PR source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_EVENT_NAME:-}" = "pull_request"
+          test "${GITHUB_BASE_REF:-}" = "so"
+          [[ "${PR_HEAD_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          test -z "$(git status --porcelain)"
 
       - name: Validate canonical formatting read-only
         run: |
@@ -59,7 +73,8 @@ jobs:
 
   format:
     if: >-
-      github.event_name != 'pull_request' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/so' &&
       (github.event_name != 'push' || !contains(github.event.head_commit.message, 'style(load): format live checkpoint tests'))
     permissions:
       contents: write
@@ -67,13 +82,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout exact event source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with:
           go-version: "1.23.x"
           cache: false
@@ -81,7 +97,10 @@ jobs:
       - name: Capture exact source
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA:-}"
           test -z "$(git status --porcelain)"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
