@@ -662,10 +662,28 @@ def run_repeatability_rebase_cas_negatives() -> None:
         for critical in ("controlled_saturation_ramp_test.go", "live_object_load_test.go",
                          "services/import-api/internal/pgrepo", "services/import-api/internal/upload",
                          "services/import-api/internal/objectstore", "infra/postgresql/security",
-                         "controlled-saturation-ramp-contract.v1.json"):
+                         "controlled-saturation-ramp-contract.v1.json",
+                         "controlled-saturation-repeatability-contract.v1.json",
+                         ".github/workflows/controlled-saturation-repeatability.yml",
+                         "scripts/analyze-memory-os-controlled-saturation-repeatability.py",
+                         "scripts/validate-memory-os-controlled-saturation-repeatability.py",
+                         "scripts/validate-memory-os-controlled-saturation-ramp.py",
+                         "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"):
             if critical not in value:
                 raise RuntimeError("repeatability critical source coverage drift")
     policy(script)
+    for critical in ("scripts/analyze-memory-os-controlled-saturation-repeatability.py",
+                     "scripts/validate-memory-os-controlled-saturation-repeatability.py",
+                     "contracts/operations/controlled-saturation-repeatability-contract.v1.json"):
+        mutated = script.replace("            " + critical + "\n", "", 1)
+        if mutated == script:
+            raise RuntimeError("repeatability critical-source negative fixture missing")
+        try:
+            policy(mutated)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("repeatability critical source removal unexpectedly accepted")
     for marker in ("\nverify_critical_source\n", "\n  verify_critical_source\n"):
         mutated = script.replace(marker, "\n# removed CAS guard\n", 1)
         try:
