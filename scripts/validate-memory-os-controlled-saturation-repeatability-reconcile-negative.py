@@ -506,8 +506,11 @@ def run_repeatability_source_identity_negatives() -> None:
         if workflow.count(marker) != 1:
             raise RuntimeError("repeatability source gate missing or duplicated")
         start = workflow.index("        run: |\n", workflow.index(marker)) + len("        run: |\n")
-        end = workflow.find("\n      - name:", start)
-        lines = workflow[start:end if end >= 0 else len(workflow)].splitlines()
+        # Stop at every YAML step, including unnamed `uses:` steps.
+        end = workflow.find("\n      - ", start)
+        if end < 0:
+            raise RuntimeError("repeatability source gate next-step boundary missing")
+        lines = workflow[start:end].splitlines()
         if not lines or any(line and not line.startswith("          ") for line in lines):
             raise RuntimeError("repeatability source gate indentation drift")
         return "\n".join(line[10:] if line else "" for line in lines) + "\n"
