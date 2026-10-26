@@ -99,10 +99,10 @@ def validate_canonical(validator, contract: dict[str, Any], expected: str) -> No
     try:
         validator.validate_contract(contract)
         validator.validate_result(contract, expected)
-    except RuntimeError as exc:
-        if exc.__class__.__name__ == "Fail":
-            raise Fail(f"canonical deletion-worker saturation authority invalid: {exc}") from exc
-        raise
+    except Exception as exc:
+        raise Fail(
+            "canonical deletion-worker saturation authority invalid: " + type(exc).__name__
+        ) from None
 
 
 CANONICAL_VALIDATE_CANONICAL = validate_canonical
@@ -162,9 +162,17 @@ def main() -> int:
         atomic_write_bytes(CONTRACT_PATH, payload)
         enforce_runtime_authorities()
         validate_canonical(validator, load(CONTRACT_PATH), expected)
-    except Exception:
-        atomic_write_bytes(CONTRACT_PATH, original_contract)
-        raise
+    except Exception as exc:
+        try:
+            atomic_write_bytes(CONTRACT_PATH, original_contract)
+        except BaseException as rollback_exc:
+            raise Fail(
+                "deletion-worker saturation post-write validation failed: " + type(exc).__name__
+                + "; rollback incomplete: " + type(rollback_exc).__name__
+            ) from None
+        raise Fail(
+            "deletion-worker saturation post-write validation failed: " + type(exc).__name__
+        ) from None
 
     print("Memory OS deletion-worker saturation authority reconciled")
     print("multi-account worker saturation proven: true")
@@ -177,6 +185,13 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (Fail, FileNotFoundError, json.JSONDecodeError) as exc:
+    except Fail as exc:
         print(f"DELETION WORKER SATURATION RECONCILE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    except Exception as exc:
+        print(
+            "DELETION WORKER SATURATION RECONCILE FAILED: unexpected "
+            + type(exc).__name__ + "; raw details withheld",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
