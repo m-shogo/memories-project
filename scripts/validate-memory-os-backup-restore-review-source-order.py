@@ -168,10 +168,34 @@ def first_commit_for_path(ref: str, field: str) -> str:
 
 
 def creation_blob(commit_sha: str, ref: str, field: str) -> bytes:
-    completed = subprocess.run(["git", "show", f"{commit_sha}:{ref}"], cwd=ROOT,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0,
-            f"cannot inspect {field} creation blob: {completed.stderr.decode('utf-8', errors='replace').strip()}")
+    require(isinstance(commit_sha, str) and SHA40.fullmatch(commit_sha) is not None,
+            f"{field} creation commit invalid")
+    object_ref = f"{commit_sha}:{ref}"
+    # Bound the immutable object size before asking Git to return its raw bytes.
+    try:
+        size_result = subprocess.run(
+            ["git", "cat-file", "-s", object_ref], cwd=ROOT, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot inspect {field} creation blob") from None
+    require(type(size_result.returncode) is int and size_result.returncode == 0
+            and isinstance(size_result.stdout, str)
+            and re.fullmatch(r"[0-9]{1,7}\\n?", size_result.stdout) is not None,
+            f"cannot inspect {field} creation blob")
+    expected_bytes = int(size_result.stdout.strip())
+    require(0 < expected_bytes <= MAX_JSON_BYTES, f"{field} creation blob size limit exceeded")
+    try:
+        completed = subprocess.run(
+            ["git", "show", object_ref], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot inspect {field} creation blob") from None
+    require(type(completed.returncode) is int and completed.returncode == 0
+            and isinstance(completed.stdout, bytes),
+            f"cannot inspect {field} creation blob")
+    require(len(completed.stdout) == expected_bytes, f"{field} creation blob size mismatch")
     return completed.stdout
 
 

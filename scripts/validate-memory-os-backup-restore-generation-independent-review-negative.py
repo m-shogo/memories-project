@@ -896,12 +896,89 @@ def prove_source_order_bounded_git_output(module) -> None:
     print("PASS: source-order Git creation history bounded/private with eight real-reader negatives")
 
 
+
+def prove_source_order_bounded_creation_blob(module) -> None:
+    """Verify actual creation-blob Git transport with disposable private canaries."""
+    source_order = module.load_review_source_order_validator()
+    original_run = source_order.subprocess.run
+    field = "syntheticSecurityReview"
+    object_ref = "a" * 40 + ":docs/evidence/backup-restore/security/synthetic.json"
+    marker = "PRIVATE_CREATION_BLOB_MARKER_DO_NOT_LOG"
+    payload = b'{"reviewResult":"APPROVED"}\\n'
+    state = {"size": str(len(payload)) + "\\n", "size_exit": 0, "size_error": None,
+             "show": payload, "show_exit": 0, "show_error": None}
+    calls = []
+
+    def fake_git(args, **kwargs):
+        phase = args[1]
+        require(phase in ("cat-file", "show"), "creation blob unexpected Git command")
+        require(kwargs.get("cwd") == source_order.ROOT and kwargs.get("timeout") == 20
+                and kwargs.get("check") is False, "creation blob Git timeout/context drift")
+        require(kwargs.get("stdout") is subprocess.PIPE and kwargs.get("stderr") is subprocess.DEVNULL,
+                "creation blob Git stderr privacy drift")
+        calls.append(phase)
+        if phase == "cat-file":
+            require(args == ["git", "cat-file", "-s", object_ref] and kwargs.get("text") is True,
+                    "creation blob size preflight drift")
+            if state["size_error"] is not None:
+                raise state["size_error"]
+            return subprocess.CompletedProcess(args, state["size_exit"],
+                                               stdout=state["size"], stderr=marker)
+        require(args == ["git", "show", object_ref] and kwargs.get("text") is None,
+                "creation blob byte-exact Git show drift")
+        if state["show_error"] is not None:
+            raise state["show_error"]
+        return subprocess.CompletedProcess(args, state["show_exit"],
+                                           stdout=state["show"], stderr=marker)
+
+    source_order.subprocess.run = fake_git
+    try:
+        require(source_order.creation_blob("a" * 40, object_ref.split(":", 1)[1], field) == payload,
+                "creation blob bounded positive control failed")
+        cases = [
+            ("oversized", {"size": str(source_order.MAX_JSON_BYTES + 1) + "\\n"},
+             f"{field} creation blob size limit exceeded", 1),
+            ("zero", {"size": "0\\n"}, f"{field} creation blob size limit exceeded", 1),
+            ("invalid-size", {"size": marker + "\\n"}, f"cannot inspect {field} creation blob", 1),
+            ("nonzero-size", {"size_exit": 1}, f"cannot inspect {field} creation blob", 1),
+            ("timeout-size", {"size_error": subprocess.TimeoutExpired(["git", "cat-file"], 20, stderr=marker)},
+             f"cannot inspect {field} creation blob", 1),
+            ("unavailable-size", {"size_error": OSError(marker)}, f"cannot inspect {field} creation blob", 1),
+            ("mismatch", {"show": b"changed"}, f"{field} creation blob size mismatch", 2),
+            ("nonzero-show", {"show_exit": 1}, f"cannot inspect {field} creation blob", 2),
+            ("nonbytes-show", {"show": marker}, f"cannot inspect {field} creation blob", 2),
+            ("timeout-show", {"show_error": subprocess.TimeoutExpired(["git", "show"], 20, stderr=marker)},
+             f"cannot inspect {field} creation blob", 2),
+            ("unavailable-show", {"show_error": OSError(marker)}, f"cannot inspect {field} creation blob", 2),
+        ]
+        for label, changes, expected, expected_calls in cases:
+            state.update({"size": str(len(payload)) + "\\n", "size_exit": 0, "size_error": None,
+                          "show": payload, "show_exit": 0, "show_error": None})
+            state.update(changes)
+            before = len(calls)
+            try:
+                source_order.creation_blob("a" * 40, object_ref.split(":", 1)[1], field)
+            except source_order.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"creation blob {label} wrong/private failure class")
+            else:
+                raise Fail(f"creation blob {label} unexpectedly accepted")
+            require(len(calls) - before == expected_calls,
+                    f"creation blob {label} failed to stop at the intended Git phase")
+        require(len(calls) == 2 + sum(case[3] for case in cases),
+                "creation blob Git transport negative multiplicity drift")
+    finally:
+        source_order.subprocess.run = original_run
+    print("PASS: source-order creation blob bounded/private with eleven real-reader negatives")
+
+
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
     module = load_validator()
     prove_runtime_review_pair_controls()
     prove_source_order_bounded_git_output(module)
+    prove_source_order_bounded_creation_blob(module)
     prove_independent_review_json_reader(module)
     expect_source_order_execution(module)
 
