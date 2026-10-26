@@ -210,16 +210,27 @@ def main() -> int:
         max_after = integer(after.get("maxConns"), f"steps[{index}].poolAfter.maxConns")
         require(max_before > 0 and max_before == max_after, f"steps[{index}] pool maxConns drift")
         for name in ("totalConns", "acquiredConns", "idleConns", "emptyAcquireCount", "canceledAcquireCount"):
-            integer(before.get(name), f"steps[{index}].poolBefore.{name}")
-            integer(after.get(name), f"steps[{index}].poolAfter.{name}")
-        number(before.get("acquireDurationMs"), f"steps[{index}].poolBefore.acquireDurationMs")
-        number(after.get("acquireDurationMs"), f"steps[{index}].poolAfter.acquireDurationMs")
+            before_count = integer(before.get(name), f"steps[{index}].poolBefore.{name}")
+            after_count = integer(after.get(name), f"steps[{index}].poolAfter.{name}")
+            require(before_count >= 0 and after_count >= 0,
+                    f"steps[{index}] pool counters must be non-negative")
+        for label, snapshot in (("poolBefore", before), ("poolAfter", after)):
+            require(snapshot["totalConns"] <= snapshot["maxConns"],
+                    f"steps[{index}].{label} total connections exceed pool maximum")
+            require(snapshot["acquiredConns"] + snapshot["idleConns"] <= snapshot["totalConns"],
+                    f"steps[{index}].{label} pool connection accounting mismatch")
+        before_duration = number(before.get("acquireDurationMs"), f"steps[{index}].poolBefore.acquireDurationMs")
+        after_duration = number(after.get("acquireDurationMs"), f"steps[{index}].poolAfter.acquireDurationMs")
+        require(after_duration >= before_duration, f"steps[{index}] cumulative pool duration decreased")
         empty_delta = integer(delta.get("emptyAcquireCount"), f"steps[{index}].poolDelta.emptyAcquireCount")
         canceled_delta = integer(delta.get("canceledAcquireCount"), f"steps[{index}].poolDelta.canceledAcquireCount")
         duration_delta = number(delta.get("acquireDurationMs"), f"steps[{index}].poolDelta.acquireDurationMs")
         require(empty_delta >= 0 and canceled_delta >= 0 and duration_delta >= 0, f"steps[{index}] pool deltas must be non-negative")
         require(empty_delta == after["emptyAcquireCount"] - before["emptyAcquireCount"], f"steps[{index}] empty-acquire delta mismatch")
         require(canceled_delta == after["canceledAcquireCount"] - before["canceledAcquireCount"], f"steps[{index}] canceled-acquire delta mismatch")
+        require(math.isclose(duration_delta, after_duration - before_duration,
+                             rel_tol=1e-9, abs_tol=1e-6),
+                f"steps[{index}] acquire-duration delta mismatch")
         if empty_delta > 0 and first_contention is None:
             first_contention = expected_concurrency
 

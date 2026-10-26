@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import tempfile
 from pathlib import Path
 
@@ -165,10 +166,54 @@ def verify_ramp_timestamp_semantics() -> None:
     print("PASS: controlled saturation RFC3339 UTC positive and 7 timestamp negatives")
 
 
+
+def verify_pool_snapshot_and_delta_accounting() -> None:
+    """Use the canonical ramp validator on disposable full-result pool mutations."""
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+    spec = importlib.util.spec_from_file_location("controlled_saturation_pool_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("controlled saturation pool validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(validator.RESULT_PATH)
+    cases = (
+        ("negative total", ("poolBefore", "totalConns"), -1),
+        ("negative acquired", ("poolBefore", "acquiredConns"), -1),
+        ("negative canceled", ("poolAfter", "canceledAcquireCount"), -1),
+        ("negative empty", ("poolBefore", "emptyAcquireCount"), -1),
+        ("total exceeds max", ("poolBefore", "totalConns"), 100),
+        ("acquired exceeds total", ("poolBefore", "acquiredConns"), 100),
+        ("idle exceeds total", ("poolAfter", "idleConns"), 100),
+        ("duration delta mismatch", ("poolDelta", "acquireDurationMs"), 999),
+    )
+    original_result_path = validator.RESULT_PATH
+    with tempfile.TemporaryDirectory(prefix=".saturation-pool-negative-", dir=ROOT) as tmp:
+        result_path = Path(tmp) / "synthetic-ramp.json"
+        validator.RESULT_PATH = result_path
+        try:
+            result_path.write_text(json.dumps(canonical), encoding="utf-8")
+            if validator.main() != 0:
+                raise RuntimeError("controlled saturation pool positive control failed")
+            for label, keys, value in cases:
+                mutated = copy.deepcopy(canonical)
+                mutated["scenario"]["steps"][0][keys[0]][keys[1]] = value
+                result_path.write_text(json.dumps(mutated), encoding="utf-8")
+                try:
+                    validator.main()
+                except validator.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError(f"controlled saturation accepted {label}")
+        finally:
+            validator.RESULT_PATH = original_result_path
+    print("PASS: controlled saturation pool full-validator positive and 8 negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_nonfinite_ramp_measurements()
     verify_ramp_timestamp_semantics()
+    verify_pool_snapshot_and_delta_accounting()
     substitutions = {
         "CONTROLLED_CONTRACT": module.LOAD_CONTRACT,
         "LOAD_CONTRACT": module.CONTROLLED_CONTRACT,
