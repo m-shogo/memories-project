@@ -135,6 +135,33 @@ def normalize_and_validate_authority() -> None:
     subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
 
 
+
+CONTAINER_KILL_CANONICAL_REASON = (
+    "post-fence former-session load, all primary account-bound pre-fence surfaces, multi-account worker saturation, "
+    "lease-expiry/partial-object recovery and Docker worker-container kill/replacement pass locally; raw process-kill readiness, "
+    "physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
+)
+
+def preserve_container_deferred_reason(reason, readiness: dict) -> bool:
+    if reason != CONTAINER_KILL_CANONICAL_REASON:
+        return False
+    for key in (
+        "deletionContainerKillRecoveryProven",
+        "deletionReplacementContainerRecoveryProven",
+        "deletionLeaseExpiryRecoverySimulationProven",
+        "deletionPartialObjectErasureRecoveryProven",
+        "primaryAccountBoundPreFenceLinearizationAggregateProven",
+    ):
+        if readiness.get(key) is not True:
+            raise SystemExit(f"lease-recovery cannot preserve unsupported container-kill reason: {key}")
+    return True
+
+def require_unproven_process_host(readiness: dict) -> None:
+    for key in ("deletionActualProcessKillProven", "deletionHostFailureRecoveryProven"):
+        if readiness.get(key) is not False:
+            raise SystemExit(f"lease-recovery cannot demote stronger process/host authority: {key}")
+
+
 def main() -> int:
     require_canonical_authorities()
     subprocess.run([sys.executable, str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
@@ -163,6 +190,7 @@ def main() -> int:
         raise SystemExit("pre-fence aggregate proof must remain true")
     load_readiness["deletionLeaseExpiryRecoverySimulationProven"] = True
     load_readiness["deletionPartialObjectErasureRecoveryProven"] = True
+    require_unproven_process_host(load_readiness)
     load_readiness["deletionActualProcessKillProven"] = False
     load_readiness["deletionHostFailureRecoveryProven"] = False
     note = str(load_readiness.get("note", ""))
@@ -175,12 +203,13 @@ def main() -> int:
 
     for item in load_contract.get("deferredScenarios", []):
         if item.get("scenarioId") == "deletion-under-load":
-            item["reason"] = (
-                "post-fence former-session load, all primary account-bound pre-fence surfaces, bounded multi-account worker "
-                "saturation, lease-expiry reclaim and partial-object-erasure recovery simulation now pass against local PostgreSQL "
-                "and MinIO; actual process kill, host failure, production dependency behavior and independently reviewed deletion-load "
-                "thresholds remain deferred"
-            )
+            if not preserve_container_deferred_reason(item.get("reason"), load_readiness):
+                item["reason"] = (
+                    "post-fence former-session load, all primary account-bound pre-fence surfaces, bounded multi-account worker "
+                    "saturation, lease-expiry reclaim and partial-object-erasure recovery simulation now pass against local PostgreSQL "
+                    "and MinIO; actual process kill, host failure, production dependency behavior and independently reviewed deletion-load "
+                    "thresholds remain deferred"
+                )
             break
     else:
         raise SystemExit("deletion-under-load deferred scenario missing")

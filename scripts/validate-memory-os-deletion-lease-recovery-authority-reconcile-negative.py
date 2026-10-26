@@ -175,6 +175,37 @@ def expect_rollback_failure_is_exhaustive(module) -> None:
 
 def main() -> int:
     module = load_module()
+    strong = {
+        "deletionContainerKillRecoveryProven": True,
+        "deletionReplacementContainerRecoveryProven": True,
+        "deletionLeaseExpiryRecoverySimulationProven": True,
+        "deletionPartialObjectErasureRecoveryProven": True,
+        "primaryAccountBoundPreFenceLinearizationAggregateProven": True,
+    }
+    if module.preserve_container_deferred_reason(module.CONTAINER_KILL_CANONICAL_REASON, strong) is not True:
+        raise AssertionError("lease-recovery downgraded independently proven container-kill reason")
+    try:
+        module.preserve_container_deferred_reason(module.CONTAINER_KILL_CANONICAL_REASON, {})
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("lease-recovery accepted unsupported strong container-kill reason")
+    if module.preserve_container_deferred_reason("weaker synthetic reason", strong):
+        raise AssertionError("lease-recovery misclassified weaker reason")
+    module.require_unproven_process_host({
+        "deletionActualProcessKillProven": False, "deletionHostFailureRecoveryProven": False
+    })
+    for key in ("deletionActualProcessKillProven", "deletionHostFailureRecoveryProven"):
+        try:
+            module.require_unproven_process_host({
+                "deletionActualProcessKillProven": False,
+                "deletionHostFailureRecoveryProven": False,
+                key: True,
+            })
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("lease-recovery accepted stronger process/host authority downgrade: " + key)
     substitutions = {
         "PROOF_CONTRACT": module.LOAD_CONTRACT,
         "PROOF_RESULT": module.PROOF_CONTRACT,
