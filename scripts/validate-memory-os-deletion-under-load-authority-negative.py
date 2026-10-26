@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,8 +34,45 @@ def expect_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
+
+def verify_deletion_numeric_boundary() -> None:
+    """Reject nonfinite deletion-load JSON and overflow using the actual validator."""
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_numeric_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("deletion load numeric validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    if validator.positive_number(1.25, "synthetic-positive") != 1.25:
+        raise RuntimeError("deletion load numeric positive control failed")
+    for label, bad in (
+        ("Infinity", float("inf")),
+        ("NaN", float("nan")),
+        ("overflow integer", 10 ** 500),
+    ):
+        try:
+            validator.positive_number(bad, "synthetic-negative")
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"deletion load numeric validator accepted {label}")
+    with tempfile.TemporaryDirectory(prefix=".deletion-load-numeric-negative-", dir=ROOT) as tmp:
+        path = Path(tmp) / "synthetic.json"
+        for label, raw in (("JSON Infinity", '{"value": Infinity}'),
+                           ("JSON float overflow", '{"value": 1e999}')):
+            path.write_text(raw, encoding="utf-8")
+            try:
+                validator.load(path)
+            except validator.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError(f"deletion load parser accepted {label}")
+    print("PASS: deletion load numeric positive and 5 nonfinite negatives")
+
+
 def main() -> int:
     module = load_module()
+    verify_deletion_numeric_boundary()
     substitutions = {
         "CONTRACT_PATH": module.LOAD_PATH,
         "LOAD_PATH": module.CONTRACT_PATH,
