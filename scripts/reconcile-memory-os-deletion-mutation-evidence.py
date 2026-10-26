@@ -61,6 +61,25 @@ LEASE_RECOVERY_CANONICAL_REASON = (
     "thresholds remain deferred"
 )
 
+NORMALIZED_CANONICAL_REASON = (
+        "post-fence former-session load, primary Preview/Apply/upload-authorization/upload-completion pre-fence linearization, "
+        "bounded multi-account worker saturation, lease-expiry recovery and Docker container kill/replacement recovery are "
+        "proven against local dependencies; raw process-kill readiness, physical host/node/AZ loss, production-equivalent "
+        "multi-instance topology and dependency behavior, capacity boundary and independently reviewed operating thresholds remain deferred"
+    )
+NORMALIZED_REQUIRED_TRUE = (
+    "previewPreFenceInFlightLinearizationProven",
+    "applyPreFenceInFlightLinearizationProven",
+    "uploadAuthorizationPreFenceInFlightLinearizationProven",
+    "uploadCompletionPreFenceInFlightLinearizationProven",
+    "primaryAccountBoundPreFenceLinearizationAggregateProven",
+    "multiAccountDeletionWorkerSaturationProven",
+    "deletionLeaseExpiryRecoverySimulationProven",
+    "deletionPartialObjectErasureRecoveryProven",
+    "deletionContainerKillRecoveryProven",
+    "deletionReplacementContainerRecoveryProven",
+    "localSustainedSoakEvidence",
+)
 
 class Fail(RuntimeError):
     pass
@@ -192,7 +211,11 @@ def main() -> int:
     )
     require(isinstance(deletion_deferred, dict), "deletion-under-load deferred record missing")
     existing_deferred_reason = deletion_deferred.get("reason")
-    if existing_deferred_reason == CONTAINER_KILL_CANONICAL_REASON:
+    if existing_deferred_reason == NORMALIZED_CANONICAL_REASON:
+        for key in NORMALIZED_REQUIRED_TRUE:
+            require(load_readiness.get(key) is True, f"normalized deferred authority lacks {key}")
+        # Preserve the complete typed local summary from the canonical readiness normalizer.
+    elif existing_deferred_reason == CONTAINER_KILL_CANONICAL_REASON:
         for key in (
             "deletionContainerKillRecoveryProven",
             "deletionReplacementContainerRecoveryProven",

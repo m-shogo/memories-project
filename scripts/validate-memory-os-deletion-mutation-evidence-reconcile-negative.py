@@ -240,6 +240,27 @@ def main() -> int:
         if load_contract.read_bytes() != rejected_bytes:
             raise AssertionError("unsupported strong deferred authority mutated load contract")
 
+        normalized_load = json.loads(before_load)
+        normalized_load["readiness"].update({key: True for key in module.NORMALIZED_REQUIRED_TRUE})
+        normalized_load["deferredScenarios"][0]["reason"] = module.NORMALIZED_CANONICAL_REASON
+        write_json(load_contract, normalized_load)
+        module.main()
+        after_normalized = json.loads(load_contract.read_text(encoding="utf-8"))
+        if after_normalized["deferredScenarios"][0]["reason"] != module.NORMALIZED_CANONICAL_REASON:
+            raise AssertionError("mutation reconcile downgraded canonical normalized local coverage")
+        normalized_load["readiness"]["deletionReplacementContainerRecoveryProven"] = False
+        write_json(load_contract, normalized_load)
+        normalized_before = load_contract.read_bytes()
+        try:
+            module.main()
+        except module.Fail as exc:
+            if "normalized deferred authority lacks" not in str(exc):
+                raise
+        else:
+            raise AssertionError("mutation reconcile accepted unsupported normalized local coverage")
+        if load_contract.read_bytes() != normalized_before:
+            raise AssertionError("unsupported normalized reason changed load authority")
+
         load_contract.write_bytes(before_load)
         status.write_bytes(before_status)
         calls.clear()
