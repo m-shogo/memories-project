@@ -73,6 +73,13 @@ def run_validator(expected: str) -> None:
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
+    # Enforce path safety even when the helper is invoked outside its caller.
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise Fail("pre-fence upload atomic symlink target/ancestor refused")
+    if path.exists() and not path.is_file():
+        raise Fail("pre-fence upload atomic target must be regular")
+    if not path.parent.is_dir():
+        raise Fail("pre-fence upload atomic parent must exist")
     existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
