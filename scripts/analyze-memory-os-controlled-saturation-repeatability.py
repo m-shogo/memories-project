@@ -111,6 +111,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     for candidate in (path, *path.parents):
         require(not candidate.is_symlink(), "repeatability result symlink rejected")
     require(not path.is_dir(), "repeatability result directory target rejected")
+    require(not path.exists() or path.is_file(), "repeatability result nonregular target rejected")
     try:
         path.parent.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
     except ValueError:

@@ -1480,13 +1480,17 @@ def run_repeatability_analyzer_path_atomic_negatives() -> None:
                 raise RuntimeError("repeatability analyzer new atomic mode drift")
             directory = inside / "directory"
             directory.mkdir()
-            for unsafe in (linked, parent_link / "write.json", directory, inside / "missing" / "write.json", canary):
+            fifo = inside / "fifo"
+            os.mkfifo(fifo)
+            for unsafe in (linked, parent_link / "write.json", directory, fifo, inside / "missing" / "write.json", canary):
                 try:
                     analyzer.atomic_write_bytes(unsafe, b"forbidden")
                 except analyzer.Fail:
                     pass
                 else:
                     raise RuntimeError("repeatability analyzer accepted unsafe atomic path")
+            if not stat.S_ISFIFO(fifo.stat().st_mode):
+                raise RuntimeError("repeatability analyzer modified rejected FIFO target")
             for operation in ("replace", "fsync"):
                 original = getattr(analyzer.os, operation)
                 setattr(analyzer.os, operation, lambda *args: (_ for _ in ()).throw(OSError("synthetic failure")))
@@ -1518,7 +1522,7 @@ def run_repeatability_analyzer_path_atomic_negatives() -> None:
                 sys.argv = original_argv
         if canary.read_bytes() != b"SYNTHETIC_ANALYZER_CANARY":
             raise RuntimeError("repeatability analyzer changed outside canary")
-    print("PASS: repeatability analyzer run-path/atomic/output authority negatives (14 cases)")
+    print("PASS: repeatability analyzer run-path/atomic/output authority negatives (15 cases)")
 
 
 
