@@ -996,6 +996,17 @@ def run_repeatability_nonfinite_negatives() -> None:
             pass
         else:
             raise RuntimeError("repeatability analyzer accepted nonfinite/invalid metric")
+    for label, field in (("derived throughput gain overflow", "throughput"),
+                         ("derived p95 ratio overflow", "latencyP95Ms")):
+        fixture = copy.deepcopy(run)
+        fixture["scenario"]["steps"][0]["batch"][field] = 1e-308
+        fixture["scenario"]["steps"][1]["batch"][field] = 1e308
+        try:
+            analyzer.signal_for(fixture)
+        except analyzer.Fail:
+            pass
+        else:
+            raise RuntimeError(f"repeatability analyzer accepted {label}")
     with tempfile.TemporaryDirectory(prefix="repeatability-nonfinite-json-", dir=ROOT) as temp:
         path = Path(temp) / "numeric.json"
         for raw in ('{"value": Infinity}', '{"value": 1e999}'):
@@ -1026,7 +1037,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator nonfinite, integrity and signal negatives (18 cases)")
+    print("PASS: repeatability analyzer/validator nonfinite, integrity and signal negatives (20 cases)")
 
 
 
