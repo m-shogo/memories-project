@@ -68,6 +68,26 @@ def atomic_writer_is_fail_closed(module) -> None:
 
 def main() -> int:
     module = load_module()
+    # Stronger independently reconciled local evidence must not be erased by
+    # the narrower Preview/saturation publisher.
+    strong_flags = {
+        "deletionContainerKillRecoveryProven": True,
+        "deletionReplacementContainerRecoveryProven": True,
+        "deletionLeaseExpiryRecoverySimulationProven": True,
+        "deletionPartialObjectErasureRecoveryProven": True,
+        "primaryAccountBoundPreFenceLinearizationAggregateProven": True,
+    }
+    for reason in (module.CONTAINER_KILL_CANONICAL_REASON, module.LEASE_RECOVERY_CANONICAL_REASON):
+        if module.preserve_stronger_deferred_reason(reason, strong_flags) is not True:
+            raise AssertionError("advanced deletion accepted stronger-reason downgrade")
+        try:
+            module.preserve_stronger_deferred_reason(reason, {})
+        except module.Fail:
+            pass
+        else:
+            raise AssertionError("advanced deletion accepted unsupported stronger reason")
+    if module.preserve_stronger_deferred_reason("synthetic weaker reason", strong_flags):
+        raise AssertionError("advanced deletion treated unrelated reason as stronger")
     atomic_writer_is_fail_closed(module)
     with tempfile.TemporaryDirectory(prefix="memory-os-advanced-deletion-reconcile-") as tmp:
         root = Path(tmp)

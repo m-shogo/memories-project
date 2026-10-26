@@ -113,6 +113,37 @@ def proof_ready(contract: dict[str, Any], result: dict[str, Any], field: str) ->
     return ready and scenario.get("result") == "PASS" and scenario.get("integrityResult") == "PASS"
 
 
+
+CONTAINER_KILL_CANONICAL_REASON = (
+    "post-fence former-session load, all primary account-bound pre-fence surfaces, multi-account worker saturation, "
+    "lease-expiry/partial-object recovery and Docker worker-container kill/replacement pass locally; raw process-kill readiness, "
+    "physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
+)
+LEASE_RECOVERY_CANONICAL_REASON = (
+    "post-fence former-session load, all primary account-bound pre-fence surfaces, bounded multi-account worker "
+    "saturation, lease-expiry reclaim and partial-object-erasure recovery simulation now pass against local PostgreSQL "
+    "and MinIO; actual process kill, host failure, production dependency behavior and independently reviewed deletion-load "
+    "thresholds remain deferred"
+)
+
+def preserve_stronger_deferred_reason(reason: Any, readiness: dict[str, Any]) -> bool:
+    if reason == CONTAINER_KILL_CANONICAL_REASON:
+        for key in (
+            "deletionContainerKillRecoveryProven",
+            "deletionReplacementContainerRecoveryProven",
+            "deletionLeaseExpiryRecoverySimulationProven",
+            "deletionPartialObjectErasureRecoveryProven",
+            "primaryAccountBoundPreFenceLinearizationAggregateProven",
+        ):
+            require(readiness.get(key) is True, f"advanced deletion strong reason lacks {key}")
+        return True
+    if reason == LEASE_RECOVERY_CANONICAL_REASON:
+        for key in ("deletionLeaseExpiryRecoverySimulationProven", "deletionPartialObjectErasureRecoveryProven"):
+            require(readiness.get(key) is True, f"advanced deletion lease reason lacks {key}")
+        return True
+    return False
+
+
 def main() -> int:
     run_validator(PREFENCE_VALIDATOR, "--require-result")
     run_validator(WORKER_VALIDATOR, "--require-result")
@@ -200,10 +231,11 @@ def main() -> int:
     deferred_by_id = scenario_map(deferred)
     deletion_deferred = deferred_by_id.get("deletion-under-load")
     require(isinstance(deletion_deferred, dict), "deletion-under-load deferred record missing")
-    deletion_deferred["reason"] = (
-        "post-fence former-session load, Preview requests authenticated before the fence, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; "
-        "Apply and Upload authorization requests already in flight before the fence, host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
-    )
+    if not preserve_stronger_deferred_reason(deletion_deferred.get("reason"), readiness):
+        deletion_deferred["reason"] = (
+            "post-fence former-session load, Preview requests authenticated before the fence, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; "
+            "Apply and Upload authorization requests already in flight before the fence, host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
+        )
     deletion_deferred["requiredDependencyMode"] = "PRODUCTION_EQUIVALENT"
 
     readiness["previewPreFenceInFlightLinearizationProven"] = True
