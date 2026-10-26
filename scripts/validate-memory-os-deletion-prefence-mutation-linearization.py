@@ -16,6 +16,15 @@ CONTRACT_PATH = ROOT / "contracts/operations/deletion-prefence-mutation-lineariz
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+
+EXPECTED_PATHS: dict[str, str] = {
+    "resultPath": "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json",
+    "runner": "services/import-api/internal/httpserver/deletion_prefence_mutation_linearization_test.go",
+    "validator": "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py",
+    "reconcile": "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py",
+    "workflow": ".github/workflows/deletion-prefence-mutation-linearization.yml",
+}
+
 EXPECTED_CRITERIA: dict[str, Any] = {
     "authenticatedBeforeFence": 32,
     "deletionRequestStatus": 202,
@@ -105,6 +114,9 @@ def validate_contract(contract: dict[str, Any]) -> None:
         actual = criteria[key]
         require(type(actual) is type(expected) and actual == expected,
                 f"success criterion type/value drift: {key}")
+
+    for key, expected in EXPECTED_PATHS.items():
+        require(contract.get(key) == expected, f"contract source/path binding drift: {key}")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")
