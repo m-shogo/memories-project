@@ -19,8 +19,8 @@ RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-worker-saturation-reco
 RECONCILE_VALIDATOR = "scripts/validate-memory-os-deletion-worker-saturation.py"
 RECONCILE_CONTRACT = "contracts/operations/deletion-worker-saturation-contract.v1.json"
 RECONCILE_RESULT = "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
-REVIEWED_RECONCILER = "859aef0f7a54542e980d7e854cb29fb2c1b3975b"
-REVIEWED_RECONCILE_NEGATIVE = "01107043d2a73170380ab76efd857f1f1e3c2e39"
+REVIEWED_RECONCILER = "646faa0b0b2aac595255d8645dead25c38708864"
+REVIEWED_RECONCILE_NEGATIVE = "f5889d7009f9c0c383df44620d75ba0d33bf5ecb"
 REVIEWED_RECONCILE_VALIDATOR = "ebc4a6370702e251ec52f8023ad7bd13aba79fc5"
 REVIEWED = "a671ebaddffe34d27b9b152044e2f510befe3f61"
 REVIEWED_INDEPENDENT = "717e9b93b3e1c80c85da76780fe57512e2e262ff"
@@ -219,7 +219,7 @@ def reconcile_runtime():
             shutil.copyfile(original, destination)
         result = subprocess.run([sys.executable, str(root / RECONCILE_NEGATIVE)],
                                 cwd=root, capture_output=True, text=True, timeout=45, check=False)
-        if result.returncode != 0 or "secret-free validator/rollback diagnostics" not in result.stdout:
+        if result.returncode != 0 or "secret-free validator output/import/rollback diagnostics" not in result.stdout:
             raise AssertionError("disposable saturation reconcile negative failed: "
                                  + result.stdout[-500:] + result.stderr[-500:])
     print("PASS: source-bound disposable saturation reconcile validator/rollback negatives")
