@@ -276,10 +276,55 @@ def mutation_negatives(publisher: str, independent: str) -> None:
     print("PASS: incident control publisher (17) and independent (10) source mutations")
 
 
+def writer_identity_runtime(publisher: str) -> None:
+    marker = "      - name: Confirm exact clean source\n        run: |\n"
+    if publisher.count(marker) != 1:
+        raise SystemExit("incident control writer identity step missing")
+    start = publisher.index(marker) + len(marker)
+    end = publisher.find("\n      - name:", start)
+    lines = publisher[start:end if end >= 0 else len(publisher)].splitlines()
+    if any(line and not line.startswith("          ") for line in lines):
+        raise SystemExit("incident control writer identity indentation drift")
+    code = "\n".join(line[10:] if line else "" for line in lines) + "\n"
+    if 'echo "SOURCE_SHA=' not in code:
+        raise SystemExit("incident control writer identity source capture missing")
+    code = code.split('echo "SOURCE_SHA=', 1)[0]
+    head = "a" * 40
+    cases = (
+        ("push", "refs/heads/so", head, True),
+        ("schedule", "refs/heads/so", head, True),
+        ("workflow_dispatch", "refs/heads/so", head, True),
+        ("pull_request", "refs/heads/so", head, False),
+        ("push", "refs/heads/main", head, False),
+        ("push", "refs/tags/v1", head, False),
+        ("push", "refs/heads/so", "A" * 40, False),
+        ("push", "refs/heads/so", "a" * 39, False),
+        ("push", "refs/heads/so", "b" * 40, False),
+        ("schedule", "", head, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="incident-control-writer-source-") as temp:
+        root = Path(temp)
+        stub = root / "git"
+        stub.write_text("#!/bin/sh\n"
+                        "if [ \"$1\" = \"status\" ]; then exit 0; fi\n"
+                        "if [ \"$1\" = \"fetch\" ]; then exit 0; fi\n"
+                        "if [ \"$1\" = \"rev-parse\" ]; then printf '%s\\n' \"$STUB_HEAD\"; exit 0; fi\n"
+                        "exit 1\n", encoding="utf-8")
+        stub.chmod(0o755)
+        for event, ref, sha, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_REF=ref, GITHUB_SHA=sha, STUB_HEAD=head)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", code],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise AssertionError("incident control writer event/ref/SHA shell drift: " + str((event, ref, sha, result.returncode)))
+    print("PASS: incident control writer actual event/ref/SHA shell runtime (10 cases)")
+
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     validate(publisher, independent)
     predicate_runtime(independent)
+    writer_identity_runtime(publisher)
     mutation_negatives(publisher, independent)
     diagnostic_runtime(publisher)
     print("production evidence generated: false")
