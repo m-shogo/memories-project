@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-sourc
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-REVIEWED_VALIDATOR = "b43e9563c0b2bef645113862f1c571ab2807f47d"
+REVIEWED_VALIDATOR = "7c83e99f1278a4e2f7b4790beb61f064674d36a8"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
@@ -387,6 +387,18 @@ def strict_validator_runtime():
             else:
                 raise AssertionError("pre-fence mutation JSON accepted " + label)
             cases += 1
+
+        # Oversized evidence is rejected before JSON decoding or unbounded allocation.
+        oversized = inside / "oversized.json"
+        oversized.write_bytes(b'{"pad":"' + b'x' * (validator.MAX_JSON_BYTES + 1) + b'"}')
+        try:
+            validator.load(oversized)
+        except validator.Fail as exc:
+            if "read limit" not in str(exc):
+                raise AssertionError("pre-fence mutation oversized JSON wrong rejection") from None
+        else:
+            raise AssertionError("pre-fence mutation accepted oversized JSON")
+        cases += 1
 
         invalid_utf8 = inside / "invalid-utf8.json"
         invalid_utf8.write_bytes(b'{"value":"' + bytes([255]) + b'"}')

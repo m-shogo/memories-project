@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+MAX_JSON_BYTES = 1024 * 1024
 
 
 EXPECTED_RESULT_KEYS = ("schemaVersion", "commitSha", "generatedAt", "environment", "scenario", "limitations",)
@@ -125,8 +126,11 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, ValueError, RuntimeError):
         raise Fail("pre-fence mutation JSON path escaped repository") from None
     try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "pre-fence JSON exceeds reviewed read limit")
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             parse_constant=reject_nonfinite_constant,
             parse_float=parse_finite_float,
             object_pairs_hook=reject_duplicate_json_keys,

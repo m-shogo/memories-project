@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "d1947221a33bdcce52a03a3fc29fc9c904da787f"
+REVIEWED_VALIDATOR = "eeaa29052d21da0f50999b149a86f5307b1a3c2f"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -385,6 +385,18 @@ def strict_validator_runtime():
             else:
                 raise AssertionError("pre-fence upload JSON accepted " + label)
             cases += 1
+
+        # Oversized evidence is rejected before JSON decoding or unbounded allocation.
+        oversized = inside / "oversized.json"
+        oversized.write_bytes(b'{"pad":"' + b'x' * (validator.MAX_JSON_BYTES + 1) + b'"}')
+        try:
+            validator.load(oversized)
+        except validator.Fail as exc:
+            if "read limit" not in str(exc):
+                raise AssertionError("pre-fence upload oversized JSON wrong rejection") from None
+        else:
+            raise AssertionError("pre-fence upload accepted oversized JSON")
+        cases += 1
 
         invalid_utf8 = inside / "invalid-utf8.json"
         invalid_utf8.write_bytes(b'{"value":"' + bytes([255]) + b'"}')
