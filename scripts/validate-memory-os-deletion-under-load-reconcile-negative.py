@@ -510,6 +510,11 @@ def exercise_deletion_load_reviewed_schema() -> None:
         ("assertion float alias", lambda d: d["scenario"]["assertions"].__setitem__("deletionEpoch", 2.0)),
         ("assertion overclaim", lambda d: d["scenario"]["assertions"].__setitem__("productionEvidence", True)),
         ("limitations object", lambda d: d.__setitem__("limitations", {"productionReady": True})),
+        ("result limitations missing scope", lambda d: d["limitations"].pop()),
+        ("result limitations unreviewed claim", lambda d: d["limitations"].append("production ready")),
+        ("result limitations reordered", lambda d: d["limitations"].reverse()),
+        ("result limitations worker drift", lambda d: d["limitations"].__setitem__(1, "one account and many workers")),
+        ("result limitations empty", lambda d: d.__setitem__("limitations", [])),
         ("scenario status float alias", lambda d: d["scenario"].__setitem__("deletionRequestStatus", 202.0)),
         ("scenario epoch float alias", lambda d: d["scenario"].__setitem__("deletionEpoch", 2.0)),
         ("scenario receipt boolean alias", lambda d: d["scenario"].__setitem__("workerReceiptCount", True)),
@@ -536,7 +541,7 @@ def exercise_deletion_load_reviewed_schema() -> None:
             pass
         else:
             raise RuntimeError(f"deletion load result accepted {label}")
-    print("PASS: deletion-under-load reviewed schema positive, 44 schema negatives and 8 mixed-case marker negatives")
+    print("PASS: deletion-under-load reviewed schema positive, 49 schema negatives and 8 mixed-case marker negatives")
 
 
 

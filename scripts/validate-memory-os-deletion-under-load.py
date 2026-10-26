@@ -211,6 +211,15 @@ REVIEWED_LIMITATIONS = (
     "no production network, TLS, scoped object credentials or independent worker deployment",
     "not production deletion capacity evidence",
 )
+REVIEWED_RESULT_LIMITATIONS = (
+    "only requests started after the durable 202 fence are asserted",
+    "one account and one deletion worker",
+    "authenticated Preview read path only",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "not production deletion capacity evidence",
+)
+
+
 REVIEWED_BOUNDARY = {
     "syntheticDataOnly": True, "productionTraffic": False,
     "productionCredentials": False, "productionEvidence": False,
@@ -326,9 +335,8 @@ def validate_result_shape(result: dict[str, Any]) -> None:
     reviewed_values(scenario.get("assertions"), REVIEWED_CRITERIA,
                     "deletion-under-load assertions")
     limitations = result.get("limitations")
-    require(isinstance(limitations, list) and bool(limitations) and
-            all(isinstance(x, str) and bool(x.strip()) for x in limitations),
-            "deletion-under-load limitations must be nonempty strings")
+    require(type(limitations) is list and limitations == list(REVIEWED_RESULT_LIMITATIONS),
+            "deletion-under-load result limitations reviewed scope drift")
 
 
 def validate_forbidden_result_markers(result: dict[str, Any]) -> None:
