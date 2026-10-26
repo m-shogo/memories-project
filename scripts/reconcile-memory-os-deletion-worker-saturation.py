@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
 import os
@@ -92,7 +93,9 @@ def load_validator():
     spec = importlib.util.spec_from_file_location("memory_os_deletion_worker_saturation_validator", VALIDATOR_PATH)
     require(spec is not None and spec.loader is not None, "cannot load canonical deletion-worker saturation validator")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    with open(os.devnull, "w", encoding="utf-8") as sink:
+        with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+            spec.loader.exec_module(module)
     require(callable(getattr(module, "validate_contract", None)), "canonical deletion-worker saturation validator missing validate_contract")
     require(callable(getattr(module, "validate_result", None)), "canonical deletion-worker saturation validator missing validate_result")
     return module
@@ -103,8 +106,10 @@ CANONICAL_LOAD_VALIDATOR = load_validator
 
 def validate_canonical(validator, contract: dict[str, Any], expected: str) -> None:
     try:
-        validator.validate_contract(contract)
-        validator.validate_result(contract, expected)
+        with open(os.devnull, "w", encoding="utf-8") as sink:
+            with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+                validator.validate_contract(contract)
+                validator.validate_result(contract, expected)
     except Exception as exc:
         raise Fail(
             "canonical deletion-worker saturation authority invalid: " + type(exc).__name__
