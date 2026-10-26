@@ -349,10 +349,11 @@ def run_deletion_rollback_case(module: ModuleType) -> None:
     load_contract["_rollbackNegativeMarker"] = True
     status["_rollbackNegativeMarker"] = True
     original_runner = module.run_validator
+    synthetic_secret = "SYNTHETIC_DELETION_PRIMARY_SECRET_DO_NOT_LOG"
 
     def controlled_runner(path: Path, label: str, *args: str) -> None:
         if path == module.OPERABILITY_VALIDATOR:
-            raise module.ReconcileFailure("controlled deletion post-write operability failure")
+            raise module.ReconcileFailure(synthetic_secret)
         return None
 
     module.run_validator = controlled_runner
@@ -360,8 +361,11 @@ def run_deletion_rollback_case(module: ModuleType) -> None:
         try:
             module.write_and_validate_transactionally(contract, load_contract, status)
         except module.ReconcileFailure as exc:
-            require("controlled deletion post-write operability failure" in str(exc),
-                    f"unexpected deletion rollback failure: {exc}")
+            diagnostic = str(exc)
+            require("transaction failed (ReconcileFailure)" in diagnostic,
+                    "deletion rollback lost primary exception class")
+            require(synthetic_secret not in diagnostic,
+                    "deletion rollback leaked raw primary exception")
         else:
             raise NegativeFailure("controlled deletion post-write failure was accepted")
     finally:
