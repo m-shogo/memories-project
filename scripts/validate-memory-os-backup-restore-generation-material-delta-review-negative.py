@@ -198,6 +198,63 @@ def prove_material_delta_json_reader(module) -> None:
     print("PASS: actual material-delta JSON reader positive and 16 fail-closed negatives")
 
 
+def exercise_bounded_material_delta_git_history(module) -> None:
+    """Exercise the real history consumer with private-output and timeout negatives."""
+    original_run = module.subprocess.run
+    ref = "docs/evidence/backup-restore/material-delta/synthetic-review.json"
+    marker = "PRIVATE_REVIEW_MARKER_DO_NOT_LOG"
+    state = {"stdout": "a" * 40 + "\n", "returncode": 0, "error": None}
+    calls = []
+
+    def fake_git(args, **kwargs):
+        require(args == ["git", "log", "--format=%H", "--max-count=2", "--follow", "--", ref],
+                "material-delta review Git history must use bounded canonical pathspec")
+        require(kwargs.get("cwd") == module.ROOT and kwargs.get("text") is True,
+                "material-delta review Git history execution context drift")
+        require(kwargs.get("stdout") is subprocess.PIPE and kwargs.get("stderr") is subprocess.DEVNULL,
+                "material-delta review Git history output privacy drift")
+        require(kwargs.get("timeout") == 20 and kwargs.get("check") is False,
+                "material-delta review Git history timeout/check drift")
+        calls.append(args)
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(args, state["returncode"],
+                                           stdout=state["stdout"], stderr=marker)
+
+    module.subprocess.run = fake_git
+    try:
+        require(module.git_history(ref, "materialDeltaReviewRef") == ["a" * 40],
+                "bounded Git history positive control failed")
+        state["stdout"] = "a" * 40 + "\n" + "b" * 40 + "\n"
+        require(module.git_history(ref, "materialDeltaReviewRef") == ["a" * 40, "b" * 40],
+                "bounded two-change Git history control failed")
+        cases = [
+            ("nonzero", {"returncode": 1}, "cannot inspect materialDeltaReviewRef Git history"),
+            ("bool-exit", {"returncode": True}, "cannot inspect materialDeltaReviewRef Git history"),
+            ("nonstring", {"stdout": b"a" * 40}, "materialDeltaReviewRef Git history output invalid"),
+            ("malformed", {"stdout": "PRIVATE_REVIEW_MARKER_DO_NOT_LOG\n"}, "materialDeltaReviewRef Git history output invalid"),
+            ("oversized", {"stdout": ("a" * 40 + "\n") * 3}, "materialDeltaReviewRef Git history output invalid"),
+            ("empty", {"stdout": ""}, "materialDeltaReviewRef must be committed material-delta review evidence"),
+            ("timeout", {"error": subprocess.TimeoutExpired(["git", "log"], 20, stderr=marker)},
+             "cannot inspect materialDeltaReviewRef Git history"),
+            ("unavailable", {"error": OSError(marker)}, "cannot inspect materialDeltaReviewRef Git history"),
+        ]
+        for label, changes, expected in cases:
+            state.update({"stdout": "a" * 40 + "\n", "returncode": 0, "error": None})
+            state.update(changes)
+            try:
+                module.git_history(ref, "materialDeltaReviewRef")
+            except module.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"bounded Git history {label} rejected at wrong private diagnostic")
+            else:
+                raise Fail(f"bounded Git history {label} unexpectedly accepted")
+        require(len(calls) == 10, "bounded Git history negative multiplicity drift")
+    finally:
+        module.subprocess.run = original_run
+    print("PASS: material-delta review Git history bounded, private and fail-closed with eight negatives")
+
+
 def main() -> int:
     module = load_validator()
     prove_material_delta_json_reader(module)
@@ -318,6 +375,8 @@ def main() -> int:
         ),
         "material-delta promotion boundary disabled", "material-delta promotion boundary drift",
     )
+
+    exercise_bounded_material_delta_git_history(module)
 
     original_history = module.git_history
     original_transport = module.subprocess.run
