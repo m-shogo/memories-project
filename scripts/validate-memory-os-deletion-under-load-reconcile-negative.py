@@ -875,13 +875,13 @@ def exercise_deletion_load_source_io_boundary() -> None:
         regular.write_text("BEFORE", encoding="utf-8")
         os.chmod(regular, 0o640)
         require(source.read_source(regular) == "BEFORE", "source read positive failed")
-        source.write_source(regular, "AFTER")
+        source.write_source(regular, "AFTER", "BEFORE")
         require(regular.read_text(encoding="utf-8") == "AFTER", "source atomic write positive failed")
         require(stat.S_IMODE(regular.stat().st_mode) == 0o640, "source write mode changed")
         require(not list(inside.glob("*.tmp")), "source positive left temporary residue")
 
         def reject(label: str, target: Path) -> None:
-            for operation in (source.read_source, lambda p: source.write_source(p, "UNSAFE")):
+            for operation in (source.read_source, lambda p: source.write_source(p, "UNSAFE", "AFTER")):
                 try:
                     operation(target)
                 except RuntimeError as exc:
@@ -924,7 +924,7 @@ def exercise_deletion_load_source_io_boundary() -> None:
         else:
             raise RuntimeError("invalid UTF-8 source accepted")
         try:
-            source.write_source(regular, b"NOT_TEXT")
+            source.write_source(regular, b"NOT_TEXT", "AFTER")
         except RuntimeError:
             pass
         else:
@@ -934,7 +934,7 @@ def exercise_deletion_load_source_io_boundary() -> None:
             ("invalid Unicode", chr(0xD800), "invalid UTF-8"),
         ):
             try:
-                source.write_source(regular, invalid_payload)
+                source.write_source(regular, invalid_payload, "AFTER")
             except RuntimeError as exc:
                 require(expected in str(exc), f"source {label} wrong rejection")
             else:
@@ -953,13 +953,39 @@ def exercise_deletion_load_source_io_boundary() -> None:
                 raise RuntimeError("source main accepted substituted target")
         finally:
             source.PATH = original_target
+        try:
+            source.write_source(regular, "STALE_OVERWRITE", "STALE_EXPECTATION")
+        except RuntimeError as exc:
+            require("changed since reviewed read" in str(exc), "stale source CAS wrong rejection")
+        else:
+            raise RuntimeError("source writer accepted stale original content")
+        require(regular.read_text(encoding="utf-8") == "AFTER", "stale CAS changed bytes")
+        original_chmod = source.os.chmod
+        def synthetic_race_chmod(path: object, mode: int) -> None:
+            original_chmod(path, mode)
+            regular.write_text("RACED", encoding="utf-8")
+        source.os.chmod = synthetic_race_chmod
+        try:
+            try:
+                source.write_source(regular, "STALE_OVERWRITE", "AFTER")
+            except RuntimeError as exc:
+                require("changed before atomic replacement" in str(exc),
+                        "pre-replace source CAS wrong rejection")
+            else:
+                raise RuntimeError("source writer overwrote concurrent local change")
+        finally:
+            source.os.chmod = original_chmod
+        require(regular.read_text(encoding="utf-8") == "RACED",
+                "source CAS overwrote concurrent fixture update")
+        regular.write_text("AFTER", encoding="utf-8")
+        require(not list(inside.glob("*.tmp")), "source CAS left temporary residue")
         original_replace = source.os.replace
         def failed_replace(*args: object, **kwargs: object) -> None:
             raise OSError("SYNTHETIC_REPLACE_SECRET_DO_NOT_LOG")
         source.os.replace = failed_replace
         try:
             try:
-                source.write_source(regular, "NEW")
+                source.write_source(regular, "NEW", "AFTER")
             except RuntimeError as exc:
                 require("atomic write failed (OSError)" in str(exc) and
                         "SYNTHETIC_REPLACE_SECRET_DO_NOT_LOG" not in str(exc),
@@ -973,7 +999,7 @@ def exercise_deletion_load_source_io_boundary() -> None:
         require(canary.read_text(encoding="utf-8") == "SYNTHETIC_EXTERNAL_CANARY",
                 "source I/O changed external canary")
         require(not list(inside.glob("*.tmp")), "source I/O left temporary residue")
-    print("PASS: deletion-load source bounded atomic I/O, 7 unsafe nodes, and rollback negatives")
+    print("PASS: deletion-load source bounded atomic I/O, 7 unsafe nodes, CAS race and rollback negatives")
 
 
 def exercise_deletion_load_source_replace_once() -> None:

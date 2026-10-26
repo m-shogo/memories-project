@@ -41,7 +41,7 @@ def read_source(path: Path) -> str:
         raise RuntimeError("deletion load source unreadable or invalid") from None
 
 
-def write_source(path: Path, text: str) -> None:
+def write_source(path: Path, text: str, expected_original: str) -> None:
     require_safe_source(path)
     if type(text) is not str:
         raise RuntimeError("deletion load source payload must be text")
@@ -51,6 +51,8 @@ def write_source(path: Path, text: str) -> None:
         raise RuntimeError("deletion load source payload invalid UTF-8") from None
     if len(payload) > MAX_SOURCE_BYTES:
         raise RuntimeError("deletion load source payload exceeds reviewed write limit")
+    if type(expected_original) is not str or read_source(path) != expected_original:
+        raise RuntimeError("deletion load source changed since reviewed read")
     temporary: Path | None = None
     try:
         existing_mode = stat.S_IMODE(path.stat().st_mode)
@@ -63,6 +65,8 @@ def write_source(path: Path, text: str) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temporary, existing_mode)
+        if read_source(path) != expected_original:
+            raise RuntimeError("deletion load source changed before atomic replacement")
         os.replace(temporary, path)
         temporary = None
     except (OSError, UnicodeError) as exc:
@@ -88,7 +92,8 @@ def replace_once(text: str, old: str, new: str, label: str) -> tuple[str, bool]:
 def main() -> int:
     if PATH != ROOT / "services/import-api/internal/httpserver/deletion_under_load_test.go":
         raise RuntimeError("unreviewed deletion load source target refused")
-    text = read_source(PATH)
+    original_text = read_source(PATH)
+    text = original_text
     changed = False
 
     text, replaced = replace_once(
@@ -198,7 +203,7 @@ func summarizeDeletionHTTPSamples(samples []liveHTTPSample, concurrency int, ela
     if not changed:
         print("Deletion-under-load source already reconciled")
         return 0
-    write_source(PATH, text)
+    write_source(PATH, text, original_text)
     print("Reconciled deletion-under-load source, HTTP reuse and local aggregation")
     return 0
 
