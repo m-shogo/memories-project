@@ -25,6 +25,14 @@ EXPECTED_PATHS: dict[str, str] = {
     "workflow": ".github/workflows/deletion-prefence-mutation-linearization.yml",
 }
 
+EXPECTED_RULES = (
+    "runnerMustBeGofmtClean",
+    "exactSourceBindingRequired",
+    "failureDiagnosticRequired",
+    "staleEvidenceRejected",
+)
+
+
 EXPECTED_CRITERIA: dict[str, Any] = {
     "authenticatedBeforeFence": 32,
     "deletionRequestStatus": 202,
@@ -117,6 +125,12 @@ def validate_contract(contract: dict[str, Any]) -> None:
 
     for key, expected in EXPECTED_PATHS.items():
         require(contract.get(key) == expected, f"contract source/path binding drift: {key}")
+
+    rules = contract.get("validationRules")
+    require(type(rules) is dict and rules.keys() == set(EXPECTED_RULES),
+            "validation rule key set drift")
+    for key in EXPECTED_RULES:
+        require(rules[key] is True, f"validation rule must remain true: {key}")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")

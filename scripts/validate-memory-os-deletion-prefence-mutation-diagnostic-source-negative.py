@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-sourc
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-REVIEWED_VALIDATOR = "cf333257429ae16461b0b189b628b0a7f4adebc4"
+REVIEWED_VALIDATOR = "c809c16e6c53268439d698dfabffd4f0d1a9b36a"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
@@ -536,6 +536,35 @@ def typed_criteria_runtime():
             pass
         else:
             raise AssertionError("pre-fence mutation accepted unreviewed surfaces: " + label)
+        cases += 1
+
+    # Contract validationRules are execution policy, not optional metadata.
+    for key in validator.EXPECTED_RULES:
+        for label, value in (("missing", None), ("false", False), ("numeric", 1)):
+            candidate = copy.deepcopy(contract)
+            if value is None:
+                candidate["validationRules"].pop(key)
+            else:
+                candidate["validationRules"][key] = value
+            try:
+                validator.validate_contract(candidate)
+            except validator.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence mutation accepted rule " + label + ": " + key)
+            cases += 1
+    for label, value in (
+        ("extra", {**contract["validationRules"], "syntheticUnreviewed": True}),
+        ("non-object", ["synthetic"]),
+    ):
+        candidate = copy.deepcopy(contract)
+        candidate["validationRules"] = value
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence mutation accepted validationRules " + label)
         cases += 1
 
     for key, expected in validator.EXPECTED_PATHS.items():
