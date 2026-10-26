@@ -146,6 +146,63 @@ def identity(source: str, title: str, writer: bool) -> None:
                                      str((title, event, ref, result.returncode)))
     print(f"PASS: advanced deletion {title} identity shell runtime ({len(cases)} cases)")
 
+def cas_runtime(source: str) -> None:
+    """Execute the real blocker publisher commit/CAS shell in a disposable fake-Git sandbox."""
+    shell = step(source, "Reconcile without production promotion")
+    shell = "set -euo pipefail\n" + shell[shell.index("git add \\\n"):]
+    head = "a" * 40
+    other = "b" * 40
+    cases = (
+        ("noop", head, True, True, 0, 0),
+        ("success", head, False, True, 0, 1),
+        ("stale-remote", other, False, True, 75, 0),
+        ("missing-remote", "", False, True, 75, 0),
+        ("diff-check", head, False, False, 1, 0),
+    )
+    fake_git = """#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+with Path(os.environ["FAKE_GIT_LOG"]).open("a", encoding="utf-8") as f:
+    f.write(" ".join(args) + "\\n")
+if args[:2] == ["rev-parse", "HEAD"]:
+    print("a" * 40)
+elif args[:2] == ["rev-parse", "origin/so"]:
+    print(os.environ["FAKE_REMOTE"])
+elif args[:3] == ["diff", "--cached", "--quiet"]:
+    sys.exit(0 if os.environ["FAKE_NOOP"] == "1" else 1)
+elif args[:3] == ["diff", "--cached", "--check"]:
+    sys.exit(0 if os.environ["FAKE_CHECK"] == "1" else 1)
+elif args[0] in ("add", "config", "commit", "fetch", "push"):
+    pass
+else:
+    sys.exit(92)
+"""
+    for label, remote, noop, check, exit_code, pushes in cases:
+        with tempfile.TemporaryDirectory(prefix="advanced-deletion-cas-") as tmp:
+            root = Path(tmp)
+            git = root / "git"
+            git.write_text(fake_git, encoding="utf-8")
+            git.chmod(0o755)
+            log = root / "git.log"
+            log.write_text("", encoding="utf-8")
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       SOURCE_SHA=head, FAKE_GIT_LOG=str(log), FAKE_REMOTE=remote,
+                       FAKE_NOOP="1" if noop else "0", FAKE_CHECK="1" if check else "0")
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                                    cwd=root, env=env, capture_output=True, text=True,
+                                    timeout=10, check=False)
+            calls = log.read_text(encoding="utf-8").splitlines()
+            if result.returncode != exit_code:
+                raise AssertionError(f"advanced deletion CAS {label}: unexpected exit {result.returncode}: {result.stderr[-100:]}")
+            if sum(line == "push origin HEAD:so" for line in calls) != pushes:
+                raise AssertionError("advanced deletion CAS pushed on stale/no-op/invalid source: " + label)
+            if label == "noop" and any(line.startswith("commit ") for line in calls):
+                raise AssertionError("advanced deletion no-op committed")
+    print(f"PASS: advanced deletion actual publisher CAS/no-op shell ({len(cases)} cases)")
+
+
 def main() -> None:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     for marker in (PUBLISHER, INDEPENDENT, SELF, CHECKOUT, SETUP,
@@ -159,6 +216,7 @@ def main() -> None:
     mutations(publisher)
     identity(publisher, "Capture exact pull request source", False)
     identity(publisher, "Capture exact source", True)
+    cas_runtime(publisher)
     print("PASS: advanced deletion exact-source read-only proof; production evidence generated: false")
 
 if __name__ == "__main__":
