@@ -151,7 +151,7 @@ def writer_runtime(text):
                     raise AssertionError("SIGKILL atomic rollback drift")
             if list(parent.glob(".*.tmp")):
                 raise AssertionError("SIGKILL temp residue")
-    print("PASS: pre-fence upload actual inline diagnostic writer redaction/atomic/symlink runtime (7 cases)")
+    print(f"PASS: {Path(PUBLISHER).stem} actual inline diagnostic writer redaction/atomic/symlink runtime (7 cases)")
 
 
 def identity_runtime(ci, title):
