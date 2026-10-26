@@ -119,6 +119,11 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def refuse_stronger_readiness(readiness: dict[str, Any], label: str, fields: tuple[str, ...]) -> None:
+    for field in fields:
+        require(readiness.get(field) is not True, f"refusing to downgrade stronger {label}.{field}")
+
+
 def run_validator(validator: Path) -> None:
     # Untrusted validator output must never enter CI logs or diagnostics.
     try:
@@ -169,6 +174,12 @@ def main() -> int:
     contract = load(CONTRACT)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "repeatability readiness missing")
+    refuse_stronger_readiness(
+        readiness, "repeatability readiness",
+        ("capacityBoundaryEstablished", "operationalThresholdApproved", "independentReviewCompleted", "productionReady"),
+    )
+    require(not (readiness.get("repeatableLocalDegradationSignalObserved") is True and not repeatable),
+            "refusing to downgrade previously admitted repeatable local signal")
     readiness["analyzerImplemented"] = True
     readiness["validatorImplemented"] = True
     readiness["automaticWorkflowImplemented"] = WORKFLOW.is_file()
@@ -182,6 +193,12 @@ def main() -> int:
     load_contract = load(LOAD)
     load_readiness = load_contract.get("readiness")
     require(isinstance(load_readiness, dict), "load readiness missing")
+    refuse_stronger_readiness(
+        load_readiness, "load readiness",
+        ("capacityBoundaryEstablished", "operationalThresholds", "productionReady"),
+    )
+    require(not (load_readiness.get("repeatableLocalDegradationSignalObserved") is True and not repeatable),
+            "refusing to downgrade previously admitted load repeatability signal")
     load_readiness["repeatableLocalDegradationSignalObserved"] = repeatable
     load_readiness["capacityBoundaryEstablished"] = False
     load_readiness["operationalThresholds"] = False
