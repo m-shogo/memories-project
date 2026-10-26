@@ -63,9 +63,9 @@ def main() -> int:
         raise RuntimeError("database outage workflow persists raw or non-atomic diagnostic")
     pr_source = source.split("  validate-pr:", 1)[1].split("  execute:", 1)[0]
     execute_source = source.split("  execute:", 1)[1]
-    if "permissions:\\n      contents: read" not in pr_source or "persist-credentials: false" not in pr_source:
+    if "permissions:\n      contents: read" not in pr_source or "persist-credentials: false" not in pr_source:
         raise RuntimeError("database outage PR job write-permission boundary drift")
-    if "permissions:\\n      contents: write" not in execute_source:
+    if "permissions:\n      contents: write" not in execute_source:
         raise RuntimeError("database outage publisher write-permission boundary drift")
     if "github.ref == 'refs/heads/so'" not in execute_source or 'test "${GITHUB_REF:-}" = "refs/heads/so"' not in execute_source:
         raise RuntimeError("database outage execute source-branch admission missing")
