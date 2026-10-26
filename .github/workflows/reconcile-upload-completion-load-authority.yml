@@ -40,23 +40,29 @@ concurrency:
 
 jobs:
   validate-pr:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'so'
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Validate exact PR-head upload completion authority
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "${GITHUB_EVENT_NAME:-}" = "pull_request"
+          test "${GITHUB_BASE_REF:-}" = "so"
+          [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
           test -z "$(git status --porcelain)"
           python -m py_compile \
             scripts/reconcile-memory-os-deletion-prefence-upload-completion.py \
@@ -76,24 +82,28 @@ jobs:
           test -z "$(git status --porcelain)"
 
   reconcile:
-    if: github.event_name != 'pull_request'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'
     permissions:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Capture exact source
         run: |
           set -euo pipefail
+          [[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+          test "${GITHUB_REF:-}" = "refs/heads/so"
+          [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Reconcile exact-source local proof into canonical load authority
         run: |
