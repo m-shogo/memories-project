@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negativ
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-linearization.py"
-REVIEWED_VALIDATOR = "80bddfde56776b6472bd868e292ca9a6b856af3a"
+REVIEWED_VALIDATOR = "732a6832f41f850ebe0640752912dca6f040440f"
 REVIEWED_RECONCILER = "75c848b6d45f0fa1f51a187ac67344339bcc05d9"
 REVIEWED_RECONCILE_NEGATIVE = "623c4b0bd3ceffbc034de9ae0639013327b2b252"
 REVIEWED = "fdcc951be6c589518f1f48bcb363b5dcd0b88602"
@@ -478,6 +478,21 @@ def typed_criteria_runtime():
     validator.validate_result(contract, None)
     canonical = validator.load(validator.RESULT_PATH)
     cases = 0
+
+    # The reviewed contract identity is independent of schema/scenario and must be exact.
+    for label, value in (("missing", None), ("substitute", "synthetic.unreviewed"), ("non-string", True)):
+        candidate = copy.deepcopy(contract)
+        if value is None:
+            candidate.pop("contractId")
+        else:
+            candidate["contractId"] = value
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence accepted contractId " + label)
+        cases += 1
 
     for key, expected in validator.EXPECTED_CRITERIA.items():
         candidate = copy.deepcopy(contract)
