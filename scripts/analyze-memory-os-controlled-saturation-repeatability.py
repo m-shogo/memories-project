@@ -6,12 +6,16 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import stat
+import tempfile
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
 OUTPUT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
+CANONICAL_OUTPUT = OUTPUT
 STEPS = [4, 8, 16, 24, 32, 48]
 
 
@@ -51,6 +55,51 @@ def load(path: Path) -> dict[str, Any]:
     )
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
+
+
+def safe_run_path(value: str) -> Path:
+    require(isinstance(value, str) and value, "run path missing")
+    relative = Path(value)
+    require(not relative.is_absolute() and ".." not in relative.parts, "run path must be repository-relative")
+    path = ROOT / relative
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "run path symlink rejected")
+    require(path.is_file(), "run path missing")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise Fail("run path escaped repository") from None
+    return path
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    require(path.parent.is_dir(), "repeatability result parent missing")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "repeatability result symlink rejected")
+    require(not path.is_dir(), "repeatability result directory target rejected")
+    try:
+        path.parent.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise Fail("repeatability result escaped repository") from None
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fchmod(handle.fileno(), mode)
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def signal_for(result: dict[str, Any]) -> dict[str, Any]:
@@ -111,9 +160,9 @@ def main() -> int:
     args = parser.parse_args()
     contract = load(CONTRACT)
     require(contract.get("schemaVersion") == "memory-os-controlled-saturation-repeatability.v1", "contract schema drift")
-    a_path = (ROOT / args.run_a).resolve()
-    b_path = (ROOT / args.run_b).resolve()
-    require(a_path.is_file() and b_path.is_file() and a_path != b_path, "two distinct run files are required")
+    a_path = safe_run_path(args.run_a)
+    b_path = safe_run_path(args.run_b)
+    require(a_path != b_path, "two distinct run files are required")
     a = load(a_path)
     b = load(b_path)
     sha_a = a.get("commitSha")
@@ -146,7 +195,8 @@ def main() -> int:
         "result": "PASS" if repeatable else "INCONCLUSIVE",
         "limitations": contract.get("limitations", []),
     }
-    OUTPUT.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    require(OUTPUT == CANONICAL_OUTPUT, "repeatability output authority drift")
+    atomic_write_bytes(OUTPUT, (json.dumps(document, indent=2) + "\n").encode("utf-8"))
     print("Memory OS controlled saturation repeatability analysis complete")
     print(f"signal a: {signal_a}")
     print(f"signal b: {signal_b}")
