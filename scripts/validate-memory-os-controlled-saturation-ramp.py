@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+MAX_JSON_BYTES = 1024 * 1024
 CONTRACT_PATH = ROOT / "contracts/operations/controlled-saturation-ramp-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json"
 EXPECTED_STEPS = [4, 8, 16, 24, 32, 48]
@@ -62,11 +63,14 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         raise ValidationFailure("ramp JSON path escaped repository") from None
     try:
-        value = json.loads(path.read_text(encoding="utf-8"),
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "ramp JSON exceeds reviewed read limit")
+        value = json.loads(raw.decode("utf-8"),
                            parse_constant=reject_nonfinite_constant,
                            parse_float=parse_finite_float,
                            object_pairs_hook=reject_duplicate_json_keys)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise ValidationFailure("ramp JSON unreadable or invalid") from None
     require(isinstance(value, dict), "ramp JSON root must be object")
     return value

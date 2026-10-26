@@ -1072,6 +1072,55 @@ def run_repeatability_matrix_boundary_negatives() -> None:
 
 
 
+def run_repeatability_source_reader_size_negatives() -> None:
+    """Exercise three actual source JSON consumers with bounded disposable inputs."""
+    readers = (
+        ("analyzer", "scripts/analyze-memory-os-controlled-saturation-repeatability.py", "CONTRACT", "Fail"),
+        ("repeatability", "scripts/validate-memory-os-controlled-saturation-repeatability.py", "CONTRACT", "Fail"),
+        ("ramp", "scripts/validate-memory-os-controlled-saturation-ramp.py", "CONTRACT_PATH", "ValidationFailure"),
+    )
+    cases = 0
+    with tempfile.TemporaryDirectory(prefix=".repeatability-reader-size-", dir=ROOT) as temp:
+        root = Path(temp)
+        good = root / "good.json"
+        good.write_text('{"safe":true}', encoding="utf-8")
+        for label, script, canonical_attr, error_type in readers:
+            spec = importlib.util.spec_from_file_location("repeatability_reader_" + label, ROOT / script)
+            if spec is None or spec.loader is None:
+                raise RuntimeError("repeatability source reader import unavailable")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if not isinstance(module.load(getattr(module, canonical_attr)), dict):
+                raise RuntimeError("repeatability canonical JSON reader positive control failed")
+            if module.load(good) != {"safe": True}:
+                raise RuntimeError("repeatability disposable JSON reader positive control failed")
+            for bad_label, raw in (
+                ("oversized", b'{"pad":"' + b'x' * (module.MAX_JSON_BYTES + 1) + b'"}'),
+                ("invalid utf8", bytes((255, 254))),
+                ("huge integer", b'{"value":' + b'9' * 5000 + b'}'),
+                ("secret malformed", b'{"SYNTHETIC_REPEATABILITY_READER_SECRET":'),
+            ):
+                bad = root / (label + "-" + bad_label.replace(" ", "-") + ".json")
+                bad.write_bytes(raw)
+                try:
+                    module.load(bad)
+                except getattr(module, error_type) as exc:
+                    if "SYNTHETIC_REPEATABILITY_READER_SECRET" in str(exc):
+                        raise RuntimeError("repeatability source JSON reader disclosed synthetic secret") from None
+                else:
+                    raise RuntimeError("repeatability " + label + " reader accepted " + bad_label)
+                cases += 1
+            if label != "ramp":
+                try:
+                    module.load("synthetic-nonpath")
+                except getattr(module, error_type):
+                    pass
+                else:
+                    raise RuntimeError("repeatability " + label + " reader accepted non-Path")
+                cases += 1
+    print(f"PASS: repeatability analyzer/validator/ramp bounded JSON readers ({cases} negatives)")
+
+
 def run_repeatability_reconciler_json_negatives(module) -> None:
     with tempfile.TemporaryDirectory(prefix="repeatability-json-outside-") as outside_temp:
         outside = Path(outside_temp)
@@ -1837,6 +1886,7 @@ def main() -> int:
     run_load_index_reference_negatives()
     run_operability_validator_json_negatives()
     run_repeatability_nonfinite_negatives()
+    run_repeatability_source_reader_size_negatives()
     run_repeatability_reconciler_json_negatives(module)
     run_repeatability_analyzer_matrix_producer_negatives()
     run_repeatability_analyzer_path_atomic_negatives()

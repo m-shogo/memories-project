@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+MAX_JSON_BYTES = 1024 * 1024
 CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
 ANALYZER = ROOT / "scripts/analyze-memory-os-controlled-saturation-repeatability.py"
@@ -48,6 +49,7 @@ def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def load(path: Path) -> dict[str, Any]:
+    require(isinstance(path, Path), "repeatability JSON path must be Path")
     require(path.is_file(), "repeatability JSON file missing")
     for candidate in (path, *path.parents):
         require(not candidate.is_symlink(), "repeatability JSON symlink rejected")
@@ -56,15 +58,18 @@ def load(path: Path) -> dict[str, Any]:
     except ValueError:
         raise Fail("repeatability JSON path escaped repository") from None
     try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "repeatability JSON exceeds reviewed read limit")
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             parse_constant=reject_nonfinite_constant,
             parse_float=parse_finite_float,
             object_pairs_hook=reject_duplicate_json_keys,
         )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise Fail("repeatability JSON unreadable or invalid") from None
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    require(isinstance(value, dict), "repeatability JSON root must be object")
     return value
 
 
