@@ -51,8 +51,8 @@ def policy(source: str) -> None:
             raise AssertionError("incident authority policy missing: " + marker[:65])
     if source.count(CHECKOUT) != 2 or source.count(SETUP) != 2:
         raise AssertionError("incident authority immutable Actions drift")
-    if source.count('test -z "$(git status --porcelain)"') != 2:
-        raise AssertionError("incident authority both clean-worktree boundaries required")
+    if source.count('test -z "$(git status --porcelain)"') != 3:
+        raise AssertionError("incident authority all three clean-worktree boundaries required")
     for forbidden in ("actions/checkout@v4", "actions/setup-python@v5"):
         if forbidden in source:
             raise AssertionError("incident authority floating Actions regression")
