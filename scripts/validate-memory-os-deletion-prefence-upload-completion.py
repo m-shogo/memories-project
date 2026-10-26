@@ -18,6 +18,7 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-uplo
 RUNNER_PATH = ROOT / "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 MAX_JSON_BYTES = 1024 * 1024
+MAX_RUNNER_BYTES = 1024 * 1024
 
 EXPECTED_RESULT_KEYS = ("schemaVersion", "commitSha", "generatedAt", "environment", "scenario", "limitations",)
 EXPECTED_RESULT_LIMITATIONS = ("one synthetic account and 16 in-flight upload-completion requests", "local PostgreSQL 16 and versioned MinIO on a GitHub-hosted runner", "does not prove process or host failure during deletion-worker erasure", "not production deletion-capacity evidence",)
@@ -158,7 +159,10 @@ def read_runner() -> str:
     except (OSError, ValueError, RuntimeError):
         raise Fail("upload runner escaped repository") from None
     try:
-        return path.read_text(encoding="utf-8")
+        with path.open("rb") as source:
+            raw = source.read(MAX_RUNNER_BYTES + 1)
+        require(len(raw) <= MAX_RUNNER_BYTES, "upload runner exceeds reviewed read limit")
+        return raw.decode("utf-8")
     except (OSError, UnicodeError, ValueError):
         raise Fail("upload runner unreadable or invalid") from None
 

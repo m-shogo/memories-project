@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "eeaa29052d21da0f50999b149a86f5307b1a3c2f"
+REVIEWED_VALIDATOR = "03906bae9fc8b633028c317ae22577198347da5f"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -483,6 +483,8 @@ def strict_validator_runtime():
         runner_good.write_text("package httpserver\\n", encoding="utf-8")
         runner_invalid = inside / "runner-invalid.go"
         runner_invalid.write_bytes(bytes([255]))
+        runner_oversized = inside / "runner-oversized.go"
+        runner_oversized.write_bytes(b"x" * (validator.MAX_RUNNER_BYTES + 1))
         try:
             validator.RUNNER_PATH = runner_good
             if validator.read_runner() != "package httpserver\\n":
@@ -494,6 +496,7 @@ def strict_validator_runtime():
                 ("directory", directory),
                 ("missing", inside / "missing-runner.go"),
                 ("invalid utf8", runner_invalid),
+                ("oversized", runner_oversized),
                 ("non-path", "synthetic-invalid-runner"),
             ):
                 validator.RUNNER_PATH = unsafe
