@@ -13884,3 +13884,52 @@ a promotion decision, a recovery objective, or drill evidence.
 - Observed outcome/evidence: code commit `64d3ad1f8167e56ca46512e26bcb2a3a89d36ae7` is on `so`; source re-read confirms both negative groups and the main invocation; GitHub comparison shows only the existing negative suite changed. Runtime exact-source CI outcome has not been observed through the available status/PR-filtered workflow interfaces, so no CI PASS is asserted.
 - Why safe/reusable mechanism: reuse the existing previously verified read-only negative entrypoint and actual canonical validator rather than modifying workflows, duplicating production authority or weakening admission; only synthetic fixture mutations are tested.
 - Protected-authority check: production status blob `b918ae84e9ac82cfb434e903379e9685137384c2` remains `NO_GO`, and no production, OPS-P0-007, generation, objective, reviewed request, recovery evidence, typed non-resurrection or promotion authority file changed. Preflight distinct eligible environments and current human objective, executable reviewed generation request, typed eight-domain coverage and independent final review, and separate human promotion remain mandatory. Learning cannot satisfy any production/readiness or recovery gate.
+
+## 2026-10-27 — Deletion-load evidence references reject noncanonical lexical aliases
+
+### Material failure: symptom, evidence, root cause, failed approach, correction, recurrence guard, retry condition
+- Symptom/evidence: at `so` `7580d4fbf4ffafec32dd3d6b96af53375fb8542d`, `require_reviewed_evidence_file` rejected traversal, symlinks and outside paths but accepted a regular in-repository file via lexical aliases such as `./`, `//` or a trailing separator if the resulting path remained a regular file. This was source-observed alias acceptance, not observed evidence substitution.
+- Verified root cause: `Path(ref).parts` and `Path.is_file()` normalize some spelling differences; canonical relative-path identity was not enforced. Failed approach: equating resolved regular-file containment with exact declared source spelling.
+- Correction: `2a8b26c167f143c20772762b6037d2177040176a` requires exact `Path(ref).as_posix()` spelling and refuses backslashes before existing symlink/containment checks.
+- Executable recurrence guard/evidence: the existing CI-invoked actual-helper negative suite adds dot-segment, duplicate-separator, trailing-separator and backslash-alias cases (14 unsafe-path negatives total); exact-source Deletion Under Load Authority Gate `40384708988` SUCCESS. The unrelated full dependency workflow `40384709082` FAILED at `Start local MinIO`, not at the read-only guard.
+- Retry condition: changed reviewed evidence-reference syntax or observed exact-source regression; do not retry unchanged external MinIO/branch-admin blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: `2a8b26c` published only the reconciler and its existing negative suite; the exact-source read-only gate `40384708988` and Reconcile Load Foundation Authorities `40384708916` succeeded.
+- Why safe/reusable mechanism: lexical canonicalization complements existing regular-file, symlink, containment and canary checks, without changing reviewed evidence or readiness authority.
+- Protected-authority check: production status blob `b918ae84e9ac82cfb434e903379e9685137384c2` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains blocked; learning contract and generation/objective/request/evidence/non-resurrection registries were not changed. Learning is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## 2026-10-27 — Deletion-load source reconciliation rejects mixed stale and reviewed anchors
+
+### Material failure: symptom, evidence, root cause, failed approach, correction, recurrence guard, retry condition
+- Symptom/evidence: at `2a8b26c`, `replace_once` returned unchanged whenever the reviewed replacement appeared anywhere, even if an additional stale anchor or duplicate reviewed replacement also remained. This was a source-verified idempotence gap; no actual mixed Go source was observed.
+- Verified root cause: the `if new in text` shortcut skipped checking other occurrences. Failed approach: using presence of one reviewed replacement as proof of complete deterministic reconciliation.
+- Correction: `b1a1ff2a60ecae4d85e29dccc58e5a788cf8ada3` requires exactly one reviewed replacement and rejects stale anchors outside that replacement, including the overlapping helper-anchor case.
+- Executable recurrence guard/evidence: three positive cases and six actual-helper mixed/duplicate negatives run through the pre-existing read-only authority gate `40384922088` SUCCESS; Reconcile Deletion Under Load Source `40384922041` SUCCESS.
+- Retry condition: reviewed source anchor/replacement changes or exact-source negative failure; unchanged external MinIO dependency is not a retry condition.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: code commit `b1a1ff2` changed only the source reconciler and CI-reachable negative suite, with exact-source `40384922088` and source reconcile `40384922041` SUCCESS.
+- Why safe/reusable mechanism: a bounded exact-occurrence check protects idempotence without rewriting the canonical Go runner or inventing evidence; the overlap positive control prevents false rejection of the legitimate helper anchor.
+- Protected-authority check: production status remains `NO_GO`, OPS-P0-007 remains `PREREQUISITES_BLOCKED`, and protected registry blobs remain unchanged. No production traffic, credentials, generations, recovery objectives, drill requests, recovery evidence, readiness or promotion was created.
+
+## 2026-10-27 — Deletion-load source reconciler bounds reads and writes atomically
+
+### Material failure: symptom, evidence, root cause, failed approach, correction, recurrence guard, retry condition
+- Symptom/evidence: at `b1a1ff2`, the source reconciler used unbounded `PATH.read_text()` and in-place `PATH.write_text()`, without source-path symlink/containment checks, atomic replacement or existing-mode preservation. This was a source-observed safety gap, not an observed real source corruption.
+- Verified root cause: deterministic source replacement lacked a guarded I/O boundary. Failed approach: relying on the workflow checkout and deterministic text transformation to make unsafe filesystem nodes or interrupted writes impossible.
+- Correction: `2f97d8727d74cf9d0a8601092a15daa63894b96d` adds a 1 MiB bounded UTF-8 reader, regular unsymlinked in-repository path admission, fixed main target, and same-directory fsynced atomic replace preserving mode and cleaning temporary files on failure.
+- Executable recurrence guard: existing read-only negative suite exercises positive bounded read/atomic write, outside/direct/dangling/ancestor symlinks, directory/FIFO/missing nodes, oversized and invalid UTF-8, non-text payload, main target substitution, synthetic replacement failure, unchanged canary/bytes/mode and no temporary residue.
+- Retry condition: reviewed Go source path/size or atomic-write policy changes, or observed exact-source regression. The known MinIO external dependency remains a separate blocker.
+
+### Material failure during guard delivery: symptom, evidence, root cause, failed approach, correction, recurrence guard, retry condition
+- Symptom/evidence: exact-source Deletion Under Load Authority Gate `40385143651` FAILED at `Compile deterministic authority scripts` with `SyntaxError: unexpected character after line continuation character` in the new negative fixture.
+- Verified root cause: the generated Python fixture contained two backslashes before a newline in a multiline `with` statement. Failed approach: relying on escaped line continuation in generated Python text without first validating its exact lexical representation.
+- Correction: `5cff03f16aa341df19a569f84bb8f088f5b20472` replaced the fragile continuation with a parenthesized `with (...)` statement.
+- Executable recurrence guard/evidence: the existing CI entrypoint runs `py_compile` before negatives; corrected exact-source Authority Gate `40385203275` SUCCESS and log confirms `PASS: deletion-load source bounded atomic I/O, 7 unsafe nodes, and rollback negatives`. The failed attempt is retained as historical evidence, not relabeled as success.
+- Retry condition: a new syntax/fixture regression or changed CI interpreter; do not rerun the known-broken `2f97d87` attempt.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+- Outcome/evidence: `2f97d87` implemented source I/O hardening; `5cff03f` corrected its fixture. Exact-source read-only Authority Gate `40385203275` SUCCESS; Reconcile Deletion Under Load Source `40385143519` SUCCESS for the code commit. These are local/static guards, not MinIO-backed load or production proof.
+- Why safe/reusable mechanism: disposable real-helper negative tests, bounded reads, no-follow path admission, atomic replace with rollback on failure, fixed source target, mode and canary preservation. No Go runner/evidence/production authority files changed.
+- Protected-authority check: production status `b918ae84e9ac82cfb434e903379e9685137384c2` remains `NO_GO`; OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, recovery objectives `f4d74f333a4884f9aba2284a31ac011aae8b71bd`, reviewed drill requests `acebcd02de9d4ec44891e70ff00b6898174451dd`, generation recovery evidence `ae7e57efce7ca21d546c1cb336d3ee7bb7ebf93a`, and typed eight-domain non-resurrection registry `26bb1cc70c64ab3dfa09bee011545a52d46afc00` unchanged. Registered/eligible environment generations, current human-approved objective, executable reviewed request, complete typed eight-domain coverage, independent review and separate human promotion remain mandatory; learning cannot satisfy any production or recovery gate.
