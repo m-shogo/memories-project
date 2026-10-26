@@ -1,0 +1,62 @@
+name: Deletion Pre-Fence Diagnostic Source Negative
+
+on:
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-prefence-linearization.yml"
+      - ".github/workflows/deletion-prefence-diagnostic-source-negative.yml"
+      - "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-prefence-linearization.yml"
+      - ".github/workflows/deletion-prefence-diagnostic-source-negative.yml"
+      - "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negative.py"
+
+permissions:
+  contents: read
+
+jobs:
+  source-negative:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Require exact clean pre-fence diagnostic source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${GITHUB_BASE_REF:-}" = "so"
+            expected="$PR_HEAD_SHA"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            expected="${GITHUB_SHA:-}"
+          else
+            echo "Unreviewed pre-fence diagnostic source event" >&2
+            exit 1
+          fi
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Prove pre-fence diagnostic source and isolated runtime
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-deletion-prefence-diagnostic-source-negative.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
