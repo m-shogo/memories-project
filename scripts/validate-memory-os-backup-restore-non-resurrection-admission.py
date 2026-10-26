@@ -89,8 +89,16 @@ def load_module(path: Path, name: str):
 
 def run_validator(path: Path, label: str) -> None:
     repo_relative(path)
-    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-3000:]}{completed.stderr[-3000:]}")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)], cwd=ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise Fail(f"{label} unavailable ({type(exc).__name__})") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"{label} failed without exposing subprocess output")
 
 CANONICAL_SUBPROCESS_RUN = subprocess.run
 CANONICAL_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location

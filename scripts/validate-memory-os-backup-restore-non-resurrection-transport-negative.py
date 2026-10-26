@@ -1446,8 +1446,8 @@ def exercise_validator_child_exit_propagation(validator) -> None:
                 try:
                     validator.run_validator(VALIDATOR, label)
                 except validator.Fail as exc:
-                    expected = f"{label} failed:\n{stdout[-3000:]}{stderr[-3000:]}"
-                    require(str(exc) == expected,
+                    require(str(exc) == f"{label} failed without exposing subprocess output"
+                            and "SYNTHETIC_SECRET" not in str(exc),
                             "typed child nonzero exit diagnostic drift")
                 else:
                     raise Fail("typed child nonzero exit was accepted")
@@ -1456,16 +1456,37 @@ def exercise_validator_child_exit_propagation(validator) -> None:
             require(argv == [validator.sys.executable, str(VALIDATOR)],
                     "typed child executable/argument binding drift")
             require(kwargs == {
-                "cwd": ROOT, "text": True, "stdout": subprocess.PIPE,
-                "stderr": subprocess.PIPE, "check": False,
+                "cwd": ROOT, "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL, "check": False, "timeout": 180,
             }, "typed child subprocess capture or execution mode drift")
         finally:
             validator.subprocess.run = original_run
 
     check_case(0, "canonical child PASS\n", "")
-    check_case(7, "canonical child PASS\n", "controlled failure\n")
+    check_case(7, "SYNTHETIC_SECRET_STDOUT_DO_NOT_LOG", "SYNTHETIC_SECRET_STDERR_DO_NOT_LOG")
     check_case(-9, "", "controlled signal termination\n")
-    print("PASS boundary: typed child nonzero/signal exits reject even with PASS stdout")
+    check_case(True, "SYNTHETIC_SECRET_BOOLEAN_EXIT_DO_NOT_LOG", "")
+
+    def reject_transport(label: str, failure: BaseException, class_name: str) -> None:
+        def failed_run(*args, **kwargs):
+            raise failure
+        validator.subprocess.run = failed_run
+        try:
+            try:
+                validator.run_validator(VALIDATOR, "controlled typed child")
+            except validator.Fail as exc:
+                require(class_name in str(exc) and "SYNTHETIC_SECRET" not in str(exc),
+                        f"typed child {label} leaked transport exception")
+            else:
+                raise Fail(f"typed child {label} accepted")
+        finally:
+            validator.subprocess.run = original_run
+
+    reject_transport("timeout",
+                     subprocess.TimeoutExpired("SYNTHETIC_SECRET_COMMAND_DO_NOT_LOG", 180),
+                     "TimeoutExpired")
+    reject_transport("OS error", OSError("SYNTHETIC_SECRET_OSERROR_DO_NOT_LOG"), "OSError")
+    print("PASS boundary: typed child bounded output suppression, nonzero/signal/boolean and transport negatives")
 
 def prove_typed_transport_fixture_parent_guard() -> None:
     with guarded_temporary_directory(".tmp-typed-transport-parent-negative-", TEMP_PARENT) as raw:
