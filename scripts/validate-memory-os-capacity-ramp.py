@@ -270,9 +270,10 @@ def main() -> int:
         require(assertions.get(field) == value,
                 f"capacity ramp assertion mismatch: {field}")
 
-    serialized = json.dumps(result, ensure_ascii=False)
+    # ASCII credential and identifier markers are case-insensitive.
+    serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
-        "postgres://", "postgresql://", "Bearer ", "password=",
+        "postgres://", "postgresql://", "bearer ", "password=",
         "acct_", "job_", "prv_", "idem-",
     ):
         require(forbidden not in serialized,

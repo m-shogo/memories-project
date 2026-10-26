@@ -299,11 +299,36 @@ def verify_capacity_batch_accounting() -> None:
                         raise RuntimeError(f"capacity batch {label} rejected by wrong gate") from None
                 else:
                     raise RuntimeError(f"capacity batch validator accepted {label}")
+            # Each harmless mixed-case marker must fail at the sensitive-material gate,
+            # not at an unrelated batch/path/ancestry guard.
+            markers = (
+                ("postgres scheme", "PoStGrEs://synthetic.invalid"),
+                ("postgresql scheme", "POSTGRESQL://synthetic.invalid"),
+                ("bearer credential", "bEaReR SYNTHETIC_NON_CREDENTIAL"),
+                ("password field", "PaSsWoRd=SYNTHETIC"),
+                ("account identifier", "ACCT_SYNTHETIC"),
+                ("job identifier", "JoB_SYNTHETIC"),
+                ("private identifier", "PrV_SYNTHETIC"),
+                ("idempotency identifier", "IdEm-SYNTHETIC"),
+            )
+            for label, marker in markers:
+                mutated = copy.deepcopy(canonical_result)
+                mutated["environment"]["syntheticNegativeMarker"] = marker
+                result_path.write_text(json.dumps(mutated), encoding="utf-8")
+                try:
+                    validator.main()
+                except validator.ValidationFailure as exc:
+                    if not str(exc).startswith("capacity ramp result contains forbidden content: "):
+                        raise RuntimeError(f"capacity {label} rejected by wrong gate") from None
+                    if marker in str(exc):
+                        raise RuntimeError(f"capacity {label} leaked synthetic marker") from None
+                else:
+                    raise RuntimeError(f"capacity validator accepted mixed-case {label}")
         finally:
             validator.ROOT = original_root
             validator.CONTRACT_PATH = original_contract
             validator.is_ancestor = original_ancestor
-    print("PASS: capacity batch positive and 7 status/throughput negatives")
+    print("PASS: capacity batch positive, 7 status/throughput and 8 sensitive-marker negatives")
 
 
 def main() -> int:
