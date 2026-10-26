@@ -288,7 +288,41 @@ def main() -> int:
         if list(target.parent.glob(f".{target.name}.*.tmp")):
             raise AssertionError("bound atomic writer left a temp file")
 
-    print("PASS: deletion-worker saturation authority, secret-free validator/rollback diagnostics, mode-preserving atomic publication and rollback are fail-closed")
+        new_target = Path(tmp) / "new-authority.json"
+        reconciler.atomic_write_bytes(new_target, b"new\\n")
+        if new_target.read_bytes() != b"new\\n" or stat.S_IMODE(new_target.stat().st_mode) != 0o600:
+            raise AssertionError("new atomic authority default mode/payload drift")
+
+        outside = Path(tmp) / "outside"
+        outside.mkdir()
+        canary = outside / "canary.json"
+        canary.write_bytes(b"SYNTHETIC_SECRET_CANARY")
+        direct_link = Path(tmp) / "direct-symlink.json"
+        direct_link.symlink_to(canary)
+        linked_parent = Path(tmp) / "linked-parent"
+        linked_parent.symlink_to(outside, target_is_directory=True)
+        directory_target = Path(tmp) / "directory-target.json"
+        directory_target.mkdir()
+        cases = (
+            ("symlink target", direct_link),
+            ("symlink ancestor", linked_parent / "canary.json"),
+            ("directory target", directory_target),
+            ("missing parent", Path(tmp) / "missing" / "authority.json"),
+        )
+        for label, unsafe_target in cases:
+            try:
+                reconciler.atomic_write_bytes(unsafe_target, b"malicious\\n")
+            except reconciler.Fail as exc:
+                if "atomic " not in str(exc) or "SYNTHETIC_SECRET" in str(exc):
+                    raise AssertionError("unsafe atomic path diagnostic drift: " + label) from None
+            else:
+                raise AssertionError("unsafe atomic writer path accepted: " + label)
+            if canary.read_bytes() != b"SYNTHETIC_SECRET_CANARY":
+                raise AssertionError("unsafe atomic writer mutated external canary: " + label)
+            if list(Path(tmp).rglob(".*.tmp")):
+                raise AssertionError("unsafe atomic writer left temp residue: " + label)
+
+    print("PASS: deletion-worker saturation authority, secret-free validator/rollback diagnostics, mode-preserving atomic publication, path rejection and rollback are fail-closed")
     return 0
 
 
