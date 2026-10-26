@@ -45,15 +45,21 @@ def write_source(path: Path, text: str) -> None:
     require_safe_source(path)
     if type(text) is not str:
         raise RuntimeError("deletion load source payload must be text")
+    try:
+        payload = text.encode("utf-8")
+    except UnicodeError:
+        raise RuntimeError("deletion load source payload invalid UTF-8") from None
+    if len(payload) > MAX_SOURCE_BYTES:
+        raise RuntimeError("deletion load source payload exceeds reviewed write limit")
     temporary: Path | None = None
     try:
         existing_mode = stat.S_IMODE(path.stat().st_mode)
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent,
+            mode="wb", dir=path.parent,
             prefix=f".{path.name}.", suffix=".tmp", delete=False,
         ) as handle:
             temporary = Path(handle.name)
-            handle.write(text)
+            handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temporary, existing_mode)

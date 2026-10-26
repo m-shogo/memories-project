@@ -929,6 +929,18 @@ def exercise_deletion_load_source_io_boundary() -> None:
             pass
         else:
             raise RuntimeError("non-text source payload accepted")
+        for label, invalid_payload, expected in (
+            ("oversized write", "X" * (source.MAX_SOURCE_BYTES + 1), "exceeds reviewed write limit"),
+            ("invalid Unicode", chr(0xD800), "invalid UTF-8"),
+        ):
+            try:
+                source.write_source(regular, invalid_payload)
+            except RuntimeError as exc:
+                require(expected in str(exc), f"source {label} wrong rejection")
+            else:
+                raise RuntimeError(f"source {label} accepted")
+            require(regular.read_text(encoding="utf-8") == "AFTER",
+                    f"source {label} changed prior bytes")
         original_target = source.PATH
         source.PATH = regular
         try:
