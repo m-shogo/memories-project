@@ -41,7 +41,6 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-          persist-credentials: false
       - name: Require trusted repeatability ramp source
         run: |
           set -euo pipefail
