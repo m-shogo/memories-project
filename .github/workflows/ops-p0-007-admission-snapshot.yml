@@ -45,6 +45,7 @@ on:
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-generator-execution-authority-negative.py"
+      - "scripts/validate-memory-os-local-apple-replay-restore.py"
   workflow_dispatch:
 
 permissions:

@@ -66,6 +66,7 @@ PUBLISH_REVALIDATION_CHAIN = (
 PUBLISH_STAGE_CLASSES = tuple(
     f"VALIDATOR_{index:02d}" for index in range(1, len(PUBLISH_REVALIDATION_CHAIN) + 1)
 )
+LOCAL_APPLE_VALIDATOR_TRIGGER = "scripts/validate-memory-os-local-apple-replay-restore.py"
 
 # GitHub's write-capable token scopes are not limited to contents:write.
 # The snapshot PR job must remain read-only across every recognized scope.
@@ -1248,6 +1249,7 @@ def publisher_trigger_paths() -> tuple[str, ...]:
         "contracts/operations/production-operability-status.json",
         "docs/evidence/backup-restore/**",
         *PR_COMPILE_FILES[:-1],
+        LOCAL_APPLE_VALIDATOR_TRIGGER,
     )
 
 
@@ -1338,6 +1340,7 @@ def require_pr_trigger_authority(pr: str) -> None:
         "contracts/operations/production-operability-status.json",
         "docs/evidence/backup-restore/**",
         "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py",
+        LOCAL_APPLE_VALIDATOR_TRIGGER,
         *PUBLISH_REVALIDATION_CHAIN,
         *PR_COMPILE_FILES,
     }
@@ -1353,6 +1356,7 @@ def prove_pr_trigger_negative(pr: str) -> None:
     self_path = '      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py"\n'
     status_path = '      - "contracts/operations/production-operability-status.json"\n'
     generator_path = '      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"\n'
+    apple_path = f'      - "{LOCAL_APPLE_VALIDATOR_TRIGGER}"\n'
     mutations = (
         ("  pull_request:\n", "  workflow_dispatch:\n"),
         ("  pull_request:\n", "  pull_request_target:\n"),
@@ -1361,6 +1365,7 @@ def prove_pr_trigger_negative(pr: str) -> None:
         (self_path, "      # negative guard path filter removed\n"),
         (status_path, "      # production status path filter removed\n"),
         (generator_path, "      # generator path filter removed\n"),
+        (apple_path, "      # Apple validator trigger removed\n"),
         (self_path, self_path + self_path),
     )
     # Every typed generation/objective/drill/evidence contract and registry
@@ -2473,6 +2478,7 @@ def readonly_trigger_paths() -> tuple[str, ...]:
         ".github/workflows/ops-p0-007-admission-snapshot-pr.yml",
         ".github/workflows/ops-p0-007-snapshot-permission-boundary.yml",
         *PR_COMPILE_FILES[-6:],
+        LOCAL_APPLE_VALIDATOR_TRIGGER,
         "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
         "contracts/operations/operability-admission-inventory.v1.json",
         "contracts/operations/production-operability-status.json",
