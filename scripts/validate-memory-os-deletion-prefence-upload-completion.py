@@ -133,6 +133,7 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 def validate_contract(contract: dict[str, Any]) -> None:
+    require(contract.get("contractId") == "memory-os.operability.deletion-prefence-upload-completion.v1", "contract identity drift")
     require(contract.get("schemaVersion") == "memory-os-deletion-prefence-upload-completion.v1", "contract schema drift")
     require(contract.get("resultsSchemaVersion") == "memory-os-deletion-prefence-upload-completion-results.v1", "result schema drift")
     require(contract.get("scenarioId") == "account-deletion-prefence-upload-completion-local-dependencies", "scenario drift")

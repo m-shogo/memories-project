@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-sourc
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-REVIEWED_VALIDATOR = "2c6726e53bfea01cd58bb2f7333df4f77b5968f2"
+REVIEWED_VALIDATOR = "f36013e03412cb1c36724091c951ed185f1d77a9"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
@@ -482,6 +482,21 @@ def typed_criteria_runtime():
     validator.validate_result(contract, None)
     canonical = validator.load(validator.RESULT_PATH)
     cases = 0
+
+    # Exact reviewed contract identity must not be replaceable by schema/scenario aliases.
+    for label, value in (("missing", None), ("substitute", "synthetic.unreviewed"), ("non-string", True)):
+        candidate = copy.deepcopy(contract)
+        if value is None:
+            candidate.pop("contractId")
+        else:
+            candidate["contractId"] = value
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence mutation accepted contractId " + label)
+        cases += 1
 
     for key, expected in validator.EXPECTED_CRITERIA.items():
         candidate = copy.deepcopy(contract)
