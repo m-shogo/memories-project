@@ -219,7 +219,7 @@ def write_transactionally(
         write(LOAD_CONTRACT, load_contract)
         write(STATUS_PATH, status)
         validate_post_write(expected_sha)
-    except BaseException:
+    except BaseException as primary_error:
         rollback_error: BaseException | None = None
         for path, (content, mode) in originals.items():
             try:
@@ -228,8 +228,13 @@ def write_transactionally(
                 if rollback_error is None:
                     rollback_error = exc
         if rollback_error is not None:
-            raise RuntimeError(f"controlled saturation authority rollback failed: {type(rollback_error).__name__}") from None
-        raise
+            raise RuntimeError(
+                "controlled saturation authority rollback incomplete: "
+                f"{type(rollback_error).__name__}; primary {type(primary_error).__name__}"
+            ) from None
+        raise RuntimeError(
+            f"controlled saturation authority transaction failed: {type(primary_error).__name__}"
+        ) from None
 
 
 def refuse_stronger_readiness(values: dict[str, Any], fields: tuple[str, ...], label: str) -> None:

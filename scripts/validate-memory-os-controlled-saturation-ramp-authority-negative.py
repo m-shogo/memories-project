@@ -65,10 +65,12 @@ def verify_atomic_replace_failure(module) -> None:
                 module.load(module.STATUS_PATH),
                 module.load(module.RESULT_PATH)["commitSha"],
             )
-        except BaseException as exc:
+        except RuntimeError as exc:
             rejected = True
-            if "synthetic controlled saturation atomic replacement failure" not in str(exc):
-                raise RuntimeError(f"unexpected atomic rejection: {exc}") from exc
+            if ("transaction failed: OSError" not in str(exc)
+                    or "synthetic controlled saturation atomic replacement failure" in str(exc)
+                    or not exc.__suppress_context__):
+                raise RuntimeError("controlled saturation atomic rejection disclosed primary exception") from None
         if not rejected:
             raise RuntimeError("controlled saturation accepted synthetic atomic replacement failure")
         for path, payload in originals.items():
@@ -82,6 +84,59 @@ def verify_atomic_replace_failure(module) -> None:
         for path, payload in originals.items():
             if path.read_bytes() != payload:
                 module.atomic_write_bytes(path, payload)
+
+
+def verify_transaction_secret_redaction(module) -> None:
+    marker = "SYNTHETIC_CONTROLLED_SATURATION_PRIMARY_SECRET"
+    protected = module.TRANSACTION_PATHS
+    before = {path: path.read_bytes() for path in protected}
+    original_write = module.write
+    original_atomic = module.atomic_write_bytes
+    original_validate = module.validate_post_write
+    attempts = []
+
+    def noisy_validation(expected_sha):
+        raise RuntimeError(marker)
+
+    def record_rollback(path, content, mode=None):
+        attempts.append(path)
+
+    module.write = lambda *args: None
+    module.validate_post_write = noisy_validation
+    try:
+        for fail_rollback in (False, True):
+            attempts.clear()
+
+            def rollback(path, content, mode=None):
+                record_rollback(path, content, mode)
+                if fail_rollback and path == protected[0]:
+                    raise OSError(marker)
+
+            module.atomic_write_bytes = rollback
+            try:
+                module.write_transactionally(
+                    module.load(module.CONTROLLED_CONTRACT),
+                    module.load(module.LOAD_CONTRACT),
+                    module.load(module.STATUS_PATH),
+                    "0" * 40,
+                )
+            except RuntimeError as exc:
+                expected = ("rollback incomplete: OSError; primary RuntimeError" if fail_rollback
+                            else "transaction failed: RuntimeError")
+                if marker in str(exc) or expected not in str(exc) or not exc.__suppress_context__:
+                    raise RuntimeError("controlled saturation transaction leaked primary/rollback exception") from None
+            else:
+                raise RuntimeError("controlled saturation accepted secret-bearing transaction failure")
+            if attempts != list(protected):
+                raise RuntimeError("controlled saturation transaction did not attempt all three rollbacks")
+    finally:
+        module.write = original_write
+        module.atomic_write_bytes = original_atomic
+        module.validate_post_write = original_validate
+    for path, content in before.items():
+        if path.read_bytes() != content:
+            raise RuntimeError("controlled saturation transaction redaction test changed canonical authority")
+    print("PASS: controlled saturation primary and incomplete-rollback redaction (2 cases)")
 
 
 def verify_atomic_path_negatives(module) -> None:
@@ -507,6 +562,7 @@ def main() -> int:
         expect_rejection(module, attr, replacement)
     module.enforce_runtime_authorities()
     verify_atomic_replace_failure(module)
+    verify_transaction_secret_redaction(module)
     verify_atomic_path_negatives(module)
     verify_validator_output_negative(module)
     verify_reconciler_json_parser_negatives(module)
