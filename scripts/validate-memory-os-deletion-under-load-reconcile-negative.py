@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import sys
+import subprocess
 import os
 import tempfile
 import os
@@ -1170,7 +1171,80 @@ def exercise_validator_command_authority(module: ModuleType) -> None:
     print("PASS: deletion-under-load validator command authority 3 positives and 9 negatives")
 
 
+
+def exercise_deletion_load_workflow_diagnostic() -> None:
+    """Prove the actual publisher inline diagnostic is redacted and path-safe."""
+    workflow = (ROOT / ".github/workflows/deletion-under-load.yml").read_text(encoding="utf-8")
+    required = (
+        "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
+        "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        'test "$GITHUB_REF" = "refs/heads/so"',
+        '"output": "Deletion-under-load local proof failed; raw validator output withheld."',
+        '"containsSecrets": False', '"productionEvidence": False',
+        '"requestsStartedBeforeFenceCovered": False',
+        "candidate.is_symlink()", "os.fchmod(handle.fileno(), mode)",
+        "os.fsync(handle.fileno())", "os.replace(tmp_path, path)",
+        "tmp_path.unlink(missing_ok=True)",
+    )
+    for marker in required:
+        require(marker in workflow, "deletion-load diagnostic source guard missing: " + marker[:70])
+    for forbidden in ("docker logs memory-os-deletion-load-minio", "text[-12000:]",
+                      "checkout@v4", "setup-go@v5", "setup-python@v5",
+                      'errors="replace"', 'text = re.sub('):
+        require(forbidden not in workflow, "unsafe deletion-load diagnostic: " + forbidden)
+    marker = "          python - <<'PY'" + chr(10)
+    require(workflow.count(marker) == 1, "deletion-load inline diagnostic entrypoint drift")
+    code = workflow.split(marker, 1)[1].split(chr(10) + "          PY", 1)[0]
+    code = chr(10).join(line[10:] if line.startswith("          ") else line
+                        for line in code.splitlines())
+    with tempfile.TemporaryDirectory(prefix="deletion-load-diagnostic-negative-") as tmp:
+        root = Path(tmp)
+        target = root / "docs/fixtures/memory-os-operability/deletion-under-load-diagnostic.last.json"
+        canary = root / "external-canary"
+        canary.write_text("UNCHANGED", encoding="utf-8")
+        env = dict(os.environ, SOURCE_SHA="a" * 40, DELETION_LOAD_EXIT_CODE="17")
+        def run() -> subprocess.CompletedProcess[bytes]:
+            return subprocess.run([sys.executable, "-c", code], cwd=root, env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  timeout=10, check=False)
+        require(run().returncode != 0, "diagnostic accepted missing parent")
+        target.parent.mkdir(parents=True)
+        require(run().returncode == 0, "diagnostic positive writer failed")
+        value = json.loads(target.read_text(encoding="utf-8"))
+        require(value["output"] == "Deletion-under-load local proof failed; raw validator output withheld."
+                and value["sourceCommitSha"] == "a" * 40 and value["exitCode"] == 17,
+                "diagnostic fixed output/source/exit binding drift")
+        require(value["containsSecrets"] is False and value["productionEvidence"] is False
+                and value["requestsStartedBeforeFenceCovered"] is False,
+                "diagnostic crossed local evidence boundary")
+        os.chmod(target, 0o640)
+        require(run().returncode == 0 and stat.S_IMODE(target.stat().st_mode) == 0o640,
+                "diagnostic writer changed existing mode")
+        target.unlink()
+        target.symlink_to(canary)
+        require(run().returncode != 0, "diagnostic accepted symlink target")
+        require(canary.read_text(encoding="utf-8") == "UNCHANGED",
+                "diagnostic overwrote external canary")
+        target.unlink()
+        target.mkdir()
+        require(run().returncode != 0, "diagnostic accepted directory target")
+        target.rmdir()
+        if hasattr(os, "mkfifo"):
+            os.mkfifo(target)
+            require(run().returncode != 0, "diagnostic accepted FIFO target")
+            target.unlink()
+        target.parent.rmdir()
+        target.parent.symlink_to(root)
+        require(run().returncode != 0, "diagnostic accepted symlink parent")
+        require(canary.read_text(encoding="utf-8") == "UNCHANGED",
+                "diagnostic changed external canary")
+        require(not list(root.rglob("*.tmp")), "diagnostic writer left temporary residue")
+    print("PASS: deletion-load fixed diagnostic, atomic mode, unsafe nodes and canary")
+
+
 def main() -> int:
+    exercise_deletion_load_workflow_diagnostic()
     exercise_deletion_load_json_reader()
     exercise_deletion_load_numeric_boundary()
     exercise_deletion_load_optional_result_path()
