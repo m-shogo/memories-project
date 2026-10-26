@@ -13,6 +13,30 @@ INDEPENDENT = ".github/workflows/upload-completion-load-source-negative.yml"
 SELF = "scripts/validate-memory-os-upload-completion-load-source-negative.py"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+REVIEWED_PUBLISHER = "d8bc882a59eb452d4fdeebfb1dad77fe1cac2adf"
+REVIEWED_INDEPENDENT = "2973a31b37ada2455f92a04736612b9484a6a422"
+
+def blob(content: str) -> str:
+    data = content.encode("utf-8")
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+def require_reviewed_source(content: str, expected: str, label: str) -> None:
+    if blob(content) != expected:
+        raise AssertionError("upload completion " + label + " complete Git blob drift")
+
+def reviewed_blob_negatives(publisher: str, independent: str) -> None:
+    require_reviewed_source(publisher, REVIEWED_PUBLISHER, "publisher")
+    require_reviewed_source(independent, REVIEWED_INDEPENDENT, "independent CI")
+    for label, original, expected in (
+        ("publisher", publisher, REVIEWED_PUBLISHER),
+        ("independent CI", independent, REVIEWED_INDEPENDENT),
+    ):
+        try:
+            require_reviewed_source(original + "\n# synthetic source drift\n", expected, label)
+        except AssertionError:
+            continue
+        raise AssertionError("upload completion reviewed Git blob accepted synthetic source drift: " + label)
+    print("PASS: upload completion publisher and independent CI complete Git blob source negatives (2 cases)")
 
 def read(path: str) -> str:
     p = ROOT / path
@@ -117,6 +141,7 @@ def main() -> None:
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("upload completion independent CI reachability drift: " + marker)
+    reviewed_blob_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)
     identity(publisher, "Validate exact PR-head upload completion authority", False)
