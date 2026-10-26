@@ -41,9 +41,20 @@ def load(path: Path) -> dict[str, Any]:
 
 def finite(value: Any, field: str) -> float:
     require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
-    number = float(value)
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        raise Fail(f"{field} must be finite") from None
     require(math.isfinite(number), f"{field} must be finite")
     return number
+
+
+def bounded_delta(a: Any, b: Any, field: str) -> float:
+    left = finite(a, f"{field} runA")
+    right = finite(b, f"{field} runB")
+    delta = right - left
+    require(math.isfinite(delta), f"{field} expected cross-run delta must be finite")
+    return delta
 
 
 def utc_timestamp(value: Any, field: str) -> datetime:
@@ -212,18 +223,18 @@ def main() -> int:
     require(run_a == expected_latest_a["runId"] and run_b == expected_latest_b["runId"],
             "latestPair must name the two newest validated runs by scenario.completedAt chronology")
     expected_deltas = {
-        "rssSlopeDeltaBytesPerMinute":
-            float(expected_by_id[str(run_b)]["rssSlopeBytesPerMinute"]) -
-            float(expected_by_id[str(run_a)]["rssSlopeBytesPerMinute"]),
-        "heapAllocSlopeDeltaBytesPerMinute":
-            float(expected_by_id[str(run_b)]["heapAllocSlopeBytesPerMinute"]) -
-            float(expected_by_id[str(run_a)]["heapAllocSlopeBytesPerMinute"]),
-        "heapInuseSlopeDeltaBytesPerMinute":
-            float(expected_by_id[str(run_b)]["heapInuseSlopeBytesPerMinute"]) -
-            float(expected_by_id[str(run_a)]["heapInuseSlopeBytesPerMinute"]),
-        "goroutineSlopeDeltaPerMinute":
-            float(expected_by_id[str(run_b)]["goroutineSlopePerMinute"]) -
-            float(expected_by_id[str(run_a)]["goroutineSlopePerMinute"]),
+        "rssSlopeDeltaBytesPerMinute": bounded_delta(
+            expected_by_id[str(run_a)]["rssSlopeBytesPerMinute"],
+            expected_by_id[str(run_b)]["rssSlopeBytesPerMinute"], "rss slope"),
+        "heapAllocSlopeDeltaBytesPerMinute": bounded_delta(
+            expected_by_id[str(run_a)]["heapAllocSlopeBytesPerMinute"],
+            expected_by_id[str(run_b)]["heapAllocSlopeBytesPerMinute"], "heap allocation slope"),
+        "heapInuseSlopeDeltaBytesPerMinute": bounded_delta(
+            expected_by_id[str(run_a)]["heapInuseSlopeBytesPerMinute"],
+            expected_by_id[str(run_b)]["heapInuseSlopeBytesPerMinute"], "heap inuse slope"),
+        "goroutineSlopeDeltaPerMinute": bounded_delta(
+            expected_by_id[str(run_a)]["goroutineSlopePerMinute"],
+            expected_by_id[str(run_b)]["goroutineSlopePerMinute"], "goroutine slope"),
     }
     for field, expected in expected_deltas.items():
         actual = finite(latest_pair.get(field), f"latestPair.{field}")

@@ -274,7 +274,37 @@ def validate_result_numeric_overflow_negatives() -> None:
     print("PASS: sustained local-soak numeric/slope positives and 6 overflow negatives")
 
 
+def validate_cross_run_delta_nonfinite_negatives() -> None:
+    """Exercise producer and consumer against finite inputs yielding infinite deltas."""
+    producer = load_trend_reviewer()
+    consumer = load_module(
+        ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py",
+        "memory_os_sustained_local_soak_trend_delta_negative",
+    )
+    if producer.pair_delta({"metric": 2.0}, {"metric": 5.0}, "metric") != 3.0:
+        raise AssertionError("sustained local-soak producer delta positive drift")
+    if consumer.bounded_delta(2.0, 5.0, "metric") != 3.0:
+        raise AssertionError("sustained local-soak consumer delta positive drift")
+    for label, left, right in (
+        ("derived infinity", -1e308, 1e308),
+        ("input infinity", 1.0, float("inf")),
+        ("huge integer conversion", 1.0, 10 ** 500),
+    ):
+        for operation in (
+            lambda a=left, b=right: producer.pair_delta({"metric": a}, {"metric": b}, "metric"),
+            lambda a=left, b=right: consumer.bounded_delta(a, b, "metric"),
+        ):
+            try:
+                operation()
+            except (producer.Fail, consumer.Fail):
+                pass
+            else:
+                raise AssertionError("sustained local-soak cross-run delta accepted " + label)
+    print("PASS: sustained local-soak cross-run delta positives and 6 finite negatives")
+
+
 def main() -> int:
+    validate_cross_run_delta_nonfinite_negatives()
     validate_result_json_parser_negatives()
     validate_result_numeric_overflow_negatives()
     module = load_reconciler()

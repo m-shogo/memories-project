@@ -96,7 +96,10 @@ def load(path: Path) -> dict[str, Any]:
 
 def finite_number(value: Any, field: str) -> float:
     require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
-    number = float(value)
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        raise Fail(f"{field} must be finite") from None
     require(math.isfinite(number), f"{field} must be finite")
     return number
 
@@ -178,7 +181,11 @@ def summarize_run(path: Path) -> tuple[datetime, dict[str, Any]]:
 
 
 def pair_delta(a: dict[str, Any], b: dict[str, Any], field: str) -> float:
-    return float(b[field]) - float(a[field])
+    left = finite_number(a.get(field), f"{field} runA")
+    right = finite_number(b.get(field), f"{field} runB")
+    delta = right - left
+    require(math.isfinite(delta), f"{field} cross-run delta must remain finite")
+    return delta
 
 
 def main() -> int:
@@ -233,7 +240,7 @@ def main() -> int:
         "productionReady": False,
         "decision": "DESCRIPTIVE_LOCAL_REPEATABILITY_REVIEW_COMPLETE_NO_LEAK_OR_PRODUCTION_CONCLUSION",
     }
-    atomic_replace_bytes(REVIEW_PATH, (json.dumps(review, indent=2) + "\n").encode("utf-8"))
+    atomic_replace_bytes(REVIEW_PATH, (json.dumps(review, indent=2, allow_nan=False) + "\n").encode("utf-8"))
     print("Memory OS sustained local soak descriptive trend review created")
     print(f"reviewed runs: {len(runs)}")
     print("run chronology bound to UTC timestamps and measured duration: true")
