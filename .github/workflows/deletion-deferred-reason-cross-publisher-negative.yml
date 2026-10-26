@@ -1,0 +1,76 @@
+name: Deletion Deferred Reason Cross-Publisher Negative
+
+on:
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-deferred-reason-cross-publisher-negative.yml"
+      - "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
+      - "scripts/reconcile-memory-os-deletion-mutation-evidence.py"
+      - "scripts/reconcile-memory-os-deletion-advanced-evidence.py"
+      - "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py"
+      - "scripts/reconcile-memory-os-load-readiness-note.py"
+      - "scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-deferred-reason-cross-publisher-negative.yml"
+      - "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
+      - "scripts/reconcile-memory-os-deletion-mutation-evidence.py"
+      - "scripts/reconcile-memory-os-deletion-advanced-evidence.py"
+      - "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py"
+      - "scripts/reconcile-memory-os-load-readiness-note.py"
+      - "scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py"
+
+permissions:
+  contents: read
+
+jobs:
+  reason-negative:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Require exact clean deferred reason source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${GITHUB_BASE_REF:-}" = "so"
+            expected="$PR_HEAD_SHA"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            expected="${GITHUB_SHA:-}"
+          else
+            exit 1
+          fi
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Execute cross-publisher source and typed reason negatives
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py
+          python scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py
+          python scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py
+          python scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
