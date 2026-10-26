@@ -82,6 +82,36 @@ def expect_atomic_replace_failure(module) -> None:
             raise SystemExit("successful atomic replacement changed target mode")
 
 
+def expect_substituted_atomic_targets_rejected(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-container-kill-symlink-") as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "authority.json"
+        canary.write_bytes(b"SYNTHETIC_CONTAINER_KILL_CANARY")
+        direct = root / "direct.json"
+        direct.symlink_to(canary)
+        ancestor = root / "linked"
+        ancestor.symlink_to(outside, target_is_directory=True)
+        directory = root / "directory.json"
+        directory.mkdir()
+        for target, message in (
+            (direct, "container-kill atomic symlink target/ancestor refused"),
+            (ancestor / "authority.json", "container-kill atomic symlink target/ancestor refused"),
+            (directory, "container-kill atomic target must be a regular file"),
+        ):
+            expect_rejection(
+                lambda target=target: module.CANONICAL_ATOMIC_WRITE_BYTES(target, b"synthetic overwrite"),
+                message,
+            )
+            if canary.read_bytes() != b"SYNTHETIC_CONTAINER_KILL_CANARY":
+                raise AssertionError("container-kill atomic writer escaped to external canary")
+        if not direct.is_symlink() or not ancestor.is_symlink() or not directory.is_dir():
+            raise AssertionError("container-kill atomic writer replaced substituted path")
+        if list(root.rglob(".*.tmp")):
+            raise AssertionError("container-kill substituted target left temp residue")
+
+
 def expect_exhaustive_rollback_failure(module, original_load: bytes, original_status: bytes) -> None:
     original_normalize = module.normalize_and_validate_authority
     original_writer = module.CANONICAL_ATOMIC_WRITE_BYTES
@@ -205,6 +235,7 @@ def main() -> int:
         module.atomic_write_bytes = original_writer
 
     expect_atomic_replace_failure(module)
+    expect_substituted_atomic_targets_rejected(module)
     module.require_canonical_authorities()
 
     original_normalize = module.normalize_and_validate_authority
