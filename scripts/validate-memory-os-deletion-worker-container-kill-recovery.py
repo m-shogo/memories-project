@@ -17,6 +17,7 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-contai
 CONTROLLER_PATH = ROOT / "services/import-api/cmd/deletion-container-drill/main.go"
 HELPER_PATH = ROOT / "services/import-api/cmd/deletion-container-drill-helper/main.go"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+MAX_JSON_BYTES = 1024 * 1024
 
 
 class Fail(RuntimeError):
@@ -56,11 +57,14 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         raise Fail("container-kill JSON path escaped repository") from None
     try:
-        value = json.loads(path.read_text(encoding="utf-8"),
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "container-kill JSON exceeds reviewed read limit")
+        value = json.loads(raw.decode("utf-8"),
                            parse_constant=reject_nonfinite_constant,
                            parse_float=parse_finite_float,
                            object_pairs_hook=reject_duplicate_json_keys)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise Fail("container-kill JSON unreadable or invalid") from None
     require(isinstance(value, dict), "container-kill JSON root must be object")
     return value
