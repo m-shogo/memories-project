@@ -306,28 +306,38 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os, re, stat, tempfile
+          import json, os, stat, tempfile
           from pathlib import Path
-          text = Path('/tmp/memory-os-sustained-local-soak-authority.log').read_text(encoding='utf-8', errors='replace')
-          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
-          text = re.sub(r'https?://[^\s]+', '<redacted-url>', text)
-          text = re.sub(r'Bearer\s+\S+', 'Bearer <redacted>', text, flags=re.I)
+          allowed_stages = {
+              'compile', 'contract-validation', 'pending-aggregate',
+              'descriptive-cross-run-review', 'reviewed-aggregate',
+              'post-aggregate-negative', 'status-reconcile',
+          }
+          failure_stage = os.environ.get('FAILURE_STAGE', 'unknown')
+          if failure_stage not in allowed_stages:
+              failure_stage = 'unknown'
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'reconcile-sustained-local-soak-authority',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
-              'failureStage': os.environ.get('FAILURE_STAGE', 'unknown'),
+              'failureStage': failure_stage,
               'result': 'FAIL',
               'exitCode': int(os.environ['EXIT_CODE']),
-              'output': text[-12000:],
+              'output': 'Validation failed; consult the exact-source workflow run.',
               'containsSecrets': False,
               'productionEvidence': False,
               'leakProof': False,
               'productionReady': False,
           }
           path = Path('docs/fixtures/memory-os-operability/sustained-local-soak-authority-diagnostic.last.json')
-          path.parent.mkdir(parents=True, exist_ok=True)
-          payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          repo = Path.cwd().resolve(strict=True)
+          if any(candidate.is_symlink() for candidate in (path, *path.parents)):
+              raise SystemExit('diagnostic symlink path rejected')
+          if not path.parent.is_dir() or path.parent.resolve(strict=True) != repo / 'docs/fixtures/memory-os-operability':
+              raise SystemExit('diagnostic parent missing or escaped repository')
+          if path.exists() and not path.is_file():
+              raise SystemExit('diagnostic target must be regular file')
+          payload = (json.dumps(value, indent=2, allow_nan=False) + '\n').encode('utf-8')
           existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
           fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
           try:

@@ -4,8 +4,13 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import stat
+import subprocess
+import sys
 import tempfile
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -467,7 +472,91 @@ def validate_aggregate_updater_admission_negatives() -> None:
     print("PASS: aggregate updater 8 JSON, 3 numeric and 1 child-output negatives")
 
 
+def validate_reconcile_diagnostic_runtime() -> None:
+    """Run the actual workflow inline writer only inside disposable synthetic directories."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    section = extract_workflow_step(
+        workflow,
+        "      - name: Record privacy-safe diagnostic\n",
+        "      - name: Enforce authority success\n",
+        "sustained soak reconciliation",
+    )
+    for fragment in (
+        "'output': 'Validation failed; consult the exact-source workflow run.'",
+        "failure_stage not in allowed_stages",
+        "any(candidate.is_symlink() for candidate in (path, *path.parents))",
+        "path.parent.resolve(strict=True) != repo / 'docs/fixtures/memory-os-operability'",
+        "path.exists() and not path.is_file()",
+        "os.replace(tmp_name, path)",
+    ):
+        if fragment not in section:
+            raise AssertionError("sustained soak diagnostic guard missing: " + fragment)
+    for forbidden in ("text[-12000:]", "re.sub(", "authority.log').read_text", "path.parent.mkdir("):
+        if forbidden in section:
+            raise AssertionError("sustained soak diagnostic raw-log/path regression: " + forbidden)
+    marker = "          python - <<'PY'\n"
+    if section.count(marker) != 1 or section.count("\n          PY\n") != 1:
+        raise AssertionError("sustained soak inline diagnostic Python boundary drift")
+    code = textwrap.dedent(section.split(marker, 1)[1].split("\n          PY\n", 1)[0]) + "\n"
+    with tempfile.TemporaryDirectory(prefix=".sustained-soak-diagnostic-runtime-", dir=ROOT) as temp:
+        root = Path(temp)
+        target = root / "docs/fixtures/memory-os-operability/sustained-local-soak-authority-diagnostic.last.json"
+        target.parent.mkdir(parents=True)
+        env = dict(os.environ, SOURCE_SHA="a" * 40, EXIT_CODE="17", FAILURE_STAGE="SYNTHETIC_SECRET_CANARY")
+
+        def execute(script: str):
+            return subprocess.run(
+                [sys.executable, "-c", script], cwd=root, env=env,
+                capture_output=True, text=True, check=False,
+            )
+
+        success = execute(code)
+        if success.returncode != 0:
+            raise AssertionError("synthetic diagnostic writer failed: " + success.stderr[-300:])
+        document = json.loads(target.read_text(encoding="utf-8"))
+        if (document.get("output") != "Validation failed; consult the exact-source workflow run."
+                or document.get("failureStage") != "unknown"
+                or document.get("exitCode") != 17
+                or document.get("containsSecrets") is not False
+                or document.get("productionEvidence") is not False
+                or "SYNTHETIC_SECRET_CANARY" in target.read_text(encoding="utf-8")):
+            raise AssertionError("synthetic diagnostic payload is unsafe")
+        target.chmod(0o640)
+        success = execute(code)
+        if success.returncode != 0 or stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise AssertionError("diagnostic writer failed mode-preserving success")
+        original = target.read_bytes()
+        before = list(target.parent.glob(f".{target.name}.*.tmp"))
+        failing_code = (
+            "import os\n"
+            "def fail_replace(*args): raise OSError('synthetic replace failure')\n"
+            "os.replace = fail_replace\n" + code
+        )
+        failed = execute(failing_code)
+        if (failed.returncode == 0 or target.read_bytes() != original
+                or stat.S_IMODE(target.stat().st_mode) != 0o640
+                or list(target.parent.glob(f".{target.name}.*.tmp")) != before):
+            raise AssertionError("diagnostic atomic replace rollback failed")
+        target.unlink()
+        external = root / "external-canary.txt"
+        external.write_text("EXTERNAL_CANARY", encoding="utf-8")
+        target.symlink_to(external)
+        rejected = execute(code)
+        if rejected.returncode == 0 or external.read_text(encoding="utf-8") != "EXTERNAL_CANARY":
+            raise AssertionError("diagnostic writer followed symlink target")
+        target.unlink()
+        target.parent.rmdir()
+        outside = root / "outside"
+        outside.mkdir()
+        target.parent.symlink_to(outside, target_is_directory=True)
+        rejected = execute(code)
+        if rejected.returncode == 0 or list(outside.iterdir()):
+            raise AssertionError("diagnostic writer followed symlink ancestor")
+    print("PASS: sustained soak diagnostic fixed-output, mode, rollback and symlink runtime negatives")
+
+
 def main() -> int:
+    validate_reconcile_diagnostic_runtime()
     validate_aggregate_updater_admission_negatives()
     validate_aggregate_admission_negatives()
     validate_trend_json_parser_negatives()
