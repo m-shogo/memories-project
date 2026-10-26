@@ -255,6 +255,41 @@ def pr_identity_runtime(source: str) -> None:
                 raise AssertionError("live load PR identity shell drift: " + str((event, base, sha, result.returncode)))
     print("PASS: live load PR event/base/head SHA shell runtime (6 cases)")
 
+def independent_identity_runtime(source: str) -> None:
+    shell = step(source, "Require exact clean live load diagnostic source")
+    head = "a" * 40
+    cases = (
+        ("pull_request", "so", "", head, "", True),
+        ("pull_request", "main", "", head, "", False),
+        ("pull_request", "so", "", "b" * 40, "", False),
+        ("pull_request", "so", "", "A" * 40, "", False),
+        ("pull_request", "so", "", "", "", False),
+        ("push", "", "refs/heads/so", "", head, True),
+        ("push", "", "refs/heads/main", "", head, False),
+        ("push", "", "refs/heads/so", "", "b" * 40, False),
+        ("push", "", "refs/heads/so", "", "A" * 40, False),
+        ("push", "", "refs/heads/so", "", "a" * 39, False),
+        ("schedule", "", "refs/heads/so", "", head, False),
+        ("workflow_dispatch", "", "refs/heads/so", "", head, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="live-load-independent-identity-") as temp:
+        root = Path(temp)
+        stub = root / "git"
+        stub.write_text("#!/bin/sh\n"
+                        "if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then printf '" + head + "\\n'; exit 0; fi\n"
+                        "if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then exit 0; fi\n"
+                        "exit 1\n", encoding="utf-8")
+        stub.chmod(0o755)
+        for event, base, ref, pr_sha, sha, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_BASE_REF=base, GITHUB_REF=ref,
+                       PR_HEAD_SHA=pr_sha, GITHUB_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise AssertionError("live load independent CI event/base/ref/SHA drift: " + str((event, base, ref, result.returncode)))
+    print("PASS: live load independent CI event/base/ref/SHA shell runtime (12 cases)")
+
 def main() -> None:
     publisher = read(PUBLISHER)
     pr = read(PR)
@@ -266,6 +301,7 @@ def main() -> None:
         if marker not in independent:
             raise AssertionError("independent live load source guard reachability missing: " + marker)
     reviewed_blob_negatives(pr, independent)
+    independent_identity_runtime(independent)
     policy(publisher)
     mutations(publisher)
     writer_runtime(publisher)
