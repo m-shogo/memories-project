@@ -146,7 +146,11 @@ def atomic_write_bytes(
 ) -> None:
     require(CANONICAL_OS_REPLACE is _replace and os.replace is _replace,
             "atomic replacement transport authority drift")
-    path.parent.mkdir(parents=True, exist_ok=True)
+    require(not path.is_symlink(), "atomic target symlink refused")
+    require(not any(parent.is_symlink() for parent in path.parents),
+            "atomic target symlink ancestor refused")
+    require(path.parent.is_dir(), "atomic target parent missing or not a directory")
+    require(not path.exists() or path.is_file(), "atomic target must be a regular file")
     existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     tmp_path: Path | None = None
     try:

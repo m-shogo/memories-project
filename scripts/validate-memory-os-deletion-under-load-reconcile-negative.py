@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import tempfile
+import os
 import stat
 import tempfile
 from pathlib import Path
@@ -161,6 +163,50 @@ def exercise_rollback_failure(module: ModuleType) -> None:
     require_modes_unchanged(modes)
 
 
+
+def exercise_atomic_path_substitution_rejection(module: ModuleType) -> None:
+    # Direct helper invocation must not depend on a separate main-path identity guard.
+    with tempfile.TemporaryDirectory(prefix="memory-os-deletion-load-atomic-path-") as tmp:
+        root = Path(tmp)
+        external = root / "external"
+        external.mkdir()
+        canary = external / "canary.json"
+        canary.write_bytes(b"external-canary\\n")
+        direct = root / "direct.json"
+        direct.symlink_to(canary)
+        ancestor = root / "ancestor"
+        ancestor.symlink_to(external, target_is_directory=True)
+        directory = root / "directory.json"
+        directory.mkdir()
+        missing = root / "missing-parent" / "authority.json"
+        for label, target in (
+            ("direct symlink", direct),
+            ("symlink ancestor", ancestor / "canary.json"),
+            ("directory target", directory),
+            ("missing parent", missing),
+        ):
+            try:
+                module.atomic_write_bytes(target, b"unsafe\\n")
+            except module.ReconcileFailure as exc:
+                require("atomic target" in str(exc), f"{label}: unexpected rejection")
+            else:
+                raise RuntimeError(f"{label}: atomic writer accepted substituted authority")
+            require(canary.read_bytes() == b"external-canary\\n",
+                    f"{label}: external canary changed")
+            require(not missing.parent.exists(), f"{label}: unreviewed parent created")
+            require(not list(root.rglob("*.tmp")), f"{label}: temporary residue")
+        regular = root / "regular.json"
+        regular.write_bytes(b"before\\n")
+        os.chmod(regular, 0o640)
+        module.atomic_write_bytes(regular, b"after\\n")
+        require(regular.read_bytes() == b"after\\n", "regular target write failed")
+        require(stat.S_IMODE(regular.stat().st_mode) == 0o640,
+                "regular target mode was not preserved")
+        require(canary.read_bytes() == b"external-canary\\n",
+                "regular target write changed external canary")
+        require(not list(root.rglob("*.tmp")), "positive write left temporary residue")
+
+
 def main() -> int:
     module = load_target()
     module.enforce_runtime_authorities()
@@ -237,6 +283,7 @@ def main() -> int:
         require(stat.S_IMODE(path.stat().st_mode) == 0o640, "atomic writer changed existing file mode")
         require(not list(path.parent.glob(f".{path.name}.*.tmp")), "atomic writer left temporary residue")
 
+    exercise_atomic_path_substitution_rejection(module)
     exercise_rollback_failure(module)
     require_snapshots_unchanged(canonical_snapshots(module))
     require_modes_unchanged(canonical_modes(module))
