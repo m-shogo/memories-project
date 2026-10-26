@@ -725,8 +725,55 @@ def verify_batch_metric_coherence() -> None:
     print("PASS: controlled saturation metric positives and 6 coherence negatives")
 
 
+def verify_ramp_validator_json_path_negatives() -> None:
+    """Exercise the actual canonical ramp reader against escaped and linked paths."""
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+    spec = importlib.util.spec_from_file_location("controlled_ramp_path_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("controlled ramp path validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    if validator.load(validator.RESULT_PATH).get("schemaVersion") != "memory-os-controlled-saturation-ramp-results.v1":
+        raise RuntimeError("canonical ramp result positive read failed")
+    if validator.load(validator.CONTRACT_PATH).get("schemaVersion") != "memory-os-controlled-saturation-ramp.v1":
+        raise RuntimeError("canonical ramp contract positive read failed")
+    with tempfile.TemporaryDirectory(prefix="controlled-ramp-reader-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_text('{"synthetic":true}', encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".controlled-ramp-reader-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            good = inside / "good.json"
+            good.write_text('{"safe":true}', encoding="utf-8")
+            if validator.load(good) != {"safe": True}:
+                raise RuntimeError("canonical ramp in-repository JSON positive read failed")
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            directory = inside / "directory.json"
+            directory.mkdir()
+            for label, unsafe in (
+                ("external file", canary),
+                ("direct symlink", linked_file),
+                ("symlinked ancestor", linked_parent / "canary.json"),
+                ("directory target", directory),
+                ("missing file", inside / "missing.json"),
+            ):
+                try:
+                    validator.load(unsafe)
+                except validator.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError(f"canonical ramp reader accepted {label}")
+        if canary.read_text(encoding="utf-8") != '{"synthetic":true}':
+            raise RuntimeError("canonical ramp reader changed external canary")
+    print("PASS: canonical ramp JSON reader path positives and 5 negatives")
+
+
 def main() -> int:
     module = load_module()
+    verify_ramp_validator_json_path_negatives()
     verify_nonfinite_ramp_measurements()
     verify_ramp_timestamp_semantics()
     verify_pool_snapshot_and_delta_accounting()

@@ -52,16 +52,23 @@ def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def load(path: Path) -> dict[str, Any]:
+    """Read only regular, unsymlinked JSON documents inside this repository."""
+    require(isinstance(path, Path), "ramp JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "ramp JSON symlink rejected")
+    require(path.is_file(), "ramp JSON file missing or unsafe")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise ValidationFailure("ramp JSON path escaped repository") from None
     try:
         value = json.loads(path.read_text(encoding="utf-8"),
                            parse_constant=reject_nonfinite_constant,
                            parse_float=parse_finite_float,
                            object_pairs_hook=reject_duplicate_json_keys)
-    except FileNotFoundError as exc:
-        raise ValidationFailure(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValidationFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise ValidationFailure("ramp JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "ramp JSON root must be object")
     return value
 
 
