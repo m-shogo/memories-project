@@ -91,13 +91,20 @@ def positive_number(value: Any, field: str) -> float:
 
 
 def is_ancestor(value: str) -> bool:
-    return subprocess.run(
-        ["git", "merge-base", "--is-ancestor", value, "HEAD"],
-        cwd=ROOT,
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    ).returncode == 0
+    if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
+        return False
+    try:
+        completed = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", value, "HEAD"],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return type(completed.returncode) is int and completed.returncode == 0
 
 
 def validate_batch(value: Any, field: str, requests: int,

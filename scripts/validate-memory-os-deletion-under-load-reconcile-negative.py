@@ -590,8 +590,59 @@ def exercise_reconciler_json_reader(module: ModuleType) -> None:
     print("PASS: deletion-under-load reconciler bounded strict JSON and path negatives")
 
 
+
+def exercise_deletion_load_git_ancestry_boundary() -> None:
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_git_ancestry_negative", validator_path)
+    require(spec is not None and spec.loader is not None, "deletion load ancestry validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    original_run = validator.subprocess.run
+    valid_sha = "a" * 40
+    calls: list[object] = []
+
+    def synthetic_run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(command)
+        require(command == ["git", "merge-base", "--is-ancestor", valid_sha, "HEAD"],
+                "deletion load ancestry command drift")
+        require(kwargs.get("cwd") == validator.ROOT and kwargs.get("timeout") == 10 and
+                kwargs.get("check") is False and
+                kwargs.get("stdout") == validator.subprocess.DEVNULL and
+                kwargs.get("stderr") == validator.subprocess.DEVNULL,
+                "deletion load ancestry subprocess boundary drift")
+        return SimpleNamespace(returncode=0)
+
+    try:
+        validator.subprocess.run = synthetic_run
+        require(validator.is_ancestor(valid_sha), "valid ancestor control rejected")
+        require(len(calls) == 1, "valid ancestor control not executed")
+        for bad in ("", "unreviewed", "g" * 40, None, 1):
+            require(not validator.is_ancestor(bad), "malformed ancestry SHA accepted")
+        require(len(calls) == 1, "malformed SHA reached git subprocess")
+        validator.subprocess.run = lambda *args, **kwargs: SimpleNamespace(returncode=128)
+        require(not validator.is_ancestor(valid_sha), "failed ancestry command accepted")
+        validator.subprocess.run = lambda *args, **kwargs: SimpleNamespace(returncode=True)
+        require(not validator.is_ancestor(valid_sha), "boolean ancestry exit code accepted")
+
+        def timed_out(*args: object, **kwargs: object) -> None:
+            raise validator.subprocess.TimeoutExpired("git", 10)
+
+        validator.subprocess.run = timed_out
+        require(not validator.is_ancestor(valid_sha), "timed-out ancestry command accepted")
+
+        def missing_git(*args: object, **kwargs: object) -> None:
+            raise OSError("SYNTHETIC_ANCESTRY_SECRET_DO_NOT_LOG")
+
+        validator.subprocess.run = missing_git
+        require(not validator.is_ancestor(valid_sha), "failed git execution accepted")
+    finally:
+        validator.subprocess.run = original_run
+    print("PASS: deletion-under-load bounded Git ancestry positive and 9 negatives")
+
+
 def main() -> int:
     exercise_deletion_load_json_reader()
+    exercise_deletion_load_git_ancestry_boundary()
     exercise_deletion_load_reviewed_schema()
     module = load_target()
     exercise_reconciler_json_reader(module)
