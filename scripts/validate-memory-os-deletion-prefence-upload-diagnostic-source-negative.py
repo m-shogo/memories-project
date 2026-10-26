@@ -269,6 +269,77 @@ else:
     print(f"PASS: pre-fence actual result publisher CAS/no-op shell ({len(cases)} cases)")
 
 
+def authority_reconcile_runtime(publisher):
+    """Execute the actual derived-authority publisher in a disposable fake-Git sandbox."""
+    command = step(publisher, "Reconcile local-only authority")
+    source_sha, result_sha, new_sha, stale_sha = "a" * 40, "c" * 40, "d" * 40, "b" * 40
+    fake_git = """#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+root = Path(os.environ["FAKE_GIT_STATE"])
+with (root / "calls").open("a", encoding="utf-8") as log:
+    log.write(" ".join(args) + "\\n")
+if args == ["fetch", "origin", "so"]:
+    count = int((root / "fetches").read_text()) + 1
+    (root / "fetches").write_text(str(count))
+    if count == 2 and os.environ["FAKE_RACE"] == "1":
+        (root / "remote").write_text("b" * 40)
+elif args == ["rev-parse", "HEAD"]:
+    print((root / "head").read_text())
+elif args == ["rev-parse", "origin/so"]:
+    print((root / "remote").read_text())
+elif args == ["diff", "--cached", "--quiet"]:
+    sys.exit(0 if os.environ["FAKE_NOOP"] == "1" else 1)
+elif args[:2] == ["commit", "-m"]:
+    (root / "head").write_text("d" * 40)
+elif args[0] in ("config", "add", "rm", "push"):
+    pass
+else:
+    sys.exit(92)
+"""
+    fake_python = """#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_PYTHON_LOG"
+if [ "$FAKE_PYTHON_FAIL" = "1" ]; then exit 23; fi
+exit 0
+"""
+    cases = (
+        ("noop", result_sha, result_sha, True, False, False, 0, 0, 0, 2),
+        ("success", result_sha, result_sha, False, False, False, 0, 1, 1, 2),
+        ("stale-remote", stale_sha, result_sha, False, False, False, 75, 0, 0, 0),
+        ("missing-remote", "", result_sha, False, False, False, 75, 0, 0, 0),
+        ("stale-local", result_sha, stale_sha, False, False, False, 75, 0, 0, 0),
+        ("race-after-commit", result_sha, result_sha, False, True, False, 75, 0, 1, 2),
+        ("validator-failure", result_sha, result_sha, False, False, True, 23, 0, 0, 1),
+    )
+    for label, remote, local, noop, race, fail_python, expected_exit, expected_push, expected_commit, expected_python in cases:
+        with tempfile.TemporaryDirectory(prefix="prefence-authority-cas-") as temp:
+            root = Path(temp)
+            for name, contents in (("git", fake_git), ("python", fake_python)):
+                command_path = root / name
+                command_path.write_text(contents, encoding="utf-8")
+                command_path.chmod(0o755)
+            for name, value in (("head", local), ("remote", remote), ("fetches", "0"), ("calls", ""), ("python.log", "")):
+                (root / name).write_text(value, encoding="utf-8")
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       SOURCE_SHA=source_sha, RESULT_COMMIT_SHA=result_sha, FAKE_GIT_STATE=str(root),
+                       FAKE_NOOP="1" if noop else "0", FAKE_RACE="1" if race else "0",
+                       FAKE_PYTHON_FAIL="1" if fail_python else "0", FAKE_PYTHON_LOG=str(root / "python.log"))
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", command],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            calls = (root / "calls").read_text(encoding="utf-8").splitlines()
+            pushes = sum(call == "push origin HEAD:so" for call in calls)
+            commits = sum(call.startswith("commit -m ") for call in calls)
+            python_calls = len((root / "python.log").read_text(encoding="utf-8").splitlines())
+            if (result.returncode != expected_exit or pushes != expected_push or
+                    commits != expected_commit or python_calls != expected_python):
+                raise AssertionError(f"pre-fence upload authority {label} CAS/no-op drift: "
+                                     f"exit={result.returncode}, pushes={pushes}, "
+                                     f"commits={commits}, validator calls={python_calls}")
+    print(f"PASS: pre-fence upload actual authority reconcile CAS/no-op/validator shell ({len(cases)} cases)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -290,6 +361,7 @@ def main():
     mutations(publisher)
     writer_runtime(publisher)
     result_commit_runtime(publisher)
+    authority_reconcile_runtime(publisher)
     subprocess.run([sys.executable, str(ROOT / RECONCILE_NEGATIVE)],
                    cwd=ROOT, check=True, timeout=30)
     print("PASS: pre-fence upload exact-source read-only diagnostic proof; production evidence generated: false; production decision changed: false")
