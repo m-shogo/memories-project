@@ -188,6 +188,12 @@ def validate_load_authority() -> None:
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise Fail("host-failure atomic symlink target/ancestor refused")
+    if path.exists() and not path.is_file():
+        raise Fail("host-failure atomic target must be regular file")
+    if not path.parent.is_dir():
+        raise Fail("host-failure atomic parent directory missing")
     existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
