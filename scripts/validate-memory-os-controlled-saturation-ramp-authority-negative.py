@@ -231,6 +231,64 @@ def verify_reconciler_json_parser_negatives(module) -> None:
     print("PASS: controlled saturation JSON positive, malformed, duplicate, nonfinite and path negatives (11 cases)")
 
 
+def verify_stronger_readiness_prewrite_negatives(module) -> None:
+    paths = (module.CONTROLLED_CONTRACT, module.LOAD_CONTRACT, module.STATUS_PATH)
+    before = {path: path.read_bytes() for path in paths}
+    source_load = module.load
+    source_validator = module.validate_source_authority
+    source_write = module.write_transactionally
+    previous_sha = module.os.environ.get("EXPECTED_COMMIT_SHA")
+    fixture = {path: source_load(path) for path in (*paths, module.RESULT_PATH)}
+    module.os.environ["EXPECTED_COMMIT_SHA"] = fixture[module.RESULT_PATH]["commitSha"]
+    cases = []
+    for field in ("repeatabilityEstablished", "capacityBoundaryEstablished",
+                  "operationalThresholdApproved", "independentReviewCompleted", "productionReady"):
+        for value in (True, None, 0, "false"):
+            cases.append(("readiness", field, value))
+    for field in ("productionEvidence", "capacityBoundaryEstablished",
+                  "operationalThresholdApproved", "repeatabilityEstablished"):
+        for value in (True, None, 0, "false"):
+            cases.append(("scenario", field, value))
+    cases.append(("scenario-extra", "independentReviewCompleted", True))
+    writes = []
+    try:
+        module.validate_source_authority = lambda expected: None
+        module.write_transactionally = lambda *args: writes.append(args)
+        module.load = lambda path: copy.deepcopy(fixture[path])
+        if module.main() != 0 or len(writes) != 1:
+            raise RuntimeError("controlled saturation prewrite positive control failed")
+        writes.clear()
+        module.write_transactionally = lambda *args: (_ for _ in ()).throw(RuntimeError("forbidden stronger-authority write"))
+        for section, field, value in cases:
+            changed = copy.deepcopy(fixture)
+            if section == "readiness":
+                changed[module.CONTROLLED_CONTRACT]["readiness"][field] = value
+            else:
+                scenario = next(item for item in changed[module.LOAD_CONTRACT]["externalExecutedScenarios"]
+                                if item.get("scenarioId") == module.SCENARIO_ID)
+                scenario[field] = value
+            module.load = lambda path, changed=changed: copy.deepcopy(changed[path])
+            try:
+                module.main()
+            except SystemExit as exc:
+                if "refusing" not in str(exc):
+                    raise RuntimeError(f"controlled saturation stronger authority wrong rejection: {exc}") from None
+            else:
+                raise RuntimeError(f"controlled saturation accepted stronger {section}.{field}")
+    finally:
+        module.load = source_load
+        module.validate_source_authority = source_validator
+        module.write_transactionally = source_write
+        if previous_sha is None:
+            module.os.environ.pop("EXPECTED_COMMIT_SHA", None)
+        else:
+            module.os.environ["EXPECTED_COMMIT_SHA"] = previous_sha
+    for path in paths:
+        if path.read_bytes() != before[path]:
+            raise RuntimeError("controlled saturation stronger readiness test changed canonical authority")
+    print(f"PASS: controlled saturation stronger readiness/scenario prewrite negatives ({len(cases)} cases)")
+
+
 def verify_nonfinite_ramp_measurements() -> None:
     validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
     spec = importlib.util.spec_from_file_location("controlled_saturation_numeric_validator", validator_path)
@@ -452,6 +510,7 @@ def main() -> int:
     verify_atomic_path_negatives(module)
     verify_validator_output_negative(module)
     verify_reconciler_json_parser_negatives(module)
+    verify_stronger_readiness_prewrite_negatives(module)
     print("PASS: controlled saturation direct reconcile source authorities are canonical and atomic")
     print("atomic replacement failure: rejected without authority mutation")
     print("temporary authority residue: none")

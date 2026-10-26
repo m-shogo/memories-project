@@ -232,6 +232,11 @@ def write_transactionally(
         raise
 
 
+def refuse_stronger_readiness(values: dict[str, Any], fields: tuple[str, ...], label: str) -> None:
+    for field in fields:
+        require(values.get(field) is False, f"refusing to overwrite stronger {label}.{field}")
+
+
 def main() -> int:
     enforce_runtime_authorities()
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA", "")
@@ -265,6 +270,12 @@ def main() -> int:
     readiness = controlled.get("readiness")
     if not isinstance(readiness, dict):
         raise SystemExit("controlled saturation readiness missing")
+    refuse_stronger_readiness(
+        readiness,
+        ("repeatabilityEstablished", "capacityBoundaryEstablished", "operationalThresholdApproved",
+         "independentReviewCompleted", "productionReady"),
+        "controlled saturation readiness",
+    )
     readiness.update({
         "contractDefined": True,
         "runnerImplemented": True,
@@ -305,6 +316,14 @@ def main() -> int:
     if external_item is None:
         external.append(expected_external)
     else:
+        require(set(external_item) == set(expected_external),
+                "refusing to replace unknown controlled saturation scenario authority")
+        refuse_stronger_readiness(
+            external_item,
+            ("productionEvidence", "capacityBoundaryEstablished",
+             "operationalThresholdApproved", "repeatabilityEstablished"),
+            "existing controlled saturation scenario",
+        )
         external_item.clear()
         external_item.update(expected_external)
 
