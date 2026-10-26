@@ -132,6 +132,30 @@ def writer_runtime(source: str) -> None:
                 raise AssertionError("load foundation diagnostic temp residue")
     print("PASS: actual load foundation diagnostic atomic/symlink/privacy runtime (9 cases)")
 
+def capture_shell_runtime(source: str) -> None:
+    for title, output_name, expected_line in (
+        ("Reconcile available bounded results read-only", "GITHUB_OUTPUT", "exit_code=17\\n"),
+        ("Reconcile available bounded results with stage capture", "GITHUB_ENV", "FOUNDATION_EXIT_CODE=17\\n"),
+    ):
+        shell = step(source, title)
+        with tempfile.TemporaryDirectory(prefix="load-foundation-capture-") as temp:
+            root = Path(temp)
+            stub = root / "python"
+            stub.write_text("#!/bin/sh\\necho SYNTHETIC_SECRET_CANARY\\nexit 17\\n", encoding="utf-8")
+            stub.chmod(0o755)
+            output = root / "result"
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       TMPDIR=str(root), GITHUB_OUTPUT=str(output), GITHUB_ENV=str(output))
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if result.returncode != 0 or output.read_text(encoding="utf-8") != expected_line:
+                raise AssertionError("load foundation validator capture swallowed failure: " + title + " " + result.stderr[-150:])
+            if "SYNTHETIC_SECRET_CANARY" in result.stdout + result.stderr:
+                raise AssertionError("load foundation validator raw log leaked: " + title)
+            if list(root.glob("tmp.*")):
+                raise AssertionError("load foundation validator raw log temp residue: " + title)
+    print("PASS: load foundation PR/writer actual validator failure capture and raw-log suppression (2 cases)")
+
 def main() -> None:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
@@ -144,6 +168,7 @@ def main() -> None:
     policy(publisher)
     mutations(publisher)
     writer_runtime(publisher)
+    capture_shell_runtime(publisher)
     print("PASS: load foundation exact-source read-only proof; production evidence generated: false")
 
 if __name__ == "__main__":
