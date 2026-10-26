@@ -114,6 +114,14 @@ def validate_canonical(validator, contract: dict[str, Any], expected: str) -> No
 CANONICAL_VALIDATE_CANONICAL = validate_canonical
 
 
+def require_strict_local_readiness(readiness: dict[str, Any]) -> None:
+    for key in ("productionDependenciesTested", "independentReviewCompleted", "productionReady"):
+        require(readiness.get(key) is False, "local proof cannot downgrade readiness." + key)
+
+
+CANONICAL_REQUIRE_STRICT_LOCAL_READINESS = require_strict_local_readiness
+
+
 def enforce_runtime_authorities() -> None:
     require_exact_authority(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "deletion-worker saturation contract")
     require_exact_authority(
@@ -129,6 +137,10 @@ def enforce_runtime_authorities() -> None:
     require(atomic_write_bytes is CANONICAL_ATOMIC_WRITE_BYTES, "atomic writer authority is not canonical")
     require(load_validator is CANONICAL_LOAD_VALIDATOR, "validator loader authority is not canonical")
     require(validate_canonical is CANONICAL_VALIDATE_CANONICAL, "validator execution authority is not canonical")
+    require(
+        require_strict_local_readiness is CANONICAL_REQUIRE_STRICT_LOCAL_READINESS,
+        "local readiness prewrite guard is not canonical",
+    )
 
 
 def main() -> int:
@@ -142,6 +154,7 @@ def main() -> int:
     original_contract = CONTRACT_PATH.read_bytes()
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness missing")
+    require_strict_local_readiness(readiness)
     readiness["validatorImplemented"] = True
     readiness["automaticWorkflowImplemented"] = True
     readiness["exactSourceResultCommitted"] = True
