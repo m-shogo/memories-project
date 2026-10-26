@@ -59,6 +59,50 @@ CHAOS_EVIDENCE = (
 )
 
 
+CONTAINER_KILL_CANONICAL_REASON = (
+    "post-fence former-session load, all primary account-bound pre-fence surfaces, multi-account worker saturation, "
+    "lease-expiry/partial-object recovery and Docker worker-container kill/replacement pass locally; raw process-kill readiness, "
+    "physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
+)
+
+# Preserve the canonical local-only summary only when every typed source claim still exists.
+# This does not grant production-equivalent readiness or override the separate human gate.
+NORMALIZED_CANONICAL_REASON = (
+    "post-fence former-session load, primary Preview/Apply/upload-authorization/upload-completion pre-fence linearization, "
+    "bounded multi-account worker saturation, lease-expiry recovery and Docker container kill/replacement recovery are "
+    "proven against local dependencies; raw process-kill readiness, physical host/node/AZ loss, production-equivalent "
+    "multi-instance topology and dependency behavior, capacity boundary and independently reviewed operating thresholds remain deferred"
+)
+NORMALIZED_REQUIRED_TRUE = (
+    "previewPreFenceInFlightLinearizationProven",
+    "applyPreFenceInFlightLinearizationProven",
+    "uploadAuthorizationPreFenceInFlightLinearizationProven",
+    "uploadCompletionPreFenceInFlightLinearizationProven",
+    "primaryAccountBoundPreFenceLinearizationAggregateProven",
+    "multiAccountDeletionWorkerSaturationProven",
+    "deletionLeaseExpiryRecoverySimulationProven",
+    "deletionPartialObjectErasureRecoveryProven",
+    "deletionContainerKillRecoveryProven",
+    "deletionReplacementContainerRecoveryProven",
+    "localSustainedSoakEvidence",
+)
+
+
+def preserve_stronger_deferred_reason(reason: object, readiness: dict[str, Any]) -> bool:
+    if reason != NORMALIZED_CANONICAL_REASON:
+        return False
+    for key in NORMALIZED_REQUIRED_TRUE:
+        if readiness.get(key) is not True:
+            raise ReconcileFailure(f"container-kill cannot preserve unsupported normalized reason: {key}")
+    return True
+
+
+def require_unproven_process_host(readiness: dict[str, Any]) -> None:
+    for key in ("deletionActualProcessKillProven", "deletionHostFailureRecoveryProven"):
+        if readiness.get(key) is not False:
+            raise ReconcileFailure(f"container-kill cannot demote stronger process/host authority: {key}")
+
+
 class ReconcileFailure(RuntimeError):
     pass
 
@@ -177,7 +221,18 @@ def main() -> int:
     original_status = STATUS.read_bytes()
 
     load_contract = load(LOAD_CONTRACT)
-    load_readiness = load_contract.setdefault("readiness", {})
+    load_readiness = load_contract.get("readiness")
+    if not isinstance(load_readiness, dict):
+        raise ReconcileFailure("container-kill canonical readiness missing")
+    # Check existing authority before any local flags are written.
+    require_unproven_process_host(load_readiness)
+    deferred = load_contract.get("deferredScenarios")
+    if not isinstance(deferred, list):
+        raise ReconcileFailure("container-kill deferred scenarios missing")
+    matching = [item for item in deferred if isinstance(item, dict) and item.get("scenarioId") == "deletion-under-load"]
+    if len(matching) != 1:
+        raise ReconcileFailure("container-kill requires exactly one deletion-under-load scenario")
+    preserve_normalized = preserve_stronger_deferred_reason(matching[0].get("reason"), load_readiness)
     load_readiness["deletionContainerKillRecoveryProven"] = True
     load_readiness["deletionReplacementContainerRecoveryProven"] = True
     load_readiness["deletionHostFailureRecoveryProven"] = False
@@ -185,16 +240,8 @@ def main() -> int:
     addition = " Docker worker-container kill/replacement recovery is proven locally; raw process-kill readiness and physical host/node/AZ failure remain unproven."
     if addition.strip() not in note:
         load_readiness["note"] = note + addition
-    for item in load_contract.get("deferredScenarios", []):
-        if item.get("scenarioId") == "deletion-under-load":
-            item["reason"] = (
-                "post-fence former-session load, all primary account-bound pre-fence surfaces, multi-account worker saturation, "
-                "lease-expiry/partial-object recovery and Docker worker-container kill/replacement pass locally; raw process-kill readiness, "
-                "physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
-            )
-            break
-    else:
-        raise SystemExit("deletion-under-load deferred scenario missing")
+    if not preserve_normalized:
+        matching[0]["reason"] = CONTAINER_KILL_CANONICAL_REASON
     for ref in PROOF_REFS:
         append_unique(load_contract.setdefault("evidenceRefs", []), ref)
 

@@ -122,12 +122,50 @@ def expect_exhaustive_rollback_failure(module, original_load: bytes, original_st
         original_writer(STATUS, original_status)
 
 
+def expect_deferred_reason_guards(module) -> None:
+    flags = {key: True for key in module.NORMALIZED_REQUIRED_TRUE}
+    if module.preserve_stronger_deferred_reason(module.NORMALIZED_CANONICAL_REASON, flags) is not True:
+        raise AssertionError("container-kill would demote typed normalized local summary")
+    for key in module.NORMALIZED_REQUIRED_TRUE:
+        invalid = dict(flags)
+        invalid[key] = False
+        expect_rejection(
+            lambda invalid=invalid: module.preserve_stronger_deferred_reason(
+                module.NORMALIZED_CANONICAL_REASON, invalid
+            ),
+            "container-kill cannot preserve unsupported normalized reason: " + key,
+        )
+    if module.preserve_stronger_deferred_reason("synthetic weaker local reason", flags):
+        raise AssertionError("container-kill incorrectly preserved weaker reason")
+    safe = {"deletionActualProcessKillProven": False, "deletionHostFailureRecoveryProven": False}
+    module.require_unproven_process_host(safe)
+    for key in safe:
+        invalid = dict(safe)
+        invalid[key] = True
+        expect_rejection(
+            lambda invalid=invalid: module.require_unproven_process_host(invalid),
+            "container-kill cannot demote stronger process/host authority: " + key,
+        )
+    source = RECONCILER.read_text(encoding="utf-8")
+    for marker in (
+        "preserve_normalized = preserve_stronger_deferred_reason(matching[0].get(\"reason\"), load_readiness)",
+        "require_unproven_process_host(load_readiness)",
+        "if not preserve_normalized:",
+        "matching[0][\"reason\"] = CONTAINER_KILL_CANONICAL_REASON",
+    ):
+        if source.count(marker) != 1:
+            raise AssertionError("container-kill main-path typed reason guard missing: " + marker)
+    if source.index("preserve_normalized =") > source.index('load_readiness["deletionContainerKillRecoveryProven"] = True'):
+        raise AssertionError("container-kill checked typed normalized authority after rewriting flags")
+
+
 def main() -> int:
     original_load = LOAD_CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
     original_load_mode = stat.S_IMODE(LOAD_CONTRACT.stat().st_mode)
     original_status_mode = stat.S_IMODE(STATUS.stat().st_mode)
     module = load_module()
+    expect_deferred_reason_guards(module)
 
     source = RECONCILER.read_text(encoding="utf-8")
     for forbidden in ("LOAD_CONTRACT.write_text(", "STATUS.write_text(", "LOAD_CONTRACT.write_bytes(", "STATUS.write_bytes("):
