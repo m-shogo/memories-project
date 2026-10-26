@@ -217,8 +217,17 @@ def exercise_atomic_path_substitution_rejection(module: ModuleType) -> None:
 def exercise_validator_output_redaction(module: ModuleType) -> None:
     original_run = module.CANONICAL_SUBPROCESS_RUN
     original_guard = module.enforce_runtime_authorities
+    calls: list[object] = []
 
-    def synthetic_run(*args: object, **kwargs: object) -> SimpleNamespace:
+    def synthetic_run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(command)
+        require(command == [module.sys.executable, str(module.DELETION_VALIDATOR)],
+                "validator subprocess command drift")
+        require(kwargs.get("cwd") == module.CANONICAL_ROOT and
+                kwargs.get("stdout") == module.subprocess.DEVNULL and
+                kwargs.get("stderr") == module.subprocess.DEVNULL and
+                kwargs.get("timeout") == 60 and kwargs.get("check") is False,
+                "validator subprocess output/timeout boundary drift")
         return SimpleNamespace(returncode=17, stdout="SYNTHETIC_VALIDATOR_SECRET_DO_NOT_LOG")
 
     module.CANONICAL_SUBPROCESS_RUN = synthetic_run
@@ -232,10 +241,48 @@ def exercise_validator_output_redaction(module: ModuleType) -> None:
                     "raw validator stdout escaped into diagnostic")
         else:
             raise RuntimeError("failing synthetic validator was accepted")
+        require(len(calls) == 1, "validator subprocess was not invoked")
+        module.CANONICAL_SUBPROCESS_RUN = lambda *args, **kwargs: SimpleNamespace(
+            returncode="SYNTHETIC_EXIT_CODE_SECRET_DO_NOT_LOG")
+        try:
+            module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+        except module.ReconcileFailure as exc:
+            require("invalid exit code" in str(exc) and
+                    "SYNTHETIC_EXIT_CODE_SECRET_DO_NOT_LOG" not in str(exc),
+                    "invalid validator exit code leaked raw text")
+        else:
+            raise RuntimeError("noninteger validator exit code accepted")
+
+        def synthetic_timeout(*args: object, **kwargs: object) -> None:
+            raise module.subprocess.TimeoutExpired("SYNTHETIC_TIMEOUT_SECRET_DO_NOT_LOG", 60)
+
+        module.CANONICAL_SUBPROCESS_RUN = synthetic_timeout
+        try:
+            module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+        except module.ReconcileFailure as exc:
+            require("TimeoutExpired" in str(exc) and
+                    "SYNTHETIC_TIMEOUT_SECRET_DO_NOT_LOG" not in str(exc),
+                    "validator timeout diagnostic leaked raw text")
+        else:
+            raise RuntimeError("validator timeout was accepted")
+
+        def synthetic_missing(*args: object, **kwargs: object) -> None:
+            raise OSError("SYNTHETIC_OS_ERROR_SECRET_DO_NOT_LOG")
+
+        module.CANONICAL_SUBPROCESS_RUN = synthetic_missing
+        try:
+            module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+        except module.ReconcileFailure as exc:
+            require("OSError" in str(exc) and
+                    "SYNTHETIC_OS_ERROR_SECRET_DO_NOT_LOG" not in str(exc),
+                    "validator OS error diagnostic leaked raw text")
+        else:
+            raise RuntimeError("validator OS error was accepted")
+        module.CANONICAL_SUBPROCESS_RUN = lambda *args, **kwargs: SimpleNamespace(returncode=0)
+        module.run_validator(module.DELETION_VALIDATOR, "synthetic")
     finally:
         module.CANONICAL_SUBPROCESS_RUN = original_run
         module.enforce_runtime_authorities = original_guard
-
 
 
 def exercise_stronger_readiness_prewrite_rejection(module: ModuleType) -> None:

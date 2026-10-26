@@ -145,18 +145,23 @@ def append_once(items: list[Any], value: Any) -> bool:
 
 def run_validator(path: Path, label: str, *args: str) -> None:
     enforce_runtime_authorities()
-    completed = CANONICAL_SUBPROCESS_RUN(
-        [sys.executable, str(path), *args],
-        cwd=CANONICAL_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        check=False,
-    )
-    require(
-        type(completed.returncode) is int and completed.returncode == 0,
-        f"canonical {label} validation failed (exit code {completed.returncode})",
-    )
+    try:
+        completed = CANONICAL_SUBPROCESS_RUN(
+            [sys.executable, str(path), *args],
+            cwd=CANONICAL_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ReconcileFailure(
+            f"canonical {label} validation unavailable ({type(exc).__name__})"
+        ) from None
+    require(type(completed.returncode) is int,
+            f"canonical {label} validation returned invalid exit code")
+    require(completed.returncode == 0,
+            f"canonical {label} validation failed (exit code {completed.returncode})")
 
 
 def stronger_deletion_authority_present(load_readiness: dict[str, Any]) -> bool:
