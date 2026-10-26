@@ -213,7 +213,7 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
             "reviewed result limitations drift")
     generated_at = result.get("generatedAt")
     require(type(generated_at) is str and
-            re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z", generated_at) is not None,
+            re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", generated_at) is not None,
             "result generatedAt must be exact UTC RFC3339 seconds")
     try:
         datetime.strptime(generated_at, "%Y-%m-%dT%H:%M:%SZ")
