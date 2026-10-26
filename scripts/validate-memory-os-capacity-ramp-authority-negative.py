@@ -172,7 +172,7 @@ def verify_capacity_strict_json_and_paths() -> None:
                 validator.CONTRACT_PATH = original_contract
         if canary.read_text(encoding="utf-8") != '{"synthetic":true}':
             raise RuntimeError("capacity strict reader changed external canary")
-    print("PASS: capacity strict JSON positive and 13 malformed/path negatives plus resultPath binding")
+    print("PASS: capacity strict JSON positive and 12 malformed/path negatives plus resultPath binding")
 
 
 def verify_capacity_numeric_boundary() -> None:
@@ -268,13 +268,19 @@ def verify_capacity_batch_accounting() -> None:
         ("derived throughput overflow", ("durationSeconds",), 5e-324),
     )
     original_contract = validator.CONTRACT_PATH
+    original_root = validator.ROOT
+    original_ancestor = validator.is_ancestor
     with tempfile.TemporaryDirectory(prefix=".capacity-accounting-negative-", dir=ROOT) as tmp:
-        contract_path = Path(tmp) / "contract.json"
-        result_path = Path(tmp) / "result.json"
-        contract = copy.deepcopy(canonical_contract)
-        contract["resultPath"] = str(result_path.relative_to(ROOT))
-        contract_path.write_text(json.dumps(contract), encoding="utf-8")
+        disposable_root = Path(tmp)
+        contract_path = disposable_root / "contract.json"
+        # Keep the canonical resultPath binding intact inside a disposable root.
+        result_path = disposable_root / canonical_contract["resultPath"]
+        result_path.parent.mkdir(parents=True)
+        contract_path.write_text(json.dumps(canonical_contract), encoding="utf-8")
+        validator.ROOT = disposable_root
         validator.CONTRACT_PATH = contract_path
+        # This suite isolates batch semantics; Git ancestry has a separate guard.
+        validator.is_ancestor = lambda source: True
         try:
             result_path.write_text(json.dumps(canonical_result), encoding="utf-8")
             if validator.main() != 0:
@@ -288,12 +294,15 @@ def verify_capacity_batch_accounting() -> None:
                 result_path.write_text(json.dumps(mutated), encoding="utf-8")
                 try:
                     validator.main()
-                except validator.ValidationFailure:
-                    pass
+                except validator.ValidationFailure as exc:
+                    if "step[0]" not in str(exc):
+                        raise RuntimeError(f"capacity batch {label} rejected by wrong gate") from None
                 else:
                     raise RuntimeError(f"capacity batch validator accepted {label}")
         finally:
+            validator.ROOT = original_root
             validator.CONTRACT_PATH = original_contract
+            validator.is_ancestor = original_ancestor
     print("PASS: capacity batch positive and 7 status/throughput negatives")
 
 
