@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import stat
+import tempfile
 from pathlib import Path
 from types import ModuleType
 
@@ -177,6 +179,60 @@ def expect_rollback_failure_diagnostic(module: ModuleType, original_contract: by
             original_restore(module.CANONICAL_CONTRACT_PATH, original_contract)
 
 
+def expect_atomic_path_guards(module: ModuleType) -> None:
+    """Exercise the actual helper against disposable outside canaries and failed writes."""
+    cases = ("existing", "new", "symlink", "parent", "directory", "missing", "replace", "fsync")
+    for case in cases:
+        with tempfile.TemporaryDirectory(prefix="SIGKILL-atomic-negative-") as tmp:
+            root = Path(tmp)
+            inside, outside = root / "inside", root / "outside"
+            inside.mkdir()
+            outside.mkdir()
+            canary = outside / "canary"
+            canary.write_bytes(b"SYNTHETIC_SECRET_CANARY")
+            target = inside / "target"
+            if case in ("existing", "replace", "fsync"):
+                target.write_bytes(b"before\\n")
+                target.chmod(0o640)
+            if case == "symlink":
+                target.symlink_to(canary)
+            if case == "parent":
+                alias = root / "alias"
+                alias.symlink_to(outside, target_is_directory=True)
+                target = alias / "canary"
+            if case == "directory":
+                target.mkdir()
+            if case == "missing":
+                target = root / "missing" / "target"
+            old_replace, old_fsync = module.os.replace, module.os.fsync
+            if case == "replace":
+                module.os.replace = lambda *_args: (_ for _ in ()).throw(OSError("synthetic replace failure"))
+            if case == "fsync":
+                module.os.fsync = lambda *_args: (_ for _ in ()).throw(OSError("synthetic fsync failure"))
+            try:
+                try:
+                    module.CANONICAL_ATOMIC_WRITE_BYTES(target, b"new\\n")
+                except (module.ReconcileFailure, OSError):
+                    if case in ("existing", "new"):
+                        raise AssertionError("valid atomic write rejected: " + case)
+                else:
+                    if case not in ("existing", "new"):
+                        raise AssertionError("unsafe atomic path/transport accepted: " + case)
+            finally:
+                module.os.replace, module.os.fsync = old_replace, old_fsync
+            if canary.read_bytes() != b"SYNTHETIC_SECRET_CANARY":
+                raise AssertionError("atomic path test modified outside canary")
+            if case in ("existing", "new"):
+                if target.read_bytes() != b"new\\n" or stat.S_IMODE(target.stat().st_mode) != (0o640 if case == "existing" else 0o644):
+                    raise AssertionError("atomic write bytes/mode drift: " + case)
+            if case in ("replace", "fsync"):
+                if target.read_bytes() != b"before\\n" or stat.S_IMODE(target.stat().st_mode) != 0o640:
+                    raise AssertionError("failed atomic write did not preserve original: " + case)
+            if list(inside.glob(".*.tmp")):
+                raise AssertionError("atomic write left temporary residue: " + case)
+    print("PASS: SIGKILL actual atomic helper path/mode/rollback runtime (8 cases)")
+
+
 def main() -> int:
     module = load_module()
     original_contract = module.CANONICAL_CONTRACT_PATH.read_bytes()
@@ -188,6 +244,7 @@ def main() -> int:
     expect_atomic_writer_rejection(module, original_contract)
     expect_atomic_replace_rejection(module, original_contract)
     expect_mode_preservation(module, original_contract)
+    expect_atomic_path_guards(module)
     expect_post_write_rollback(module, original_contract)
     expect_rollback_failure_diagnostic(module, original_contract)
 
