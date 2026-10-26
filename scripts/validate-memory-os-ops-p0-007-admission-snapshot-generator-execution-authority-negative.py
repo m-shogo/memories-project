@@ -149,8 +149,63 @@ def expect_rejected(module: Any, field: str, replacement: Any, expected_diagnost
         require(protected_state(path) == state, f"{field} rejection changed protected authority identity: {path.relative_to(ROOT)}")
 
 
+def prove_json_reader_negative(module: Any) -> None:
+    """Prove generator admission with disposable JSON and no authority writes."""
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-generator-json-", dir=ROOT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(
+            module.load(path) == {"safe": True, "nested": {"count": 1}},
+            "generator JSON reader positive control failed",
+        )
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "generated strict snapshot invalid: duplicate JSON key"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "generated strict snapshot invalid: duplicate JSON key"),
+            ("NaN", b'{"number":NaN}', "generated strict snapshot invalid: nonfinite JSON number"),
+            ("Infinity", b'{"number":Infinity}', "generated strict snapshot invalid: nonfinite JSON number"),
+            ("negative Infinity", b'{"number":-Infinity}', "generated strict snapshot invalid: nonfinite JSON number"),
+            ("float overflow", b'{"number":1e999}', "generated strict snapshot invalid: nonfinite JSON number"),
+            ("oversized integer", b'{"number":' + b"9" * 5000 + b"}", "generated strict snapshot invalid: JSON integer too large"),
+            ("oversized JSON", b'{"payload":"' + b"x" * module.MAX_JSON_BYTES + b'"}', "generated strict snapshot invalid: JSON exceeds 1 MiB"),
+            ("invalid UTF-8", b'{"private":"\\xff"}'.replace(b"\\xff", bytes([255])), "generated strict snapshot invalid: JSON unreadable or malformed"),
+            ("malformed private input", b'{"private":"synthetic-secret",', "generated strict snapshot invalid: JSON unreadable or malformed"),
+            ("non-object root", b"[]", "generated strict snapshot invalid: JSON root not object"),
+        )
+
+        def rejected(candidate: Any, expected: str, label: str) -> None:
+            try:
+                module.load(candidate)
+            except SystemExit as exc:
+                require(exc.code == expected, f"{label}: rejected outside exact generator JSON guard")
+            else:
+                raise Fail(f"{label}: unsafe generator JSON accepted")
+
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "generated strict snapshot invalid: JSON path unsafe", "symlink")
+        alias_dir = Path(directory) / "alias-dir"
+        alias_dir.symlink_to(Path(directory), target_is_directory=True)
+        rejected(alias_dir / path.name, "generated strict snapshot invalid: JSON path unsafe", "symlink ancestor")
+        rejected(Path(directory), "generated strict snapshot invalid: JSON path unsafe", "directory")
+        rejected("candidate.json", "generated strict snapshot invalid: JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="ops-p0-007-generator-external-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            rejected(canary, "generated strict snapshot invalid: JSON path missing or outside repository", "external path")
+            require(canary.read_bytes() == positive, "generator JSON reader modified external canary")
+        path.unlink()
+        rejected(path, "generated strict snapshot invalid: JSON path missing or outside repository", "missing path")
+
+
 def main() -> int:
     module = load_module()
+    prove_json_reader_negative(module)
     prove_rejection_stdout_classifier()
     prove_symlink_identity_rejected()
     # A byte-identical symlink is not a canonical protected authority.

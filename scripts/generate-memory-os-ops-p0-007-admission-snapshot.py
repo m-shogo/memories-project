@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import tempfile
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+MAX_JSON_BYTES = 1024 * 1024
 OUTPUT_REL = Path("contracts/operations/ops-p0-007-admission-snapshot.v1.json")
 ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
 BLOCKER_HELPER_REL = Path("scripts/memory_os_backup_restore_blockers.py")
@@ -116,19 +118,55 @@ def atomic_write_text(path: Path, text: str) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
+    """Reject ambiguous canonical JSON before generating a deterministic projection."""
+    if not isinstance(path, Path) or not path.is_absolute():
+        raise SystemExit("generated strict snapshot invalid: JSON path invalid")
     try:
         relative = path.relative_to(ROOT)
-        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise SystemExit(f"generated strict snapshot invalid: cannot resolve canonical authority: {path}") from exc
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise SystemExit("generated strict snapshot invalid: JSON path missing or outside repository") from None
     if relative != resolved or not path.is_file() or path.is_symlink():
-        raise SystemExit(f"generated strict snapshot invalid: authority escapes canonical repository path: {relative}")
+        raise SystemExit("generated strict snapshot invalid: JSON path unsafe")
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise SystemExit("generated strict snapshot invalid: duplicate JSON key")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise SystemExit("generated strict snapshot invalid: nonfinite JSON number")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        if not math.isfinite(number):
+            raise SystemExit("generated strict snapshot invalid: nonfinite JSON number")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        if len(value.lstrip("-")) > 128:
+            raise SystemExit("generated strict snapshot invalid: JSON integer too large")
+        return int(value)
+
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        raise SystemExit(f"generated strict snapshot invalid: cannot load {relative}: {exc}") from exc
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        if len(raw) > MAX_JSON_BYTES:
+            raise SystemExit("generated strict snapshot invalid: JSON exceeds 1 MiB")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise SystemExit("generated strict snapshot invalid: JSON unreadable or malformed") from None
     if not isinstance(value, dict):
-        raise SystemExit(f"generated strict snapshot invalid: root must be object: {relative}")
+        raise SystemExit("generated strict snapshot invalid: JSON root not object")
     return value
 
 
