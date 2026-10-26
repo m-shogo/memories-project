@@ -62,6 +62,19 @@ def main() -> int:
             good.write_text('{"safe":true}', encoding="utf-8")
             if validator.load(good) != {"safe": True}:
                 raise RuntimeError("worker saturation reader positive failed")
+            boundary = inside / "boundary.json"
+            boundary.write_bytes(b'{"padding":"' + b"x" * (validator.MAX_JSON_BYTES - 14) + b'"}')
+            if len(boundary.read_bytes()) > validator.MAX_JSON_BYTES or not validator.load(boundary)["padding"]:
+                raise RuntimeError("worker saturation reader rejected bounded JSON positive")
+            oversized = inside / "oversized.json"
+            oversized.write_bytes(b'{"padding":"' + b"x" * validator.MAX_JSON_BYTES + b'"}')
+            try:
+                validator.load(oversized)
+            except validator.Fail as exc:
+                if "exceeds reviewed read limit" not in str(exc):
+                    raise RuntimeError("worker saturation oversized JSON rejected by wrong gate") from None
+            else:
+                raise RuntimeError("worker saturation reader accepted oversized JSON")
             malformed = (
                 ("nested duplicate", '{"a":{"key":1,"key":2}}'),
                 ("NaN", '{"value":NaN}'),

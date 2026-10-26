@@ -17,6 +17,7 @@ CONTRACT_PATH = ROOT / "contracts/operations/deletion-worker-saturation-contract
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
+MAX_JSON_BYTES = 1024 * 1024
 
 
 class Fail(RuntimeError):
@@ -56,11 +57,14 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         raise Fail("worker saturation JSON path escaped repository") from None
     try:
-        value = json.loads(path.read_text(encoding="utf-8"),
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "worker saturation JSON exceeds reviewed read limit")
+        value = json.loads(raw.decode("utf-8"),
                            parse_constant=reject_nonfinite_constant,
                            parse_float=parse_finite_float,
                            object_pairs_hook=reject_duplicate_json_keys)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise Fail("worker saturation JSON unreadable or invalid") from None
     require(isinstance(value, dict), "worker saturation JSON root must be object")
     return value
