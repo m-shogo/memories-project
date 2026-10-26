@@ -17,7 +17,7 @@ SELF = "scripts/validate-memory-os-load-foundation-diagnostic-source-negative.py
 TARGET = "docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
-REVIEWED_PUBLISHER = "04a75898e580256a8d5d36f7a74b4349d175f3fe"
+REVIEWED_PUBLISHER = "f6f9b97957a09cd01174a0e020d2471c345ac721"
 REVIEWED_INDEPENDENT = "367464494df85aebc4f5468eb7223569edc847c1"
 
 def blob(content: str) -> str:
@@ -71,6 +71,9 @@ REQUIRED = (
     'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
     'trap \'rm -f "$log"\' EXIT',
     'echo "Bounded load foundation validation completed; raw validator output withheld."',
+    'echo "FOUNDATION_FAILURE_STAGE=$stage" >> "$GITHUB_ENV"',
+    "'failureStage': stage",
+    "if stage not in allowed_stages:",
     "'output': 'Bounded load foundation validation failed; raw validator output withheld.'",
     "'containsSecrets': False",
     "'productionDecision': 'NO_GO'",
@@ -112,7 +115,7 @@ def writer_runtime(source: str) -> None:
     if shell.count("python - <<'PY'\n") != 1 or shell.count("\nPY\n") != 1:
         raise AssertionError("load foundation diagnostic heredoc missing")
     code = shell.split("python - <<'PY'\n", 1)[1].split("\nPY\n", 1)[0] + "\n"
-    for case in ("existing", "new", "replace", "fsync", "symlink", "parent", "directory", "bad_sha", "bad_exit"):
+    for case in ("existing", "new", "bad_stage", "replace", "fsync", "symlink", "parent", "directory", "bad_sha", "bad_exit"):
         with tempfile.TemporaryDirectory(prefix="load-foundation-diagnostic-") as temp:
             root = Path(temp)
             parent = root / Path(TARGET).parent
@@ -137,16 +140,17 @@ def writer_runtime(source: str) -> None:
                 op = "replace" if case == "replace" else "fsync"
                 inject = "import os\ndef deny(*args): raise OSError('synthetic failure')\nos." + op + " = deny\n"
             env = dict(os.environ, SOURCE_SHA="a" * (39 if case == "bad_sha" else 40),
-                       FOUNDATION_EXIT_CODE="999" if case == "bad_exit" else "17")
+                       FOUNDATION_EXIT_CODE="999" if case == "bad_exit" else "17",
+                       FOUNDATION_FAILURE_STAGE="SYNTHETIC_SECRET_CANARY" if case == "bad_stage" else "compile")
             result = subprocess.run([sys.executable, "-c", inject + code], cwd=root,
                                     env=env, capture_output=True, text=True, timeout=10, check=False)
-            if (result.returncode == 0) != (case in ("existing", "new")):
+            if (result.returncode == 0) != (case in ("existing", "new", "bad_stage")):
                 raise AssertionError("load foundation diagnostic writer acceptance drift: " + case + " " + result.stderr[-100:])
             if canary.read_bytes() != b"SYNTHETIC_SECRET_CANARY":
                 raise AssertionError("load foundation diagnostic escaped root")
-            if case in ("existing", "new"):
+            if case in ("existing", "new", "bad_stage"):
                 value = json.loads(target.read_text(encoding="utf-8"))
-                if value["output"] != "Bounded load foundation validation failed; raw validator output withheld." or value["containsSecrets"] or value["productionEvidence"] or value["productionReady"] or value["productionDecision"] != "NO_GO" or value["exitCode"] != 17:
+                if value["output"] != "Bounded load foundation validation failed; raw validator output withheld." or value["containsSecrets"] or value["productionEvidence"] or value["productionReady"] or value["productionDecision"] != "NO_GO" or value["exitCode"] != 17 or value["failureStage"] != ("unknown" if case == "bad_stage" else "compile") or "SYNTHETIC_SECRET_CANARY" in target.read_text(encoding="utf-8"):
                     raise AssertionError("load foundation diagnostic privacy/authority drift")
                 if stat.S_IMODE(target.stat().st_mode) != (0o640 if case == "existing" else 0o600):
                     raise AssertionError("load foundation diagnostic mode drift")
@@ -155,12 +159,12 @@ def writer_runtime(source: str) -> None:
                     raise AssertionError("load foundation diagnostic atomic rollback drift")
             if list(parent.glob(".*.tmp")):
                 raise AssertionError("load foundation diagnostic temp residue")
-    print("PASS: actual load foundation diagnostic atomic/symlink/privacy runtime (9 cases)")
+    print("PASS: actual load foundation diagnostic atomic/symlink/privacy/stage runtime (10 cases)")
 
 def capture_shell_runtime(source: str) -> None:
     for title, output_name, expected_line in (
         ("Reconcile available bounded results read-only", "GITHUB_OUTPUT", "exit_code=17\n"),
-        ("Reconcile available bounded results with stage capture", "GITHUB_ENV", "FOUNDATION_EXIT_CODE=17\n"),
+        ("Reconcile available bounded results with stage capture", "GITHUB_ENV", "FOUNDATION_EXIT_CODE=17\nFOUNDATION_FAILURE_STAGE=compile\n"),
     ):
         shell = step(source, title)
         with tempfile.TemporaryDirectory(prefix="load-foundation-capture-") as temp:

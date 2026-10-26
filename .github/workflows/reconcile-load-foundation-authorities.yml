@@ -188,6 +188,7 @@ jobs:
           log="$(mktemp)" || exit 1
           trap 'rm -f "$log"' EXIT
           code=0
+          stage=compile
           echo "STAGE: compile" >> "$log"
           python -m py_compile \
             scripts/validate-memory-os-capacity-ramp.py \
@@ -204,34 +205,35 @@ jobs:
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
-          if [[ "$code" == "0" ]]; then echo "STAGE: capacity-authority-negative" >> "$log"; python scripts/validate-memory-os-capacity-ramp-authority-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then echo "STAGE: short-stability-authority-negative" >> "$log"; python scripts/validate-memory-os-short-stability-authority-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then echo "STAGE: deletion-load-authority-negative" >> "$log"; python scripts/validate-memory-os-deletion-under-load-authority-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then echo "STAGE: load-foundation-ordering-negative" >> "$log"; python scripts/validate-memory-os-short-stability-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=capacity-authority-negative; echo "STAGE: capacity-authority-negative" >> "$log"; python scripts/validate-memory-os-capacity-ramp-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=short-stability-authority-negative; echo "STAGE: short-stability-authority-negative" >> "$log"; python scripts/validate-memory-os-short-stability-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=deletion-load-authority-negative; echo "STAGE: deletion-load-authority-negative" >> "$log"; python scripts/validate-memory-os-deletion-under-load-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=load-foundation-ordering-negative; echo "STAGE: load-foundation-ordering-negative" >> "$log"; python scripts/validate-memory-os-short-stability-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json ]]; then
-            echo "STAGE: capacity-ramp" >> "$log"
+            stage=capacity-ramp; echo "STAGE: capacity-ramp" >> "$log"
             capacity_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"))["commitSha"])')"
             EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/validate-memory-os-capacity-ramp.py >> "$log" 2>&1 || code=$?
             if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/reconcile-memory-os-capacity-ramp-status.py >> "$log" 2>&1 || code=$?; fi
             if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-capacity-ramp.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
           fi
           if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json ]]; then
-            echo "STAGE: short-stability" >> "$log"
+            stage=short-stability; echo "STAGE: short-stability" >> "$log"
             stability_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"))["commitSha"])')"
             EXPECTED_COMMIT_SHA="$stability_sha" python scripts/validate-memory-os-short-stability-sample.py >> "$log" 2>&1 || code=$?
             if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$stability_sha" python scripts/reconcile-memory-os-short-stability-status.py >> "$log" 2>&1 || code=$?; fi
             if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-short-stability-sample.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
           fi
           if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json ]]; then
-            echo "STAGE: deletion-under-load" >> "$log"
+            stage=deletion-under-load; echo "STAGE: deletion-under-load" >> "$log"
             deletion_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"))["commitSha"])')"
             EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/validate-memory-os-deletion-under-load.py >> "$log" 2>&1 || code=$?
             if [[ "$code" == "0" ]]; then EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/reconcile-memory-os-deletion-under-load-status.py >> "$log" 2>&1 || code=$?; fi
             if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-deletion-under-load.py --require-reconciled >> "$log" 2>&1 || code=$?; fi
           fi
-          if [[ "$code" == "0" ]]; then echo "STAGE: aggregate" >> "$log"; python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=aggregate; echo "STAGE: aggregate" >> "$log"; python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "FOUNDATION_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          echo "FOUNDATION_FAILURE_STAGE=$stage" >> "$GITHUB_ENV"
           exit 0
       - name: Commit bounded load authorities
         if: env.FOUNDATION_EXIT_CODE == '0'
@@ -270,6 +272,14 @@ jobs:
 
           sha = os.environ['SOURCE_SHA']
           raw_code = os.environ['FOUNDATION_EXIT_CODE']
+          allowed_stages = {
+              'compile', 'capacity-authority-negative', 'short-stability-authority-negative',
+              'deletion-load-authority-negative', 'load-foundation-ordering-negative',
+              'capacity-ramp', 'short-stability', 'deletion-under-load', 'aggregate',
+          }
+          stage = os.environ.get('FOUNDATION_FAILURE_STAGE', 'unknown')
+          if stage not in allowed_stages:
+              stage = 'unknown'
           if re.fullmatch(r'[0-9a-f]{40}', sha) is None:
               raise RuntimeError('invalid load foundation diagnostic source SHA')
           if re.fullmatch(r'(?:0|[1-9][0-9]{0,2})', raw_code) is None or int(raw_code) > 255:
@@ -280,6 +290,7 @@ jobs:
               'sourceCommitSha': sha,
               'result': 'FAIL',
               'exitCode': int(raw_code),
+              'failureStage': stage,
               'output': 'Bounded load foundation validation failed; raw validator output withheld.',
               'containsSecrets': False,
               'productionEvidence': False,
