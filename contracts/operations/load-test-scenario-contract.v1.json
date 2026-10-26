@@ -344,7 +344,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load, Preview requests authenticated before the fence, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; Apply and Upload authorization requests already in flight before the fence, host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
+      "reason": "post-fence former-session load, Preview requests authenticated before the fence, Apply and upload-authorization requests authenticated before the fence with zero pre-worker durable mutation, upload-completion requests paused after real MinIO HEAD and rejected after the epoch-2 fence, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
