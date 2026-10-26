@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/incident-control-exercise.yml"
 INDEPENDENT = ".github/workflows/incident-control-exercise-diagnostic-source-negative.yml"
 SELF = "scripts/validate-memory-os-incident-control-exercise-diagnostic-source-negative.py"
-REVIEWED_PUBLISHER = "c59d6f2b832d9c995391882c4f1829d5670950b9"
+REVIEWED_PUBLISHER = "de440f0fb34a48742397482150aae36397da7f4a"
 REVIEWED_INDEPENDENT = "7498034f740e5b6e807a053d457026995b719955"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -47,6 +47,13 @@ def validate(publisher: str, independent: str) -> None:
         ("  schedule:\n", 1),
         ("  workflow_dispatch:\n", 1),
         ("permissions:\n  contents: write\n", 1),
+        ("uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262", 1),
+        ("uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", 1),
+        ("persist-credentials: true", 1),
+        ("github.ref == 'refs/heads/so'", 1),
+        ('test "${GITHUB_REF:-}" = "refs/heads/so"', 1),
+        ('[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]', 1),
+        ('test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"', 1),
         ("def guarded_target(path: Path) -> Path:", 2),
         ("def atomic_write_text(path: Path, text: str) -> None:", 2),
         ("if candidate.is_symlink():", 2),
@@ -235,6 +242,13 @@ def mutation_negatives(publisher: str, independent: str) -> None:
         ("atomic", "os.replace(temporary, target)", "target.write_text(text)"),
         ("cleanup", "temporary.unlink()", "pass"),
         ("guarded read", "guarded_target(path).read_text(encoding='utf-8')", "path.read_text(encoding='utf-8')"),
+        ("floating checkout", CHECKOUT, "uses: actions/checkout@v4"),
+        ("floating setup", SETUP, "uses: actions/setup-python@v5"),
+        ("persist writer credentials", "persist-credentials: true", "persist-credentials: false"),
+        ("writer job ref", "github.ref == 'refs/heads/so'", "github.ref != 'refs/heads/so'"),
+        ("writer source ref", 'test "${GITHUB_REF:-}" = "refs/heads/so"', "true"),
+        ("writer source SHA", '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]', "true"),
+        ("writer source HEAD", 'test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"', "true"),
     )
     i_cases = (
         ("PR base", PR_BASE, "true"), ("push branch", PUSH_REF, "true"),
@@ -259,7 +273,7 @@ def mutation_negatives(publisher: str, independent: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("incident control accepted mutation: " + name + "/" + label)
-    print("PASS: incident control publisher (10) and independent (10) source mutations")
+    print("PASS: incident control publisher (17) and independent (10) source mutations")
 
 
 def main() -> int:
