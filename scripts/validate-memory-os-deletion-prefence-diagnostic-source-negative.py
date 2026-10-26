@@ -431,7 +431,7 @@ def strict_validator_runtime():
                 ("job", "JoB_SYNTHETIC"),
             ):
                 mutated = copy.deepcopy(canonical)
-                mutated["environment"]["syntheticNegativeMarker"] = marker
+                mutated["environment"]["os"] = marker
                 synthetic.write_text(json.dumps(mutated), encoding="utf-8")
                 try:
                     validator.validate_result(contract, None)
