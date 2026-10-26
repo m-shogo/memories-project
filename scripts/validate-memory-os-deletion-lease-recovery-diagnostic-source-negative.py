@@ -13,8 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-lease-recovery.yml"
 INDEPENDENT = ".github/workflows/deletion-lease-recovery-diagnostic-source-negative.yml"
 SCRIPT = "scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py"
+RECONCILER = "scripts/reconcile-memory-os-deletion-lease-recovery.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py"
+REVIEWED_RECONCILER = "c766103c56f27c20130cd4d62860c9ac87f91cfd"
+REVIEWED_RECONCILE_NEGATIVE = "f0383137360a38eccc55a2c0cc2f1e6e4b2ccbd4"
 REVIEWED = "12129252904c15d5a9c335fd0b529319d1f0b71a"
-REVIEWED_INDEPENDENT = "2b226261e3cc6b19d6c32075df0170470807ecaf"
+REVIEWED_INDEPENDENT = "ff9f04cc11d6efa93dd1bb08141444c33dcd854a"
 TARGET = "docs/fixtures/memory-os-operability/deletion-lease-recovery-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -196,13 +200,17 @@ def main():
     if blob(publisher) != REVIEWED:
         raise SystemExit("SIGKILL publisher complete Git blob unreviewed")
     independent = source(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, RECONCILER, RECONCILE_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
+    if blob(source(RECONCILER)) != REVIEWED_RECONCILER:
+        raise SystemExit("lease reconciler complete Git blob unreviewed")
+    if blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
+        raise SystemExit("lease reconcile negative complete Git blob unreviewed")
     identity_runtime(independent, "Require exact clean lease recovery diagnostic source")
     policy(publisher)
     mutations(publisher)

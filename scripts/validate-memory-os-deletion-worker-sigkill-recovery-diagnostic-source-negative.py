@@ -13,8 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-worker-sigkill-recovery.yml"
 INDEPENDENT = ".github/workflows/deletion-worker-sigkill-recovery-diagnostic-source-negative.yml"
 SCRIPT = "scripts/validate-memory-os-deletion-worker-sigkill-recovery-diagnostic-source-negative.py"
+RECONCILER = "scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-worker-sigkill-recovery-reconcile-negative.py"
+REVIEWED_RECONCILER = "c8ff62fd44902d2f0998747f6a6b74efcc7190b4"
+REVIEWED_RECONCILE_NEGATIVE = "430beb14c031d1faab9f6e0dbed5b1047957c2b1"
 REVIEWED = "1ae00600d8ccbe1e9c70ad6d2bbfb6212e729313"
-REVIEWED_INDEPENDENT = "407061269b8e7573d3df34f0dd5502a80490f6ba"
+REVIEWED_INDEPENDENT = "b3193ff950a1a872523fa6f50098d2ee4021116c"
 TARGET = "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -196,13 +200,17 @@ def main():
     if blob(publisher) != REVIEWED:
         raise SystemExit("SIGKILL publisher complete Git blob unreviewed")
     independent = source(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, RECONCILER, RECONCILE_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
+    if blob(source(RECONCILER)) != REVIEWED_RECONCILER:
+        raise SystemExit("SIGKILL reconciler complete Git blob unreviewed")
+    if blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
+        raise SystemExit("SIGKILL reconcile negative complete Git blob unreviewed")
     identity_runtime(independent, "Require exact clean worker SIGKILL recovery diagnostic source")
     policy(publisher)
     mutations(publisher)

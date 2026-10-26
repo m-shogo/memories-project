@@ -8,6 +8,8 @@ on:
       - ".github/workflows/deletion-lease-recovery.yml"
       - ".github/workflows/deletion-lease-recovery-diagnostic-source-negative.yml"
       - "scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-lease-recovery.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py"
   push:
     branches:
       - so
@@ -15,6 +17,8 @@ on:
       - ".github/workflows/deletion-lease-recovery.yml"
       - ".github/workflows/deletion-lease-recovery-diagnostic-source-negative.yml"
       - "scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-lease-recovery.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py"
 
 permissions:
   contents: read
@@ -57,6 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py
+          python scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"

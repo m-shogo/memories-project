@@ -127,9 +127,12 @@ def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> 
     try:
         try:
             module.write_contract_transactionally(candidate, "0" * 40)
-        except RuntimeError as exc:
-            if "synthetic post-write SIGKILL validation failure" not in str(exc):
-                raise
+        except module.Fail as exc:
+            diagnostic = str(exc)
+            if "SIGKILL recovery post-write validation failed: RuntimeError" not in diagnostic:
+                raise AssertionError("primary exception class missing") from exc
+            if "synthetic post-write SIGKILL validation failure" in diagnostic or not exc.__suppress_context__:
+                raise AssertionError("untrusted primary validator diagnostic leaked") from exc
         else:
             raise AssertionError("post-write validator rejection was accepted")
 
@@ -157,14 +160,14 @@ def expect_rollback_failure_diagnostic(module: ModuleType, original_contract: by
     try:
         try:
             module.write_contract_transactionally(candidate, "0" * 40)
-        except RuntimeError as exc:
+        except module.Fail as exc:
             diagnostic = str(exc)
-            if "synthetic post-write SIGKILL validation failure" not in diagnostic:
-                raise AssertionError(f"primary validation diagnostic was lost: {diagnostic}") from exc
-            if "rollback incomplete" not in diagnostic:
-                raise AssertionError(f"rollback incompleteness was not diagnosed: {diagnostic}") from exc
-            if "synthetic SIGKILL rollback failure" not in diagnostic:
-                raise AssertionError(f"rollback failure diagnostic was lost: {diagnostic}") from exc
+            if "SIGKILL recovery post-write validation failed: RuntimeError" not in diagnostic:
+                raise AssertionError("primary exception class missing") from exc
+            if "rollback incomplete: OSError" not in diagnostic:
+                raise AssertionError("rollback incompleteness/class missing") from exc
+            if "synthetic" in diagnostic or not exc.__suppress_context__:
+                raise AssertionError("untrusted primary/rollback exception text leaked") from exc
         else:
             raise AssertionError("rollback failure was accepted")
     finally:
