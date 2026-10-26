@@ -1266,6 +1266,8 @@ def exercise_deletion_load_authority_gate_source() -> None:
         require(value.count("uses: actions/checkout@") == 1 and
                 value.count("uses: actions/setup-python@") == 1,
                 "deletion-load read-only gate has duplicate or substituted Actions")
+        require(value.count(required[5]) == 2,
+                "deletion-load clean-worktree source checks must run before and after")
         require(value.count(required[6]) == 2,
                 "deletion-load Go runner not in both CI path filters")
         require(value.count("    branches:" + chr(10) + "      - so") == 2,
