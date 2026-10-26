@@ -836,11 +836,72 @@ def exercise_bounded_review_git_history(module) -> None:
     print("PASS: independent review Git history bounded, private and fail-closed with eight negatives")
 
 
+
+def prove_source_order_bounded_git_output(module) -> None:
+    """Exercise actual source-order Git transport without production evidence."""
+    source_order = module.load_review_source_order_validator()
+    original_run = source_order.subprocess.run
+    ref = "docs/evidence/backup-restore/security/synthetic.json"
+    field = "syntheticSecurityReview"
+    marker = "PRIVATE_GIT_DIAGNOSTIC_DO_NOT_LOG"
+    state = {"stdout": "a" * 40 + "\n", "returncode": 0, "error": None}
+    calls = []
+
+    def fake_git(args, **kwargs):
+        require(args == ["git", "log", "--diff-filter=A", "--max-count=2",
+                         "--follow", "--format=%H", "--", ref],
+                "source-order Git creation history pathspec/count drift")
+        require(kwargs.get("cwd") == source_order.ROOT and kwargs.get("text") is True,
+                "source-order Git execution context drift")
+        require(kwargs.get("stdout") is subprocess.PIPE and kwargs.get("stderr") is subprocess.DEVNULL,
+                "source-order Git diagnostic privacy drift")
+        require(kwargs.get("check") is False and kwargs.get("timeout") == 20,
+                "source-order Git timeout drift")
+        calls.append(args)
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(args, state["returncode"],
+                                           stdout=state["stdout"], stderr=marker)
+
+    source_order.subprocess.run = fake_git
+    try:
+        require(source_order.first_commit_for_path(ref, field) == "a" * 40,
+                "source-order bounded Git positive control failed")
+        cases = [
+            ("multiple", {"stdout": "a" * 40 + "\n" + "b" * 40 + "\n"},
+             f"{field} must have exactly one committed creation point"),
+            ("nonzero", {"returncode": 1}, f"cannot inspect {field}"),
+            ("bool-exit", {"returncode": True}, f"cannot inspect {field}"),
+            ("malformed", {"stdout": marker + "\n"},
+             f"{field} must have exactly one committed creation point"),
+            ("nonstring", {"stdout": b"a" * 40}, f"cannot inspect {field} output"),
+            ("oversized", {"stdout": "a" * 257}, f"cannot inspect {field} output"),
+            ("timeout", {"error": subprocess.TimeoutExpired(["git", "log"], 20, stderr=marker)},
+             f"cannot inspect {field}"),
+            ("unavailable", {"error": OSError(marker)}, f"cannot inspect {field}"),
+        ]
+        for label, changes, expected in cases:
+            state.update({"stdout": "a" * 40 + "\n", "returncode": 0, "error": None})
+            state.update(changes)
+            try:
+                source_order.first_commit_for_path(ref, field)
+            except source_order.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"source-order Git {label} wrong/private diagnostic")
+            else:
+                raise Fail(f"source-order Git {label} unexpectedly accepted")
+        require(len(calls) == 9, "source-order Git negative multiplicity drift")
+    finally:
+        source_order.subprocess.run = original_run
+    print("PASS: source-order Git creation history bounded/private with eight real-reader negatives")
+
+
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
     module = load_validator()
     prove_runtime_review_pair_controls()
+    prove_source_order_bounded_git_output(module)
     prove_independent_review_json_reader(module)
     expect_source_order_execution(module)
 

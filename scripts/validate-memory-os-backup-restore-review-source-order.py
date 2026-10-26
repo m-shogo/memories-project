@@ -144,14 +144,23 @@ def canonical_review_ref(value: Any, field: str, material_delta: bool = False) -
 
 
 def git_output(args: list[str], field: str) -> str:
-    completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"cannot inspect {field}: {completed.stderr.strip()}")
+    # A source SHA or commit timestamp never requires unbounded Git diagnostics.
+    try:
+        completed = subprocess.run(
+            ["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot inspect {field}") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"cannot inspect {field}")
+    require(isinstance(completed.stdout, str) and len(completed.stdout) <= 256,
+            f"cannot inspect {field} output")
     return completed.stdout.strip()
 
 
 def first_commit_for_path(ref: str, field: str) -> str:
-    output = git_output(["log", "--diff-filter=A", "--follow", "--format=%H", "--", ref], field)
+    output = git_output(["log", "--diff-filter=A", "--max-count=2", "--follow", "--format=%H", "--", ref], field)
     commits = [line.strip() for line in output.splitlines() if line.strip()]
     require(len(commits) == 1 and SHA40.fullmatch(commits[0]) is not None,
             f"{field} must have exactly one committed creation point")
