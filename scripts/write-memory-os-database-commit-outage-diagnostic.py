@@ -101,7 +101,7 @@ def write_local_result(path: Path, value: dict[str, Any], repo_root: Path) -> No
             re.fullmatch(r"[0-9a-f]{40}", value["commitSha"]) is not None,
             "database outage result source SHA invalid")
     require(isinstance(value["generatedAt"], str) and
-            re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z",
+            re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z",
                          value["generatedAt"]) is not None,
             "database outage result timestamp invalid")
     require(value["result"] == "PASS" and value["integrityResult"] == "PASS" and
