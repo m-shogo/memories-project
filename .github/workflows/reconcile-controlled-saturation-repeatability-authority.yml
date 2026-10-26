@@ -17,6 +17,7 @@ on:
       - "scripts/validate-memory-os-controlled-saturation-ramp.py"
       - "scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py"
       - "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py"
+      - "scripts/analyze-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"
       - "scripts/run-memory-os-controlled-saturation-repeatability-disposable.py"
@@ -40,6 +41,7 @@ on:
       - "scripts/validate-memory-os-controlled-saturation-ramp.py"
       - "scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py"
       - "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py"
+      - "scripts/analyze-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"
       - "scripts/run-memory-os-controlled-saturation-repeatability-disposable.py"
@@ -93,6 +95,7 @@ jobs:
             scripts/validate-memory-os-controlled-saturation-ramp.py \
             scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py \
             scripts/reconcile-memory-os-controlled-saturation-ramp-status.py \
+            scripts/analyze-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py \
             scripts/run-memory-os-controlled-saturation-repeatability-disposable.py \
@@ -187,6 +190,7 @@ jobs:
             scripts/validate-memory-os-controlled-saturation-ramp.py \
             scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py \
             scripts/reconcile-memory-os-controlled-saturation-ramp-status.py \
+            scripts/analyze-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py \
             scripts/run-memory-os-controlled-saturation-repeatability-disposable.py \
