@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Independent exact-source negative tests for load foundation diagnostic trust boundaries."""
 from __future__ import annotations
+import hashlib
 import json
 import os
 import stat
@@ -16,6 +17,30 @@ SELF = "scripts/validate-memory-os-load-foundation-diagnostic-source-negative.py
 TARGET = "docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+REVIEWED_PUBLISHER = "04a75898e580256a8d5d36f7a74b4349d175f3fe"
+REVIEWED_INDEPENDENT = "367464494df85aebc4f5468eb7223569edc847c1"
+
+def blob(content: str) -> str:
+    data = content.encode("utf-8")
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+def require_reviewed_source(content: str, expected: str, label: str) -> None:
+    if blob(content) != expected:
+        raise AssertionError("load foundation " + label + " complete Git blob drift")
+
+def reviewed_blob_negatives(publisher: str, independent: str) -> None:
+    require_reviewed_source(publisher, REVIEWED_PUBLISHER, "publisher")
+    require_reviewed_source(independent, REVIEWED_INDEPENDENT, "independent CI")
+    for label, original, expected in (
+        ("publisher", publisher, REVIEWED_PUBLISHER),
+        ("independent CI", independent, REVIEWED_INDEPENDENT),
+    ):
+        try:
+            require_reviewed_source(original + "\n# synthetic source drift\n", expected, label)
+        except AssertionError:
+            continue
+        raise AssertionError("load foundation reviewed Git blob accepted synthetic source drift: " + label)
+    print("PASS: load foundation PR and independent CI complete Git blob source negatives (2 cases)")
 
 def read(path: str) -> str:
     p = ROOT / path
@@ -156,6 +181,69 @@ def capture_shell_runtime(source: str) -> None:
                 raise AssertionError("load foundation validator raw log temp residue: " + title)
     print("PASS: load foundation PR/writer actual validator failure capture and raw-log suppression (2 cases)")
 
+def pr_identity_runtime(source: str) -> None:
+    shell = step(source, "Confirm exact clean PR authority source")
+    head = "a" * 40
+    cases = (
+        ("pull_request", "so", head, True),
+        ("pull_request", "main", head, False),
+        ("push", "so", head, False),
+        ("pull_request", "so", "b" * 40, False),
+        ("pull_request", "so", "A" * 40, False),
+        ("pull_request", "so", "a" * 39, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="live-load-pr-identity-") as temp:
+        root = Path(temp)
+        stub = root / "git"
+        stub.write_text("#!/bin/sh\n"
+                        "if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then printf '" + head + "\\n'; exit 0; fi\n"
+                        "if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then exit 0; fi\n"
+                        "exit 1\n", encoding="utf-8")
+        stub.chmod(0o755)
+        for event, base, sha, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_BASE_REF=base, PR_HEAD_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise AssertionError("load foundation PR identity shell drift: " + str((event, base, sha, result.returncode)))
+    print("PASS: load foundation PR event/base/head SHA shell runtime (6 cases)")
+
+def independent_identity_runtime(source: str) -> None:
+    shell = step(source, "Require exact clean load foundation diagnostic source")
+    head = "a" * 40
+    cases = (
+        ("pull_request", "so", "", head, "", True),
+        ("pull_request", "main", "", head, "", False),
+        ("pull_request", "so", "", "b" * 40, "", False),
+        ("pull_request", "so", "", "A" * 40, "", False),
+        ("pull_request", "so", "", "", "", False),
+        ("push", "", "refs/heads/so", "", head, True),
+        ("push", "", "refs/heads/main", "", head, False),
+        ("push", "", "refs/heads/so", "", "b" * 40, False),
+        ("push", "", "refs/heads/so", "", "A" * 40, False),
+        ("push", "", "refs/heads/so", "", "a" * 39, False),
+        ("schedule", "", "refs/heads/so", "", head, False),
+        ("workflow_dispatch", "", "refs/heads/so", "", head, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="live-load-independent-identity-") as temp:
+        root = Path(temp)
+        stub = root / "git"
+        stub.write_text("#!/bin/sh\n"
+                        "if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then printf '" + head + "\\n'; exit 0; fi\n"
+                        "if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then exit 0; fi\n"
+                        "exit 1\n", encoding="utf-8")
+        stub.chmod(0o755)
+        for event, base, ref, pr_sha, sha, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_BASE_REF=base, GITHUB_REF=ref,
+                       PR_HEAD_SHA=pr_sha, GITHUB_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise AssertionError("load foundation independent CI event/base/ref/SHA drift: " + str((event, base, ref, result.returncode)))
+    print("PASS: load foundation independent CI event/base/ref/SHA shell runtime (12 cases)")
+
 def main() -> None:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
@@ -165,6 +253,9 @@ def main() -> None:
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("load foundation independent CI reachability drift: " + marker)
+    reviewed_blob_negatives(publisher, independent)
+    pr_identity_runtime(publisher)
+    independent_identity_runtime(independent)
     policy(publisher)
     mutations(publisher)
     writer_runtime(publisher)
