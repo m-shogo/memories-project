@@ -597,7 +597,63 @@ def validate_trend_child_output_privacy() -> None:
     print("PASS: trend producer/consumer child-output and timestamp privacy negatives")
 
 
+def validate_status_reconciler_admission_negatives() -> None:
+    """Test actual status reconciler JSON, child transport and serialization boundaries."""
+    module = load_reconciler()
+    with tempfile.TemporaryDirectory(prefix=".sustained-soak-status-json-", dir=ROOT) as temp:
+        path = Path(temp) / "status.json"
+        path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+        if module.load(path) != {"outer": {"a": 1, "b": 2}}:
+            raise AssertionError("status JSON positive control failed")
+        cases = (
+            b'{"value":Infinity}',
+            b'{"value":NaN}',
+            b'{"value":1e999}',
+            b'{"a":1,"a":2}',
+            b'{"outer":{"a":1,"a":2}}',
+            b'{"SYNTHETIC_SECRET_CANARY":',
+            b'{"huge":' + b"9" * 5000 + b"}",
+            b"\xff\xfe",
+        )
+        for payload in cases:
+            path.write_bytes(payload)
+            try:
+                module.load(path)
+            except module.Fail as exc:
+                if "SYNTHETIC_SECRET_CANARY" in str(exc):
+                    raise AssertionError("status JSON diagnostic leaked source")
+            else:
+                raise AssertionError("status reconciler accepted ambiguous JSON")
+        original_run = module.subprocess.run
+
+        class SyntheticChildResult:
+            returncode = 31
+            stdout = "SYNTHETIC_SECRET_CANARY"
+            stderr = "SYNTHETIC_SECRET_CANARY"
+
+        try:
+            module.subprocess.run = lambda *args, **kwargs: SyntheticChildResult()
+            try:
+                module.run_validator(module.SOAK_VALIDATOR, "synthetic child")
+            except module.Fail as exc:
+                if "SYNTHETIC_SECRET_CANARY" in str(exc) or "exit 31" not in str(exc):
+                    raise AssertionError("status child failure leaked or lost exit code")
+            else:
+                raise AssertionError("status child failure accepted")
+        finally:
+            module.subprocess.run = original_run
+        try:
+            module.write(path, {"nonfinite": float("inf")})
+        except ValueError:
+            if path.read_bytes() != cases[-1]:
+                raise AssertionError("nonfinite status serialization mutated target")
+        else:
+            raise AssertionError("status writer serialized nonfinite JSON")
+    print("PASS: status reconciler 8 JSON, 1 child-output and 1 serialization negatives")
+
+
 def main() -> int:
+    validate_status_reconciler_admission_negatives()
     validate_trend_child_output_privacy()
     validate_reconcile_diagnostic_runtime()
     validate_aggregate_updater_admission_negatives()

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import stat
 import subprocess
@@ -126,12 +127,35 @@ def enforce_runtime_authorities() -> None:
     require_exact_optional_file(REVIEW_PATH, CANONICAL_REVIEW_PATH, "sustained soak trend review")
 
 
+def reject_nonfinite_constant(_token: str) -> None:
+    raise Fail("sustained local-soak status JSON non-finite constant rejected")
+
+
+def parse_finite_float(token: str) -> float:
+    value = float(token)
+    require(math.isfinite(value), "sustained local-soak status JSON non-finite number rejected")
+    return value
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "sustained local-soak status JSON duplicate key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonfinite_constant,
+            parse_float=parse_finite_float,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        raise Fail("sustained local-soak status JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "sustained local-soak status JSON root must be object")
     return value
 
 
@@ -156,7 +180,7 @@ def atomic_replace_bytes(path: Path, payload: bytes, mode: int | None = None) ->
 
 
 def write(path: Path, value: dict[str, Any]) -> None:
-    atomic_replace_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
+    atomic_replace_bytes(path, (json.dumps(value, indent=2, allow_nan=False) + "\n").encode("utf-8"))
 
 
 def append_unique(values: list[Any], value: Any) -> None:
@@ -186,7 +210,7 @@ def run_validator(path: Path, label: str, *args: str) -> None:
         capture_output=True,
         check=False,
     )
-    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
+    require(completed.returncode == 0, f"{label} failed (exit {completed.returncode})")
 
 
 def write_and_validate_transactionally(
