@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import importlib.util
 import io
 import os
@@ -264,6 +265,69 @@ def run_rollback_secret_negative(module) -> None:
         module.run_post_write_validators = original_validators
 
 
+
+def run_stronger_readiness_negatives(module) -> None:
+    protected = (module.CONTRACT, module.LOAD, module.STATUS)
+    before = {path: path.read_bytes() for path in protected}
+    originals = {path: module.load(path) for path in (module.CONTRACT, module.LOAD, module.STATUS, module.RESULT)}
+    original_load = module.load
+    original_validator = module.run_validator
+    original_write = module.write_transactionally
+    cases = [
+        (module.CONTRACT, "capacityBoundaryEstablished"),
+        (module.CONTRACT, "operationalThresholdApproved"),
+        (module.CONTRACT, "independentReviewCompleted"),
+        (module.CONTRACT, "productionReady"),
+        (module.LOAD, "capacityBoundaryEstablished"),
+        (module.LOAD, "operationalThresholds"),
+        (module.LOAD, "productionReady"),
+    ]
+    for target, field in cases:
+        fixture = {path: copy.deepcopy(value) for path, value in originals.items()}
+        fixture[target]["readiness"][field] = True
+        def fake_load(path):
+            return fixture[path]
+        def forbidden_write(*args):
+            raise RuntimeError("stronger readiness reached write boundary")
+        module.load = fake_load
+        module.run_validator = lambda *args: None
+        module.write_transactionally = forbidden_write
+        try:
+            try:
+                module.main()
+            except module.Fail as exc:
+                if "refusing to downgrade stronger" not in str(exc):
+                    raise RuntimeError(f"unexpected stronger readiness rejection: {field}") from None
+            else:
+                raise RuntimeError(f"stronger readiness was downgraded: {field}")
+        finally:
+            module.load = original_load
+            module.run_validator = original_validator
+            module.write_transactionally = original_write
+
+    for prior in (module.CONTRACT, module.LOAD):
+        fixture = {path: copy.deepcopy(value) for path, value in originals.items()}
+        fixture[module.RESULT]["repeatableLocalDegradationSignalObserved"] = False
+        fixture[module.CONTRACT]["readiness"]["repeatableLocalDegradationSignalObserved"] = prior == module.CONTRACT
+        fixture[module.LOAD]["readiness"]["repeatableLocalDegradationSignalObserved"] = prior == module.LOAD
+        module.load = lambda path: fixture[path]
+        module.run_validator = lambda *args: None
+        module.write_transactionally = lambda *args: (_ for _ in ()).throw(RuntimeError("signal downgrade reached write"))
+        try:
+            try:
+                module.main()
+            except module.Fail as exc:
+                if "refusing to downgrade previously admitted" not in str(exc):
+                    raise RuntimeError("unexpected signal regression rejection") from None
+            else:
+                raise RuntimeError("previously admitted repeatability signal was downgraded")
+        finally:
+            module.load = original_load
+            module.run_validator = original_validator
+            module.write_transactionally = original_write
+    assert_unchanged(protected, before, "stronger readiness and signal downgrade negatives")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
@@ -273,6 +337,7 @@ def main() -> int:
     run_validator_output_negative(module)
     run_atomic_path_negative(module)
     run_rollback_secret_negative(module)
+    run_stronger_readiness_negatives(module)
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
     print("authority substitution plus pre-write/post-write/atomic failures are fail-closed")
     print("temporary authority residue: none")
