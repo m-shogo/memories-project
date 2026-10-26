@@ -784,7 +784,7 @@ def exercise_bounded_review_git_history(module) -> None:
     original_run = module.subprocess.run
     ref = "docs/evidence/backup-restore/synthetic-review.json"
     marker = "PRIVATE_REVIEW_MARKER_DO_NOT_LOG"
-    state = {"stdout": "a" * 40 + "\\n", "returncode": 0, "error": None}
+    state = {"stdout": "a" * 40 + "\n", "returncode": 0, "error": None}
     calls = []
 
     def fake_git(args, **kwargs):
@@ -806,22 +806,22 @@ def exercise_bounded_review_git_history(module) -> None:
     try:
         require(module.git_history(ref, "securityReviewRef") == ["a" * 40],
                 "bounded Git history positive control failed")
-        state["stdout"] = "a" * 40 + "\\n" + "b" * 40 + "\\n"
+        state["stdout"] = "a" * 40 + "\n" + "b" * 40 + "\n"
         require(module.git_history(ref, "securityReviewRef") == ["a" * 40, "b" * 40],
                 "bounded two-change Git history control failed")
         cases = [
             ("nonzero", {"returncode": 1}, "cannot inspect securityReviewRef Git history"),
             ("bool-exit", {"returncode": True}, "cannot inspect securityReviewRef Git history"),
             ("nonstring", {"stdout": b"a" * 40}, "securityReviewRef Git history output invalid"),
-            ("malformed", {"stdout": "PRIVATE_REVIEW_MARKER_DO_NOT_LOG\\n"}, "securityReviewRef Git history output invalid"),
-            ("oversized", {"stdout": ("a" * 40 + "\\n") * 3}, "securityReviewRef Git history output invalid"),
+            ("malformed", {"stdout": "PRIVATE_REVIEW_MARKER_DO_NOT_LOG\n"}, "securityReviewRef Git history output invalid"),
+            ("oversized", {"stdout": ("a" * 40 + "\n") * 3}, "securityReviewRef Git history output invalid"),
             ("empty", {"stdout": ""}, "securityReviewRef must be committed review evidence"),
             ("timeout", {"error": subprocess.TimeoutExpired(["git", "log"], 20, stderr=marker)},
              "cannot inspect securityReviewRef Git history"),
             ("unavailable", {"error": OSError(marker)}, "cannot inspect securityReviewRef Git history"),
         ]
         for label, changes, expected in cases:
-            state.update({"stdout": "a" * 40 + "\\n", "returncode": 0, "error": None})
+            state.update({"stdout": "a" * 40 + "\n", "returncode": 0, "error": None})
             state.update(changes)
             try:
                 module.git_history(ref, "securityReviewRef")
