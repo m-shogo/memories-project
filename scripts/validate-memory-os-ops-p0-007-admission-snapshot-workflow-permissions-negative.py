@@ -2154,7 +2154,7 @@ def prove_publisher_capture_status_negative(publish: str) -> None:
          f'          if [[ "$code" == "0" ]]; then stage={PUBLISH_STAGE_CLASSES[-1]}; python {PUBLISH_REVALIDATION_CHAIN[-1]}',
          "          exit 0\n"),
         ("shell override",
-         "          code=0\n",
+         "          stage=COMPILE\n",
          "          set -euo pipefail\n"),
     ):
         if label == "shell override":
@@ -2183,7 +2183,7 @@ def prove_publisher_capture_status_negative(publish: str) -> None:
         'shopt -s expand_aliases',
         "alias python='true'",
     ):
-        marker = "          code=0\n"
+        marker = "          stage=COMPILE\n"
         require(publish.count(marker) == 1, "publisher capture indirection fixture drift")
         mutated = publish.replace(marker, marker + f"          {indirection}\n", 1)
         try:
