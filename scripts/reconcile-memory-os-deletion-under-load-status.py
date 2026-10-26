@@ -286,9 +286,9 @@ def main() -> int:
     if existing_index is None:
         external.append(item)
         changed_load = True
-    elif external[existing_index] != item:
-        external[existing_index] = item
-        changed_load = True
+    else:
+        require(external[existing_index] == item,
+                "deletion-under-load local scenario authority drift; refusing overwrite")
 
     deferred = load_contract.get("deferredScenarios")
     require(isinstance(deferred, list), "deferredScenarios missing")
