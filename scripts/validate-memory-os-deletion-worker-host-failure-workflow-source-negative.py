@@ -19,7 +19,7 @@ PERMISSION = ".github/workflows/deletion-worker-host-failure-permission-negative
 PERMISSION_VALIDATOR = "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
 SELF = "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
 REVIEWED_PUBLISHER = "01f3c5116119e5bc49b6b4431196dce39795be99"
-REVIEWED_INDEPENDENT = "a410def9bc0053daff373ee3fcb48ec5f2fc6a97"
+REVIEWED_INDEPENDENT = "22a3ded0b234c3b01cdcd4986d09825059d03c1a"
 RECONCILER = "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py"
 REVIEWED_RECONCILER = "18914a55fae994551dd58d7fb89ed9aa617ca7c9"
@@ -418,12 +418,38 @@ def predicate_runtime(independent: str) -> None:
     print("PASS: deletion-host-failure branch/base (6) and SHA (6) runtime cases")
 
 
+def reconcile_runtime() -> None:
+    # Existing reconciler negatives write canonical contract/status; never execute in the source checkout.
+    fixtures = (
+        RECONCILER, RECONCILE_NEGATIVE,
+        "contracts/operations/deletion-worker-host-failure-contract.v1.json",
+        "contracts/operations/production-operability-status.json",
+        "contracts/operations/load-test-scenario-contract.v1.json",
+        PUBLISHER,
+        "scripts/validate-memory-os-deletion-worker-host-failure.py",
+        "scripts/validate-memory-os-load.py",
+        "scripts/validate-memory-os-operability.py",
+    )
+    with tempfile.TemporaryDirectory(prefix="host-failure-reconcile-disposable-") as tmp:
+        root = Path(tmp)
+        for relative in fixtures:
+            source(relative)
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / relative, target)
+        result = subprocess.run([sys.executable, str(root / RECONCILE_NEGATIVE)],
+                                cwd=root, capture_output=True, text=True, timeout=90, check=False)
+        if result.returncode != 0 or "eight atomic path/mode/rollback cases" not in result.stdout:
+            raise SystemExit("host-failure disposable reconcile negative failed; raw output withheld")
+    print("PASS: host-failure source-bound disposable reconcile and atomic rollback negatives")
+
+
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     if blob(source(RECONCILER)) != REVIEWED_RECONCILER or blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
         raise SystemExit("host-failure reconciler/negative complete Git blob unreviewed")
-    if independent.count(RECONCILER) != 2 or independent.count(RECONCILE_NEGATIVE) != 3:
-        raise SystemExit("host-failure reconcile negative PR/push trigger and execution reachability drift")
+    if independent.count(RECONCILER) != 2 or independent.count(RECONCILE_NEGATIVE) != 2:
+        raise SystemExit("host-failure reconcile negative PR/push trigger reachability drift")
     permission = source(PERMISSION)
     permission_validator = source(PERMISSION_VALIDATOR)
     validate(publisher, independent)
@@ -435,6 +461,7 @@ def main() -> int:
     predicate_runtime(independent)
     source_negatives(publisher, independent)
     runtime(publisher)
+    reconcile_runtime()
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
