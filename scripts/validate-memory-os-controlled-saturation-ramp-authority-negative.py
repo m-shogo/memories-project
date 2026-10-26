@@ -242,12 +242,51 @@ def verify_batch_status_accounting() -> None:
     print("PASS: controlled saturation status accounting positive and 5 negatives")
 
 
+
+def verify_batch_metric_coherence() -> None:
+    """Exercise canonical throughput and percentile checks with real validator calls."""
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+    spec = importlib.util.spec_from_file_location("controlled_saturation_metric_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("controlled saturation metric validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    result = validator.load(validator.RESULT_PATH)
+    for index, step in enumerate(result["scenario"]["steps"]):
+        if not validator.validate_batch(copy.deepcopy(step["batch"]), step["concurrency"], 64,
+                                        f"synthetic-positive-{index}"):
+            raise RuntimeError("controlled saturation metric positive control failed")
+    if not validator.validate_batch(copy.deepcopy(result["scenario"]["postRampRecoveryProbe"]),
+                                    1, 1, "synthetic-recovery-positive"):
+        raise RuntimeError("controlled saturation recovery metric positive control failed")
+    batch = result["scenario"]["steps"][0]["batch"]
+    cases = (
+        ("zero duration", "durationSeconds", 0),
+        ("zero throughput", "throughput", 0),
+        ("invented throughput", "throughput", batch["throughput"] + 10),
+        ("p50 greater than p95", "latencyP50Ms", batch["latencyP95Ms"] + 1),
+        ("p95 greater than p99", "latencyP95Ms", batch["latencyP99Ms"] + 1),
+        ("derived throughput overflow", "durationSeconds", 5e-324),
+    )
+    for label, key, value in cases:
+        mutated = copy.deepcopy(batch)
+        mutated[key] = value
+        try:
+            validator.validate_batch(mutated, 4, 64, "synthetic-negative")
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"controlled saturation accepted {label}")
+    print("PASS: controlled saturation metric positives and 6 coherence negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_nonfinite_ramp_measurements()
     verify_ramp_timestamp_semantics()
     verify_pool_snapshot_and_delta_accounting()
     verify_batch_status_accounting()
+    verify_batch_metric_coherence()
     substitutions = {
         "CONTROLLED_CONTRACT": module.LOAD_CONTRACT,
         "LOAD_CONTRACT": module.CONTROLLED_CONTRACT,

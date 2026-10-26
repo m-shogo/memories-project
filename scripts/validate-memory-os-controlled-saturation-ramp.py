@@ -115,11 +115,17 @@ def validate_batch(batch: Any, concurrency: int, total: int, field: str) -> bool
     transport = status_count(batch, "transport_error", field)
     require(two_xx == successes, f"{field}: every success must be the final 202 lifecycle response")
     require(two_xx + five_xx + transport == total, f"{field}: status accounting mismatch")
-    number(batch.get("durationSeconds"), f"{field}.durationSeconds")
-    number(batch.get("throughput"), f"{field}.throughput")
-    number(batch.get("latencyP50Ms"), f"{field}.latencyP50Ms")
-    number(batch.get("latencyP95Ms"), f"{field}.latencyP95Ms")
-    number(batch.get("latencyP99Ms"), f"{field}.latencyP99Ms")
+    duration = number(batch.get("durationSeconds"), f"{field}.durationSeconds")
+    throughput = number(batch.get("throughput"), f"{field}.throughput")
+    require(duration > 0 and throughput > 0, f"{field}: duration and throughput must be positive")
+    derived_throughput = total / duration
+    require(math.isfinite(derived_throughput) and
+            math.isclose(throughput, derived_throughput, rel_tol=1e-6, abs_tol=1e-6),
+            f"{field}: throughput must match measured requests and duration")
+    p50 = number(batch.get("latencyP50Ms"), f"{field}.latencyP50Ms")
+    p95 = number(batch.get("latencyP95Ms"), f"{field}.latencyP95Ms")
+    p99 = number(batch.get("latencyP99Ms"), f"{field}.latencyP99Ms")
+    require(p50 <= p95 <= p99, f"{field}: latency percentiles must be monotonic")
     return failures == 0 and two_xx == total and five_xx == 0 and transport == 0
 
 
