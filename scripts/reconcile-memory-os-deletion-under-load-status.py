@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -145,6 +146,23 @@ def append_once(items: list[Any], value: Any) -> bool:
 
 def run_validator(path: Path, label: str, *args: str) -> None:
     enforce_runtime_authorities()
+    reviewed = {
+        CANONICAL_DELETION_VALIDATOR: "deletion-under-load",
+        CANONICAL_LOAD_VALIDATOR: "load",
+        CANONICAL_OPERABILITY_VALIDATOR: "operability",
+    }
+    require(isinstance(path, Path) and path in reviewed and
+            type(label) is str and label == reviewed[path],
+            "unreviewed deletion-load validator command refused")
+    if path == CANONICAL_DELETION_VALIDATOR:
+        allowed = (
+            args == ("--require-reconciled",) or
+            (len(args) == 2 and args[0] == "--expected-commit-sha" and
+             type(args[1]) is str and re.fullmatch(r"[0-9a-f]{40}", args[1]) is not None)
+        )
+    else:
+        allowed = args == ()
+    require(allowed, "unreviewed deletion-load validator arguments refused")
     try:
         completed = CANONICAL_SUBPROCESS_RUN(
             [sys.executable, str(path), *args],

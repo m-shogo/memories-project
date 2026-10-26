@@ -221,7 +221,7 @@ def exercise_validator_output_redaction(module: ModuleType) -> None:
 
     def synthetic_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         calls.append(command)
-        require(command == [module.sys.executable, str(module.DELETION_VALIDATOR)],
+        require(command == [module.sys.executable, str(module.DELETION_VALIDATOR), "--require-reconciled"],
                 "validator subprocess command drift")
         require(kwargs.get("cwd") == module.CANONICAL_ROOT and
                 kwargs.get("stdout") == module.subprocess.DEVNULL and
@@ -234,7 +234,7 @@ def exercise_validator_output_redaction(module: ModuleType) -> None:
     module.enforce_runtime_authorities = lambda: None
     try:
         try:
-            module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+            module.run_validator(module.DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
         except module.ReconcileFailure as exc:
             require("exit code 17" in str(exc), "validator exit code was lost")
             require("SYNTHETIC_VALIDATOR_SECRET_DO_NOT_LOG" not in str(exc),
@@ -245,7 +245,7 @@ def exercise_validator_output_redaction(module: ModuleType) -> None:
         module.CANONICAL_SUBPROCESS_RUN = lambda *args, **kwargs: SimpleNamespace(
             returncode="SYNTHETIC_EXIT_CODE_SECRET_DO_NOT_LOG")
         try:
-            module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+            module.run_validator(module.DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
         except module.ReconcileFailure as exc:
             require("invalid exit code" in str(exc) and
                     "SYNTHETIC_EXIT_CODE_SECRET_DO_NOT_LOG" not in str(exc),
@@ -258,7 +258,7 @@ def exercise_validator_output_redaction(module: ModuleType) -> None:
 
         module.CANONICAL_SUBPROCESS_RUN = synthetic_timeout
         try:
-            module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+            module.run_validator(module.DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
         except module.ReconcileFailure as exc:
             require("TimeoutExpired" in str(exc) and
                     "SYNTHETIC_TIMEOUT_SECRET_DO_NOT_LOG" not in str(exc),
@@ -271,7 +271,7 @@ def exercise_validator_output_redaction(module: ModuleType) -> None:
 
         module.CANONICAL_SUBPROCESS_RUN = synthetic_missing
         try:
-            module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+            module.run_validator(module.DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
         except module.ReconcileFailure as exc:
             require("OSError" in str(exc) and
                     "SYNTHETIC_OS_ERROR_SECRET_DO_NOT_LOG" not in str(exc),
@@ -279,7 +279,7 @@ def exercise_validator_output_redaction(module: ModuleType) -> None:
         else:
             raise RuntimeError("validator OS error was accepted")
         module.CANONICAL_SUBPROCESS_RUN = lambda *args, **kwargs: SimpleNamespace(returncode=0)
-        module.run_validator(module.DELETION_VALIDATOR, "synthetic")
+        module.run_validator(module.DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
     finally:
         module.CANONICAL_SUBPROCESS_RUN = original_run
         module.enforce_runtime_authorities = original_guard
@@ -687,6 +687,49 @@ def exercise_deletion_load_git_ancestry_boundary() -> None:
     print("PASS: deletion-under-load bounded Git ancestry positive and 9 negatives")
 
 
+
+def exercise_validator_command_authority(module: ModuleType) -> None:
+    original_run = module.CANONICAL_SUBPROCESS_RUN
+    original_guard = module.enforce_runtime_authorities
+    calls: list[object] = []
+
+    def successful_run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(command)
+        return SimpleNamespace(returncode=0)
+
+    module.CANONICAL_SUBPROCESS_RUN = successful_run
+    module.enforce_runtime_authorities = lambda: None
+    try:
+        for label, path, name, args in (
+            ("unreviewed script", ROOT / "scripts/validate-memory-os-capacity-ramp.py", "load", ()),
+            ("mismatched label", module.DELETION_VALIDATOR, "load", ("--require-reconciled",)),
+            ("missing deletion arguments", module.DELETION_VALIDATOR, "deletion-under-load", ()),
+            ("load unexpected arguments", module.LOAD_VALIDATOR, "load", ("--require-reconciled",)),
+            ("operability unexpected arguments", module.OPERABILITY_VALIDATOR, "operability", ("--require-reconciled",)),
+            ("malformed SHA", module.DELETION_VALIDATOR, "deletion-under-load", ("--expected-commit-sha", "not-sha")),
+            ("uppercase SHA", module.DELETION_VALIDATOR, "deletion-under-load", ("--expected-commit-sha", "A" * 40)),
+            ("extra arguments", module.DELETION_VALIDATOR, "deletion-under-load", ("--expected-commit-sha", "a" * 40, "--require-reconciled")),
+            ("secret label", module.DELETION_VALIDATOR, "SYNTHETIC_SECRET_DO_NOT_LOG", ("--require-reconciled",)),
+        ):
+            try:
+                module.run_validator(path, name, *args)
+            except module.ReconcileFailure as exc:
+                require("unreviewed deletion-load validator" in str(exc) and
+                        "SYNTHETIC_SECRET_DO_NOT_LOG" not in str(exc),
+                        f"validator command wrong rejection: {label}")
+            else:
+                raise RuntimeError(f"validator command accepted {label}")
+        require(not calls, "unreviewed validator command reached subprocess")
+        module.run_validator(module.DELETION_VALIDATOR, "deletion-under-load", "--expected-commit-sha", "a" * 40)
+        module.run_validator(module.LOAD_VALIDATOR, "load")
+        module.run_validator(module.OPERABILITY_VALIDATOR, "operability")
+        require(len(calls) == 3, "reviewed validator commands did not execute")
+    finally:
+        module.CANONICAL_SUBPROCESS_RUN = original_run
+        module.enforce_runtime_authorities = original_guard
+    print("PASS: deletion-under-load validator command authority 3 positives and 9 negatives")
+
+
 def main() -> int:
     exercise_deletion_load_json_reader()
     exercise_deletion_load_git_ancestry_boundary()
@@ -770,6 +813,7 @@ def main() -> int:
     exercise_existing_scenario_prewrite_rejection(module)
     exercise_stronger_readiness_prewrite_rejection(module)
     exercise_validator_output_redaction(module)
+    exercise_validator_command_authority(module)
     exercise_atomic_path_substitution_rejection(module)
     exercise_rollback_failure(module)
     exercise_transaction_primary_failure_redaction(module)
