@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "reconcile-load-foundation-authorities",
+  "sourceCommitSha": "9c75a65c257a1b5d4201550163992df4b55875a9",
+  "result": "FAIL",
+  "exitCode": 1,
+  "failureStage": "capacity-authority-negative",
+  "output": "Bounded load foundation validation failed; raw validator output withheld.",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionReady": false,
+  "productionDecision": "NO_GO",
+  "capacityBoundaryEstablished": false,
+  "sustainedSoakEvidence": false,
+  "leakProof": false
+}
