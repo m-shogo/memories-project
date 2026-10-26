@@ -50,6 +50,8 @@ def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
             raise AssertionError("gofmt source marker missing: " + marker)
+    if source.count("github.ref == 'refs/heads/so'") != 2:
+        raise AssertionError("gofmt writer ref scope multiplicity drift")
     if source.count('test -z "$(git status --porcelain)"') != 4:
         raise AssertionError("gofmt clean source/final multiplicity drift")
 
