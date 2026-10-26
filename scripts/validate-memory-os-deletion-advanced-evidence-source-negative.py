@@ -81,7 +81,7 @@ def policy(source: str) -> None:
             raise AssertionError("advanced deletion publisher policy missing: " + marker[:70])
     if source.count(CHECKOUT) != 2 or source.count(SETUP) != 2:
         raise AssertionError("advanced deletion immutable Action count drift")
-    if source.count('test -z "$(git status --porcelain)"') != 2:
+    if source.count('test -z "$(git status --porcelain)"') != 3:
         raise AssertionError("advanced deletion clean worktree boundary count drift")
     if "actions/checkout@v4" in source or "actions/setup-python@v5" in source:
         raise AssertionError("advanced deletion floating Action regression")
