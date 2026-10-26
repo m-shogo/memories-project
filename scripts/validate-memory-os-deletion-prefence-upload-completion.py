@@ -25,6 +25,16 @@ EXPECTED_PATHS: dict[str, str] = {
     "workflow": ".github/workflows/deletion-prefence-upload-completion.yml",
 }
 
+EXPECTED_RULES = (
+    "runnerMustBeGofmtClean",
+    "runnerPackageCompileConfirmed",
+    "requestBodySinglePassJSONEncodingRequired",
+    "exactSourceBindingRequired",
+    "failureDiagnosticRequired",
+    "staleEvidenceRejected",
+)
+
+
 EXPECTED_CRITERIA: dict[str, Any] = {
     "issuedAndUploadedBeforeFence": 16,
     "realHeadCompletedBeforeFence": 16,
@@ -115,16 +125,10 @@ def validate_contract(contract: dict[str, Any]) -> None:
         require(contract.get(key) == expected, f"contract source/path binding drift: {key}")
 
     rules = contract.get("validationRules")
-    require(isinstance(rules, dict), "validationRules must be object")
-    for key in (
-        "runnerMustBeGofmtClean",
-        "runnerPackageCompileConfirmed",
-        "requestBodySinglePassJSONEncodingRequired",
-        "exactSourceBindingRequired",
-        "failureDiagnosticRequired",
-        "staleEvidenceRejected",
-    ):
-        require(rules.get(key) is True, f"validation rule must remain true: {key}")
+    require(type(rules) is dict and rules.keys() == set(EXPECTED_RULES),
+            "validation rule key set drift")
+    for key in EXPECTED_RULES:
+        require(rules[key] is True, f"validation rule must remain true: {key}")
 
     runner = RUNNER_PATH.read_text(encoding="utf-8")
     helper_start = runner.find("func issueAndPutPrefenceUpload")

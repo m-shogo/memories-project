@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "09a08a425cce736e95823aaa8775964cd93cb08a"
+REVIEWED_VALIDATOR = "e266abb0ab7cee3997464caeee098a9b43169e2b"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -508,6 +508,35 @@ def typed_criteria_runtime():
             pass
         else:
             raise AssertionError("pre-fence upload accepted " + label)
+        cases += 1
+
+    # Enforce the complete reviewed execution-policy rule set and exact bool values.
+    for key in validator.EXPECTED_RULES:
+        for label, value in (("missing", None), ("false", False), ("numeric", 1)):
+            candidate = copy.deepcopy(contract)
+            if value is None:
+                candidate["validationRules"].pop(key)
+            else:
+                candidate["validationRules"][key] = value
+            try:
+                validator.validate_contract(candidate)
+            except validator.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence upload accepted rule " + label + ": " + key)
+            cases += 1
+    for label, value in (
+        ("extra", {**contract["validationRules"], "syntheticUnreviewed": True}),
+        ("non-object", ["synthetic"]),
+    ):
+        candidate = copy.deepcopy(contract)
+        candidate["validationRules"] = value
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence upload accepted validationRules " + label)
         cases += 1
 
     for key, expected in validator.EXPECTED_PATHS.items():
