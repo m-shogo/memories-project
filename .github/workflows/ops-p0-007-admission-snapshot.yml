@@ -81,6 +81,7 @@ jobs:
           log=/tmp/ops-p0-007-admission-snapshot.log
           : > "$log"
           code=0
+          stage=COMPILE
           python -m py_compile \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
@@ -105,22 +106,23 @@ jobs:
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-generator-execution-authority-negative.py \
             >> "$log" 2>&1 || code=$?
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-review-source-order.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-independent-review.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-ops-p0-007-admission-snapshot-generator-execution-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_01; python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_02; python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_03; python scripts/validate-memory-os-backup-restore-review-source-order.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_04; python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_05; python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_06; python scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_07; python scripts/validate-memory-os-backup-restore-generation-independent-review.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_08; python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_09; python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_10; python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_11; python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_12; python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_13; python scripts/validate-memory-os-ops-p0-007-admission-snapshot-validator-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=VALIDATOR_14; python scripts/validate-memory-os-ops-p0-007-admission-snapshot-generator-execution-authority-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then stage=NONE; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          printf "OPS-P0-007 snapshot validation exit code: %s (raw validator log suppressed)\n" "$code"
+          printf "OPS-P0-007 snapshot validation exit code: %s; failed stage: %s (raw validator log suppressed)\n" "$code" "$stage"
           exit 0
       - name: Commit deterministic strict snapshot
         if: steps.snapshot.outputs.exit_code == '0' && github.ref == 'refs/heads/so'

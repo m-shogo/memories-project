@@ -63,6 +63,10 @@ PUBLISH_REVALIDATION_CHAIN = (
     "scripts/validate-memory-os-ops-p0-007-admission-snapshot-generator-execution-authority-negative.py",
 )
 
+PUBLISH_STAGE_CLASSES = tuple(
+    f"VALIDATOR_{index:02d}" for index in range(1, len(PUBLISH_REVALIDATION_CHAIN) + 1)
+)
+
 # GitHub's write-capable token scopes are not limited to contents:write.
 # The snapshot PR job must remain read-only across every recognized scope.
 REQUIRED_PR_ADMISSION_CONTRACTS = (
@@ -2017,13 +2021,15 @@ def require_publisher_compile_stage(publish: str) -> None:
         "log=/tmp/ops-p0-007-admission-snapshot.log",
         ': > "$log"',
         "code=0",
+        "stage=COMPILE",
         "python -m py_compile \\",
         *(f"  {path} \\" for path in PR_COMPILE_FILES[:-1]),
         '  >> "$log" 2>&1 || code=$?',
-        *(f'if [[ "$code" == "0" ]]; then python {path} >> "$log" 2>&1 || code=$?; fi'
-          for path in PUBLISH_REVALIDATION_CHAIN),
+        *(f'if [[ "$code" == "0" ]]; then stage={PUBLISH_STAGE_CLASSES[index]}; python {path} >> "$log" 2>&1 || code=$?; fi'
+          for index, path in enumerate(PUBLISH_REVALIDATION_CHAIN)),
+        'if [[ "$code" == "0" ]]; then stage=NONE; fi',
         'echo "exit_code=$code" >> "$GITHUB_OUTPUT"',
-        'printf "OPS-P0-007 snapshot validation exit code: %s (raw validator log suppressed)\\n" "$code"',
+        'printf "OPS-P0-007 snapshot validation exit code: %s; failed stage: %s (raw validator log suppressed)\\n" "$code" "$stage"',
         "exit 0",
     ]
     require(body == expected, "strict snapshot publisher compile stage authority drift")
@@ -2069,15 +2075,15 @@ def prove_publisher_compile_stage_negative(publish: str) -> None:
     check("comment inside continuation", step.replace(first, first + "            # breaks shell continuation\n", 1))
     check("early exit before compile", step.replace(command, "          exit 0\n" + command, 1))
     check("duplicate compile", step.replace(command, command + command, 1))
-    check("raw CI log", step.replace('          printf "OPS-P0-007 snapshot validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n', 1))
+    check("raw CI log", step.replace('          printf "OPS-P0-007 snapshot validation exit code: %s; failed stage: %s (raw validator log suppressed)\\n" "$code" "$stage"\n', '          cat "$log"\n', 1))
     check("forged status reset", step.replace(redirect, redirect + "          code=0\n", 1))
 
 
 def require_publisher_capture_status_chain(publish: str) -> None:
     commands = publisher_capture_step_lines(publish)
     require(
-        commands[:4] == ["set +e", "log=/tmp/ops-p0-007-admission-snapshot.log",
-                         ': > "$log"', "code=0"],
+        commands[:5] == ["set +e", "log=/tmp/ops-p0-007-admission-snapshot.log",
+                         ': > "$log"', "code=0", "stage=COMPILE"],
         "strict snapshot publisher capture startup authority drift",
     )
     require(
@@ -2088,8 +2094,8 @@ def require_publisher_capture_status_chain(publish: str) -> None:
         "strict snapshot publisher capture unconditional early termination or shell override",
     )
     expected = [
-        f'if [[ "$code" == "0" ]]; then python {validator} >> "$log" 2>&1 || code=$?; fi'
-        for validator in PUBLISH_REVALIDATION_CHAIN
+        f'if [[ "$code" == "0" ]]; then stage={PUBLISH_STAGE_CLASSES[index]}; python {validator} >> "$log" 2>&1 || code=$?; fi'
+        for index, validator in enumerate(PUBLISH_REVALIDATION_CHAIN)
     ]
     observed = [line for line in commands if "python scripts/" in line]
     require(
@@ -2100,16 +2106,16 @@ def require_publisher_capture_status_chain(publish: str) -> None:
         "python -m py_compile \\" in commands
         and '>> "$log" 2>&1 || code=$?' in commands
         and commands.index('>> "$log" 2>&1 || code=$?') < commands.index(expected[0])
-        and commands[-3:] == ['echo "exit_code=$code" >> "$GITHUB_OUTPUT"', 'printf "OPS-P0-007 snapshot validation exit code: %s (raw validator log suppressed)\\n" "$code"', "exit 0"],
+        and commands[-4:] == ['if [[ "$code" == "0" ]]; then stage=NONE; fi', 'echo "exit_code=$code" >> "$GITHUB_OUTPUT"', 'printf "OPS-P0-007 snapshot validation exit code: %s; failed stage: %s (raw validator log suppressed)\\n" "$code" "$stage"', "exit 0"],
         "strict snapshot publisher capture output/compile status binding drift",
     )
 
 
 def prove_publisher_capture_status_negative(publish: str) -> None:
     require_publisher_capture_status_chain(publish)
-    for validator in PUBLISH_REVALIDATION_CHAIN:
+    for index, validator in enumerate(PUBLISH_REVALIDATION_CHAIN):
         original = (
-            f'          if [[ "$code" == "0" ]]; then python {validator} '
+            f'          if [[ "$code" == "0" ]]; then stage={PUBLISH_STAGE_CLASSES[index]}; python {validator} '
             '>> "$log" 2>&1 || code=$?; fi\n'
         )
         require(publish.count(original) == 1, f"publisher capture fixture drift: {validator}")
@@ -2123,14 +2129,29 @@ def prove_publisher_capture_status_negative(publish: str) -> None:
             )
         else:
             raise Fail(f"publisher capture accepted unpropagated failure: {validator}")
+    # Failure classes are constants bound to the exact executed command.
+    for label, before, after in (
+        ("wrong validator stage", "stage=VALIDATOR_01; python", "stage=VALIDATOR_02; python"),
+        ("forged success stage", "then stage=NONE; fi", "then stage=READY; fi"),
+        ("wrong compile stage", "stage=COMPILE", "stage=NONE"),
+    ):
+        require(publish.count(before) == 1, f"{label} fixture drift")
+        mutated = publish.replace(before, after, 1)
+        try:
+            require_publisher_compile_stage(mutated)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot publisher compile stage authority drift",
+                    f"{label} rejected outside exact stage guard: {exc}")
+        else:
+            raise Fail(f"strict snapshot publisher accepted {label}")
     # The intentional final exit 0 is allowed only after publishing the
     # captured status. An earlier exit or option override is not a gate.
     for label, anchor_line, injected in (
         ("early exit before first validator",
-         f'          if [[ "$code" == "0" ]]; then python {PUBLISH_REVALIDATION_CHAIN[0]}',
+         f'          if [[ "$code" == "0" ]]; then stage={PUBLISH_STAGE_CLASSES[0]}; python {PUBLISH_REVALIDATION_CHAIN[0]}',
          "          exit 0\n"),
         ("early exit before last validator",
-         f'          if [[ "$code" == "0" ]]; then python {PUBLISH_REVALIDATION_CHAIN[-1]}',
+         f'          if [[ "$code" == "0" ]]; then stage={PUBLISH_STAGE_CLASSES[-1]}; python {PUBLISH_REVALIDATION_CHAIN[-1]}',
          "          exit 0\n"),
         ("shell override",
          "          code=0\n",
@@ -2175,8 +2196,8 @@ def prove_publisher_capture_status_negative(publish: str) -> None:
         else:
             raise Fail(f"publisher capture accepted status indirection: {indirection}")
     first, second = PUBLISH_REVALIDATION_CHAIN[:2]
-    left = f'          if [[ "$code" == "0" ]]; then python {first} >> "$log" 2>&1 || code=$?; fi\n'
-    right = f'          if [[ "$code" == "0" ]]; then python {second} >> "$log" 2>&1 || code=$?; fi\n'
+    left = f'          if [[ "$code" == "0" ]]; then stage={PUBLISH_STAGE_CLASSES[0]}; python {first} >> "$log" 2>&1 || code=$?; fi\n'
+    right = f'          if [[ "$code" == "0" ]]; then stage={PUBLISH_STAGE_CLASSES[1]}; python {second} >> "$log" 2>&1 || code=$?; fi\n'
     require(left + right in publish, "publisher capture ordering fixture drift")
     reordered = publish.replace(left + right, right + left, 1)
     for label, mutated, expected in (
