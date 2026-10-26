@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "e266abb0ab7cee3997464caeee098a9b43169e2b"
+REVIEWED_VALIDATOR = "aa7f68a0bcaabf337e09ee2e664ddf56ad3c3acd"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -538,6 +538,27 @@ def typed_criteria_runtime():
         else:
             raise AssertionError("pre-fence upload accepted validationRules " + label)
         cases += 1
+
+    # The reviewed proof ordering and abort policy must not drift silently.
+    for field in ("requiredSequence", "abortCriteria"):
+        reviewed = contract[field]
+        for label, value in (
+            ("missing", reviewed[1:]),
+            ("extra", reviewed + ["synthetic unreviewed step"]),
+            ("reordered", list(reversed(reviewed))),
+            ("altered", ["synthetic unreviewed step"] + reviewed[1:]),
+            ("nested", [reviewed[:1]] + reviewed[1:]),
+            ("non-list", {"synthetic": True}),
+        ):
+            candidate = copy.deepcopy(contract)
+            candidate[field] = value
+            try:
+                validator.validate_contract(candidate)
+            except validator.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence upload accepted " + field + " " + label)
+            cases += 1
 
     for key, expected in validator.EXPECTED_PATHS.items():
         for label, value in (("substitute", "synthetic/unreviewed-" + key), ("missing", None)):

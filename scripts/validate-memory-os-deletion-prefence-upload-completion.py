@@ -35,6 +35,35 @@ EXPECTED_RULES = (
 )
 
 
+EXPECTED_SEQUENCE = (
+    "create one synthetic active account and 16 uploadable import jobs",
+    "issue 16 upload authorizations at account epoch 1 using the live-server request helper with exactly one JSON encoding pass",
+    "perform 16 real presigned PUTs to local versioned MinIO",
+    "start 16 authenticated upload-completion requests",
+    "prove all 16 requests pass the outer fence and initial database snapshot by reaching and completing real MinIO HEAD",
+    "pause all 16 before the guarded object-store post-HEAD epoch checkpoint returns",
+    "DELETE /v1/account returns 202 with durable deletion epoch 2",
+    "release the 16 already-in-flight completion requests",
+    "all 16 return exactly 401 with no transport errors",
+    "before worker erasure all 16 authorizations remain issued, zero are consumed and zero quarantine scan rows exist",
+    "leased deletion worker erases all uploaded object versions and all owned database rows, leaving deleted epoch-2 tombstone",
+)
+
+
+EXPECTED_ABORT = (
+    "upload-authorization fixture applies JSON encoding more than once",
+    "any completion request fails to reach real MinIO HEAD before the deletion fence",
+    "any request returns from the post-HEAD checkpoint before all 16 are paused",
+    "DELETE does not return 202 with epoch 2",
+    "any released completion returns anything other than 401",
+    "any released completion has a transport error",
+    "any authorization becomes consumed or any quarantine scan row appears before worker erasure",
+    "worker erases fewer or more than the 16 uploaded object versions",
+    "any account-owned row survives worker completion",
+    "result contains bearer token, account id, job id, authorization id, object key, signed URL, endpoint credential or database URL",
+)
+
+
 EXPECTED_CRITERIA: dict[str, Any] = {
     "issuedAndUploadedBeforeFence": 16,
     "realHeadCompletedBeforeFence": 16,
@@ -138,6 +167,11 @@ def validate_contract(contract: dict[str, Any]) -> None:
     require("body := map[string]any{" in helper, "upload proof request must pass structured body to live-server helper")
     require("server.request(t, http.MethodPost" in helper, "upload proof must exercise live-server HTTP request helper")
     require("json.Marshal(body)" not in helper, "upload proof request must not pre-marshal a body that server.request marshals")
+
+    for key, expected in (("requiredSequence", EXPECTED_SEQUENCE), ("abortCriteria", EXPECTED_ABORT)):
+        actual = contract.get(key)
+        require(type(actual) is list and actual == list(expected),
+                f"reviewed {key} list drift")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")
