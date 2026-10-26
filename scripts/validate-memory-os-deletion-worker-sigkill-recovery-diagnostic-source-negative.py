@@ -15,10 +15,14 @@ INDEPENDENT = ".github/workflows/deletion-worker-sigkill-recovery-diagnostic-sou
 SCRIPT = "scripts/validate-memory-os-deletion-worker-sigkill-recovery-diagnostic-source-negative.py"
 RECONCILER = "scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-worker-sigkill-recovery-reconcile-negative.py"
+RESULT_VALIDATOR = "scripts/validate-memory-os-deletion-worker-sigkill-recovery.py"
+RESULT_NEGATIVE = "scripts/validate-memory-os-deletion-worker-sigkill-recovery-result-negative.py"
 REVIEWED_RECONCILER = "334df132f30619e711e468df070ae9d5d538187d"
 REVIEWED_RECONCILE_NEGATIVE = "92cdbea61feaf620472599a92250e3ca154e3b7a"
 REVIEWED = "1ae00600d8ccbe1e9c70ad6d2bbfb6212e729313"
-REVIEWED_INDEPENDENT = "b3193ff950a1a872523fa6f50098d2ee4021116c"
+REVIEWED_RESULT_VALIDATOR = "b28468f6521315876b0951cce0af47bc32374cea"
+REVIEWED_RESULT_NEGATIVE = "22a9f6f70ef284e892ba9f3951352fe75bc0ae70"
+REVIEWED_INDEPENDENT = "f569abd277f668a4ea2e7af62b4b1d24e9a17a08"
 TARGET = "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -205,6 +209,14 @@ def main():
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
+    for path, reviewed in ((RESULT_VALIDATOR, REVIEWED_RESULT_VALIDATOR),
+                           (RESULT_NEGATIVE, REVIEWED_RESULT_NEGATIVE)):
+        if blob(source(path)) != reviewed:
+            raise AssertionError("SIGKILL strict result source drift: " + path)
+        if independent.count('      - "' + path + '"') != 2:
+            raise AssertionError("SIGKILL strict result CI trigger drift: " + path)
+    if "python -B " + RESULT_NEGATIVE not in independent:
+        raise AssertionError("SIGKILL strict result negative not executed")
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
     if blob(source(RECONCILER)) != REVIEWED_RECONCILER:
