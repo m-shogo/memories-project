@@ -45,6 +45,7 @@ REQUIRED = (
     '"containsSecrets": False',
     '"productionEvidence": False',
     '"productionEquivalentDependencies": False',
+    '"sourceCommitSha": os.environ["SOURCE_SHA"]',
     "candidate.is_symlink()",
     "path.parent.resolve(strict=True).relative_to(repo)",
     "path.exists() and not path.is_file()",
@@ -139,7 +140,7 @@ def writer_runtime(text):
                 raise AssertionError("SIGKILL inline writer changed outside canary")
             if case in ("existing", "new"):
                 value = json.loads(target.read_text(encoding="utf-8"))
-                if (value["output"] != "Pre-fence proof failed; raw validator output withheld." or value["containsSecrets"] or value["productionEvidence"] or value["productionEquivalentDependencies"] or value["exitCode"] != 23):
+                if (value["output"] != "Pre-fence proof failed; raw validator output withheld." or value["containsSecrets"] or value["productionEvidence"] or value["productionEquivalentDependencies"] or value["sourceCommitSha"] != "a" * 40 or value["result"] != "FAIL" or value["exitCode"] != 23):
                     raise AssertionError("SIGKILL diagnostic redaction/authority drift")
                 if stat.S_IMODE(target.stat().st_mode) != (0o640 if case == "existing" else 0o600):
                     raise AssertionError("SIGKILL diagnostic mode drift")
@@ -148,7 +149,7 @@ def writer_runtime(text):
                     raise AssertionError("SIGKILL atomic rollback drift")
             if list(parent.glob(".*.tmp")):
                 raise AssertionError("SIGKILL temp residue")
-    print("PASS: SIGKILL actual inline writer redaction/atomic/symlink runtime (7 cases)")
+    print("PASS: pre-fence actual inline diagnostic writer redaction/atomic/symlink runtime (7 cases)")
 
 
 def identity_runtime(ci, title):
