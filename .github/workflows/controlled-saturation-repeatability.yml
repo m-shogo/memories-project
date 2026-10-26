@@ -120,20 +120,25 @@ jobs:
           source_sha="${GITHUB_SHA}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin so
-          if ! git diff --quiet "$source_sha" origin/so -- \
-            services/import-api/internal/httpserver/controlled_saturation_ramp_test.go \
-            services/import-api/internal/httpserver/live_object_load_test.go \
-            services/import-api/internal/httpserver/server_live_test.go \
-            services/import-api/internal/pgrepo \
-            services/import-api/internal/upload \
-            services/import-api/internal/objectstore \
-            services/import-api/go.mod services/import-api/go.sum \
-            infra/postgresql/security \
-            contracts/operations/controlled-saturation-ramp-contract.v1.json; then
-            echo "critical saturation source changed during run; refusing stale evidence"
-            exit 75
-          fi
+          critical=(
+            services/import-api/internal/httpserver/controlled_saturation_ramp_test.go
+            services/import-api/internal/httpserver/live_object_load_test.go
+            services/import-api/internal/httpserver/server_live_test.go
+            services/import-api/internal/pgrepo
+            services/import-api/internal/upload
+            services/import-api/internal/objectstore
+            services/import-api/go.mod services/import-api/go.sum
+            infra/postgresql/security
+            contracts/operations/controlled-saturation-ramp-contract.v1.json
+          )
+          verify_critical_source() {
+            git fetch origin so
+            if ! git diff --quiet "$source_sha" origin/so -- "${critical[@]}"; then
+              echo "critical saturation source changed during run; refusing stale evidence"
+              exit 75
+            fi
+          }
+          verify_critical_source
           git reset --hard origin/so
           target="docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${{ matrix.ordinal }}.v1.json"
           test ! -e "$target"
@@ -142,6 +147,7 @@ jobs:
           git commit -m "test(load): record saturation repeatability run ${{ matrix.ordinal }}"
           for attempt in 1 2 3 4; do
             git pull --rebase origin so
+            verify_critical_source
             if git push origin HEAD:so; then exit 0; fi
             sleep 2
           done
