@@ -284,28 +284,38 @@ def run_stronger_readiness_negatives(module) -> None:
         (module.LOAD, "operationalThresholds"),
         (module.LOAD, "productionReady"),
     ]
+    module.refuse_stronger_readiness(
+        originals[module.CONTRACT]["readiness"], "repeatability readiness",
+        ("capacityBoundaryEstablished", "operationalThresholdApproved", "independentReviewCompleted", "productionReady"),
+    )
+    module.refuse_stronger_readiness(
+        originals[module.LOAD]["readiness"], "load readiness",
+        ("capacityBoundaryEstablished", "operationalThresholds", "productionReady"),
+        optional_absent=("productionReady",),
+    )
     for target, field in cases:
-        fixture = {path: copy.deepcopy(value) for path, value in originals.items()}
-        fixture[target]["readiness"][field] = True
-        def fake_load(path):
-            return fixture[path]
-        def forbidden_write(*args):
-            raise RuntimeError("stronger readiness reached write boundary")
-        module.load = fake_load
-        module.run_validator = lambda *args: None
-        module.write_transactionally = forbidden_write
-        try:
+        for invalid in (True, None, 0, "false"):
+            fixture = {path: copy.deepcopy(value) for path, value in originals.items()}
+            fixture[target]["readiness"][field] = invalid
+            def fake_load(path):
+                return fixture[path]
+            def forbidden_write(*args):
+                raise RuntimeError("stronger readiness reached write boundary")
+            module.load = fake_load
+            module.run_validator = lambda *args: None
+            module.write_transactionally = forbidden_write
             try:
-                module.main()
-            except module.Fail as exc:
-                if "refusing to downgrade stronger" not in str(exc):
-                    raise RuntimeError(f"unexpected stronger readiness rejection: {field}") from None
-            else:
-                raise RuntimeError(f"stronger readiness was downgraded: {field}")
-        finally:
-            module.load = original_load
-            module.run_validator = original_validator
-            module.write_transactionally = original_write
+                try:
+                    module.main()
+                except module.Fail as exc:
+                    if "refusing to downgrade stronger" not in str(exc):
+                        raise RuntimeError(f"unexpected stronger readiness rejection: {field}") from None
+                else:
+                    raise RuntimeError(f"stronger readiness was downgraded: {field}")
+            finally:
+                module.load = original_load
+                module.run_validator = original_validator
+                module.write_transactionally = original_write
 
     for prior in (module.CONTRACT, module.LOAD):
         fixture = {path: copy.deepcopy(value) for path, value in originals.items()}
@@ -328,6 +338,7 @@ def run_stronger_readiness_negatives(module) -> None:
             module.run_validator = original_validator
             module.write_transactionally = original_write
     assert_unchanged(protected, before, "stronger readiness and signal downgrade negatives")
+    print("PASS: repeatability stronger readiness exact-false prewrite negatives (28 cases) and signal regression (2 cases)")
 
 
 

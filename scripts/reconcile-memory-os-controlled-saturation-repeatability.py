@@ -124,9 +124,12 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
-def refuse_stronger_readiness(readiness: dict[str, Any], label: str, fields: tuple[str, ...]) -> None:
+def refuse_stronger_readiness(readiness: dict[str, Any], label: str, fields: tuple[str, ...],
+                              optional_absent: tuple[str, ...] = ()) -> None:
     for field in fields:
-        require(readiness.get(field) is not True, f"refusing to downgrade stronger {label}.{field}")
+        if field in optional_absent and field not in readiness:
+            continue
+        require(readiness.get(field) is False, f"refusing to downgrade stronger {label}.{field}")
 
 
 def run_validator(validator: Path) -> None:
@@ -201,6 +204,7 @@ def main() -> int:
     refuse_stronger_readiness(
         load_readiness, "load readiness",
         ("capacityBoundaryEstablished", "operationalThresholds", "productionReady"),
+        optional_absent=("productionReady",),
     )
     require(not (load_readiness.get("repeatableLocalDegradationSignalObserved") is True and not repeatable),
             "refusing to downgrade previously admitted load repeatability signal")
