@@ -245,8 +245,38 @@ def validate_result_json_parser_negatives() -> None:
                     raise AssertionError("sustained local-soak parser accepted malformed JSON")
     print("PASS: sustained local-soak result/contract JSON positives and 16 parser negatives")
 
+def validate_result_numeric_overflow_negatives() -> None:
+    """Reject finite inputs that overflow while deriving local-only soak trends."""
+    validator = load_module(
+        ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py",
+        "memory_os_sustained_local_soak_numeric_negative",
+    )
+    if validator.number(1.5, "positive") != 1.5:
+        raise AssertionError("sustained local-soak numeric positive drift")
+    observations = [{"elapsedSeconds": 0}, {"elapsedSeconds": 60}]
+    if validator.slope(observations, lambda row: row["elapsedSeconds"]) != 60.0:
+        raise AssertionError("sustained local-soak slope positive drift")
+    validator.close(1.0, 1.0, "positive")
+    for label, action in (
+        ("huge integer conversion", lambda: validator.number(10 ** 500, "huge")),
+        ("nonfinite numeric", lambda: validator.number(float("inf"), "infinite")),
+        ("boolean numeric", lambda: validator.number(True, "boolean")),
+        ("nonfinite slope", lambda: validator.slope(observations, lambda row: 0.0 if row["elapsedSeconds"] == 0 else 1e308)),
+        ("infinite expected slope", lambda: validator.close(1.0, float("inf"), "infinite-expected")),
+        ("NaN expected slope", lambda: validator.close(1.0, float("nan"), "nan-expected")),
+    ):
+        try:
+            action()
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("sustained local-soak numeric validator accepted " + label)
+    print("PASS: sustained local-soak numeric/slope positives and 6 overflow negatives")
+
+
 def main() -> int:
     validate_result_json_parser_negatives()
+    validate_result_numeric_overflow_negatives()
     module = load_reconciler()
     updater = load_aggregate_updater()
     reviewer = load_trend_reviewer()

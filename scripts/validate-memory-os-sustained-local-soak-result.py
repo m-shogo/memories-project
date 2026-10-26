@@ -64,7 +64,10 @@ def integer(value: Any, field: str) -> int:
 
 def number(value: Any, field: str) -> float:
     require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
-    result = float(value)
+    try:
+        result = float(value)
+    except (OverflowError, ValueError):
+        raise Fail(f"{field} must be finite") from None
     require(math.isfinite(result), f"{field} must be finite")
     return result
 
@@ -85,13 +88,21 @@ def slope(observations: list[dict[str, Any]], getter: Callable[[dict[str, Any]],
     sum_y = sum(ys)
     sum_xy = sum(x * y for x, y in zip(xs, ys))
     sum_xx = sum(x * x for x in xs)
+    require(all(math.isfinite(item) for item in (sum_x, sum_y, sum_xy, sum_xx)),
+            "sustained local-soak slope inputs must remain finite")
     denominator = n * sum_xx - sum_x * sum_x
+    require(math.isfinite(denominator), "sustained local-soak slope denominator must remain finite")
     if denominator == 0:
         return 0.0
-    return (n * sum_xy - sum_x * sum_y) / denominator
+    numerator = n * sum_xy - sum_x * sum_y
+    require(math.isfinite(numerator), "sustained local-soak slope numerator must remain finite")
+    result = numerator / denominator
+    require(math.isfinite(result), "sustained local-soak slope must remain finite")
+    return result
 
 
 def close(actual: Any, expected: float, field: str) -> None:
+    require(math.isfinite(expected), f"{field} expected slope must be finite")
     value = number(actual, field)
     tolerance = max(1e-9, abs(expected) * 1e-9)
     require(abs(value - expected) <= tolerance, f"{field} drift: got {value}, expected {expected}")
