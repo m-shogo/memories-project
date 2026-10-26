@@ -65,6 +65,23 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(canonical.resolve(strict=True) == canonical, f"canonical {label} resolved path drift")
 
 
+def require_reviewed_evidence_file(ref: str) -> None:
+    """Evidence references must be regular repository files, never symlink aliases."""
+    require(type(ref) is str and bool(ref) and
+            not Path(ref).is_absolute() and ".." not in Path(ref).parts,
+            "deletion-under-load evidence reference must be repository relative")
+    path = CANONICAL_ROOT / ref
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(),
+                "deletion-under-load evidence reference symlink rejected")
+    require(path.is_file(),
+            "deletion-under-load evidence reference missing or unsafe")
+    try:
+        path.resolve(strict=True).relative_to(CANONICAL_ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise ReconcileFailure("deletion-under-load evidence reference escaped repository") from None
+
+
 def enforce_runtime_authorities(
     _root: Path = CANONICAL_ROOT,
     _contract: Path = CANONICAL_CONTRACT_PATH,
@@ -385,7 +402,7 @@ def main() -> int:
         "scripts/validate-memory-os-deletion-under-load.py",
         "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
     ):
-        require((CANONICAL_ROOT / ref).is_file(), f"deletion-under-load evidence missing: {ref}")
+        require_reviewed_evidence_file(ref)
         changed_load = append_once(load_refs, ref) or changed_load
 
     status = load(STATUS_PATH)
@@ -418,7 +435,7 @@ def main() -> int:
         "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
         ".github/workflows/deletion-under-load.yml",
     ):
-        require((CANONICAL_ROOT / ref).is_file(), f"deletion-under-load status evidence missing: {ref}")
+        require_reviewed_evidence_file(ref)
         changed_status = append_once(refs, ref) or changed_status
 
     if not (changed_contract or changed_load or changed_status):
