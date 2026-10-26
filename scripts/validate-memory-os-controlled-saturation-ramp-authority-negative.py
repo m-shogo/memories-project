@@ -129,9 +129,46 @@ def verify_nonfinite_ramp_measurements() -> None:
     print("PASS: controlled saturation numeric parser and measurement negatives (8 cases)")
 
 
+
+def verify_ramp_timestamp_semantics() -> None:
+    """Exercise the actual ramp timestamp validator with a positive fixture and failures."""
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+    spec = importlib.util.spec_from_file_location("controlled_saturation_timestamp_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("controlled saturation timestamp validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(validator.RESULT_PATH)
+    # A real positive control catches double-escaped raw regexes that reject every timestamp.
+    validator.validate_ramp_timestamps(copy.deepcopy(canonical))
+    negatives = (
+        ("invalid calendar day", ("scenario", "startedAt"), "2026-02-30T23:00:44Z"),
+        ("timezone offset", ("scenario", "startedAt"), "2026-09-23T23:00:44+00:00"),
+        ("missing seconds", ("scenario", "startedAt"), "2026-09-23T23:00Z"),
+        ("fraction without digits", ("scenario", "startedAt"), "2026-09-23T23:00:44.Z"),
+        ("non-string timestamp", ("scenario", "startedAt"), None),
+        ("completion before start", ("scenario", "completedAt"), "2026-09-23T23:00:43Z"),
+        ("generation before completion", ("generatedAt",), "2026-09-23T23:00:46Z"),
+    )
+    for label, keys, value in negatives:
+        mutated = copy.deepcopy(canonical)
+        cursor = mutated
+        for key in keys[:-1]:
+            cursor = cursor[key]
+        cursor[keys[-1]] = value
+        try:
+            validator.validate_ramp_timestamps(mutated)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"controlled saturation accepted {label}")
+    print("PASS: controlled saturation RFC3339 UTC positive and 7 timestamp negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_nonfinite_ramp_measurements()
+    verify_ramp_timestamp_semantics()
     substitutions = {
         "CONTROLLED_CONTRACT": module.LOAD_CONTRACT,
         "LOAD_CONTRACT": module.CONTROLLED_CONTRACT,
