@@ -406,7 +406,69 @@ def validate_aggregate_admission_negatives() -> None:
     print("PASS: aggregate reader 8 JSON, 6 numeric and 1 child-output negatives")
 
 
+def validate_aggregate_updater_admission_negatives() -> None:
+    """Exercise actual aggregate producer's strict input and secret-safe child transport."""
+    updater = load_aggregate_updater()
+    with tempfile.TemporaryDirectory(prefix=".sustained-soak-updater-json-", dir=ROOT) as temp:
+        path = Path(temp) / "updater.json"
+        path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+        if updater.load(path) != {"outer": {"a": 1, "b": 2}}:
+            raise AssertionError("aggregate updater JSON positive control failed")
+        cases = (
+            b'{"value":Infinity}',
+            b'{"value":NaN}',
+            b'{"value":1e999}',
+            b'{"a":1,"a":2}',
+            b'{"outer":{"a":1,"a":2}}',
+            b'{"SYNTHETIC_SECRET_CANARY":',
+            b'{"huge":' + b"9" * 5000 + b"}",
+            b"\xff\xfe",
+        )
+        for payload in cases:
+            path.write_bytes(payload)
+            try:
+                updater.load(path)
+            except updater.Fail as exc:
+                if "SYNTHETIC_SECRET_CANARY" in str(exc):
+                    raise AssertionError("aggregate updater JSON diagnostic leaked source")
+            else:
+                raise AssertionError("aggregate updater accepted invalid JSON")
+        if updater.finite_number(2.0, "positive") != 2.0:
+            raise AssertionError("aggregate updater numeric positive drift")
+        for label, value in (
+            ("huge integer", 10 ** 500),
+            ("nonfinite", float("inf")),
+            ("boolean", True),
+        ):
+            try:
+                updater.finite_number(value, label)
+            except updater.Fail:
+                pass
+            else:
+                raise AssertionError("aggregate updater accepted " + label)
+        original_run = updater.subprocess.run
+
+        class SyntheticChildResult:
+            returncode = 29
+            stdout = "SYNTHETIC_SECRET_CANARY"
+            stderr = "SYNTHETIC_SECRET_CANARY"
+
+        try:
+            updater.subprocess.run = lambda *args, **kwargs: SyntheticChildResult()
+            try:
+                updater.validate(path, updater.RESULT_VALIDATOR)
+            except updater.Fail as exc:
+                if "SYNTHETIC_SECRET_CANARY" in str(exc) or "exit 29" not in str(exc):
+                    raise AssertionError("aggregate updater child diagnostic leaked or lost exit code")
+            else:
+                raise AssertionError("aggregate updater child failure accepted")
+        finally:
+            updater.subprocess.run = original_run
+    print("PASS: aggregate updater 8 JSON, 3 numeric and 1 child-output negatives")
+
+
 def main() -> int:
+    validate_aggregate_updater_admission_negatives()
     validate_aggregate_admission_negatives()
     validate_trend_json_parser_negatives()
     validate_cross_run_delta_nonfinite_negatives()

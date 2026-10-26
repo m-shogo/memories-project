@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import stat
 import subprocess
@@ -87,11 +88,46 @@ def atomic_replace_bytes(path: Path, payload: bytes, mode: int | None = None) ->
             pass
 
 
-def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise SystemExit(f"{path.relative_to(ROOT)} root must be object")
+def reject_nonfinite_constant(_token: str) -> None:
+    raise Fail("sustained local-soak updater JSON non-finite constant rejected")
+
+
+def parse_finite_float(token: str) -> float:
+    value = float(token)
+    require(math.isfinite(value), "sustained local-soak updater JSON non-finite number rejected")
     return value
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "sustained local-soak updater JSON duplicate key rejected")
+        document[key] = value
+    return document
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonfinite_constant,
+            parse_float=parse_finite_float,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        raise Fail("sustained local-soak updater JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "sustained local-soak updater JSON root must be object")
+    return value
+
+
+def finite_number(value: Any, label: str) -> float:
+    require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{label} must be numeric")
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        raise Fail(f"{label} must be finite") from None
+    require(math.isfinite(number), f"{label} must be finite")
+    return number
 
 
 def validate(path: Path, validator: Path) -> None:
@@ -104,9 +140,8 @@ def validate(path: Path, validator: Path) -> None:
         check=False,
     )
     if completed.returncode != 0:
-        sys.stderr.write(completed.stdout)
-        sys.stderr.write(completed.stderr)
-        raise SystemExit(f"validator rejected {path.relative_to(ROOT)}")
+        # Do not print raw child-validator stdout/stderr, even on failure.
+        raise Fail(f"sustained local-soak child validator failed (exit {completed.returncode})") from None
 
 
 def main() -> int:
@@ -131,7 +166,7 @@ def main() -> int:
         scenario = document["scenario"]
         run_ids.append(document["runId"])
         source_shas.append(document["commitSha"])
-        durations.append(float(scenario["durationSeconds"]))
+        durations.append(finite_number(scenario["durationSeconds"], "run duration"))
         trends = scenario["trends"]
         trend_summaries.append({
             "runId": document["runId"],
@@ -209,7 +244,7 @@ def main() -> int:
         "operationalThresholdApproved": False,
         "productionReady": False,
     }
-    atomic_replace_bytes(AGGREGATE_PATH, (json.dumps(aggregate, indent=2) + "\n").encode("utf-8"))
+    atomic_replace_bytes(AGGREGATE_PATH, (json.dumps(aggregate, indent=2, allow_nan=False) + "\n").encode("utf-8"))
     print("Memory OS sustained local soak aggregate updated")
     print(f"run count: {len(paths)}")
     print(f"minimum independent runs satisfied: {str(enough_runs).lower()}")
