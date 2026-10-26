@@ -1231,6 +1231,70 @@ def run_load_index_reference_negatives() -> None:
     print("PASS: load index canonical evidence reference, traversal, symlink and malformed list negatives (12 cases)")
 
 
+def run_operability_validator_json_negatives() -> None:
+    """Exercise actual production-operability JSON and exception privacy boundaries."""
+    path = ROOT / "scripts/validate-memory-os-operability.py"
+    spec = importlib.util.spec_from_file_location("repeatability_operability_json_negative", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("operability JSON negative import failed")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    secret = "SYNTHETIC_OPERABILITY_JSON_SECRET"
+    with tempfile.TemporaryDirectory(prefix="operability-json-negative-") as temp:
+        root = Path(temp)
+        target = root / "input.json"
+        canary = root / "canary.json"
+        canary.write_text('{"canary":true}', encoding="utf-8")
+        target.write_text('{"outer":{"ok":true}}', encoding="utf-8")
+        if module.load_json(target) != {"outer": {"ok": True}}:
+            raise RuntimeError("operability JSON positive control failed")
+        for raw in (
+            b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
+            b'{"a":1,"a":2}', b'{"outer":{"a":1,"a":2}}',
+            b'{"value":' + b'9' * 5000 + b'}',
+            b'{"' + secret.encode() + b'":', bytes((0xFF, 0xFE)),
+            b'[1,2,3]',
+        ):
+            target.write_bytes(raw)
+            try:
+                module.load_json(target)
+            except module.ValidationFailure as exc:
+                if secret in str(exc):
+                    raise RuntimeError("operability JSON error leaked synthetic secret")
+            else:
+                raise RuntimeError("operability accepted invalid or ambiguous JSON")
+        linked = root / "linked.json"
+        linked.symlink_to(canary)
+        linked_parent = root / "linked-parent"
+        linked_parent.symlink_to(root, target_is_directory=True)
+        directory = root / "directory"
+        directory.mkdir()
+        for unsafe in (linked, linked_parent / "canary.json", directory, root / "missing.json"):
+            try:
+                module.load_json(unsafe)
+            except module.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError("operability accepted unsafe JSON file identity")
+        if canary.read_text(encoding="utf-8") != '{"canary":true}':
+            raise RuntimeError("operability JSON changed synthetic canary")
+    original_validate = module.validate
+    original_argv = sys.argv
+    module.validate = lambda _: (_ for _ in ()).throw(RuntimeError(secret))
+    sys.argv = [str(path)]
+    try:
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            if module.main() != 2:
+                raise RuntimeError("operability unexpected-error exit code drift")
+        if secret in stderr.getvalue() or "RuntimeError" not in stderr.getvalue():
+            raise RuntimeError("operability unexpected-error diagnostic leaked source")
+    finally:
+        module.validate = original_validate
+        sys.argv = original_argv
+    print("PASS: operability strict JSON, symlink and unexpected-error privacy negatives (14 cases)")
+
+
 def run_load_validator_json_negatives() -> None:
     """Exercise the actual load validator's JSON and diagnostic boundaries."""
     path = ROOT / "scripts/validate-memory-os-load.py"
@@ -1755,6 +1819,7 @@ def main() -> int:
     run_load_validator_json_negatives()
     run_load_index_json_negatives()
     run_load_index_reference_negatives()
+    run_operability_validator_json_negatives()
     run_repeatability_nonfinite_negatives()
     run_repeatability_reconciler_json_negatives(module)
     run_repeatability_analyzer_matrix_producer_negatives()

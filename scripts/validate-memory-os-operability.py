@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -70,15 +71,45 @@ class ValidationFailure(RuntimeError):
     pass
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise ValidationFailure("non-finite operability JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValidationFailure("non-finite operability JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in document:
+            raise ValidationFailure("duplicate operability JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load_json(path: Path) -> dict[str, Any]:
+    if not isinstance(path, Path):
+        raise ValidationFailure("operability JSON path must be Path")
+    for candidate in (path, *path.parents):
+        if candidate.is_symlink():
+            raise ValidationFailure("operability JSON symlink path rejected")
+    if not path.is_file():
+        raise ValidationFailure("operability JSON file missing or unsafe")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ValidationFailure(f"missing file: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValidationFailure(f"invalid JSON: {path}: {exc}") from exc
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonfinite_constant,
+            parse_float=parse_finite_float,
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+        raise ValidationFailure("operability JSON unreadable or invalid") from None
     if not isinstance(value, dict):
-        raise ValidationFailure(f"root must be an object: {path}")
+        raise ValidationFailure("operability JSON root must be object")
     return value
 
 
@@ -357,7 +388,7 @@ def main() -> int:
         print(f"OPERABILITY VALIDATION FAILED: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:
-        print(f"OPERABILITY VALIDATION FAILED WITH UNEXPECTED ERROR: {exc}", file=sys.stderr)
+        print(f"OPERABILITY VALIDATION FAILED WITH UNEXPECTED ERROR: {type(exc).__name__}", file=sys.stderr)
         return 2
 
     print("Memory OS production-operability validation PASS")
