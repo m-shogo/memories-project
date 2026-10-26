@@ -339,6 +339,26 @@ def validate_result_shape(result: dict[str, Any]) -> None:
             "deletion-under-load result limitations reviewed scope drift")
 
 
+def optional_result_present(path: Path) -> bool:
+    """Reject unsafe optional-result nodes before treating absence as static mode."""
+    require(path == ROOT / REVIEWED_RESULT_PATH,
+            "deletion-under-load optional result path authority drift")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(),
+                "deletion-under-load optional result symlink rejected")
+    require(path.parent.is_dir(),
+            "deletion-under-load optional result parent missing or unsafe")
+    try:
+        path.parent.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise ValidationFailure("deletion-under-load optional result escaped repository") from None
+    if path.exists():
+        require(path.is_file(),
+                "deletion-under-load optional result must be a regular file")
+        return True
+    return False
+
+
 def validate_forbidden_result_markers(result: dict[str, Any]) -> None:
     serialized = json.dumps(result, ensure_ascii=False).casefold()
     for forbidden in (
@@ -402,7 +422,7 @@ def main() -> int:
 
     validate_reviewed_contract(contract)
     result_path = ROOT / REVIEWED_RESULT_PATH
-    if not result_path.is_file():
+    if not optional_result_present(result_path):
         require(readiness.get("exactSourceResultCommitted") is False and
                 readiness.get("postFenceLoadExecuted") is False,
                 "contract claims a missing deletion-under-load result")
