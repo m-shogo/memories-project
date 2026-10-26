@@ -96,6 +96,71 @@ def runtime(source: str, name: str, cases: tuple) -> None:
                 raise AssertionError("gofmt source capture drift")
     print(f"PASS: gofmt {name} actual event/base/ref/SHA shell ({len(cases)} cases)")
 
+def cas_runtime(source: str) -> None:
+    """Execute the actual publisher CAS shell against disposable fake Git."""
+    shell = step(source, "Commit formatting authority")
+    head = "a" * 40
+    other = "b" * 40
+    cases = (
+        ("noop", head, head, head, True, True, 0, 0),
+        ("success", head, head, head, False, True, 0, 1),
+        ("stale-first", head, other, head, False, True, 75, 0),
+        ("stale-second", head, head, other, False, True, 75, 0),
+        ("stale-head", other, head, head, False, True, 75, 0),
+        ("diff-check", head, head, head, False, False, 1, 0),
+    )
+    fake_git = """#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+log = Path(os.environ["FAKE_GIT_LOG"])
+with log.open("a", encoding="utf-8") as f:
+    f.write(" ".join(args) + "\\n")
+count = Path(os.environ["FAKE_GIT_COUNT"])
+if args[:2] == ["fetch", "origin"]:
+    count.write_text(str(int(count.read_text()) + 1))
+elif args[:2] == ["rev-parse", "HEAD"]:
+    print(os.environ["FAKE_HEAD"])
+elif args[:2] == ["rev-parse", "origin/so"]:
+    print(os.environ["FAKE_REMOTE_FIRST"] if int(count.read_text()) < 2 else os.environ["FAKE_REMOTE_SECOND"])
+elif args[:3] == ["diff", "--cached", "--quiet"]:
+    sys.exit(0 if os.environ["FAKE_NOOP"] == "1" else 1)
+elif args[:3] == ["diff", "--cached", "--check"]:
+    sys.exit(0 if os.environ["FAKE_CHECK"] == "1" else 1)
+elif args[0] in ("add", "config", "commit", "push"):
+    pass
+else:
+    sys.exit(92)
+"""
+    for label, local, first, second, noop, check, exit_code, pushes in cases:
+        with tempfile.TemporaryDirectory(prefix="gofmt-cas-") as tmp:
+            root = Path(tmp)
+            git = root / "git"
+            git.write_text(fake_git, encoding="utf-8")
+            git.chmod(0o755)
+            log = root / "git.log"
+            count = root / "count"
+            log.write_text("", encoding="utf-8")
+            count.write_text("0", encoding="utf-8")
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       SOURCE_SHA=head, FAKE_GIT_LOG=str(log), FAKE_GIT_COUNT=str(count),
+                       FAKE_HEAD=local, FAKE_REMOTE_FIRST=first, FAKE_REMOTE_SECOND=second,
+                       FAKE_NOOP="1" if noop else "0", FAKE_CHECK="1" if check else "0")
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                                    cwd=root, env=env, capture_output=True, text=True,
+                                    timeout=10, check=False)
+            calls = log.read_text(encoding="utf-8").splitlines()
+            if result.returncode != exit_code:
+                raise AssertionError(f"gofmt CAS runtime {label}: unexpected exit {result.returncode}: {result.stderr[-100:]}")
+            if sum(line == "push origin HEAD:so" for line in calls) != pushes:
+                raise AssertionError("gofmt CAS runtime pushed on stale/no-op/invalid source: " + label)
+            if label in ("stale-first", "stale-head") and any(line.startswith("add ") for line in calls):
+                raise AssertionError("gofmt CAS wrote before stale-source rejection: " + label)
+            if label == "stale-second" and any(line.startswith("push ") for line in calls):
+                raise AssertionError("gofmt CAS pushed after concurrent source advance")
+    print(f"PASS: gofmt actual publisher CAS/no-op/rollback-safe shell ({len(cases)} cases)")
+
 def main() -> None:
     source = read(PUBLISHER)
     independent = read(INDEPENDENT)
@@ -141,6 +206,7 @@ def main() -> None:
         ("push", "", "refs/heads/so", "A" * 40, False),
         ("push", "", "refs/heads/so", "a" * 39, False),
     ))
+    cas_runtime(source)
     print("PASS: read-only gofmt source guard; production evidence generated: false")
 
 if __name__ == "__main__":
