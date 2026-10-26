@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -25,16 +26,44 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
-    return value
+def reject_nonfinite_constant(_value: str) -> None:
+    raise Fail("non-finite pre-fence JSON constant rejected")
 
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite pre-fence JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate pre-fence JSON key rejected")
+        document[key] = value
+    return document
+
+
+def load(path: Path) -> dict[str, Any]:
+    require(isinstance(path, Path), "pre-fence JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "pre-fence JSON symlink rejected")
+    require(path.is_file(), "pre-fence JSON file missing or unsafe")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError, RuntimeError):
+        raise Fail("pre-fence JSON path escaped repository") from None
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonfinite_constant,
+            parse_float=parse_finite_float,
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("pre-fence JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "pre-fence JSON root must be object")
+    return value
 
 def validate_contract(contract: dict[str, Any]) -> None:
     require(contract.get("schemaVersion") == "memory-os-deletion-prefence-linearization.v1", "contract schema drift")
@@ -122,17 +151,17 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
         require(assertions.get(key) is True, f"assertion must be true: {key}")
     require(assertions.get("productionEvidence") is False, "productionEvidence assertion must stay false")
 
-    serialized = json.dumps(result, ensure_ascii=False)
+    serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
         "postgres://",
         "postgresql://",
         "minioadmin",
-        "Bearer ",
-        "X-Amz-Credential",
+        "bearer ",
+        "x-amz-credential",
         "acct_",
         "job_",
     ):
-        require(forbidden not in serialized, f"forbidden sensitive/runtime material in result: {forbidden}")
+        require(forbidden not in serialized, "forbidden runtime material in result")
 
 
 def main() -> int:
@@ -143,6 +172,8 @@ def main() -> int:
 
     contract = load(CONTRACT_PATH)
     validate_contract(contract)
+    for candidate in (RESULT_PATH, *RESULT_PATH.parents):
+        require(not candidate.is_symlink(), "pre-fence result symlink rejected")
     result_exists = RESULT_PATH.is_file()
     if args.require_result:
         require(result_exists, "exact-source result is required")
