@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-sourc
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-REVIEWED_VALIDATOR = "ec532bfefb7f28fbdbbd1c174346dfaf0b9db77b"
+REVIEWED_VALIDATOR = "cf333257429ae16461b0b189b628b0a7f4adebc4"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
@@ -513,6 +513,29 @@ def typed_criteria_runtime():
             pass
         else:
             raise AssertionError("pre-fence mutation accepted " + label)
+        cases += 1
+
+    # Exact reviewed list admission: duplicates and unhashable elements must
+    # fail as bounded validator.Fail, not pass set equality or leak TypeError.
+    reviewed = contract["surfaces"]
+    for label, value in (
+        ("duplicate", reviewed + [reviewed[0]]),
+        ("reordered", list(reversed(reviewed))),
+        ("missing", reviewed[:1]),
+        ("extra", reviewed + ["POST /synthetic/unreviewed"]),
+        ("nested-list", [reviewed[:1], reviewed[1]]),
+        ("nested-object", [{"synthetic": True}, reviewed[1]]),
+        ("non-list", {"synthetic": True}),
+        ("empty", []),
+    ):
+        candidate = copy.deepcopy(contract)
+        candidate["surfaces"] = value
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence mutation accepted unreviewed surfaces: " + label)
         cases += 1
 
     for key, expected in validator.EXPECTED_PATHS.items():

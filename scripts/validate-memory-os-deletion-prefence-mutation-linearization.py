@@ -102,10 +102,10 @@ def validate_contract(contract: dict[str, Any]) -> None:
     require(type(contract.get("uploadAuthorizationRequests")) is int and contract["uploadAuthorizationRequests"] == 16, "upload authorization request count drift")
     require(type(contract.get("totalInFlightRequests")) is int and contract["totalInFlightRequests"] == 32, "total in-flight request count drift")
     surfaces = contract.get("surfaces")
-    require(isinstance(surfaces, list) and set(surfaces) == {
+    require(type(surfaces) is list and surfaces == [
         "POST /v1/previews/{previewId}/apply",
         "POST /v1/import-jobs/{jobId}/upload-authorizations",
-    }, "surface set drift")
+    ], "reviewed surface list drift")
 
     criteria = contract.get("successCriteria")
     require(isinstance(criteria, dict) and criteria.keys() == EXPECTED_CRITERIA.keys(),
