@@ -112,6 +112,8 @@ def signal_for(result: dict[str, Any]) -> dict[str, Any]:
     for key in ("productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "containsSecrets"):
         require(env.get(key) is False, f"unsafe source environment flag: {key}")
     require(scenario.get("scenarioId") == "signed-upload-controlled-saturation-ramp-local-dependencies", "source scenario drift")
+    require(scenario.get("result") == "PASS" and scenario.get("integrityResult") == "PASS",
+            "source ramp result and integrity must both PASS")
     require(scenario.get("requestsPerStep") == 64, "source requestsPerStep drift")
     rows = scenario.get("steps")
     require(isinstance(rows, list) and len(rows) == len(STEPS), "source steps incomplete")
