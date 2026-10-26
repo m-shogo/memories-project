@@ -10,12 +10,14 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/short-stability-sample-contract.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 
 class ValidationFailure(RuntimeError):
@@ -82,6 +84,35 @@ def is_ancestor(value: str) -> bool:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ).returncode == 0
+
+
+
+def strict_utc_timestamp(value: Any, field: str) -> datetime:
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            f"{field} must be RFC3339 UTC")
+    try:
+        return datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        raise ValidationFailure(f"{field} is not a valid UTC timestamp") from None
+
+
+def validate_short_timestamps(result: dict[str, Any]) -> None:
+    scenario = result.get("scenario")
+    require(isinstance(scenario, dict), "short stability scenario missing for timestamps")
+    started = strict_utc_timestamp(scenario.get("startedAt"), "scenario.startedAt")
+    completed = strict_utc_timestamp(scenario.get("completedAt"), "scenario.completedAt")
+    generated = strict_utc_timestamp(result.get("generatedAt"), "generatedAt")
+    require(started <= completed <= generated, "short stability timestamps must be chronological")
+    observations = scenario.get("observations")
+    require(isinstance(observations, list), "short stability observations missing for timestamps")
+    previous = started
+    for index, observation in enumerate(observations):
+        require(isinstance(observation, dict), f"observation[{index}] must be an object")
+        observed = strict_utc_timestamp(observation.get("observedAt"),
+                                        f"observation[{index}].observedAt")
+        require(previous <= observed <= completed,
+                f"observation[{index}] must be chronological within scenario")
+        previous = observed
 
 
 def main() -> int:
@@ -185,6 +216,7 @@ def main() -> int:
 
     scenario = result.get("scenario")
     require(isinstance(scenario, dict), "short stability scenario missing")
+    validate_short_timestamps(result)
     require(scenario.get("scenarioId") == contract["scenarioId"],
             "short stability scenario ID drift")
     require(scenario.get("windowCount") == window_count and

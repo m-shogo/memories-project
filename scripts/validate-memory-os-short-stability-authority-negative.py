@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -70,9 +71,47 @@ def verify_short_numeric_boundary() -> None:
     print("PASS: short stability finite numeric positive and 5 negatives")
 
 
+
+def verify_short_timestamp_semantics() -> None:
+    """Prove UTC chronology for scenario and every observation using canonical validator."""
+    validator_path = ROOT / "scripts/validate-memory-os-short-stability-sample.py"
+    spec = importlib.util.spec_from_file_location("short_stability_timestamp_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("short stability timestamp validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json")
+    validator.validate_short_timestamps(copy.deepcopy(canonical))
+    cases = (
+        ("impossible calendar date", ("scenario", "startedAt"), "2026-02-30T22:21:32Z"),
+        ("timezone offset", ("scenario", "startedAt"), "2026-09-21T22:21:32+00:00"),
+        ("missing seconds", ("scenario", "startedAt"), "2026-09-21T22:21Z"),
+        ("completion before start", ("scenario", "completedAt"), "2026-09-21T22:21:31Z"),
+        ("generation before completion", ("generatedAt",), "2026-09-21T22:21:35Z"),
+        ("observation before start", ("scenario", "observations", 0, "observedAt"), "2026-09-21T22:21:31Z"),
+        ("observation after completion", ("scenario", "observations", 0, "observedAt"), "2026-09-21T22:21:37Z"),
+        ("observation out of order", ("scenario", "observations", 1, "observedAt"), "2026-09-21T22:21:32Z"),
+        ("observation nonstring", ("scenario", "observations", 0, "observedAt"), None),
+    )
+    for label, keys, value in cases:
+        mutated = copy.deepcopy(canonical)
+        cursor = mutated
+        for key in keys[:-1]:
+            cursor = cursor[key]
+        cursor[keys[-1]] = value
+        try:
+            validator.validate_short_timestamps(mutated)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"short stability timestamp validator accepted {label}")
+    print("PASS: short stability UTC positive and 9 timestamp negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_short_numeric_boundary()
+    verify_short_timestamp_semantics()
     substitutions = {
         "CONTRACT_PATH": module.LOAD_PATH,
         "LOAD_PATH": module.CONTRACT_PATH,
