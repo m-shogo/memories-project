@@ -576,6 +576,42 @@ def verify_nonfinite_ramp_measurements() -> None:
 
 
 
+
+def verify_ramp_sensitive_marker_casefold() -> None:
+    """Exercise real canonical result admission with harmless mixed-case markers."""
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+    spec = importlib.util.spec_from_file_location("controlled_saturation_sensitive_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("controlled saturation sensitive validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(validator.RESULT_PATH)
+    positive = copy.deepcopy(canonical)
+    positive["environment"]["syntheticNegativeMarker"] = "ordinary-local-metadata"
+    validator.validate_result_document(positive)
+    markers = (
+        ("postgres scheme", "PoStGrEs://synthetic.invalid"),
+        ("postgresql scheme", "POSTGRESQL://synthetic.invalid"),
+        ("minio default account", "MiNiOaDmIn_SYNTHETIC"),
+        ("bearer credential", "bEaReR SYNTHETIC_NON_CREDENTIAL"),
+        ("account prefix", "ACCT_CONTROLLED_SATURATION_SYNTHETIC"),
+        ("presigned credential", "x-aMz-CrEdEnTiAl=SYNTHETIC"),
+    )
+    for label, marker in markers:
+        mutated = copy.deepcopy(canonical)
+        mutated["environment"]["syntheticNegativeMarker"] = marker
+        try:
+            validator.validate_result_document(mutated)
+        except validator.ValidationFailure as exc:
+            if not str(exc).startswith("result contains forbidden sensitive/runtime material: "):
+                raise RuntimeError(f"controlled saturation {label} rejected by wrong gate") from None
+            if marker in str(exc):
+                raise RuntimeError(f"controlled saturation {label} leaked synthetic marker") from None
+        else:
+            raise RuntimeError(f"controlled saturation accepted mixed-case {label}")
+    print("PASS: canonical saturation result sensitive marker positive and 6 casefold negatives")
+
+
 def verify_ramp_timestamp_semantics() -> None:
     """Exercise the actual ramp timestamp validator with a positive fixture and failures."""
     validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
@@ -784,6 +820,7 @@ def main() -> int:
     module = load_module()
     verify_ramp_validator_json_path_negatives()
     verify_nonfinite_ramp_measurements()
+    verify_ramp_sensitive_marker_casefold()
     verify_ramp_timestamp_semantics()
     verify_pool_snapshot_and_delta_accounting()
     verify_batch_status_accounting()

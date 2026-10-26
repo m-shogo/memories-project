@@ -199,8 +199,9 @@ def validate_result_document(result: dict[str, Any], expected_commit_sha: str = 
     ):
         require(environment.get(key) is False, f"result cannot enable environment.{key}")
 
-    serialized = json.dumps(result, ensure_ascii=False)
-    for forbidden in ("postgres://", "postgresql://", "minioadmin", "Bearer ", "acct_controlled_saturation_", "X-Amz-Credential"):
+    # Credential/endpoint markers are ASCII and must be rejected regardless of case.
+    serialized = json.dumps(result, ensure_ascii=False).lower()
+    for forbidden in ("postgres://", "postgresql://", "minioadmin", "bearer ", "acct_controlled_saturation_", "x-amz-credential"):
         require(forbidden not in serialized, f"result contains forbidden sensitive/runtime material: {forbidden}")
 
     scenario = result.get("scenario")
