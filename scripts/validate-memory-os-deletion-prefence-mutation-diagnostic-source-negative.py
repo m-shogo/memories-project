@@ -13,8 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-prefence-mutation-linearization.yml"
 INDEPENDENT = ".github/workflows/deletion-prefence-mutation-diagnostic-source-negative.yml"
 SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-source-negative.py"
+RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
+REVIEWED_RECONCILER = "3c55ccaa4724af7e5f8e0b1e7fe94b326a45e598"
+REVIEWED_RECONCILE_NEGATIVE = "d6494870021e2fdd70cdb6c6e362569dba4d9f3c"
 REVIEWED = "5d1ea78dc70d721f50f4ef9750bf7fc32aa28acc"
-REVIEWED_INDEPENDENT = "ebc7614502857d596f9298efcaaffd58cbe441fe"
+REVIEWED_INDEPENDENT = "177a83be2dced940ff1a8b1973ca6a361df04e6f"
 TARGET = "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -270,18 +274,24 @@ def main():
     if blob(publisher) != REVIEWED:
         raise SystemExit("SIGKILL publisher complete Git blob unreviewed")
     independent = source(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, RECONCILER, RECONCILE_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
+    if blob(source(RECONCILER)) != REVIEWED_RECONCILER:
+        raise SystemExit("pre-fence mutation reconciler complete Git blob unreviewed")
+    if blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
+        raise SystemExit("pre-fence mutation reconciler negative complete Git blob unreviewed")
     identity_runtime(independent, "Require exact clean pre-fence mutation diagnostic source")
     policy(publisher)
     mutations(publisher)
     writer_runtime(publisher)
     result_commit_runtime(publisher)
+    subprocess.run([sys.executable, str(ROOT / RECONCILE_NEGATIVE)],
+                   cwd=ROOT, check=True, timeout=30)
     print("PASS: pre-fence mutation exact-source read-only diagnostic proof; production evidence generated: false; production decision changed: false")
 
 
