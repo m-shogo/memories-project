@@ -66,7 +66,13 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # Never create authority parents through an unreviewed symlink.
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise Fail("advanced deletion atomic symlink target/ancestor refused")
+    if not path.parent.is_dir():
+        raise Fail("advanced deletion atomic parent missing")
+    if path.exists() and not path.is_file():
+        raise Fail("advanced deletion atomic target must be a regular file")
     existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)

@@ -66,6 +66,43 @@ def atomic_writer_is_fail_closed(module) -> None:
             raise AssertionError("atomic replacement failure left advanced deletion temp residue")
 
 
+def substituted_atomic_paths_are_rejected(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-advanced-deletion-symlink-") as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "authority.json"
+        canary.write_bytes(b"SYNTHETIC_ADVANCED_DELETION_CANARY")
+        direct = root / "direct.json"
+        direct.symlink_to(canary)
+        ancestor = root / "linked"
+        ancestor.symlink_to(outside, target_is_directory=True)
+        directory = root / "directory.json"
+        directory.mkdir()
+        missing_parent = root / "missing" / "authority.json"
+        for target, message in (
+            (direct, "advanced deletion atomic symlink target/ancestor refused"),
+            (ancestor / "authority.json", "advanced deletion atomic symlink target/ancestor refused"),
+            (directory, "advanced deletion atomic target must be a regular file"),
+            (missing_parent, "advanced deletion atomic parent missing"),
+        ):
+            try:
+                module.atomic_write_bytes(target, b"synthetic overwrite")
+            except module.Fail as exc:
+                if message not in str(exc):
+                    raise AssertionError(f"advanced deletion unexpected atomic rejection: {exc}") from exc
+            else:
+                raise AssertionError(f"advanced deletion accepted substituted atomic target: {target}")
+            if canary.read_bytes() != b"SYNTHETIC_ADVANCED_DELETION_CANARY":
+                raise AssertionError("advanced deletion atomic writer escaped to external canary")
+        if not direct.is_symlink() or not ancestor.is_symlink() or not directory.is_dir():
+            raise AssertionError("advanced deletion atomic writer replaced substituted target")
+        if missing_parent.parent.exists():
+            raise AssertionError("advanced deletion atomic writer created unreviewed parent")
+        if list(root.rglob(".*.tmp")):
+            raise AssertionError("advanced deletion substituted atomic target left temp residue")
+
+
 def main() -> int:
     module = load_module()
     # Stronger independently reconciled local evidence must not be erased by
@@ -98,6 +135,7 @@ def main() -> int:
     if module.preserve_stronger_deferred_reason("synthetic weaker reason", strong_flags):
         raise AssertionError("advanced deletion treated unrelated reason as stronger")
     atomic_writer_is_fail_closed(module)
+    substituted_atomic_paths_are_rejected(module)
     with tempfile.TemporaryDirectory(prefix="memory-os-advanced-deletion-reconcile-") as tmp:
         root = Path(tmp)
         prefence_contract = root / "prefence-contract.json"
