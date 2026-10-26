@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,8 +81,46 @@ def verify_atomic_replace_failure(module) -> None:
                 module.atomic_write_bytes(path, payload)
 
 
+
+def verify_capacity_numeric_boundary() -> None:
+    """Exercise the real capacity validator with finite positive and nonfinite negatives."""
+    validator_path = ROOT / "scripts/validate-memory-os-capacity-ramp.py"
+    spec = importlib.util.spec_from_file_location("capacity_numeric_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("capacity numeric validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    if validator.positive_number(1.25, "synthetic-positive") != 1.25:
+        raise RuntimeError("capacity numeric positive control failed")
+    for label, bad in (
+        ("Infinity", float("inf")),
+        ("NaN", float("nan")),
+        ("overflow integer", 10 ** 500),
+        ("zero", 0),
+    ):
+        try:
+            validator.positive_number(bad, "synthetic-negative")
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"capacity numeric validator accepted {label}")
+    with tempfile.TemporaryDirectory(prefix=".capacity-numeric-negative-", dir=ROOT) as temp:
+        path = Path(temp) / "synthetic.json"
+        for label, raw in (("JSON Infinity", '{"value": Infinity}'),
+                           ("JSON float overflow", '{"value": 1e999}')):
+            path.write_text(raw, encoding="utf-8")
+            try:
+                validator.load(path)
+            except validator.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError(f"capacity JSON parser accepted {label}")
+    print("PASS: capacity numeric positive and 6 nonfinite/invalid negatives")
+
+
 def main() -> int:
     module = load_module()
+    verify_capacity_numeric_boundary()
     substitutions = {
         "CONTRACT_PATH": module.LOAD_PATH,
         "LOAD_PATH": module.CONTRACT_PATH,

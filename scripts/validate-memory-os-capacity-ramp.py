@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -26,9 +27,21 @@ def require(condition: bool, message: str) -> None:
         raise ValidationFailure(message)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise ValidationFailure("non-finite capacity ramp JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite capacity ramp JSON number rejected")
+    return parsed
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float)
     except FileNotFoundError as exc:
         raise ValidationFailure(f"missing file: {path.relative_to(ROOT)}") from exc
     except json.JSONDecodeError as exc:
@@ -47,8 +60,11 @@ def integer(value: Any, field: str, minimum: int = 0) -> int:
 def positive_number(value: Any, field: str) -> float:
     require(isinstance(value, (int, float)) and not isinstance(value, bool),
             f"{field} must be numeric")
-    number = float(value)
-    require(number > 0, f"{field} must be > 0")
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        raise ValidationFailure(f"{field} must be finite and positive") from None
+    require(math.isfinite(number) and number > 0, f"{field} must be finite and positive")
     return number
 
 
