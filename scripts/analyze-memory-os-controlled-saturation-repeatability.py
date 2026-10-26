@@ -173,6 +173,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-a", required=True)
     parser.add_argument("--run-b", required=True)
+    parser.add_argument("--expected-commit-sha", help="Original exact workflow source SHA for matrix admission")
     args = parser.parse_args()
     contract = load(CONTRACT)
     require(contract.get("schemaVersion") == "memory-os-controlled-saturation-repeatability.v1", "contract schema drift")
@@ -186,6 +187,9 @@ def main() -> int:
     sha_b = b.get("commitSha")
     require(isinstance(sha_a, str) and SHA40.fullmatch(sha_a) is not None and sha_a == sha_b,
             "two runs must bind the same exact source commit")
+    if args.expected_commit_sha is not None:
+        require(SHA40.fullmatch(args.expected_commit_sha) is not None and sha_a == args.expected_commit_sha,
+                "matrix run source differs from original workflow commit")
     signal_a = signal_for(a)
     signal_b = signal_for(b)
     ca = signal_a["concurrency"]
