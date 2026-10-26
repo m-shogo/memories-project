@@ -7,6 +7,7 @@ import argparse
 import json
 import math
 import os
+import re
 import stat
 import tempfile
 from pathlib import Path
@@ -17,6 +18,8 @@ CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-cont
 OUTPUT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
 CANONICAL_OUTPUT = OUTPUT
 STEPS = [4, 8, 16, 24, 32, 48]
+SHA40 = re.compile(r"[0-9a-f]{40}")
+RUN_REF = re.compile(r"docs/fixtures/memory-os-operability/controlled-saturation-ramp-results\.repeat-([0-9]+)-([0-9]+)-([ab])\.v1\.json")
 
 
 class Fail(RuntimeError):
@@ -70,6 +73,17 @@ def safe_run_path(value: str) -> Path:
     except ValueError:
         raise Fail("run path escaped repository") from None
     return path
+
+
+def require_matrix_pair(a_path: Path, b_path: Path) -> None:
+    """Bind the producer to the same exact two-run matrix provenance as admission."""
+    refs = (a_path.relative_to(ROOT).as_posix(), b_path.relative_to(ROOT).as_posix())
+    matches = [RUN_REF.fullmatch(ref) for ref in refs]
+    require(all(match is not None for match in matches),
+            "run paths must identify controlled-saturation matrix runs")
+    require(matches[0].group(3) == "a" and matches[1].group(3) == "b"
+            and matches[0].group(1, 2) == matches[1].group(1, 2),
+            "run paths must bind the same matrix run and attempt with a/b ordinals")
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
@@ -165,11 +179,13 @@ def main() -> int:
     a_path = safe_run_path(args.run_a)
     b_path = safe_run_path(args.run_b)
     require(a_path != b_path, "two distinct run files are required")
+    require_matrix_pair(a_path, b_path)
     a = load(a_path)
     b = load(b_path)
     sha_a = a.get("commitSha")
     sha_b = b.get("commitSha")
-    require(isinstance(sha_a, str) and len(sha_a) == 40 and sha_a == sha_b, "two runs must bind the same exact source commit")
+    require(isinstance(sha_a, str) and SHA40.fullmatch(sha_a) is not None and sha_a == sha_b,
+            "two runs must bind the same exact source commit")
     signal_a = signal_for(a)
     signal_b = signal_for(b)
     ca = signal_a["concurrency"]
