@@ -83,6 +83,14 @@ def main() -> int:
             ("extra field", {"unexpected": "SYNTHETIC_SECRET"}),
         ):
             rejected(module, path, dict(value, **patch), root, label)
+        for label, duration in (
+            ("boolean duration", True),
+            ("NaN duration", float("nan")),
+            ("infinite duration", float("inf")),
+            ("negative duration", -1),
+            ("oversized duration", 10 ** 500),
+        ):
+            rejected(module, path, dict(value, durationSeconds=duration), root, label)
         if path.read_bytes() != original:
             raise RuntimeError("database outage diagnostic rejected payload changed bytes")
         original_replace = module.os.replace

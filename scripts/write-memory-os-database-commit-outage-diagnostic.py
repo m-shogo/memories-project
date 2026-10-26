@@ -43,8 +43,12 @@ def write_diagnostic(path: Path, value: dict[str, Any], repo_root: Path) -> None
     require(type(code) is int and (value["result"] == ("PASS" if code == 0 else "FAIL")),
             "diagnostic result/exit code drift")
     duration = value["durationSeconds"]
-    require(type(duration) in (int, float) and math.isfinite(float(duration)) and duration >= 0,
-            "diagnostic duration invalid")
+    require(type(duration) in (int, float), "diagnostic duration invalid")
+    try:
+        finite_duration = math.isfinite(float(duration))
+    except (OverflowError, ValueError):
+        finite_duration = False
+    require(finite_duration and duration >= 0, "diagnostic duration invalid")
     require(value["output"] == SAFE_OUTPUT, "raw diagnostic output forbidden")
     require(value["containsSecrets"] is False and value["productionEvidence"] is False,
             "diagnostic cannot contain secrets or production evidence")
