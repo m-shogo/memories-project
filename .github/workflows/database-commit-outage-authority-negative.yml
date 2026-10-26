@@ -9,6 +9,8 @@ on:
       - ".github/workflows/database-commit-outage.yml"
       - "scripts/validate-memory-os-database-commit-outage.py"
       - "scripts/validate-memory-os-database-commit-outage-reconcile-negative.py"
+      - "scripts/validate-memory-os-database-commit-outage-diagnostic-negative.py"
+      - "scripts/write-memory-os-database-commit-outage-diagnostic.py"
       - "scripts/reconcile-memory-os-database-commit-outage.py"
       - "contracts/operations/database-commit-outage-contract.v1.json"
       - "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
@@ -20,6 +22,8 @@ on:
       - ".github/workflows/database-commit-outage.yml"
       - "scripts/validate-memory-os-database-commit-outage.py"
       - "scripts/validate-memory-os-database-commit-outage-reconcile-negative.py"
+      - "scripts/validate-memory-os-database-commit-outage-diagnostic-negative.py"
+      - "scripts/write-memory-os-database-commit-outage-diagnostic.py"
       - "scripts/reconcile-memory-os-database-commit-outage.py"
       - "contracts/operations/database-commit-outage-contract.v1.json"
       - "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
@@ -66,6 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           python -B scripts/validate-memory-os-database-commit-outage-reconcile-negative.py
+          python -B scripts/validate-memory-os-database-commit-outage-diagnostic-negative.py
           python -B scripts/validate-memory-os-database-commit-outage.py
           git diff --check
           git diff --exit-code

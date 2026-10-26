@@ -155,6 +155,7 @@ jobs:
           import datetime as dt
           import json
           import os
+          import runpy
           import subprocess
           import time
           from pathlib import Path
@@ -174,8 +175,8 @@ jobs:
               cwd=workdir,
               env=os.environ.copy(),
               text=True,
-              stdout=subprocess.PIPE,
-              stderr=subprocess.STDOUT,
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
               check=False,
           )
           duration = round(time.monotonic() - started, 6)
@@ -189,16 +190,13 @@ jobs:
               "result": "PASS" if success else "FAIL",
               "exitCode": completed.returncode,
               "durationSeconds": duration,
-              "output": completed.stdout[-4000:],
+              "output": "Database outage drill finished; raw harness output withheld.",
               "containsSecrets": False,
               "productionEvidence": False,
           }
           diagnostic_path = root / "docs/fixtures/memory-os-operability/database-commit-outage-diagnostic.last.json"
-          diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
-          diagnostic_path.write_text(
-              json.dumps(diagnostic, indent=2, ensure_ascii=False) + "\n",
-              encoding="utf-8",
-          )
+          writer = runpy.run_path(str(root / "scripts/write-memory-os-database-commit-outage-diagnostic.py"))
+          writer["write_diagnostic"](diagnostic_path, diagnostic, root)
 
           if success:
               result = {
