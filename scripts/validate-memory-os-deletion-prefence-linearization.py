@@ -25,6 +25,30 @@ EXPECTED_PATHS: dict[str, str] = {
     "workflow": ".github/workflows/deletion-prefence-linearization.yml",
 }
 
+EXPECTED_SEQUENCE = (
+    "create one synthetic active account, session and committed Preview",
+    "start 32 authenticated Preview requests",
+    "prove all 32 session lookups completed successfully at account epoch 1",
+    "pause all 32 requests before the fenced Preview service executes",
+    "DELETE /v1/account returns 202 with durable deletion epoch 2",
+    "release the already-authenticated old-epoch requests",
+    "all 32 requests return exactly 401 with no transport error or successful response",
+    "leased deletion worker completes exactly one receipt",
+    "all account-owned rows are erased and deleted tombstone remains at epoch 2",
+)
+
+
+EXPECTED_ABORT = (
+    "any request reaches the service before all 32 old-epoch session resolutions are paused",
+    "DELETE does not return 202 with epoch 2",
+    "any released old-epoch request returns anything other than 401",
+    "any released request has a transport error",
+    "deletion worker processes zero or more than one account",
+    "any account-owned row survives worker completion",
+    "result contains bearer token, account id, job id, Preview id, object key, endpoint credential or database URL",
+)
+
+
 EXPECTED_CRITERIA: dict[str, Any] = {
     "authenticatedBeforeFence": 32,
     "deletionRequestStatus": 202,
@@ -108,6 +132,11 @@ def validate_contract(contract: dict[str, Any]) -> None:
 
     for key, expected in EXPECTED_PATHS.items():
         require(contract.get(key) == expected, f"contract source/path binding drift: {key}")
+
+    for key, expected in (("requiredSequence", EXPECTED_SEQUENCE), ("abortCriteria", EXPECTED_ABORT)):
+        actual = contract.get(key)
+        require(type(actual) is list and actual == list(expected),
+                f"reviewed {key} list drift")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")

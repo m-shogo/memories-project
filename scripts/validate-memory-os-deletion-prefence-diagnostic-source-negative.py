@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negativ
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-linearization.py"
-REVIEWED_VALIDATOR = "88943a8283522d46c2ca0c8aa70ed6cd4b6cfae2"
+REVIEWED_VALIDATOR = "80bddfde56776b6472bd868e292ca9a6b856af3a"
 REVIEWED_RECONCILER = "75c848b6d45f0fa1f51a187ac67344339bcc05d9"
 REVIEWED_RECONCILE_NEGATIVE = "623c4b0bd3ceffbc034de9ae0639013327b2b252"
 REVIEWED = "fdcc951be6c589518f1f48bcb363b5dcd0b88602"
@@ -508,6 +508,27 @@ def typed_criteria_runtime():
         else:
             raise AssertionError("pre-fence accepted " + label)
         cases += 1
+
+    # Reviewed Preview proof ordering and abort conditions are immutable authority.
+    for field in ("requiredSequence", "abortCriteria"):
+        reviewed = contract[field]
+        for label, value in (
+            ("missing", reviewed[1:]),
+            ("extra", reviewed + ["synthetic unreviewed step"]),
+            ("reordered", list(reversed(reviewed))),
+            ("altered", ["synthetic unreviewed step"] + reviewed[1:]),
+            ("nested", [reviewed[:1]] + reviewed[1:]),
+            ("non-list", {"synthetic": True}),
+        ):
+            candidate = copy.deepcopy(contract)
+            candidate[field] = value
+            try:
+                validator.validate_contract(candidate)
+            except validator.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence accepted " + field + " " + label)
+            cases += 1
 
     for key, expected in validator.EXPECTED_PATHS.items():
         for label, value in (("substitute", "synthetic/unreviewed-" + key), ("missing", None)):
