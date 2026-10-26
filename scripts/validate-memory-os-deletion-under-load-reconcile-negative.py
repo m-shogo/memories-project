@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import copy
 import importlib.util
 import io
@@ -1243,7 +1244,150 @@ def exercise_deletion_load_workflow_diagnostic() -> None:
     print("PASS: deletion-load fixed diagnostic, atomic mode, unsafe nodes and canary")
 
 
+
+def exercise_deletion_load_runner_source_binding() -> None:
+    """Bind the actual Go proof runner to one reviewed complete Git blob."""
+    reviewed_path = "services/import-api/internal/httpserver/deletion_under_load_test.go"
+    reviewed_blob = "d2ce5f95921a0723c0d61e9c44573c507babd66d"
+    runner = ROOT / reviewed_path
+    require(runner.is_file() and all(not candidate.is_symlink()
+                                    for candidate in (runner, *runner.parents)),
+            "deletion-load Go runner missing, unsafe or symlinked")
+    try:
+        require(runner.resolve(strict=True).relative_to(ROOT.resolve(strict=True)).as_posix()
+                == reviewed_path, "deletion-load Go runner source path drift")
+    except (OSError, ValueError):
+        raise RuntimeError("deletion-load Go runner escaped canonical root") from None
+    raw = runner.read_bytes()
+    require(0 < len(raw) <= 1024 * 1024, "deletion-load Go runner size drift")
+    def git_blob(payload: bytes) -> str:
+        return hashlib.sha1(b"blob " + str(len(payload)).encode("ascii")
+                            + bytes([0]) + payload).hexdigest()
+    require(git_blob(raw) == reviewed_blob, "deletion-load Go runner unreviewed Git blob")
+    for label, mutation in (
+        ("appended bypass", raw + b"\\n// SYNTHETIC_BYPASS\\n"),
+        ("truncated runner", raw[:-1]),
+        ("changed request count", raw.replace(b"400", b"401", 1)),
+    ):
+        require(mutation != raw and git_blob(mutation) != reviewed_blob,
+                "deletion-load runner source negative ineffective: " + label)
+    gate = (ROOT / ".github/workflows/deletion-under-load-authority-pr.yml").read_text(encoding="utf-8")
+    require(gate.count('      - "' + reviewed_path + '"') == 2,
+            "deletion-load Go runner changes do not trigger both read-only authority gates")
+    publisher = (ROOT / ".github/workflows/deletion-under-load.yml").read_text(encoding="utf-8")
+    require("-run '^TestAccountDeletionPostFenceLoadLocalDependencies    exercise_deletion_load_workflow_diagnostic()
+    exercise_deletion_load_json_reader()
+    exercise_deletion_load_numeric_boundary()
+    exercise_deletion_load_optional_result_path()
+    exercise_deletion_load_utc_seconds_boundary()
+    exercise_deletion_load_batch_accounting()
+    exercise_deletion_load_git_ancestry_boundary()
+    exercise_deletion_load_source_replace_once()
+    exercise_deletion_load_source_io_boundary()
+    exercise_deletion_load_reviewed_schema()
+    module = load_target()
+    exercise_reconciler_json_reader(module)
+    module.enforce_runtime_authorities()
+    module.enforce_atomic_writer_authority()
+    exercise_evidence_reference_path_admission(module)
+
+    expect_rejection(module, "repository root", lambda: swap_attr(module, "ROOT", module.CANONICAL_ROOT / "scripts"))
+    expect_rejection(module, "deletion contract", lambda: swap_attr(module, "CONTRACT_PATH", module.CANONICAL_LOAD_PATH))
+    expect_rejection(module, "load contract", lambda: swap_attr(module, "LOAD_PATH", module.CANONICAL_CONTRACT_PATH))
+    expect_rejection(module, "production status", lambda: swap_attr(module, "STATUS_PATH", module.CANONICAL_LOAD_PATH))
+    expect_rejection(module, "result path", lambda: swap_attr(module, "RESULT_PATH", module.CANONICAL_CONTRACT_PATH))
+    expect_rejection(module, "deletion validator", lambda: swap_attr(module, "DELETION_VALIDATOR", module.CANONICAL_LOAD_VALIDATOR))
+    expect_rejection(module, "load validator", lambda: swap_attr(module, "LOAD_VALIDATOR", module.CANONICAL_DELETION_VALIDATOR))
+    expect_rejection(module, "operability validator", lambda: swap_attr(module, "OPERABILITY_VALIDATOR", module.CANONICAL_LOAD_VALIDATOR))
+
+    fake_run = lambda *args, **kwargs: None
+    expect_rejection(module, "subprocess transport", lambda: swap_attr(module.subprocess, "run", fake_run))
+    expect_rejection(
+        module,
+        "paired subprocess transport",
+        lambda: swap_many(
+            (module, "CANONICAL_SUBPROCESS_RUN", fake_run),
+            (module.subprocess, "run", fake_run),
+        ),
+    )
+
+    fake_replace = lambda *args, **kwargs: None
+    expect_rejection(module, "atomic replacement transport", lambda: swap_attr(module.os, "replace", fake_replace))
+    expect_rejection(
+        module,
+        "paired atomic replacement transport",
+        lambda: swap_many(
+            (module, "CANONICAL_OS_REPLACE", fake_replace),
+            (module.os, "replace", fake_replace),
+        ),
+    )
+
+    fake_writer = lambda *args, **kwargs: None
+    expect_rejection(
+        module,
+        "atomic writer",
+        lambda: swap_attr(module, "atomic_write_bytes", fake_writer),
+        module.enforce_atomic_writer_authority,
+    )
+    expect_rejection(
+        module,
+        "paired atomic writer",
+        lambda: swap_many(
+            (module, "CANONICAL_ATOMIC_WRITE_BYTES", fake_writer),
+            (module, "atomic_write_bytes", fake_writer),
+        ),
+        module.enforce_atomic_writer_authority,
+    )
+
+    alternate_root = module.CANONICAL_ROOT / "scripts"
+    expect_rejection(
+        module,
+        "paired repository root",
+        lambda: swap_many(
+            (module, "CANONICAL_ROOT", alternate_root),
+            (module, "ROOT", alternate_root),
+        ),
+    )
+    expect_rejection(
+        module,
+        "paired contract authority",
+        lambda: swap_many(
+            (module, "CANONICAL_CONTRACT_PATH", module.CANONICAL_LOAD_PATH),
+            (module, "CONTRACT_PATH", module.CANONICAL_LOAD_PATH),
+        ),
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-deletion-load-negative-") as tmp:
+        path = Path(tmp) / "authority.json"
+        path.write_bytes(b"before\n")
+        os.chmod(path, 0o640)
+        module.atomic_write_bytes(path, b"after\n")
+        require(path.read_bytes() == b"after\n", "atomic writer payload mismatch")
+        require(stat.S_IMODE(path.stat().st_mode) == 0o640, "atomic writer changed existing file mode")
+        require(not list(path.parent.glob(f".{path.name}.*.tmp")), "atomic writer left temporary residue")
+
+    exercise_existing_scenario_prewrite_rejection(module)
+    exercise_stronger_readiness_prewrite_rejection(module)
+    exercise_validator_output_redaction(module)
+    exercise_validator_command_authority(module)
+    exercise_atomic_path_substitution_rejection(module)
+    exercise_rollback_failure(module)
+    exercise_transaction_primary_failure_redaction(module)
+    require_snapshots_unchanged(canonical_snapshots(module))
+    require_modes_unchanged(canonical_modes(module))
+    print("Deletion-under-load reconcile negative checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+" in publisher,
+            "deletion-load publisher no longer invokes reviewed Go test")
+    print("PASS: deletion-load complete Go runner Git blob and CI reachability")
+
+
 def main() -> int:
+    exercise_deletion_load_runner_source_binding()
     exercise_deletion_load_workflow_diagnostic()
     exercise_deletion_load_json_reader()
     exercise_deletion_load_numeric_boundary()
