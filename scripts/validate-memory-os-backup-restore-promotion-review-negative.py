@@ -157,9 +157,74 @@ def empty_registry() -> dict[str, Any]:
     }
 
 
+def prove_promotion_reader() -> None:
+    """Exercise the actual promotion validator JSON reader, never production evidence."""
+    validator = load_module(VALIDATOR, "memory_os_promotion_review_json_reader_negative")
+    positive = b'{"schemaVersion":"synthetic","nested":{"ok":true}}\n'
+    with tempfile.TemporaryDirectory(prefix="promotion-reader-negative-") as tmp:
+        root = Path(tmp)
+        path = root / "authority.json"
+        path.write_bytes(positive)
+        require(validator.load(path) == {"schemaVersion": "synthetic", "nested": {"ok": True}},
+                "promotion reader positive control failed")
+        marker = "PRIVATE_PROMOTION_READER_CANARY_DO_NOT_LOG"
+        cases = (
+            ("duplicate", b'{"x":1,"x":2}', "promotion review JSON duplicate key refused"),
+            ("nested-duplicate", b'{"x":{"y":1,"y":2}}',
+             "promotion review JSON duplicate key refused"),
+            ("nan", b'{"x":NaN}', "promotion review JSON nonfinite number refused"),
+            ("infinity", b'{"x":Infinity}', "promotion review JSON nonfinite number refused"),
+            ("overflow", b'{"x":1e309}', "promotion review JSON nonfinite number refused"),
+            ("huge-int", b'{"x":' + b"9" * 129 + b'}',
+             "promotion review JSON integer too large"),
+            ("invalid-utf8", b'{"x":"\xff"}', "promotion review JSON unreadable or invalid"),
+            ("malformed", b'{"x":', "promotion review JSON unreadable or invalid"),
+            ("nonobject", b'[1,2]', "promotion review JSON root must be object"),
+            ("oversized", b" " * (validator.MAX_JSON_BYTES + 1),
+             "promotion review JSON size limit exceeded"),
+        )
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            try:
+                validator.load(path)
+            except validator.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"promotion reader {label} wrong/private rejection: {exc}")
+            else:
+                raise Fail(f"promotion reader {label} unexpectedly accepted")
+        canary = root / "external-canary.json"
+        canary.write_text(marker, encoding="utf-8")
+        alias = root / "alias.json"
+        alias.symlink_to(canary)
+        try:
+            validator.load(alias)
+        except validator.Fail as exc:
+            require(str(exc) == "promotion review JSON path missing or unsafe",
+                    f"promotion reader symlink wrong rejection: {exc}")
+        else:
+            raise Fail("promotion reader symlink unexpectedly accepted")
+        require(canary.read_text(encoding="utf-8") == marker,
+                "promotion reader external canary mutated")
+        path.unlink()
+        path.mkdir()
+        try:
+            validator.load(path)
+        except validator.Fail as exc:
+            require(str(exc) == "promotion review JSON path missing or unsafe",
+                    f"promotion reader directory wrong rejection: {exc}")
+        else:
+            raise Fail("promotion reader directory unexpectedly accepted")
+        path.rmdir()
+        path.write_bytes(positive)
+        require(validator.load(path) == {"schemaVersion": "synthetic", "nested": {"ok": True}},
+                "promotion reader restored positive control failed")
+    print(f"PASS: actual promotion review JSON reader positive and {len(cases) + 2} fail-closed negatives")
+
+
 def main() -> int:
     global EXPECTED_FAILURE
     require(WRITER.is_file() and VALIDATOR.is_file(), "promotion review authority scripts missing")
+    prove_promotion_reader()
     writer = load_module(WRITER, "memory_os_promotion_review_writer_negative")
     validator = load_module(VALIDATOR, "memory_os_promotion_review_validator_negative")
     EXPECTED_FAILURE = writer.Fail
