@@ -11,10 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/reconcile-load-missing-evidence.yml"
 INDEPENDENT = ".github/workflows/load-missing-evidence-source-negative.yml"
 SELF = "scripts/validate-memory-os-load-missing-source-negative.py"
+RECONCILER = "scripts/reconcile-memory-os-load-missing-evidence.py"
 CHECKOUT = "uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_PUBLISHER = "f51a30f3e51fe695dfb77da808a9e2afb8f980b1"
 REVIEWED_INDEPENDENT = "5b6273fac014e4308d207acb2633297af04f229d"
+REVIEWED_RECONCILER = "6c01d1bb2b726de1e18e6548bdd86eb50867ab77"
 
 def read(path: str) -> str:
     p = ROOT / path
@@ -157,10 +159,17 @@ else:
 def main() -> None:
     source = read(PUBLISHER)
     independent = read(INDEPENDENT)
+    reconciler = read(RECONCILER)
     for marker in (PUBLISHER, SELF, CHECKOUT, SETUP, "persist-credentials: false",
                    "contents: read", 'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("missing-evidence independent CI reachability missing: " + marker)
+    if RECONCILER not in source:
+        raise AssertionError("missing-evidence canonical reconciler not reached from publisher")
+    if blob(reconciler) != REVIEWED_RECONCILER:
+        raise AssertionError("missing-evidence complete reconciler Git blob drift")
+    if blob(reconciler + "\n# synthetic whole-source drift\n") == REVIEWED_RECONCILER:
+        raise AssertionError("missing-evidence reconciler source mutation accepted")
     if blob(source) != REVIEWED_PUBLISHER:
         raise AssertionError("missing-evidence complete publisher Git blob drift")
     if blob(independent) != REVIEWED_INDEPENDENT:
@@ -179,7 +188,7 @@ def main() -> None:
         except AssertionError:
             continue
         raise AssertionError("missing-evidence source mutation accepted: " + str(index))
-    print(f"PASS: missing-evidence publisher reviewed blob and {len(REQUIRED)} source negatives")
+    print(f"PASS: missing-evidence publisher/reconciler reviewed blobs and {len(REQUIRED)} source negatives")
     head = "a" * 40
     runtime(source, "Normalize read-only PR blocker authority", (
         ("pull_request", "so", "", head, True),

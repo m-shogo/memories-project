@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 import json
 import stat
 import tempfile
@@ -177,6 +179,10 @@ def main() -> int:
 
     require(STATUS.read_bytes() == canonical_bytes, "canonical production status was not restored")
     require(stat.S_IMODE(STATUS.stat().st_mode) == canonical_mode, "canonical production status mode was not restored")
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts/validate-memory-os-load-missing-source-negative.py")],
+        cwd=ROOT, check=True,
+    )
     print("PASS: load missing-evidence reconcile pins authorities, publishes atomically, preserves mode, and rolls back fail-closed")
     return 0
 
