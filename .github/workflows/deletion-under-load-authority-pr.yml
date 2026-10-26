@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/deletion-under-load.yml"
       - ".github/workflows/deletion-under-load-authority-pr.yml"
+      - ".github/workflows/reconcile-deletion-under-load-source.yml"
       - "contracts/operations/deletion-under-load-contract.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -24,6 +25,7 @@ on:
     paths:
       - ".github/workflows/deletion-under-load.yml"
       - ".github/workflows/deletion-under-load-authority-pr.yml"
+      - ".github/workflows/reconcile-deletion-under-load-source.yml"
       - "contracts/operations/deletion-under-load-contract.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"

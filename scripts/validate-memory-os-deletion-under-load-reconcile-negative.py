@@ -1260,6 +1260,7 @@ def exercise_deletion_load_authority_gate_source() -> None:
         '      - "services/import-api/internal/httpserver/deletion_under_load_test.go"',
         "python scripts/validate-memory-os-deletion-under-load-reconcile-negative.py",
         '      - "scripts/reconcile-memory-os-deletion-under-load-source.py"',
+        '      - ".github/workflows/reconcile-deletion-under-load-source.yml"',
     )
     def policy(value: str) -> None:
         for marker in required:
@@ -1273,6 +1274,8 @@ def exercise_deletion_load_authority_gate_source() -> None:
                 "deletion-load Go runner not in both CI path filters")
         require(value.count(required[8]) == 2,
                 "deletion-load source reconciler not in both CI path filters")
+        require(value.count(required[9]) == 2,
+                "deletion-load source publisher not in both CI path filters")
         require(value.count("    branches:" + chr(10) + "      - so") == 2,
                 "deletion-load CI branch scope drift")
         require("checkout@v4" not in value and "setup-python@v5" not in value,
@@ -1354,7 +1357,49 @@ def exercise_deletion_load_proof_log_cleanup() -> None:
     print("PASS: deletion-load exact publisher trap removes private log on failure")
 
 
+
+def exercise_deletion_load_source_reconcile_workflow() -> None:
+    """Pin the source-writing workflow and require branch/CAS authority."""
+    workflow = (ROOT / ".github/workflows/reconcile-deletion-under-load-source.yml").read_text(encoding="utf-8")
+    required = (
+        "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
+        'test "$GITHUB_REF" = "refs/heads/so"',
+        'test "$(git rev-parse HEAD)" = "' + chr(36) + '{{ github.sha }}"',
+        'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then',
+        "permissions:" + chr(10) + "  contents: read",
+        "    permissions:" + chr(10) + "      contents: write",
+    )
+    def policy(value: str) -> None:
+        for marker in required:
+            require(marker in value, "deletion-load source publisher authority drift: " + marker[:65])
+        for marker in required[:3]:
+            require(value.count(marker) == 2,
+                    "deletion-load source publisher Actions count drift")
+        require(value.count("uses: actions/checkout@") == 2 and
+                value.count("uses: actions/setup-python@") == 2 and
+                value.count("uses: actions/setup-go@") == 2,
+                "deletion-load source publisher floating or duplicate Action")
+        require(value.count("    branches:" + chr(10) + "      - so") == 2,
+                "deletion-load source publisher branch scope drift")
+        require(value.count("git push origin HEAD:so") == 1,
+                "deletion-load source publisher push target drift")
+    policy(workflow)
+    for marker in required:
+        mutated = workflow.replace(marker, "SYNTHETIC_UNREVIEWED", 1)
+        require(mutated != workflow, "deletion-load source publisher mutation unreachable")
+        try:
+            policy(mutated)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("deletion-load source publisher accepted removed authority")
+    print("PASS: deletion-load source publisher immutable Actions, branch and CAS negatives")
+
+
 def main() -> int:
+    exercise_deletion_load_source_reconcile_workflow()
     exercise_deletion_load_proof_log_cleanup()
     exercise_deletion_load_authority_gate_source()
     exercise_deletion_load_runner_source_binding()
