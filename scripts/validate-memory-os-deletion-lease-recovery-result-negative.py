@@ -36,6 +36,20 @@ def main() -> int:
         if validator.load(good) != {"safe": True}:
             raise RuntimeError("lease JSON positive control failed")
 
+        boundary = inside / "boundary.json"
+        boundary.write_bytes(b'{"padding":"' + b"x" * (validator.MAX_JSON_BYTES - 14) + b'"}')
+        if len(boundary.read_bytes()) > validator.MAX_JSON_BYTES or not validator.load(boundary)["padding"]:
+            raise RuntimeError("lease bounded JSON positive failed")
+        oversized = inside / "oversized.json"
+        oversized.write_bytes(b'{"padding":"' + b"x" * validator.MAX_JSON_BYTES + b'"}')
+        try:
+            validator.load(oversized)
+        except validator.Fail as exc:
+            if "exceeds reviewed read limit" not in str(exc):
+                raise RuntimeError("lease oversized JSON wrong rejection") from None
+        else:
+            raise RuntimeError("lease accepted oversized JSON")
+
         for label, raw in (
             ("nested duplicate", '{"outer":{"key":1,"key":2}}'),
             ("NaN", '{"value":NaN}'),
