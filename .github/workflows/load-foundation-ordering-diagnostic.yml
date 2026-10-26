@@ -1,0 +1,102 @@
+name: Load Foundation Ordering Diagnostic (Local Only)
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - "scripts/diagnose-memory-os-load-foundation-ordering-negative.py"
+      - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
+      - ".github/workflows/load-foundation-ordering-diagnostic.yml"
+  pull_request:
+    branches:
+      - so
+    paths:
+      - "scripts/diagnose-memory-os-load-foundation-ordering-negative.py"
+      - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
+      - ".github/workflows/load-foundation-ordering-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'so')
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Require exact clean diagnostic source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+            test "${GITHUB_BASE_REF:-}" = "so"
+            expected="$PR_HEAD_SHA"
+          else
+            test "${GITHUB_EVENT_NAME:-}" = "push"
+            test "${GITHUB_REF:-}" = "refs/heads/so"
+            expected="$GITHUB_SHA"
+          fi
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Execute bounded read-only ordering subcases
+        run: |
+          set -euo pipefail
+          log="$(mktemp)"
+          report="$(mktemp)"
+          trap 'rm -f "$log" "$report"' EXIT
+          python scripts/diagnose-memory-os-load-foundation-ordering-negative.py --self-test > "$log" 2>&1
+          set +e
+          DIAGNOSTIC_RESULT_PATH="$report" python scripts/diagnose-memory-os-load-foundation-ordering-negative.py > "$log" 2>&1
+          code=$?
+          set -e
+          python - "$report" "$code" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          try:
+              report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          except (OSError, ValueError):
+              raise SystemExit("bounded ordering diagnostic missing or invalid")
+          stages = {
+              "unknown", "short-preservation", "short-rollback", "capacity-rollback",
+              "controlled-preservation", "controlled-rollback",
+              "deletion-preservation", "deletion-rollback",
+          }
+          classes = {
+              "UNKNOWN", "NegativeFailure", "ReconcileFailure", "Fail",
+              "AssertionError", "RuntimeError", "SystemExit", "OSError", "KeyError", "ValueError",
+          }
+          if (report.get("schemaVersion") != "memory-os-load-foundation-ordering-diagnostic.v1"
+                  or report.get("classification") != "LOCAL_SYNTHETIC_DIAGNOSTIC"
+                  or report.get("subcase") not in stages
+                  or report.get("exceptionClass") not in classes
+                  or report.get("diagnosticOnly") is not True
+                  or report.get("productionEvidence") is not False
+                  or report.get("productionReady") is not False
+                  or report.get("leakProof") is not False
+                  or report.get("productionDecision") != "NO_GO"
+                  or type(report.get("protectedDrift")) is not bool):
+              raise SystemExit("bounded ordering diagnostic schema or nonpromotion drift")
+          expected = "PASS" if sys.argv[2] == "0" else "FAIL"
+          if report.get("result") != expected:
+              raise SystemExit("bounded ordering diagnostic exit/result mismatch")
+          print("LOCAL_ONLY ordering diagnostic: " + report["subcase"] + " / " + report["exceptionClass"])
+          print("protected authority drift: " + str(report["protectedDrift"]).lower())
+          PY
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+          test "$code" -eq 0
