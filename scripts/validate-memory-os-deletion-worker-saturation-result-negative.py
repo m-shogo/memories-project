@@ -21,6 +21,35 @@ def main() -> int:
     spec.loader.exec_module(validator)
     contract = validator.load(validator.CONTRACT_PATH)
     validator.validate_contract(contract)
+    def reject_contract(label, altered, expected):
+        try:
+            validator.validate_contract(altered)
+        except validator.Fail as exc:
+            if expected not in str(exc):
+                raise RuntimeError(f"worker saturation contract {label} rejected by wrong gate") from None
+        else:
+            raise RuntimeError(f"worker saturation contract accepted {label}")
+
+    for key in ("deletingAccounts", "workerCount", "maxAccountsPerWorker",
+                "controlPreviewRequests", "controlPreviewConcurrency"):
+        altered = copy.deepcopy(contract)
+        altered[key] = float(contract[key])
+        reject_contract("float " + key, altered, "contract count drift")
+    for key, expected in contract["successCriteria"].items():
+        altered = copy.deepcopy(contract)
+        altered["successCriteria"][key] = int(expected) if type(expected) is bool else float(expected)
+        reject_contract("typed criterion " + key, altered, "success criterion drift")
+    for label in ("missing", "extra"):
+        altered = copy.deepcopy(contract)
+        if label == "missing":
+            del altered["successCriteria"]["workerReceiptCount"]
+        else:
+            altered["successCriteria"]["unreviewedAuthority"] = True
+        reject_contract(label + " criterion", altered, "success criteria keys drift")
+    for key in ("resultPath", "runner", "validator", "reconcile", "workflow"):
+        altered = copy.deepcopy(contract)
+        altered[key] = "docs/fixtures/unreviewed-authority.json"
+        reject_contract("source " + key, altered, "contract source binding drift")
     canonical = validator.load(validator.RESULT_PATH)
     validator.validate_result(contract, None)
     with tempfile.TemporaryDirectory(prefix="worker-saturation-reader-outside-") as outside_temp:

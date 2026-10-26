@@ -80,11 +80,48 @@ def validate_contract(contract: dict[str, Any]) -> None:
     require(contract.get("resultsSchemaVersion") == "memory-os-deletion-worker-saturation-results.v1", "results schema drift")
     require(contract.get("scenarioId") == "multi-account-deletion-worker-saturation-local-dependencies", "scenario drift")
     require(contract.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "dependency mode drift")
-    require(contract.get("deletingAccounts") == 24, "deleting account count drift")
-    require(contract.get("workerCount") == 4, "worker count drift")
-    require(contract.get("maxAccountsPerWorker") == 6, "worker claim bound drift")
-    require(contract.get("controlPreviewRequests") == 400, "control request count drift")
-    require(contract.get("controlPreviewConcurrency") == 16, "control concurrency drift")
+    for key, expected in (
+        ("deletingAccounts", 24),
+        ("workerCount", 4),
+        ("maxAccountsPerWorker", 6),
+        ("controlPreviewRequests", 400),
+        ("controlPreviewConcurrency", 16),
+    ):
+        require(type(contract.get(key)) is int and contract[key] == expected,
+                f"contract count drift: {key}")
+
+    expected_criteria = {
+        "allDeletionRequestsAccepted": True,
+        "deletionEpoch": 2,
+        "workerErrors": 0,
+        "workerReceiptCount": 24,
+        "uniqueWorkerReceiptCount": 24,
+        "duplicateWorkerReceiptCount": 0,
+        "controlPreview2xx": 400,
+        "controlPreview5xx": 0,
+        "controlPreviewTransportErrors": 0,
+        "finalDeletionPending": 0,
+        "finalDeletionStuck": 0,
+        "finalOwnedRowCount": 0,
+        "allDeletionTombstonesEpoch2": True,
+        "productionEvidence": False,
+    }
+    criteria = contract.get("successCriteria")
+    require(isinstance(criteria, dict) and set(criteria) == set(expected_criteria),
+            "success criteria keys drift")
+    for key, expected in expected_criteria.items():
+        actual = criteria[key]
+        require(type(actual) is type(expected) and actual == expected,
+                f"success criterion drift: {key}")
+
+    for field, expected in (
+        ("resultPath", "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"),
+        ("runner", "services/import-api/internal/httpserver/deletion_worker_saturation_test.go"),
+        ("validator", "scripts/validate-memory-os-deletion-worker-saturation.py"),
+        ("reconcile", "scripts/reconcile-memory-os-deletion-worker-saturation.py"),
+        ("workflow", ".github/workflows/deletion-worker-saturation.yml"),
+    ):
+        require(contract.get(field) == expected, f"contract source binding drift: {field}")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")
