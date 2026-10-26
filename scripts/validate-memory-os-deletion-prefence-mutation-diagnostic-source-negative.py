@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-sourc
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-REVIEWED_VALIDATOR = "7c83e99f1278a4e2f7b4790beb61f064674d36a8"
+REVIEWED_VALIDATOR = "3f1cc3f7274a18db0cee18bd08162dad63b99ad5"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
@@ -494,6 +494,23 @@ def typed_criteria_runtime():
     validator.validate_result(contract, None)
     canonical = validator.load(validator.RESULT_PATH)
     cases = 0
+
+    # A local mutation proof contract cannot acquire implicit production or human approval authority.
+    for label, mutate in (
+        ("productionReady injection", lambda d: d.update({"productionReady": True})),
+        ("human approval injection", lambda d: d.update({"humanPromotionApproved": True})),
+        ("missing description", lambda d: d.pop("description")),
+        ("missing result schema", lambda d: d.pop("resultsSchemaVersion")),
+    ):
+        candidate = copy.deepcopy(contract)
+        mutate(candidate)
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence mutation accepted contract top-level " + label)
+        cases += 1
 
     # Exact reviewed contract identity must not be replaceable by schema/scenario aliases.
     for label, value in (("missing", None), ("substitute", "synthetic.unreviewed"), ("non-string", True)):
