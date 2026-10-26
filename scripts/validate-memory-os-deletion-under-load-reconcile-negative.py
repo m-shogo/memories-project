@@ -1398,7 +1398,36 @@ def exercise_deletion_load_source_reconcile_workflow() -> None:
     print("PASS: deletion-load source publisher immutable Actions, branch and CAS negatives")
 
 
+
+def exercise_deletion_load_diagnostic_noop_guard() -> None:
+    """Keep repeated local failure diagnostics idempotent without hiding test failure."""
+    workflow = (ROOT / ".github/workflows/deletion-under-load.yml").read_text(encoding="utf-8")
+    start = "      - name: Record privacy-safe diagnostic"
+    end = "      - name: Enforce checkpoint success"
+    require(workflow.count(start) == 1 and workflow.count(end) == 1,
+            "deletion-load diagnostic/enforcement step authority drift")
+    diagnostic = workflow.split(start, 1)[1].split(end, 1)[0]
+    required = (
+        "git add docs/fixtures/memory-os-operability/deletion-under-load-diagnostic.last.json",
+        "if git diff --cached --quiet; then",
+        'echo "Deletion-load diagnostic already recorded; no new evidence."',
+        "exit 0",
+        "git commit -m \"test(load): record deletion-under-load diagnostic\"",
+    )
+    positions = [diagnostic.find(marker) for marker in required]
+    require(all(index >= 0 for index in positions) and positions == sorted(positions),
+            "deletion-load diagnostic no-op guard is missing or out of order")
+    require('run: test "${DELETION_LOAD_EXIT_CODE}" = "0"' in workflow,
+            "deletion-load failure enforcement was weakened")
+    for marker in required:
+        mutated = diagnostic.replace(marker, "SYNTHETIC_UNREVIEWED", 1)
+        require(mutated != diagnostic and marker not in mutated,
+                "deletion-load no-op source negative ineffective")
+    print("PASS: deletion-load diagnostic no-op is ordered before commit and failure remains enforced")
+
+
 def main() -> int:
+    exercise_deletion_load_diagnostic_noop_guard()
     exercise_deletion_load_source_reconcile_workflow()
     exercise_deletion_load_proof_log_cleanup()
     exercise_deletion_load_authority_gate_source()
