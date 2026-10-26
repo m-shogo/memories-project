@@ -747,6 +747,15 @@ def verify_ramp_validator_json_path_negatives() -> None:
             good.write_text('{"safe":true}', encoding="utf-8")
             if validator.load(good) != {"safe": True}:
                 raise RuntimeError("canonical ramp in-repository JSON positive read failed")
+            giant = inside / "oversized-integer.json"
+            giant.write_text('{"value":' + ("9" * 5000) + '}', encoding="utf-8")
+            try:
+                validator.load(giant)
+            except validator.ValidationFailure as exc:
+                if not exc.__suppress_context__:
+                    raise RuntimeError("canonical ramp oversized integer disclosed parser details")
+            else:
+                raise RuntimeError("canonical ramp reader accepted oversized integer")
             linked_file = inside / "linked.json"
             linked_file.symlink_to(canary)
             linked_parent = inside / "linked-parent"
@@ -768,7 +777,7 @@ def verify_ramp_validator_json_path_negatives() -> None:
                     raise RuntimeError(f"canonical ramp reader accepted {label}")
         if canary.read_text(encoding="utf-8") != '{"synthetic":true}':
             raise RuntimeError("canonical ramp reader changed external canary")
-    print("PASS: canonical ramp JSON reader path positives and 5 negatives")
+    print("PASS: canonical ramp JSON reader path positives and 6 negatives")
 
 
 def main() -> int:

@@ -1274,7 +1274,7 @@ def run_repeatability_nonfinite_negatives() -> None:
     # Malformed and undecodable JSON must produce only bounded Fail diagnostics.
     with tempfile.TemporaryDirectory(prefix="repeatability-malformed-json-", dir=ROOT) as temp:
         malformed = Path(temp) / "malformed.json"
-        for payload in (b'{"broken":', b'{"SYNTHETIC_SECRET_CANARY":', b"\xff\xfe"):
+        for payload in (b'{"broken":', b'{"SYNTHETIC_SECRET_CANARY":', b"\xff\xfe", b'{"huge":' + b"9" * 5000 + b"}"):
             malformed.write_bytes(payload)
             for module in (analyzer, validator):
                 try:
@@ -1303,7 +1303,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator canonical ramp, nonfinite, malformed JSON, integrity, path and signal negatives (46 cases)")
+    print("PASS: repeatability analyzer/validator canonical ramp, nonfinite, malformed JSON, integrity, path and signal negatives (48 cases)")
 
 
 

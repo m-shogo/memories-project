@@ -74,7 +74,7 @@ def load(path: Path) -> dict[str, Any]:
             parse_float=parse_finite_float,
             object_pairs_hook=reject_duplicate_json_keys,
         )
-    except (OSError, UnicodeError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
         raise Fail("repeatability JSON unreadable or invalid") from None
     require(isinstance(value, dict), f"root must be object: {path}")
     return value

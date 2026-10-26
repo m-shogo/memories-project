@@ -66,7 +66,7 @@ def load(path: Path) -> dict[str, Any]:
                            parse_constant=reject_nonfinite_constant,
                            parse_float=parse_finite_float,
                            object_pairs_hook=reject_duplicate_json_keys)
-    except (OSError, UnicodeError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
         raise ValidationFailure("ramp JSON unreadable or invalid") from None
     require(isinstance(value, dict), "ramp JSON root must be object")
     return value
