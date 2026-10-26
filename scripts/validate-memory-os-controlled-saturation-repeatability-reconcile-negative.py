@@ -1016,12 +1016,57 @@ def run_repeatability_analyzer_path_atomic_negatives() -> None:
     print("PASS: repeatability analyzer run-path/atomic/output authority negatives (14 cases)")
 
 
+
+def run_repeatability_contract_policy_negatives() -> None:
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+    spec = importlib.util.spec_from_file_location("repeatability_contract_policy_negative", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("repeatability policy validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    original_load = validator.load
+    contract = original_load(validator.CONTRACT)
+    with contextlib.redirect_stdout(io.StringIO()):
+        if validator.main() != 0:
+            raise RuntimeError("repeatability policy positive control failed")
+    cases = []
+    for field in ("independentGitHubHostedRunner", "independentPostgreSQLService", "independentMinIOService",
+                  "sameExactSourceCommit", "syntheticDataOnly"):
+        cases.append(("requiredRunBoundaries", field, False))
+    for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies"):
+        cases.append(("requiredRunBoundaries", field, True))
+    for field in ("actualFailureSignalTakesPrecedence", "degradationKneeRequiresPoolContention",
+                  "singleRunPromotionForbidden", "missingSignalFailsClosed"):
+        cases.append(("signalPolicy", field, False))
+    cases.append(("signalPolicy", "poolContentionAloneIsSignal", True))
+    cases.append(("promotionBoundary", "repeatableLocalDegradationSignalMayBecomeTrue", False))
+    for field in ("capacityBoundaryEstablished", "operationalThresholdApproved",
+                  "independentReviewCompleted", "productionReady"):
+        cases.append(("readiness", field, True))
+    for section, field, value in cases:
+        fixture = copy.deepcopy(contract)
+        fixture[section][field] = value
+        validator.load = lambda path: fixture if path == validator.CONTRACT else original_load(path)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    validator.main()
+                except validator.Fail:
+                    pass
+                else:
+                    raise RuntimeError(f"repeatability policy weakening accepted: {section}.{field}")
+        finally:
+            validator.load = original_load
+    print(f"PASS: repeatability required run-boundary/signal-policy/readiness negatives ({len(cases)} cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
     run_authority_path_negatives(module)
     run_repeatability_runref_path_negatives()
     run_repeatability_matrix_boundary_negatives()
+    run_repeatability_contract_policy_negatives()
     run_repeatability_nonfinite_negatives()
     run_repeatability_analyzer_path_atomic_negatives()
     run_prewrite_failure(module)
