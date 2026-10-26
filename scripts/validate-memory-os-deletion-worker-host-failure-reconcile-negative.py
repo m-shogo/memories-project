@@ -336,10 +336,67 @@ def main() -> int:
         require(stat.S_IMODE(target.stat().st_mode) == 0o640, "atomic host-failure writer changed file mode")
         require(not list(target.parent.glob(f".{target.name}.*.tmp")), "atomic host-failure writer left temp residue")
 
+        new_target = Path(tmp) / "new-authority.json"
+        module.atomic_write_bytes(new_target, b"new")
+        require(new_target.read_bytes() == b"new" and stat.S_IMODE(new_target.stat().st_mode) == 0o600,
+                "new host-failure atomic authority mode/payload drift")
+
+        outside = Path(tmp) / "outside"
+        outside.mkdir()
+        canary = outside / "canary.json"
+        canary.write_bytes(b"SYNTHETIC_SECRET_CANARY")
+        direct_link = Path(tmp) / "direct-link.json"
+        direct_link.symlink_to(canary)
+        parent_link = Path(tmp) / "linked-parent"
+        parent_link.symlink_to(outside, target_is_directory=True)
+        directory = Path(tmp) / "directory.json"
+        directory.mkdir()
+        for label, unsafe in (
+            ("symlink target", direct_link),
+            ("symlink ancestor", parent_link / "canary.json"),
+            ("directory target", directory),
+            ("missing parent", Path(tmp) / "missing" / "authority.json"),
+        ):
+            try:
+                module.atomic_write_bytes(unsafe, b"unsafe")
+            except module.Fail as exc:
+                require("host-failure atomic " in str(exc) and "SYNTHETIC_SECRET" not in str(exc),
+                        "host-failure atomic path rejection diagnostic drift: " + label)
+            else:
+                raise AssertionError("host-failure atomic helper accepted unsafe path: " + label)
+            require(canary.read_bytes() == b"SYNTHETIC_SECRET_CANARY",
+                    "host-failure atomic helper mutated outside canary: " + label)
+            require(not list(Path(tmp).rglob(".*.tmp")),
+                    "host-failure atomic helper left temp residue: " + label)
+
+        for label in ("replace", "fsync"):
+            target.write_bytes(b"before-fault")
+            os.chmod(target, 0o640)
+            original = getattr(module.os, label)
+
+            def reject(*args, **kwargs):
+                raise OSError("SYNTHETIC_SECRET_ATOMIC_FAILURE")
+
+            setattr(module.os, label, reject)
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"after-fault")
+                except OSError:
+                    pass
+                else:
+                    raise AssertionError("host-failure atomic helper accepted " + label + " failure")
+            finally:
+                setattr(module.os, label, original)
+            require(target.read_bytes() == b"before-fault"
+                    and stat.S_IMODE(target.stat().st_mode) == 0o640,
+                    "host-failure atomic " + label + " failure mutated authority")
+            require(not list(Path(tmp).rglob(".*.tmp")),
+                    "host-failure atomic " + label + " failure left temp residue")
+
     expect_rollback_failure_exhaustive(module)
     expect_secret_free_prewrite_and_validator_failures(module)
     assert_unchanged(snapshots(module))
-    print("PASS: host-failure reconcile authority transaction, mode preservation, and secret-free exhaustive rollback diagnostics are fail-closed")
+    print("PASS: host-failure reconcile authority transaction, eight atomic path/mode/rollback cases, and secret-free exhaustive rollback diagnostics are fail-closed")
     return 0
 
 
