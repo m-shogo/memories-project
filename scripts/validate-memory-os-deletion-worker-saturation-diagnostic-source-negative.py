@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -13,8 +14,15 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-worker-saturation.yml"
 INDEPENDENT = ".github/workflows/deletion-worker-saturation-diagnostic-source-negative.yml"
 SCRIPT = "scripts/validate-memory-os-deletion-worker-saturation-diagnostic-source-negative.py"
+RECONCILER = "scripts/reconcile-memory-os-deletion-worker-saturation.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py"
+RECONCILE_VALIDATOR = "scripts/validate-memory-os-deletion-worker-saturation.py"
+RECONCILE_CONTRACT = "contracts/operations/deletion-worker-saturation-contract.v1.json"
+RECONCILE_RESULT = "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
+REVIEWED_RECONCILER = "2f908ab01991d0b5d9fed85091c257cd1c2484e9"
+REVIEWED_RECONCILE_NEGATIVE = "68ab99b467748bf35891ce0378d96a672be376ce"
 REVIEWED = "a671ebaddffe34d27b9b152044e2f510befe3f61"
-REVIEWED_INDEPENDENT = "9ae7c14c538f865bb9ce67c1d3560fbd627eca45"
+REVIEWED_INDEPENDENT = "9146b608779427b07ddb92e59108b5781d1c5d37"
 TARGET = "docs/fixtures/memory-os-operability/deletion-worker-saturation-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -191,6 +199,30 @@ def identity_runtime(ci, title):
 
 
 
+def reconcile_runtime():
+    # The reconciler negative mutates its canonical fixtures; execute only in a disposable copy.
+    for path, reviewed in ((RECONCILER, REVIEWED_RECONCILER),
+                           (RECONCILE_NEGATIVE, REVIEWED_RECONCILE_NEGATIVE)):
+        if blob(source(path)) != reviewed:
+            raise AssertionError("unreviewed saturation reconcile source: " + path)
+    with tempfile.TemporaryDirectory(prefix="worker-saturation-reconcile-negative-") as tmp:
+        root = Path(tmp)
+        for path in (RECONCILER, RECONCILE_NEGATIVE, RECONCILE_VALIDATOR,
+                     RECONCILE_CONTRACT, RECONCILE_RESULT):
+            original = ROOT / path
+            if original.is_symlink() or not original.is_file():
+                raise AssertionError("saturation reconcile fixture missing or symlinked: " + path)
+            destination = root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(original, destination)
+        result = subprocess.run([sys.executable, str(root / RECONCILE_NEGATIVE)],
+                                cwd=root, capture_output=True, text=True, timeout=45, check=False)
+        if result.returncode != 0 or "secret-free validator/rollback diagnostics" not in result.stdout:
+            raise AssertionError("disposable saturation reconcile negative failed: "
+                                 + result.stdout[-500:] + result.stderr[-500:])
+    print("PASS: source-bound disposable saturation reconcile validator/rollback negatives")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -201,12 +233,16 @@ def main():
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
+    for path in (RECONCILER, RECONCILE_NEGATIVE):
+        if independent.count('      - "' + path + '"') != 2:
+            raise AssertionError("saturation reconcile CI path trigger missing: " + path)
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
     identity_runtime(independent, "Require exact clean worker saturation diagnostic source")
     policy(publisher)
     mutations(publisher)
     writer_runtime(publisher)
+    reconcile_runtime()
     print("PASS: worker saturation exact-source read-only diagnostic proof; production evidence generated: false; production decision changed: false")
 
 
