@@ -210,7 +210,7 @@ def strict_json_parser_negative() -> None:
 
 def strict_json_reader_path_negative() -> None:
     """Reject external and linked JSON before any direct reader can parse it."""
-    with tempfile.TemporaryDirectory(prefix="local-long-soak-reader-outside-") as outside_temp, \\
+    with tempfile.TemporaryDirectory(prefix="local-long-soak-reader-outside-") as outside_temp, \
          tempfile.TemporaryDirectory(prefix=".local-long-soak-reader-", dir=ROOT) as inside_temp:
         outside, inside = Path(outside_temp), Path(inside_temp)
         canary = outside / "external.json"
