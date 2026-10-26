@@ -340,10 +340,15 @@ def main() -> int:
             try:
                 atomic_write_bytes(path, payload)
             except BaseException as rollback_exc:
-                rollback_errors.append(f"{path.name}: {rollback_exc}")
+                rollback_errors.append(f"{path.name}: {type(rollback_exc).__name__}")
         if rollback_errors:
-            raise RuntimeError(f"{exc}; rollback incomplete: {'; '.join(rollback_errors)}") from exc
-        raise
+            raise RuntimeError(
+                "advanced deletion post-write validation failed: " + type(exc).__name__
+                + "; rollback incomplete: " + "; ".join(rollback_errors)
+            ) from None
+        raise RuntimeError(
+            "advanced deletion post-write validation failed: " + type(exc).__name__
+        ) from None
 
     print("Memory OS advanced deletion evidence reconciled")
     print("Preview pre-fence in-flight linearization: true")

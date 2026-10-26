@@ -239,8 +239,11 @@ def main() -> int:
 
         try:
             module.main()
-        except subprocess.CalledProcessError:
-            pass
+        except RuntimeError as exc:
+            if ("advanced deletion post-write validation failed: CalledProcessError" not in str(exc)
+                    or "returned non-zero exit status" in str(exc)
+                    or not exc.__suppress_context__):
+                raise AssertionError("advanced deletion leaked primary validator exception") from exc
         else:
             raise AssertionError("aggregate operability rejection must fail advanced deletion reconcile")
 
@@ -288,12 +291,12 @@ def main() -> int:
                 module.main()
             except RuntimeError as exc:
                 diagnostic = str(exc)
-                if "returned non-zero exit status 1" not in diagnostic:
-                    raise AssertionError(f"primary validator diagnostic was lost: {diagnostic}") from exc
-                if "rollback incomplete" not in diagnostic:
-                    raise AssertionError(f"rollback incompleteness was not diagnosed: {diagnostic}") from exc
-                if "synthetic advanced deletion rollback failure" not in diagnostic:
-                    raise AssertionError(f"rollback failure diagnostic was lost: {diagnostic}") from exc
+                if "advanced deletion post-write validation failed: CalledProcessError" not in diagnostic:
+                    raise AssertionError("primary validator class was lost") from exc
+                if "rollback incomplete" not in diagnostic or "OSError" not in diagnostic:
+                    raise AssertionError("rollback incompleteness/class was lost") from exc
+                if "synthetic" in diagnostic or "returned non-zero exit status" in diagnostic or not exc.__suppress_context__:
+                    raise AssertionError("untrusted primary/rollback exception text leaked") from exc
             else:
                 raise AssertionError("rollback failure must fail advanced deletion reconcile")
         finally:
@@ -308,7 +311,7 @@ def main() -> int:
         if list(root.glob(".*.tmp")):
             raise AssertionError("rollback failure path left temporary residue")
 
-    print("PASS: advanced deletion evidence reconcile is atomic, mode-preserving, rollback-all, and diagnostic-preserving")
+    print("PASS: advanced deletion evidence reconcile is atomic, mode-preserving, rollback-all, and secret-free")
     return 0
 
 
