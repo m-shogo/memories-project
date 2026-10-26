@@ -783,6 +783,50 @@ def exercise_reconciler_json_reader(module: ModuleType) -> None:
 
 
 
+def exercise_deletion_load_numeric_boundary() -> None:
+    """Run the standalone numeric protections through the actual CI-reachable validator."""
+    path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_numeric_reachable", path)
+    require(spec is not None and spec.loader is not None, "numeric validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    require(validator.positive_number(1.25, "synthetic-positive") == 1.25,
+            "deletion-load positive numeric control failed")
+    for label, value in (
+        ("positive infinity", float("inf")),
+        ("negative infinity", float("-inf")),
+        ("NaN", float("nan")),
+        ("huge integer", 10 ** 500),
+        ("boolean", True),
+        ("zero", 0),
+        ("negative", -1),
+    ):
+        try:
+            validator.positive_number(value, "synthetic-negative")
+        except validator.ValidationFailure as exc:
+            require("SYNTHETIC_SECRET_DO_NOT_LOG" not in str(exc),
+                    f"numeric rejection leaked synthetic secret: {label}")
+        else:
+            raise RuntimeError(f"deletion-load numeric accepted {label}")
+    with tempfile.TemporaryDirectory(prefix=".deletion-load-numeric-reachable-", dir=ROOT) as tmp:
+        fixture = Path(tmp) / "synthetic.json"
+        for label, raw in (
+            ("NaN", '{"value": NaN}'),
+            ("Infinity", '{"value": Infinity}'),
+            ("negative Infinity", '{"value": -Infinity}'),
+            ("float overflow", '{"value": 1e999}'),
+        ):
+            fixture.write_text(raw, encoding="utf-8")
+            try:
+                validator.load(fixture)
+            except validator.ValidationFailure as exc:
+                require("SYNTHETIC_SECRET_DO_NOT_LOG" not in str(exc),
+                        f"JSON numeric rejection leaked synthetic secret: {label}")
+            else:
+                raise RuntimeError(f"deletion-load JSON accepted {label}")
+    print("PASS: deletion-under-load numeric positive, 7 typed and 4 JSON nonfinite negatives")
+
+
 def exercise_deletion_load_utc_seconds_boundary() -> None:
     """Reject fractional result timestamps through the actual CI-reachable validator."""
     validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
@@ -1128,6 +1172,7 @@ def exercise_validator_command_authority(module: ModuleType) -> None:
 
 def main() -> int:
     exercise_deletion_load_json_reader()
+    exercise_deletion_load_numeric_boundary()
     exercise_deletion_load_optional_result_path()
     exercise_deletion_load_utc_seconds_boundary()
     exercise_deletion_load_batch_accounting()
