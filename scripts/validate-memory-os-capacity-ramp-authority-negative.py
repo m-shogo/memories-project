@@ -84,6 +84,97 @@ def verify_atomic_replace_failure(module) -> None:
 
 
 
+
+def verify_capacity_strict_json_and_paths() -> None:
+    """Use the actual reader and CLI contract binding with disposable JSON canaries."""
+    validator_path = ROOT / "scripts/validate-memory-os-capacity-ramp.py"
+    spec = importlib.util.spec_from_file_location("capacity_strict_reader_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("capacity strict reader import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    contract = validator.load(validator.CONTRACT_PATH)
+    if contract.get("schemaVersion") != "memory-os-capacity-ramp.v1":
+        raise RuntimeError("capacity contract positive read failed")
+    canonical = validator.load(ROOT / contract["resultPath"])
+    if canonical.get("schemaVersion") != "memory-os-capacity-ramp-results.v1":
+        raise RuntimeError("capacity result positive read failed")
+    with tempfile.TemporaryDirectory(prefix="capacity-reader-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_text('{"synthetic":true}', encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".capacity-reader-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            good = inside / "good.json"
+            good.write_text('{"safe":true}', encoding="utf-8")
+            if validator.load(good) != {"safe": True}:
+                raise RuntimeError("capacity reader synthetic positive failed")
+            malformed = (
+                ("nested duplicate", '{"a":{"key":1,"key":2}}'),
+                ("nonfinite constant", '{"value":NaN}'),
+                ("nonfinite exponent", '{"value":1e999}'),
+                ("oversized integer", '{"value":' + "9" * 5000 + '}'),
+                ("nonobject root", '["safe"]'),
+                ("synthetic secret malformed", '{"SYNTHETIC_CAPACITY_SECRET":'),
+            )
+            for label, raw in malformed:
+                path = inside / (label.replace(" ", "-") + ".json")
+                path.write_text(raw, encoding="utf-8")
+                try:
+                    validator.load(path)
+                except validator.ValidationFailure as exc:
+                    if "SYNTHETIC_CAPACITY_SECRET" in str(exc):
+                        raise RuntimeError("capacity reader reflected synthetic secret") from None
+                else:
+                    raise RuntimeError(f"capacity reader accepted {label}")
+            invalid_utf8 = inside / "invalid-utf8.json"
+            invalid_utf8.write_bytes(b'{"value":"\\xff"}'.replace(b'\\xff', bytes([255])))
+            try:
+                validator.load(invalid_utf8)
+            except validator.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError("capacity reader accepted invalid UTF-8")
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            directory = inside / "directory.json"
+            directory.mkdir()
+            for label, unsafe in (
+                ("external file", canary),
+                ("direct symlink", linked_file),
+                ("symlinked ancestor", linked_parent / "canary.json"),
+                ("directory target", directory),
+                ("missing file", inside / "missing.json"),
+            ):
+                try:
+                    validator.load(unsafe)
+                except validator.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError(f"capacity reader accepted {label}")
+            contract_path = inside / "altered-contract.json"
+            altered = copy.deepcopy(contract)
+            altered["resultPath"] = str(canary)
+            contract_path.write_text(json.dumps(altered), encoding="utf-8")
+            original_contract = validator.CONTRACT_PATH
+            validator.CONTRACT_PATH = contract_path
+            try:
+                try:
+                    validator.main()
+                except validator.ValidationFailure as exc:
+                    if str(exc) != "capacity ramp result path drift":
+                        raise RuntimeError("capacity result path rejected by wrong gate") from None
+                else:
+                    raise RuntimeError("capacity validator accepted external resultPath")
+            finally:
+                validator.CONTRACT_PATH = original_contract
+        if canary.read_text(encoding="utf-8") != '{"synthetic":true}':
+            raise RuntimeError("capacity strict reader changed external canary")
+    print("PASS: capacity strict JSON positive and 13 malformed/path negatives plus resultPath binding")
+
+
 def verify_capacity_numeric_boundary() -> None:
     """Exercise the real capacity validator with finite positive and nonfinite negatives."""
     validator_path = ROOT / "scripts/validate-memory-os-capacity-ramp.py"
@@ -208,6 +299,7 @@ def verify_capacity_batch_accounting() -> None:
 
 def main() -> int:
     module = load_module()
+    verify_capacity_strict_json_and_paths()
     verify_capacity_numeric_boundary()
     verify_capacity_timestamp_semantics()
     verify_capacity_batch_accounting()
