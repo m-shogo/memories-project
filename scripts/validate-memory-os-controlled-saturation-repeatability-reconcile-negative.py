@@ -555,6 +555,87 @@ def run_repeatability_source_identity_negatives() -> None:
     print("PASS: repeatability ramp and aggregate immutable source identity shell runtime (18 cases)")
 
 
+
+def run_repeatability_authority_identity_negatives() -> None:
+    workflow = (ROOT / ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml").read_text(encoding="utf-8")
+    checkout = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+    setup = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+    if (workflow.count(checkout) != 2 or workflow.count(setup) != 2
+        or "checkout@v4" in workflow or "setup-python@v5" in workflow):
+        raise RuntimeError("repeatability authority immutable Actions drift")
+    def extract(name: str) -> str:
+        marker = "      - name: " + name + "\n"
+        if workflow.count(marker) != 1:
+            raise RuntimeError("repeatability authority source step missing")
+        start = workflow.index("        run: |\n", workflow.index(marker)) + len("        run: |\n")
+        end = workflow.find("\n      - ", start)
+        if end < 0:
+            raise RuntimeError("repeatability authority source step boundary missing")
+        lines = workflow[start:end].splitlines()
+        if not lines or any(line and not line.startswith("          ") for line in lines):
+            raise RuntimeError("repeatability authority source step indentation drift")
+        return "\n".join(line[10:] if line else "" for line in lines) + "\n"
+    writer = extract("Capture exact source")
+    pr = extract("Confirm exact clean PR source")
+    for required in ('GITHUB_EVENT_NAME', 'GITHUB_REF', 'refs/heads/so', 'GITHUB_SHA',
+                     'git rev-parse HEAD', 'git status --porcelain'):
+        if required not in writer:
+            raise RuntimeError("repeatability authority writer identity missing: " + required)
+    if 'GITHUB_BASE_REF' not in pr or 'git rev-parse HEAD' not in pr:
+        raise RuntimeError("repeatability authority PR base/head guard missing")
+    with tempfile.TemporaryDirectory(prefix="repeatability-authority-identity-") as temp:
+        root = Path(temp)
+        sha = "a" * 40
+        git = root / "git"
+        git.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"rev-parse\" ]; then printf '" + sha + "\\n'; exit 0; fi\n"
+            "if [ \"$1\" = \"status\" ]; then if [ \"$DIRTY\" = \"1\" ]; then echo ' M dirty'; fi; exit 0; fi\n"
+            "if [ \"$1\" = \"fetch\" ]; then exit 0; fi\n"
+            "exit 1\n", encoding="utf-8",
+        )
+        git.chmod(0o755)
+        cases = (
+            ("push", "refs/heads/so", sha, "0", True),
+            ("workflow_dispatch", "refs/heads/so", sha, "0", True),
+            ("push", "refs/heads/main", sha, "0", False),
+            ("workflow_dispatch", "refs/heads/main", sha, "0", False),
+            ("pull_request", "refs/heads/so", sha, "0", False),
+            ("schedule", "refs/heads/so", sha, "0", False),
+            ("push", "refs/heads/so", "A" * 40, "0", False),
+            ("push", "refs/heads/so", "", "0", False),
+            ("push", "refs/heads/so", "b" * 40, "0", False),
+            ("push", "refs/heads/so", sha, "1", False),
+        )
+        for event, ref, event_sha, dirty, allowed in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_REF=ref, GITHUB_SHA=event_sha,
+                       GITHUB_ENV=str(root / "github_env"), DIRTY=dirty)
+            result = subprocess.run(
+                ["bash", "-e", "-u", "-o", "pipefail", "-c", writer.replace("${{ github.event_name }}", event)],
+                cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False,
+            )
+            if (result.returncode == 0) != allowed:
+                raise RuntimeError(f"repeatability authority writer identity drift: {event}/{ref}")
+        for base, expected, dirty, allowed in (
+            ("so", sha, "0", True),
+            ("main", sha, "0", False),
+            ("so", "b" * 40, "0", False),
+            ("so", "A" * 40, "0", False),
+            ("so", sha, "1", False),
+        ):
+            script = pr.replace("${{ github.event.pull_request.head.sha }}", expected)
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_BASE_REF=base, DIRTY=dirty)
+            result = subprocess.run(
+                ["bash", "-e", "-u", "-o", "pipefail", "-c", script],
+                cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False,
+            )
+            if (result.returncode == 0) != allowed:
+                raise RuntimeError("repeatability authority PR base/head identity drift")
+    print("PASS: repeatability authority writer and PR exact-source shell runtime (15 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
@@ -568,6 +649,7 @@ def main() -> int:
     run_inline_diagnostic_writer_negatives()
     run_inline_ramp_diagnostic_negatives()
     run_repeatability_source_identity_negatives()
+    run_repeatability_authority_identity_negatives()
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
     print("authority substitution plus pre-write/post-write/atomic failures are fail-closed")
     print("temporary authority residue: none")
