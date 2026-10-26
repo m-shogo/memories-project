@@ -643,6 +643,35 @@ def exercise_reconciler_json_reader(module: ModuleType) -> None:
 
 
 
+def exercise_deletion_load_utc_seconds_boundary() -> None:
+    """Reject fractional result timestamps through the actual CI-reachable validator."""
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_utc_seconds_negative", validator_path)
+    require(spec is not None and spec.loader is not None, "deletion load timestamp validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(ROOT / validator.REVIEWED_RESULT_PATH)
+    validator.validate_deletion_timestamps(copy.deepcopy(canonical))
+    cases = (
+        ("startedAt", ("scenario", "startedAt"), "2026-09-23T22:17:18.123Z"),
+        ("completedAt", ("scenario", "completedAt"), "2026-09-23T22:17:18.500Z"),
+        ("generatedAt", ("generatedAt",), "2026-09-23T22:17:19.123Z"),
+    )
+    for label, keys, value in cases:
+        altered = copy.deepcopy(canonical)
+        cursor = altered
+        for key in keys[:-1]:
+            cursor = cursor[key]
+        cursor[keys[-1]] = value
+        try:
+            validator.validate_deletion_timestamps(altered)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"deletion load accepted fractional {label}")
+    print("PASS: deletion-under-load UTC-second positive and 3 fractional negatives")
+
+
 def exercise_deletion_load_git_ancestry_boundary() -> None:
     validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
     spec = importlib.util.spec_from_file_location("deletion_load_git_ancestry_negative", validator_path)
@@ -737,6 +766,7 @@ def exercise_validator_command_authority(module: ModuleType) -> None:
 
 def main() -> int:
     exercise_deletion_load_json_reader()
+    exercise_deletion_load_utc_seconds_boundary()
     exercise_deletion_load_git_ancestry_boundary()
     exercise_deletion_load_reviewed_schema()
     module = load_target()
