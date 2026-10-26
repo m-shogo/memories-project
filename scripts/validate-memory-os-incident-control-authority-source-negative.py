@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Independent exact-source and event/SHA negative checks for incident control authority."""
 from __future__ import annotations
+import hashlib
 import os
 import subprocess
 import tempfile
@@ -12,6 +13,30 @@ INDEPENDENT = ".github/workflows/incident-control-authority-source-negative.yml"
 SELF = "scripts/validate-memory-os-incident-control-authority-source-negative.py"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+REVIEWED_PUBLISHER = "ba7f30a04b9c81142a896e3fcab95d2f656cdffb"
+REVIEWED_INDEPENDENT = "efbb317ad48d26d5424ae784843cb9462575d564"
+
+def blob(content: str) -> str:
+    data = content.encode("utf-8")
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+def require_reviewed_source(content: str, expected: str, label: str) -> None:
+    if blob(content) != expected:
+        raise AssertionError("incident authority " + label + " complete Git blob drift")
+
+def reviewed_blob_negatives(publisher: str, independent: str) -> None:
+    require_reviewed_source(publisher, REVIEWED_PUBLISHER, "publisher")
+    require_reviewed_source(independent, REVIEWED_INDEPENDENT, "independent CI")
+    for label, original, expected in (
+        ("publisher", publisher, REVIEWED_PUBLISHER),
+        ("independent CI", independent, REVIEWED_INDEPENDENT),
+    ):
+        try:
+            require_reviewed_source(original + "\n# synthetic source drift\n", expected, label)
+        except AssertionError:
+            continue
+        raise AssertionError("incident authority reviewed Git blob accepted synthetic source drift: " + label)
+    print("PASS: incident authority publisher and independent CI complete Git blob source negatives (2 cases)")
 
 def read(path: str) -> str:
     p = ROOT / path
@@ -115,6 +140,7 @@ def main() -> None:
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("incident authority independent CI reachability drift: " + marker)
+    reviewed_blob_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)
     identity(publisher, "Confirm exact clean PR authority source", False)
