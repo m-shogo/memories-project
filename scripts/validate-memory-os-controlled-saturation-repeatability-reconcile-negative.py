@@ -621,7 +621,49 @@ def run_repeatability_aggregate_source_drift_negatives() -> None:
                                     cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
             if (result.returncode == 0) != allowed:
                 raise RuntimeError("repeatability aggregate ancestor/source drift guard failed")
-    print("PASS: repeatability aggregate source ancestry, drift and policy negatives (9 cases)")
+    with tempfile.TemporaryDirectory(prefix="repeatability-aggregate-real-git-") as temp:
+        root = Path(temp)
+        def git(*args):
+            return subprocess.run(["git", *args], cwd=root, check=True,
+                                  capture_output=True, text=True, timeout=10).stdout.strip()
+        def run_gate(source_sha):
+            env = dict(os.environ, GITHUB_SHA=source_sha)
+            return subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", script],
+                                  cwd=root, env=env, capture_output=True, text=True,
+                                  timeout=10, check=False).returncode
+        git("init", "-q")
+        git("config", "user.name", "Synthetic CI")
+        git("config", "user.email", "synthetic@example.invalid")
+        critical = root / "scripts/analyze-memory-os-controlled-saturation-repeatability.py"
+        critical.parent.mkdir(parents=True)
+        critical.write_text("original synthetic source\n", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-qm", "synthetic source")
+        source_sha = git("rev-parse", "HEAD")
+        branch = git("branch", "--show-current")
+        if run_gate(source_sha) != 0:
+            raise RuntimeError("real Git aggregate rejected exact original source")
+        evidence = root / "docs/fixtures/synthetic-append-only.json"
+        evidence.parent.mkdir(parents=True)
+        evidence.write_text("{}\n", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-qm", "synthetic evidence only")
+        if run_gate(source_sha) != 0:
+            raise RuntimeError("real Git aggregate rejected noncritical append-only evidence")
+        git("checkout", "-q", "-b", "synthetic-alternate", source_sha)
+        (root / "unrelated.txt").write_text("alternate\n", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-qm", "synthetic divergent source")
+        divergent_sha = git("rev-parse", "HEAD")
+        git("checkout", "-q", branch)
+        if run_gate(divergent_sha) == 0:
+            raise RuntimeError("real Git aggregate accepted nonancestor source")
+        critical.write_text("changed synthetic source\n", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-qm", "synthetic critical source drift")
+        if run_gate(source_sha) == 0:
+            raise RuntimeError("real Git aggregate accepted changed critical source")
+    print("PASS: repeatability aggregate source ancestry, drift and policy negatives (13 cases)")
 
 
 def run_repeatability_authority_identity_negatives() -> None:
