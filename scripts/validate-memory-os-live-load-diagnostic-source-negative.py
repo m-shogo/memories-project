@@ -174,6 +174,8 @@ def pr_policy(source: str) -> None:
             raise AssertionError("live load PR source policy missing: " + marker)
     if source.count(CHECKOUT) != 1 or source.count(SETUP) != 1:
         raise AssertionError("live load PR immutable Actions drift")
+    if source.count('test -z "$(git status --porcelain)"') != 2:
+        raise AssertionError("live load PR clean worktree checks must remain at source and final boundary")
     if "actions/checkout@v4" in source or "actions/setup-python@v5" in source:
         raise AssertionError("live load PR floating Action regression")
 
