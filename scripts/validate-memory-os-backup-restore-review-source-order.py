@@ -181,7 +181,7 @@ def creation_blob(commit_sha: str, ref: str, field: str) -> bytes:
         raise Fail(f"cannot inspect {field} creation blob") from None
     require(type(size_result.returncode) is int and size_result.returncode == 0
             and isinstance(size_result.stdout, str)
-            and re.fullmatch(r"[0-9]{1,7}\\n?", size_result.stdout) is not None,
+            and re.fullmatch(r"[0-9]{1,7}\n?", size_result.stdout) is not None,
             f"cannot inspect {field} creation blob")
     expected_bytes = int(size_result.stdout.strip())
     require(0 < expected_bytes <= MAX_JSON_BYTES, f"{field} creation blob size limit exceeded")

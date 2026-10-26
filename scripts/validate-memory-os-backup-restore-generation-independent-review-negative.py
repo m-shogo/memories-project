@@ -904,8 +904,8 @@ def prove_source_order_bounded_creation_blob(module) -> None:
     field = "syntheticSecurityReview"
     object_ref = "a" * 40 + ":docs/evidence/backup-restore/security/synthetic.json"
     marker = "PRIVATE_CREATION_BLOB_MARKER_DO_NOT_LOG"
-    payload = b'{"reviewResult":"APPROVED"}\\n'
-    state = {"size": str(len(payload)) + "\\n", "size_exit": 0, "size_error": None,
+    payload = b'{"reviewResult":"APPROVED"}\n'
+    state = {"size": str(len(payload)) + "\n", "size_exit": 0, "size_error": None,
              "show": payload, "show_exit": 0, "show_error": None}
     calls = []
 
@@ -936,10 +936,10 @@ def prove_source_order_bounded_creation_blob(module) -> None:
         require(source_order.creation_blob("a" * 40, object_ref.split(":", 1)[1], field) == payload,
                 "creation blob bounded positive control failed")
         cases = [
-            ("oversized", {"size": str(source_order.MAX_JSON_BYTES + 1) + "\\n"},
+            ("oversized", {"size": str(source_order.MAX_JSON_BYTES + 1) + "\n"},
              f"{field} creation blob size limit exceeded", 1),
-            ("zero", {"size": "0\\n"}, f"{field} creation blob size limit exceeded", 1),
-            ("invalid-size", {"size": marker + "\\n"}, f"cannot inspect {field} creation blob", 1),
+            ("zero", {"size": "0\n"}, f"{field} creation blob size limit exceeded", 1),
+            ("invalid-size", {"size": marker + "\n"}, f"cannot inspect {field} creation blob", 1),
             ("nonzero-size", {"size_exit": 1}, f"cannot inspect {field} creation blob", 1),
             ("timeout-size", {"size_error": subprocess.TimeoutExpired(["git", "cat-file"], 20, stderr=marker)},
              f"cannot inspect {field} creation blob", 1),
@@ -952,7 +952,7 @@ def prove_source_order_bounded_creation_blob(module) -> None:
             ("unavailable-show", {"show_error": OSError(marker)}, f"cannot inspect {field} creation blob", 2),
         ]
         for label, changes, expected, expected_calls in cases:
-            state.update({"size": str(len(payload)) + "\\n", "size_exit": 0, "size_error": None,
+            state.update({"size": str(len(payload)) + "\n", "size_exit": 0, "size_error": None,
                           "show": payload, "show_exit": 0, "show_error": None})
             state.update(changes)
             before = len(calls)
