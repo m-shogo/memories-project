@@ -376,7 +376,8 @@ def prove_second_replace_rollback(module, tmp: Path) -> None:
             module._reconcile()
         except module.Fail as exc:
             require(
-                "cannot atomically write" in str(exc),
+                "preflight reconcile transaction failed (Fail)" in str(exc)
+                and "synthetic preflight second atomic replacement failure" not in str(exc),
                 f"preflight second replace rejected at wrong boundary: {exc}",
             )
         else:
@@ -468,7 +469,8 @@ def prove_post_validator_rollback(module, tmp: Path) -> None:
             module._reconcile()
         except module.Fail as exc:
             require(
-                "synthetic post-publication operability validator failure" in str(exc),
+                "preflight reconcile transaction failed (Fail)" in str(exc)
+                and "synthetic post-publication operability validator failure" not in str(exc),
                 f"post-publication validator failure rejected at wrong boundary: {exc}",
             )
         else:
