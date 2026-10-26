@@ -14,6 +14,7 @@ SELF = "scripts/validate-memory-os-load-missing-source-negative.py"
 CHECKOUT = "uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_PUBLISHER = "f51a30f3e51fe695dfb77da808a9e2afb8f980b1"
+REVIEWED_INDEPENDENT = "5b6273fac014e4308d207acb2633297af04f229d"
 
 def read(path: str) -> str:
     p = ROOT / path
@@ -109,6 +110,10 @@ def main() -> None:
             raise AssertionError("missing-evidence independent CI reachability missing: " + marker)
     if blob(source) != REVIEWED_PUBLISHER:
         raise AssertionError("missing-evidence complete publisher Git blob drift")
+    if blob(independent) != REVIEWED_INDEPENDENT:
+        raise AssertionError("missing-evidence complete independent CI Git blob drift")
+    if blob(independent + "\n# synthetic whole-source drift\n") == REVIEWED_INDEPENDENT:
+        raise AssertionError("missing-evidence independent CI mutation accepted")
     if blob(source + "\n# synthetic whole-source drift\n") == REVIEWED_PUBLISHER:
         raise AssertionError("missing-evidence whole-source mutation accepted")
     policy(source)
