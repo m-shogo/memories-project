@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negativ
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-linearization.py"
-REVIEWED_VALIDATOR = "2f217ed4463cd75e49cae6e8992f56279f811947"
+REVIEWED_VALIDATOR = "eed1db68417c6bf13379ddff05a7a87ea824c523"
 REVIEWED_RECONCILER = "75c848b6d45f0fa1f51a187ac67344339bcc05d9"
 REVIEWED_RECONCILE_NEGATIVE = "623c4b0bd3ceffbc034de9ae0639013327b2b252"
 REVIEWED = "fdcc951be6c589518f1f48bcb363b5dcd0b88602"
@@ -490,6 +490,23 @@ def typed_criteria_runtime():
     validator.validate_result(contract, None)
     canonical = validator.load(validator.RESULT_PATH)
     cases = 0
+
+    # The reviewed proof contract cannot gain implicit production or promotion fields.
+    for label, mutate in (
+        ("productionReady injection", lambda d: d.update({"productionReady": True})),
+        ("human approval injection", lambda d: d.update({"humanPromotionApproved": True})),
+        ("missing description", lambda d: d.pop("description")),
+        ("missing result schema", lambda d: d.pop("resultsSchemaVersion")),
+    ):
+        candidate = copy.deepcopy(contract)
+        mutate(candidate)
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence accepted contract top-level " + label)
+        cases += 1
 
     # The reviewed contract identity is independent of schema/scenario and must be exact.
     for label, value in (("missing", None), ("substitute", "synthetic.unreviewed"), ("non-string", True)):
