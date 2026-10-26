@@ -195,7 +195,7 @@ def restore_authorities(original_load: bytes, original_status: bytes) -> list[st
         try:
             CANONICAL_ATOMIC_WRITE_BYTES(path, payload)
         except BaseException as rollback_exc:
-            rollback_errors.append(f"{label}: {rollback_exc}")
+            rollback_errors.append(f"{label}: {type(rollback_exc).__name__}")
     return rollback_errors
 
 
@@ -290,10 +290,12 @@ def main() -> int:
         rollback_errors = restore_authorities(original_load, original_status)
         if rollback_errors:
             raise ReconcileFailure(
-                f"container-kill post-write authority validation failed: {exc}; rollback incomplete: "
-                + "; ".join(rollback_errors)
-            ) from exc
-        raise
+                "container-kill post-write authority validation failed: " + type(exc).__name__
+                + "; rollback incomplete: " + "; ".join(rollback_errors)
+            ) from None
+        raise ReconcileFailure(
+            "container-kill post-write authority validation failed: " + type(exc).__name__
+        ) from None
 
     print("Memory OS deletion container-kill canonical reconciliation PASS")
     print("Docker container kill/replacement recovery: proven")

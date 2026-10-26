@@ -134,12 +134,14 @@ def expect_exhaustive_rollback_failure(module, original_load: bytes, original_st
         except module.ReconcileFailure as exc:
             diagnostic = str(exc)
             for needle in (
-                "synthetic container-kill post-write validation failure",
+                "container-kill post-write authority validation failed: RuntimeError",
                 "rollback incomplete",
-                "synthetic container-kill load rollback failure",
+                "load contract: OSError",
             ):
                 if needle not in diagnostic:
-                    raise SystemExit(f"container-kill rollback diagnostic lost {needle!r}: {diagnostic}") from exc
+                    raise SystemExit(f"container-kill rollback diagnostic lost {needle!r}") from exc
+            if "synthetic" in diagnostic or not exc.__suppress_context__:
+                raise SystemExit("container-kill rollback leaked untrusted exception text") from exc
         else:
             raise SystemExit("container-kill rollback failure was accepted")
 
@@ -245,7 +247,16 @@ def main() -> int:
 
     module.normalize_and_validate_authority = reject_post_write
     try:
-        expect_rejection(module.main, "synthetic post-write aggregate failure")
+        try:
+            module.main()
+        except module.ReconcileFailure as exc:
+            diagnostic = str(exc)
+            if ("container-kill post-write authority validation failed: RuntimeError" not in diagnostic
+                    or "synthetic post-write aggregate failure" in diagnostic
+                    or not exc.__suppress_context__):
+                raise AssertionError("untrusted primary post-write diagnostic leaked") from exc
+        else:
+            raise AssertionError("post-write validator failure was accepted")
         if LOAD_CONTRACT.read_bytes() != original_load:
             raise SystemExit("container-kill reconcile failed to roll back load authority")
         if STATUS.read_bytes() != original_status:
@@ -274,7 +285,7 @@ def main() -> int:
         [sys.executable, str(ROOT / "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py")],
         cwd=ROOT, check=True,
     )
-    print("PASS: container-kill authority identity, atomic mode, primary diagnostics, and exhaustive rollback are fail-closed")
+    print("PASS: container-kill authority identity, atomic mode, redacted diagnostics, and exhaustive rollback are fail-closed")
     return 0
 
 
