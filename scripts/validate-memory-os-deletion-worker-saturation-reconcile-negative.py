@@ -217,16 +217,17 @@ def main() -> int:
             raise AssertionError("rollback failure left atomic temporary authority")
 
         # Prove the reconciler's own prewrite guard, independently of validator policy.
-        permissive_validator = (
-            "def validate_contract(candidate): pass\\n"
-            "def validate_result(candidate, expected_sha): pass\\n"
-        )
+        permissive_validator = chr(10).join((
+            "def validate_contract(candidate): pass",
+            "def validate_result(candidate, expected_sha): pass",
+            "",
+        ))
         reconciler.VALIDATOR_PATH.write_text(permissive_validator, encoding="utf-8")
         for key in ("productionDependenciesTested", "independentReviewCompleted", "productionReady"):
             for stronger in (True, None, 0, 1, "false", [], {}):
                 candidate = json.loads(original_contract.decode("utf-8"))
                 candidate["readiness"][key] = stronger
-                payload = (json.dumps(candidate, indent=2) + "\\n").encode("utf-8")
+                payload = (json.dumps(candidate, indent=2) + chr(10)).encode("utf-8")
                 reconciler.atomic_write_bytes(reconciler.CONTRACT_PATH, payload)
                 before = reconciler.CONTRACT_PATH.read_bytes()
                 try:
