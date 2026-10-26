@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -79,7 +80,12 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # This helper must reject unsafe paths even when called outside main().
+    require(path.parent.is_dir(), "repeatability authority parent missing")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "repeatability authority symlink path rejected")
+    require(not path.is_dir(), "repeatability authority directory target rejected")
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -92,6 +98,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             tmp_path = Path(handle.name)
             handle.write(payload)
             handle.flush()
+            os.fchmod(handle.fileno(), mode)
             os.fsync(handle.fileno())
         os.replace(tmp_path, path)
         tmp_path = None
@@ -112,10 +119,24 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def run_validator(validator: Path) -> None:
+    # Untrusted validator output must never enter CI logs or diagnostics.
+    try:
+        subprocess.run(
+            [sys.executable, str(validator)],
+            cwd=ROOT,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise Fail(f"repeatability validator failed: {validator.name} (exit {exc.returncode})") from None
+
+
 def run_post_write_validators() -> None:
     enforce_runtime_authorities()
     for validator in (VALIDATOR, LOAD_VALIDATOR, OPERABILITY_VALIDATOR):
-        subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
+        run_validator(validator)
 
 
 def write_transactionally(contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any]) -> None:
@@ -135,13 +156,13 @@ def write_transactionally(contract: dict[str, Any], load_contract: dict[str, Any
                 if rollback_error is None:
                     rollback_error = exc
         if rollback_error is not None:
-            raise Fail(f"controlled saturation repeatability rollback failed: {rollback_error}") from rollback_error
+            raise Fail(f"controlled saturation repeatability rollback failed: {type(rollback_error).__name__}") from None
         raise
 
 
 def main() -> int:
     enforce_runtime_authorities()
-    subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, check=True)
+    run_validator(VALIDATOR)
     result = load(RESULT)
     repeatable = result.get("repeatableLocalDegradationSignalObserved") is True
 
