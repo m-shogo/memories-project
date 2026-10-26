@@ -97,12 +97,44 @@ def atomic_replacement_is_fail_closed(module: ModuleType) -> None:
         require(stat.S_IMODE(authority.stat().st_mode) == original_mode, "successful atomic replacement changed authority mode")
 
 
+def substituted_atomic_targets_are_rejected(module: ModuleType) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-load-missing-symlink-") as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "authority.json"
+        canary.write_bytes(b"SYNTHETIC_MISSING_EVIDENCE_CANARY")
+        direct = root / "direct.json"
+        direct.symlink_to(canary)
+        ancestor = root / "linked"
+        ancestor.symlink_to(outside, target_is_directory=True)
+        directory = root / "directory.json"
+        directory.mkdir()
+        for target, expected in (
+            (direct, "load missing-evidence atomic symlink target/ancestor refused"),
+            (ancestor / "authority.json", "load missing-evidence atomic symlink target/ancestor refused"),
+            (directory, "load missing-evidence atomic target must be a regular file"),
+        ):
+            try:
+                module.atomic_write_bytes(target, b"synthetic overwrite")
+            except RuntimeError as exc:
+                require(expected in str(exc), f"unexpected missing-evidence target rejection: {exc}")
+            else:
+                raise NegativeFailure(f"missing-evidence atomic writer accepted substituted target: {target}")
+            require(canary.read_bytes() == b"SYNTHETIC_MISSING_EVIDENCE_CANARY",
+                    "missing-evidence atomic writer escaped to external canary")
+        require(direct.is_symlink() and ancestor.is_symlink() and directory.is_dir(),
+                "missing-evidence atomic writer replaced substituted target")
+        require(not list(root.rglob(".*.tmp")), "missing-evidence rejected target left temp residue")
+
+
 def main() -> int:
     module = load_module()
     canonical_bytes = STATUS.read_bytes()
     canonical_mode = stat.S_IMODE(STATUS.stat().st_mode)
     authority_substitution_rejected(module)
     atomic_replacement_is_fail_closed(module)
+    substituted_atomic_targets_are_rejected(module)
     status = load_json(STATUS)
     area = next(
         (row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-006"),
