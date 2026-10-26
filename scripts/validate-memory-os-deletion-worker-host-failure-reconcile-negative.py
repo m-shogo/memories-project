@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import stat
 import tempfile
 from pathlib import Path
@@ -152,6 +153,112 @@ def expect_rollback_failure_exhaustive(module: ModuleType) -> None:
             "host-failure rollback negative cleanup changed status mode")
 
 
+def expect_secret_free_prewrite_and_validator_failures(module: ModuleType) -> None:
+    class FailingGenerationCount:
+        def canonical_generation_count(self):
+            raise RuntimeError("SYNTHETIC_SECRET_GENERATION_COUNT")
+
+    class FailingProjection:
+        NO_GENERATION_LIMITATION = "synthetic generation limitation"
+
+        def canonical_generation_count(self):
+            return 0
+
+        def validate_generation_projection(self, contract, registered):
+            raise ValueError("SYNTHETIC_SECRET_GENERATION_PROJECTION")
+
+    original_loader = module.load_host_validator
+    try:
+        for fake, expected in (
+            (FailingGenerationCount(), "canonical generation authority validation failed: RuntimeError"),
+            (FailingProjection(), "host-failure generation projection invalid: ValueError"),
+        ):
+            module.load_host_validator = lambda fake=fake: fake
+            candidate = {"currentBoundary": {}, "readiness": {}, "limitations": []}
+            try:
+                module.reconcile_generation_projection(candidate)
+            except module.Fail as exc:
+                require(expected in str(exc) and "SYNTHETIC_SECRET" not in str(exc) and exc.__suppress_context__,
+                        "host-failure generation prewrite leaked raw exception details")
+            else:
+                raise AssertionError("host-failure generation prewrite accepted synthetic failure")
+    finally:
+        module.load_host_validator = original_loader
+
+    with tempfile.TemporaryDirectory(prefix="host-failure-secret-free-") as tmp:
+        root = Path(tmp)
+        target = root / "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(TARGET, target)
+        paths = (
+            "contracts/operations/deletion-worker-host-failure-contract.v1.json",
+            ".github/workflows/deletion-worker-host-failure-admission.yml",
+            "contracts/operations/production-operability-status.json",
+            "contracts/operations/load-test-scenario-contract.v1.json",
+            "scripts/validate-memory-os-deletion-worker-host-failure.py",
+            "scripts/validate-memory-os-load.py",
+            "scripts/validate-memory-os-operability.py",
+        )
+        for relative in paths:
+            file = root / relative
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text("{}" + chr(10), encoding="utf-8")
+        spec = importlib.util.spec_from_file_location("host_failure_disposable_prewrite", target)
+        require(spec is not None and spec.loader is not None, "cannot load disposable host-failure module")
+        isolated = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(isolated)
+
+        host_validator = root / "scripts/validate-memory-os-deletion-worker-host-failure.py"
+        host_validator.write_text(
+            "raise RuntimeError('SYNTHETIC_SECRET_VALIDATOR_IMPORT')" + chr(10), encoding="utf-8"
+        )
+        try:
+            isolated.load_host_validator()
+        except isolated.Fail as exc:
+            require("cannot load canonical host-failure validator: RuntimeError" in str(exc)
+                    and "SYNTHETIC_SECRET" not in str(exc) and exc.__suppress_context__,
+                    "host-failure validator import leaked raw exception")
+        else:
+            raise AssertionError("host-failure validator import accepted synthetic failure")
+
+        load_validator = root / "scripts/validate-memory-os-load.py"
+        load_validator.write_text(
+            "import sys" + chr(10)
+            + "sys.stderr.write('SYNTHETIC_SECRET_LOAD')" + chr(10)
+            + "raise SystemExit(1)" + chr(10), encoding="utf-8"
+        )
+        try:
+            isolated.validate_load_authority()
+        except isolated.Fail as exc:
+            require("canonical load authority validation failed: CalledProcessError" in str(exc)
+                    and "SYNTHETIC_SECRET" not in str(exc) and exc.__suppress_context__,
+                    "host-failure load validator leaked raw exception")
+        else:
+            raise AssertionError("host-failure load validator accepted synthetic failure")
+
+        host_validator.write_text(
+            "import sys" + chr(10)
+            + "sys.stderr.write('SYNTHETIC_SECRET_POSTWRITE')" + chr(10)
+            + "raise SystemExit(1)" + chr(10), encoding="utf-8"
+        )
+        before_contract = (root / paths[0]).read_bytes()
+        before_status = (root / paths[2]).read_bytes()
+        try:
+            isolated.write_transactionally({"synthetic": "after"}, {"synthetic": "after"})
+        except isolated.Fail as exc:
+            require("host-failure post-write authority validation failed: CalledProcessError" in str(exc)
+                    and "SYNTHETIC_SECRET" not in str(exc) and exc.__suppress_context__,
+                    "host-failure post-write validator leaked raw exception")
+        else:
+            raise AssertionError("host-failure post-write validator accepted synthetic failure")
+        require((root / paths[0]).read_bytes() == before_contract,
+                "host-failure post-write negative changed disposable contract")
+        require((root / paths[2]).read_bytes() == before_status,
+                "host-failure post-write negative changed disposable status")
+        require(not list(root.rglob(".*.tmp")), "host-failure post-write negative left temporary file")
+    print("PASS: host-failure prewrite import/generation and validator subprocess diagnostics are secret-free")
+
+
 def main() -> int:
     module = load_target()
     module.validate_executable_authorities()
@@ -230,6 +337,7 @@ def main() -> int:
         require(not list(target.parent.glob(f".{target.name}.*.tmp")), "atomic host-failure writer left temp residue")
 
     expect_rollback_failure_exhaustive(module)
+    expect_secret_free_prewrite_and_validator_failures(module)
     assert_unchanged(snapshots(module))
     print("PASS: host-failure reconcile authority transaction, mode preservation, and secret-free exhaustive rollback diagnostics are fail-closed")
     return 0
