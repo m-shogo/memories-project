@@ -7,6 +7,7 @@ import ast
 import copy
 import importlib.util
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -329,8 +330,63 @@ def prove_pair_negative_harness_reachability() -> None:
     print(f"PASS: external candidate pair negative harness reachability rejects {len(cases)} bypasses")
 
 
+def prove_source_order_json_reader() -> None:
+    """Exercise the actual review chronology reader without modifying review evidence."""
+    path_to_validator = ROOT / SOURCE_ORDER_REL
+    spec = importlib.util.spec_from_file_location("memory_os_source_order_json_negative", path_to_validator)
+    require(spec is not None and spec.loader is not None, "source-order JSON validator unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with tempfile.TemporaryDirectory(prefix="memory-os-source-order-json-", dir=ROOT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(module.load_json(path, "synthetic") == {"safe": True, "nested": {"count": 1}}, "source-order JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "review source-order JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "review source-order JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "review source-order JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "review source-order JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "review source-order JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "review source-order JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "review source-order JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * module.MAX_JSON_BYTES + b'"}', "review source-order JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "review source-order JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"synthetic-secret",', "review source-order JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "review source-order JSON root must be object"),
+        )
+        def rejected(candidate: Any, expected: str, label: str) -> None:
+            try:
+                module.load_json(candidate, "synthetic-secret")
+            except module.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong source-order JSON rejection boundary")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe source-order JSON accepted")
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "review source-order JSON path missing or unsafe", "symlink")
+        rejected(Path(directory), "review source-order JSON path missing or unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "review source-order JSON path missing or unsafe", "missing")
+        rejected("candidate.json", "review source-order JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-source-order-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "escaped.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "review source-order JSON path missing or unsafe", "external symlink")
+            require(canary.read_bytes() == positive, "source-order JSON reader modified external canary")
+        require(path.read_bytes() == positive, "source-order JSON reader mutated positive fixture")
+    print("PASS: actual source-order JSON reader positive and 16 fail-closed negatives")
+
+
 def main() -> int:
     require_source_order_main_negative_proof()
+    prove_source_order_json_reader()
     prove_pair_negative_harness_reachability()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
