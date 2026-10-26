@@ -194,12 +194,12 @@ def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_err
         try:
             write_text(path, original_text)
         except Exception as rollback_exc:
-            rollback_failures.append(f"{repo_relative(path)}: {rollback_exc}")
+            rollback_failures.append(f"{path.name}: {type(rollback_exc).__name__}")
     if rollback_failures:
-        primary_text = str(reconcile_error) or reconcile_error.__class__.__name__
         raise Fail(
-            f"{primary_text}; rollback incomplete: " + "; ".join(rollback_failures)
-        ) from reconcile_error
+            f"preflight reconcile transaction failed ({type(reconcile_error).__name__}); "
+            "rollback incomplete: " + "; ".join(rollback_failures)
+        ) from None
 
 
 CANONICAL_REQUIRE = require
@@ -322,7 +322,7 @@ def _reconcile() -> int:
             ),
             reconcile_error,
         )
-        raise
+        raise Fail(f"preflight reconcile transaction failed ({type(reconcile_error).__name__})") from None
 
     print("Memory OS production-equivalent restore drill preflight reconciliation PASS")
     print(f"registered/preflight-eligible generations: {state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}")

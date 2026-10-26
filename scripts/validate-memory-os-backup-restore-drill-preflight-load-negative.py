@@ -511,7 +511,7 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
         require(command[-1] == expected_paths[call_index], f"preflight validator order drift at call {call_index + 1}: {command}")
         if call_index < 4:
             return SimpleNamespace(returncode=0, stdout="upstream/preflight authority validator pass", stderr="")
-        return SimpleNamespace(returncode=1, stdout="forced post-reconcile operability validator failure", stderr="")
+        return SimpleNamespace(returncode=1, stdout="SYNTHETIC_SECRET_POST_VALIDATION_DO_NOT_LOG", stderr="")
 
     reconciler.CONTRACT = contract
     reconciler.STATUS = status
@@ -562,13 +562,13 @@ def prove_rollback_failure_diagnostics(reconciler: object, tmp: Path) -> None:
         require(command[-1] == expected_paths[call_index], f"preflight rollback-failure validator order drift at call {call_index + 1}: {command}")
         if call_index < 4:
             return SimpleNamespace(returncode=0, stdout="upstream/preflight authority validator pass", stderr="")
-        return SimpleNamespace(returncode=1, stdout="forced post-reconcile operability validator failure", stderr="")
+        return SimpleNamespace(returncode=1, stdout="SYNTHETIC_SECRET_POST_VALIDATION_DO_NOT_LOG", stderr="")
 
     def fail_first_rollback_write(path: Path, text: str) -> None:
         nonlocal write_count
         write_count += 1
         if write_count == 3:
-            raise reconciler.Fail("synthetic first rollback write failure")
+            raise reconciler.Fail("SYNTHETIC_SECRET_ROLLBACK_DO_NOT_LOG")
         original_write(path, text)
 
     reconciler.CONTRACT = contract
@@ -580,9 +580,12 @@ def prove_rollback_failure_diagnostics(reconciler: object, tmp: Path) -> None:
             reconciler._reconcile()
         except reconciler.Fail as exc:
             diagnostic = str(exc)
-            require("post-reconcile operability validator failed" in diagnostic, f"primary preflight failure diagnostic lost: {diagnostic}")
-            require("rollback incomplete" in diagnostic, f"rollback incompleteness diagnostic missing: {diagnostic}")
-            require("synthetic first rollback write failure" in diagnostic, f"rollback failure diagnostic missing: {diagnostic}")
+            require("preflight reconcile transaction failed (Fail)" in diagnostic,
+                    f"primary preflight exception class lost: {diagnostic}")
+            require("rollback incomplete" in diagnostic and "Fail" in diagnostic,
+                    f"rollback incompleteness/class diagnostic missing: {diagnostic}")
+            require("SYNTHETIC_SECRET" not in diagnostic,
+                    "preflight rollback diagnostic leaked synthetic secret")
         else:
             raise Fail("rollback-failure transaction unexpectedly succeeded")
     finally:
