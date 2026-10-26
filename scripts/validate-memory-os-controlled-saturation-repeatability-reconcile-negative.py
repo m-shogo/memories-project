@@ -3,7 +3,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
+import os
+import stat
+import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,12 +158,121 @@ def run_atomic_replace_failure(module) -> None:
                 module.atomic_write_bytes(path, payload)
 
 
+
+def run_validator_output_negative(module) -> None:
+    marker = "SYNTHETIC_REPEATABILITY_SECRET_MARKER"
+    original_run = module.subprocess.run
+
+    def noisy_validator(*args, **kwargs):
+        if kwargs.get("stdout") != subprocess.DEVNULL or kwargs.get("stderr") != subprocess.DEVNULL:
+            raise RuntimeError("validator streams must be suppressed")
+        raise subprocess.CalledProcessError(17, args[0], output=marker, stderr=marker)
+
+    module.subprocess.run = noisy_validator
+    stdout, stderr = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            try:
+                module.run_validator(module.VALIDATOR)
+            except module.Fail as exc:
+                if marker in str(exc) or not exc.__suppress_context__ or "exit 17" not in str(exc):
+                    raise RuntimeError("validator failure disclosed raw output or lost exit code") from None
+            else:
+                raise RuntimeError("noisy validator unexpectedly accepted")
+    finally:
+        module.subprocess.run = original_run
+    if marker in stdout.getvalue() + stderr.getvalue():
+        raise RuntimeError("validator output reached CI streams")
+
+
+def run_atomic_path_negative(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="repeatability-atomic-negative-") as temp:
+        root = Path(temp)
+        target = root / "authority.json"
+        target.write_bytes(b"original")
+        target.chmod(0o640)
+        module.atomic_write_bytes(target, b"updated")
+        if target.read_bytes() != b"updated" or stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise RuntimeError("existing repeatability authority mode or bytes drifted")
+        new = root / "new.json"
+        module.atomic_write_bytes(new, b"new")
+        if new.read_bytes() != b"new" or stat.S_IMODE(new.stat().st_mode) != 0o644:
+            raise RuntimeError("new repeatability authority mode drifted")
+
+        outside = root / "outside-canary"
+        outside.write_bytes(b"outside")
+        link = root / "link.json"
+        link.symlink_to(outside)
+        directory = root / "directory"
+        directory.mkdir()
+        linked_parent = root / "linked-parent"
+        linked_parent.symlink_to(directory, target_is_directory=True)
+        for unsafe in (link, linked_parent / "inside.json", directory, root / "missing" / "inside.json"):
+            try:
+                module.atomic_write_bytes(unsafe, b"forbidden")
+            except module.Fail:
+                pass
+            else:
+                raise RuntimeError(f"unsafe repeatability path accepted: {unsafe.name}")
+        if outside.read_bytes() != b"outside" or list(directory.iterdir()):
+            raise RuntimeError("unsafe path changed outside canary or linked directory")
+
+        original_replace = module.os.replace
+        def fail_replace(*args):
+            raise OSError("SYNTHETIC_REPEATABILITY_REPLACE_SECRET")
+        module.os.replace = fail_replace
+        try:
+            try:
+                module.atomic_write_bytes(target, b"forbidden")
+            except OSError:
+                pass
+            else:
+                raise RuntimeError("atomic replace failure unexpectedly accepted")
+        finally:
+            module.os.replace = original_replace
+        if target.read_bytes() != b"updated" or list(root.glob(".authority.json.*.tmp")):
+            raise RuntimeError("atomic replace failure changed authority or left residue")
+
+
+def run_rollback_secret_negative(module) -> None:
+    marker = "SYNTHETIC_REPEATABILITY_ROLLBACK_SECRET"
+    original_write = module.write
+    original_atomic = module.atomic_write_bytes
+    original_validators = module.run_post_write_validators
+    module.write = lambda *args: None
+    def noisy_rollback(*args):
+        raise OSError(marker)
+    def noisy_validation():
+        raise RuntimeError(marker)
+    module.atomic_write_bytes = noisy_rollback
+    module.run_post_write_validators = noisy_validation
+    try:
+        try:
+            module.write_transactionally(
+                module.load(module.CONTRACT),
+                module.load(module.LOAD),
+                module.load(module.STATUS),
+            )
+        except module.Fail as exc:
+            if marker in str(exc) or "OSError" not in str(exc) or not exc.__suppress_context__:
+                raise RuntimeError("repeatability rollback disclosed secret or suppressed failure") from None
+        else:
+            raise RuntimeError("failed repeatability rollback unexpectedly accepted")
+    finally:
+        module.write = original_write
+        module.atomic_write_bytes = original_atomic
+        module.run_post_write_validators = original_validators
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
     run_prewrite_failure(module)
     run_postwrite_failure(module)
     run_atomic_replace_failure(module)
+    run_validator_output_negative(module)
+    run_atomic_path_negative(module)
+    run_rollback_secret_negative(module)
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
     print("authority substitution plus pre-write/post-write/atomic failures are fail-closed")
     print("temporary authority residue: none")
