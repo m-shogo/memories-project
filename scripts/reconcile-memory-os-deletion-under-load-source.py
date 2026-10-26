@@ -12,6 +12,8 @@ PATH = ROOT / "services/import-api/internal/httpserver/deletion_under_load_test.
 
 def replace_once(text: str, old: str, new: str, label: str) -> tuple[str, bool]:
     if new in text:
+        if text.count(new) != 1 or old in text.replace(new, "", 1):
+            raise RuntimeError(f"{label} mixed or duplicate source authority drift")
         return text, False
     if text.count(old) != 1:
         raise RuntimeError(f"{label} authority drift")

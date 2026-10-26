@@ -857,6 +857,38 @@ def exercise_deletion_load_batch_accounting() -> None:
     print("PASS: deletion-under-load batch 2 positives and 9 accounting negatives")
 
 
+def exercise_deletion_load_source_replace_once() -> None:
+    """The source reconciler must not mistake mixed stale and reviewed code for success."""
+    path = ROOT / "scripts/reconcile-memory-os-deletion-under-load-source.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_source_replace_negative", path)
+    require(spec is not None and spec.loader is not None, "source reconcile import failed")
+    source = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(source)
+    updated, changed = source.replace_once("BEFORE", "BEFORE", "AFTER", "synthetic")
+    require((updated, changed) == ("AFTER", True), "source replacement positive failed")
+    updated, changed = source.replace_once("AFTER", "BEFORE", "AFTER", "synthetic")
+    require((updated, changed) == ("AFTER", False), "source idempotent positive failed")
+    anchor = "type X struct {}\\n"
+    helper = anchor + "func helper() {}\\n"
+    updated, changed = source.replace_once(helper, anchor, helper, "synthetic-overlap")
+    require((updated, changed) == (helper, False), "source overlap idempotent positive failed")
+    for label, text_value, old, new in (
+        ("mixed stale and reviewed", "BEFORE AFTER", "BEFORE", "AFTER"),
+        ("duplicate reviewed", "AFTER AFTER", "BEFORE", "AFTER"),
+        ("duplicate stale", "BEFORE BEFORE", "BEFORE", "AFTER"),
+        ("missing anchor", "UNRELATED", "BEFORE", "AFTER"),
+        ("overlap plus stale", helper + anchor, anchor, helper),
+        ("duplicate overlapping helper", helper + helper, anchor, helper),
+    ):
+        try:
+            source.replace_once(text_value, old, new, "synthetic-negative")
+        except RuntimeError as exc:
+            require("authority drift" in str(exc), f"source replacement wrong rejection: {label}")
+        else:
+            raise RuntimeError(f"source replacement accepted {label}")
+    print("PASS: deletion-load source reconcile 3 positives and 6 mixed/duplicate negatives")
+
+
 def exercise_deletion_load_git_ancestry_boundary() -> None:
     validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
     spec = importlib.util.spec_from_file_location("deletion_load_git_ancestry_negative", validator_path)
@@ -955,6 +987,7 @@ def main() -> int:
     exercise_deletion_load_utc_seconds_boundary()
     exercise_deletion_load_batch_accounting()
     exercise_deletion_load_git_ancestry_boundary()
+    exercise_deletion_load_source_replace_once()
     exercise_deletion_load_reviewed_schema()
     module = load_target()
     exercise_reconciler_json_reader(module)
