@@ -10,12 +10,14 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/deletion-under-load-contract.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 
 class ValidationFailure(RuntimeError):
@@ -110,6 +112,25 @@ def validate_batch(value: Any, field: str, requests: int,
             f"{field} contains infrastructure failure")
 
 
+
+def strict_utc_timestamp(value: Any, field: str) -> datetime:
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            f"{field} must be RFC3339 UTC")
+    try:
+        return datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        raise ValidationFailure(f"{field} is not a valid UTC timestamp") from None
+
+
+def validate_deletion_timestamps(result: dict[str, Any]) -> None:
+    scenario = result.get("scenario")
+    require(isinstance(scenario, dict), "deletion scenario missing for timestamps")
+    started = strict_utc_timestamp(scenario.get("startedAt"), "scenario.startedAt")
+    completed = strict_utc_timestamp(scenario.get("completedAt"), "scenario.completedAt")
+    generated = strict_utc_timestamp(result.get("generatedAt"), "generatedAt")
+    require(started <= completed <= generated, "deletion load timestamps must be chronological")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-commit-sha", default=os.getenv("EXPECTED_COMMIT_SHA", ""))
@@ -201,6 +222,7 @@ def main() -> int:
 
     scenario = result.get("scenario")
     require(isinstance(scenario, dict), "deletion-under-load scenario missing")
+    validate_deletion_timestamps(result)
     require(scenario.get("scenarioId") == contract["scenarioId"],
             "deletion-under-load scenario ID drift")
     require(scenario.get("result") == "PASS" and

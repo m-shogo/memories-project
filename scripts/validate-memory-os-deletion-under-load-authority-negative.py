@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -70,9 +71,45 @@ def verify_deletion_numeric_boundary() -> None:
     print("PASS: deletion load numeric positive and 5 nonfinite negatives")
 
 
+
+def verify_deletion_timestamp_semantics() -> None:
+    """Exercise the actual deletion-load UTC validator with positive and negative cases."""
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_timestamp_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("deletion load timestamp validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(ROOT / "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json")
+    validator.validate_deletion_timestamps(copy.deepcopy(canonical))
+    cases = (
+        ("impossible date", ("scenario", "startedAt"), "2026-02-30T22:17:18Z"),
+        ("timezone offset", ("scenario", "startedAt"), "2026-09-23T22:17:18+00:00"),
+        ("missing seconds", ("scenario", "startedAt"), "2026-09-23T22:17Z"),
+        ("fraction without digits", ("scenario", "startedAt"), "2026-09-23T22:17:18.Z"),
+        ("nonstring", ("scenario", "startedAt"), None),
+        ("completion before start", ("scenario", "completedAt"), "2026-09-23T22:17:17Z"),
+        ("generation before completion", ("generatedAt",), "2026-09-23T22:17:18Z"),
+    )
+    for label, keys, value in cases:
+        mutated = copy.deepcopy(canonical)
+        cursor = mutated
+        for key in keys[:-1]:
+            cursor = cursor[key]
+        cursor[keys[-1]] = value
+        try:
+            validator.validate_deletion_timestamps(mutated)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"deletion load timestamp validator accepted {label}")
+    print("PASS: deletion load UTC positive and 7 timestamp negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_deletion_numeric_boundary()
+    verify_deletion_timestamp_semantics()
     substitutions = {
         "CONTRACT_PATH": module.LOAD_PATH,
         "LOAD_PATH": module.CONTRACT_PATH,
