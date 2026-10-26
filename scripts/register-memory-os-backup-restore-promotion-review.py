@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import re
 import stat
@@ -59,12 +60,54 @@ def domain_validation_failure(exc: BaseException) -> bool:
     return False
 
 
+MAX_JSON_BYTES = 1024 * 1024
+
+
 def load(path: Path) -> dict[str, Any]:
+    """Fail closed on ambiguous, unsafe or oversized promotion authority JSON."""
+    require(isinstance(path, Path) and path.is_absolute(), "promotion review JSON path invalid")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path}")
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("promotion review JSON path missing or unsafe") from None
+    require(
+        resolved == path and path.is_file() and not path.is_symlink(),
+        "promotion review JSON path missing or unsafe",
+    )
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "promotion review JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("promotion review JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "promotion review JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "promotion review JSON integer too large")
+        return int(value)
+
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "promotion review JSON size limit exceeded")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("promotion review JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "promotion review JSON root must be object")
     return value
 
 
