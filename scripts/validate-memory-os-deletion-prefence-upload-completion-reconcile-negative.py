@@ -133,8 +133,9 @@ def expect_post_write_rollback(module, original_contract: bytes) -> None:
         try:
             module.write_contract_transactionally(candidate, SOURCE_SHA)
         except RuntimeError as exc:
-            if "synthetic upload-completion post-write validation failure" not in str(exc):
-                raise
+            if (str(exc) != "pre-fence upload post-write validation failed: RuntimeError"
+                    or not exc.__suppress_context__):
+                raise AssertionError("pre-fence upload post-write failure leaked raw details") from exc
         else:
             raise AssertionError("post-write validator rejection was accepted")
         if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
@@ -165,12 +166,9 @@ def expect_rollback_failure_diagnostic(module, original_contract: bytes) -> None
             module.write_contract_transactionally(candidate, SOURCE_SHA)
         except RuntimeError as exc:
             diagnostic = str(exc)
-            if "synthetic upload-completion post-write validation failure" not in diagnostic:
-                raise AssertionError(f"primary validation diagnostic was lost: {diagnostic}") from exc
-            if "rollback incomplete" not in diagnostic:
-                raise AssertionError(f"rollback incompleteness was not diagnosed: {diagnostic}") from exc
-            if "synthetic upload-completion rollback failure" not in diagnostic:
-                raise AssertionError(f"rollback failure diagnostic was lost: {diagnostic}") from exc
+            if (diagnostic != "pre-fence upload post-write validation failed: RuntimeError; rollback incomplete: OSError"
+                    or not exc.__suppress_context__):
+                raise AssertionError("pre-fence upload rollback failure leaked raw details") from exc
         else:
             raise AssertionError("rollback failure was accepted")
     finally:
