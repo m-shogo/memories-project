@@ -44,8 +44,9 @@ def main() -> int:
         try:
             module.write_contract_transactionally(candidate, SOURCE_SHA)
         except RuntimeError as exc:
-            if "synthetic post-write pre-fence mutation rejection" not in str(exc):
-                raise
+            if (str(exc) != "pre-fence mutation post-write validation failed: RuntimeError"
+                    or not exc.__suppress_context__):
+                raise AssertionError("mutation reconcile leaked raw post-write validator detail") from exc
         else:
             raise AssertionError("canonical post-write rejection must fail mutation proof reconcile")
 

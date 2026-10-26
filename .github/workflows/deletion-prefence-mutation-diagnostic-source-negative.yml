@@ -10,6 +10,7 @@ on:
       - "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-source-negative.py"
       - "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
       - "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
   push:
     branches:
       - so
@@ -19,6 +20,7 @@ on:
       - "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-source-negative.py"
       - "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
       - "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 
 permissions:
   contents: read
