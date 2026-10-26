@@ -838,6 +838,15 @@ def run_repeatability_rebase_cas_negatives() -> None:
         raise RuntimeError("repeatability CAS publisher indentation drift")
     script = "\n".join(line[10:] if line else "" for line in lines) + "\n"
     def policy(value: str) -> None:
+        ancestry = 'git merge-base --is-ancestor "$source_sha" origin/so'
+        if value.count(ancestry) != 1:
+            raise RuntimeError("repeatability publisher ancestry guard missing or duplicated")
+        function_start = value.index("verify_critical_source() {")
+        function_end = value.index("\n}", function_start)
+        function = value[function_start:function_end]
+        if not (function.index("git fetch origin so") < function.index(ancestry)
+                < function.index('git diff --quiet "$source_sha" origin/so')):
+            raise RuntimeError("repeatability publisher fetch/ancestry/diff order drift")
         if value.count("verify_critical_source") != 3:
             raise RuntimeError("repeatability CAS verification multiplicity drift")
         first = value.index("\nverify_critical_source\n")
@@ -871,6 +880,14 @@ def run_repeatability_rebase_cas_negatives() -> None:
             pass
         else:
             raise RuntimeError("repeatability critical source removal unexpectedly accepted")
+    ancestry = 'git merge-base --is-ancestor "$source_sha" origin/so'
+    mutated = script.replace(ancestry, "true", 1)
+    try:
+        policy(mutated)
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("repeatability ancestry guard removal unexpectedly accepted")
     for marker in ("\nverify_critical_source\n", "\n  verify_critical_source\n"):
         mutated = script.replace(marker, "\n# removed CAS guard\n", 1)
         try:
@@ -888,21 +905,25 @@ def run_repeatability_rebase_cas_negatives() -> None:
         git.write_text(
             "#!/bin/sh\n"
             "if [ \"$1\" = \"fetch\" ]; then exit \"$FETCH_CODE\"; fi\n"
+            "if [ \"$1\" = \"merge-base\" ]; then exit \"$ANCESTOR_CODE\"; fi\n"
             "if [ \"$1\" = \"diff\" ]; then exit \"$DIFF_CODE\"; fi\n"
             "exit 1\n", encoding="utf-8",
         )
         git.chmod(0o755)
         code = "set -euo pipefail\nsource_sha=" + ("a" * 40) + "\ncritical=(test)\n" + function + "\nverify_critical_source\n"
-        for fetch_code, diff_code, allowed in (("0", "0", True), ("0", "1", False), ("23", "0", False)):
+        for fetch_code, ancestor_code, diff_code, allowed in (
+            ("0", "0", "0", True), ("0", "1", "0", False),
+            ("0", "0", "1", False), ("23", "0", "0", False),
+        ):
             env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
-                       FETCH_CODE=fetch_code, DIFF_CODE=diff_code)
+                       FETCH_CODE=fetch_code, ANCESTOR_CODE=ancestor_code, DIFF_CODE=diff_code)
             result = subprocess.run(
                 ["bash", "-e", "-u", "-o", "pipefail", "-c", code], cwd=root, env=env,
                 capture_output=True, text=True, timeout=10, check=False,
             )
             if (result.returncode == 0) != allowed:
                 raise RuntimeError("repeatability critical-source CAS runtime drift")
-    print("PASS: repeatability post-rebase critical source CAS and negative mutations (5 cases)")
+    print("PASS: repeatability post-rebase ancestry and critical source CAS negatives (7 cases)")
 
 
 

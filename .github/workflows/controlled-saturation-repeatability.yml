@@ -139,6 +139,10 @@ jobs:
           )
           verify_critical_source() {
             git fetch origin so
+            if ! git merge-base --is-ancestor "$source_sha" origin/so; then
+              echo "original repeatability run source is not an ancestor; refusing divergent history"
+              exit 75
+            fi
             if ! git diff --quiet "$source_sha" origin/so -- "${critical[@]}"; then
               echo "critical saturation source changed during run; refusing stale evidence"
               exit 75
