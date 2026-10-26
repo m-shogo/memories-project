@@ -636,6 +636,70 @@ def run_repeatability_authority_identity_negatives() -> None:
     print("PASS: repeatability authority writer and PR exact-source shell runtime (15 cases)")
 
 
+
+def run_repeatability_rebase_cas_negatives() -> None:
+    workflow = (ROOT / ".github/workflows/controlled-saturation-repeatability.yml").read_text(encoding="utf-8")
+    marker = "      - name: Publish append-only repeatability run\n"
+    if workflow.count(marker) != 1:
+        raise RuntimeError("repeatability CAS publisher missing")
+    start = workflow.index("        run: |\n", workflow.index(marker)) + len("        run: |\n")
+    end = workflow.find("\n      - ", start)
+    if end < 0:
+        raise RuntimeError("repeatability CAS publisher boundary missing")
+    lines = workflow[start:end].splitlines()
+    if not lines or any(line and not line.startswith("          ") for line in lines):
+        raise RuntimeError("repeatability CAS publisher indentation drift")
+    script = "\n".join(line[10:] if line else "" for line in lines) + "\n"
+    def policy(value: str) -> None:
+        if value.count("verify_critical_source") != 3:
+            raise RuntimeError("repeatability CAS verification multiplicity drift")
+        first = value.index("\nverify_critical_source\n")
+        rebase = value.index("git pull --rebase origin so")
+        second = value.index("\n  verify_critical_source\n", rebase)
+        push = value.index("git push origin HEAD:so", rebase)
+        if not (first < value.index("git reset --hard origin/so") < rebase < second < push):
+            raise RuntimeError("repeatability CAS verification order drift")
+        for critical in ("controlled_saturation_ramp_test.go", "live_object_load_test.go",
+                         "services/import-api/internal/pgrepo", "services/import-api/internal/upload",
+                         "services/import-api/internal/objectstore", "infra/postgresql/security",
+                         "controlled-saturation-ramp-contract.v1.json"):
+            if critical not in value:
+                raise RuntimeError("repeatability critical source coverage drift")
+    policy(script)
+    for marker in ("\nverify_critical_source\n", "\n  verify_critical_source\n"):
+        mutated = script.replace(marker, "\n# removed CAS guard\n", 1)
+        try:
+            policy(mutated)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("repeatability CAS mutation unexpectedly accepted")
+    function_start = script.index("verify_critical_source() {")
+    function_end = script.index("\n}", function_start) + 2
+    function = script[function_start:function_end]
+    with tempfile.TemporaryDirectory(prefix="repeatability-cas-negative-") as temp:
+        root = Path(temp)
+        git = root / "git"
+        git.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"fetch\" ]; then exit \"$FETCH_CODE\"; fi\n"
+            "if [ \"$1\" = \"diff\" ]; then exit \"$DIFF_CODE\"; fi\n"
+            "exit 1\n", encoding="utf-8",
+        )
+        git.chmod(0o755)
+        code = "set -euo pipefail\nsource_sha=" + ("a" * 40) + "\ncritical=(test)\n" + function + "\nverify_critical_source\n"
+        for fetch_code, diff_code, allowed in (("0", "0", True), ("0", "1", False), ("23", "0", False)):
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       FETCH_CODE=fetch_code, DIFF_CODE=diff_code)
+            result = subprocess.run(
+                ["bash", "-e", "-u", "-o", "pipefail", "-c", code], cwd=root, env=env,
+                capture_output=True, text=True, timeout=10, check=False,
+            )
+            if (result.returncode == 0) != allowed:
+                raise RuntimeError("repeatability critical-source CAS runtime drift")
+    print("PASS: repeatability post-rebase critical source CAS and negative mutations (5 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
@@ -650,6 +714,7 @@ def main() -> int:
     run_inline_ramp_diagnostic_negatives()
     run_repeatability_source_identity_negatives()
     run_repeatability_authority_identity_negatives()
+    run_repeatability_rebase_cas_negatives()
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
     print("authority substitution plus pre-write/post-write/atomic failures are fail-closed")
     print("temporary authority residue: none")
