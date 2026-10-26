@@ -130,6 +130,17 @@ def finite_number(value: Any, label: str) -> float:
     return number
 
 
+def require_local_run_path(path: Path) -> None:
+    """Reject noncanonical, missing and symlinked run evidence before child validation."""
+    require(path.parent == RESULT_DIR, "run path must be in canonical result directory")
+    require(not path.is_symlink() and path.is_file(), "run path missing or symlinked")
+    try:
+        require(path.resolve(strict=True).parent == RESULT_DIR.resolve(strict=True),
+                "run path escaped canonical result directory")
+    except OSError:
+        raise Fail("run path cannot be resolved") from None
+
+
 def validate(path: Path, validator: Path) -> None:
     completed = subprocess.run(
         [sys.executable, str(validator), str(path)] if validator == RESULT_VALIDATOR else
@@ -161,6 +172,7 @@ def main() -> int:
     durations: list[float] = []
     trend_summaries: list[dict[str, Any]] = []
     for path in paths:
+        require_local_run_path(path)
         validate(path, RESULT_VALIDATOR)
         document = load(path)
         scenario = document["scenario"]

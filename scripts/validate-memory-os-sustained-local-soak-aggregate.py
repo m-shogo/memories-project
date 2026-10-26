@@ -14,7 +14,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
-RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+CANONICAL_RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+RESULT_DIR = CANONICAL_RESULT_DIR
 AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
 REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
@@ -114,7 +115,19 @@ def trend_summary(value: dict[str, Any], path: Path) -> dict[str, Any]:
     return summary
 
 
+def require_local_run_path(path: Path) -> None:
+    """Reject noncanonical, missing and symlinked run evidence before child validation."""
+    require(path.parent == RESULT_DIR, "run path must be in canonical result directory")
+    require(not path.is_symlink() and path.is_file(), "run path missing or symlinked")
+    try:
+        require(path.resolve(strict=True).parent == RESULT_DIR.resolve(strict=True),
+                "run path escaped canonical result directory")
+    except OSError:
+        raise Fail("run path cannot be resolved") from None
+
+
 def validate_run(path: Path) -> tuple[str, str, dict[str, Any]]:
+    require_local_run_path(path)
     run_validator([sys.executable, str(RESULT_VALIDATOR), str(path)],
                   f"single-run validator for {path.relative_to(ROOT)}")
     value = load(path)
@@ -154,6 +167,9 @@ def main() -> int:
     parser.add_argument("--require-local-evidence", action="store_true")
     args = parser.parse_args()
 
+    require(RESULT_DIR == CANONICAL_RESULT_DIR and RESULT_DIR.is_dir() and not RESULT_DIR.is_symlink(),
+            "canonical aggregate result directory authority drift")
+    require(RESULT_DIR.resolve(strict=True) == CANONICAL_RESULT_DIR, "aggregate result directory escaped repository")
     contract = load(CONTRACT_PATH)
     paths = sorted(RESULT_DIR.glob(RESULT_GLOB))
     if not paths:

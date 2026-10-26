@@ -672,7 +672,12 @@ def validate_trend_run_path_negatives() -> None:
         ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py",
         "memory_os_sustained_local_soak_run_path_negative",
     )
-    for module in (producer, consumer):
+    updater = load_aggregate_updater()
+    aggregate = load_module(
+        ROOT / "scripts/validate-memory-os-sustained-local-soak-aggregate.py",
+        "memory_os_sustained_local_soak_aggregate_path_negative",
+    )
+    for module in (producer, consumer, updater, aggregate):
         with tempfile.TemporaryDirectory(prefix=".sustained-soak-run-path-", dir=ROOT) as temp:
             directory = Path(temp) / "runs"
             directory.mkdir()
@@ -704,7 +709,7 @@ def validate_trend_run_path_negatives() -> None:
                     raise AssertionError("trend run path changed external canary")
             finally:
                 module.RESULT_DIR = original_dir
-    print("PASS: trend producer/consumer canonical run path positives and 8 path negatives")
+    print("PASS: four sustained-soak producer/consumer canonical run paths and 16 negatives")
 
 
 def main() -> int:
