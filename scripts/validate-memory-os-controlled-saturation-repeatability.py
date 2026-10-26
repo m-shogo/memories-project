@@ -39,11 +39,20 @@ def parse_finite_float(value: str) -> float:
     return parsed
 
 
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(
         path.read_text(encoding="utf-8"),
         parse_constant=reject_nonfinite_constant,
         parse_float=parse_finite_float,
+        object_pairs_hook=reject_duplicate_json_keys,
     )
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value

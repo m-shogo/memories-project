@@ -1051,7 +1051,12 @@ def run_repeatability_nonfinite_negatives() -> None:
             raise RuntimeError(f"repeatability analyzer accepted {label}")
     with tempfile.TemporaryDirectory(prefix="repeatability-nonfinite-json-", dir=ROOT) as temp:
         path = Path(temp) / "numeric.json"
-        for raw in ('{"value": Infinity}', '{"value": 1e999}'):
+        path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+        for module in (analyzer, validator):
+            if module.load(path) != {"outer": {"a": 1, "b": 2}}:
+                raise RuntimeError("repeatability JSON parser positive control failed")
+        for raw in ('{"value": Infinity}', '{"value": 1e999}',
+                    '{"a":1,"a":2}', '{"outer":{"a":1,"a":2}}'):
             path.write_text(raw, encoding="utf-8")
             for module in (analyzer, validator):
                 try:
@@ -1059,7 +1064,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                 except module.Fail:
                     pass
                 else:
-                    raise RuntimeError("repeatability parser accepted nonfinite JSON")
+                    raise RuntimeError("repeatability parser accepted ambiguous/nonfinite JSON")
     original_load = validator.load
     for label, mutate in (
         ("infinite throughput gain", lambda doc: doc["signals"]["a"].update({"throughputGainFromPrevious": float("inf")})),
@@ -1079,7 +1084,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator nonfinite, integrity and signal negatives (20 cases)")
+    print("PASS: repeatability analyzer/validator nonfinite, integrity and signal negatives (24 cases)")
 
 
 
