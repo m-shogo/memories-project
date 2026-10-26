@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
 import re
@@ -13,6 +14,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
+ANALYZER = ROOT / "scripts/analyze-memory-os-controlled-saturation-repeatability.py"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 RUN_REF = re.compile(r"^docs/fixtures/memory-os-operability/controlled-saturation-ramp-results\.repeat-([0-9]+)-([0-9]+)-([ab])\.v1\.json$")
 STEPS = [4, 8, 16, 24, 32, 48]
@@ -68,8 +70,14 @@ def main() -> int:
     require(contract.get("schemaVersion") == "memory-os-controlled-saturation-repeatability.v1", "contract schema drift")
     source_ramp_path = safe_repo_ref(contract.get("sourceRampContract"), "sourceRampContract")
     source_ramp = load(source_ramp_path)
-    for field in ("analyzer", "validator", "reconcile", "workflow", "reconcileWorkflow"):
+    analyzer_path = safe_repo_ref(contract.get("analyzer"), "analyzer")
+    require(analyzer_path == ANALYZER, "repeatability analyzer authority drift")
+    for field in ("validator", "reconcile", "workflow", "reconcileWorkflow"):
         safe_repo_ref(contract.get(field), field)
+    spec = importlib.util.spec_from_file_location("repeatability_canonical_analyzer", ANALYZER)
+    require(spec is not None and spec.loader is not None, "repeatability analyzer loader missing")
+    analyzer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(analyzer)
     require(source_ramp.get("schemaVersion") == "memory-os-controlled-saturation-ramp.v1", "source ramp schema drift")
     require(contract.get("sourceScenarioId") == source_ramp.get("scenarioId"), "source ramp scenario binding drift")
     require(contract.get("dependencyMode") == source_ramp.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "source ramp dependency mode drift")
@@ -103,6 +111,7 @@ def main() -> int:
     require(matches[0].group(3) == "a" and matches[1].group(3) == "b"
             and matches[0].group(1, 2) == matches[1].group(1, 2),
             "runRefs must bind the same matrix run and attempt with distinct a/b ordinals")
+    computed_signals: list[dict[str, Any]] = []
     for ref in refs:
         run_path = safe_repo_ref(ref, "runRef")
         run = load(run_path)
@@ -123,6 +132,10 @@ def main() -> int:
                 f"run result and integrity must both PASS: {ref}")
         require(scenario.get("workloadType") == source_ramp.get("workloadType") == "CONTROLLED_RAMP", f"run workload type mismatch: {ref}")
         require(scenario.get("requestsPerStep") == source_ramp.get("requestsPerStep"), f"run requestsPerStep mismatch: {ref}")
+        try:
+            computed_signals.append(analyzer.signal_for(run))
+        except analyzer.Fail:
+            raise Fail(f"run signal cannot be recomputed: {ref}") from None
     require(result.get("independentRunCount") == 2, "independentRunCount drift")
     signals = result.get("signals")
     require(isinstance(signals, dict) and set(signals) == {"a", "b"}, "signals missing")
@@ -130,6 +143,8 @@ def main() -> int:
     for label in ("a", "b"):
         row = signals[label]
         require(isinstance(row, dict), f"signal {label} invalid")
+        require(row == computed_signals[0 if label == "a" else 1],
+                f"signal {label} does not match its source run")
         concurrency = row.get("concurrency")
         require(concurrency is None or concurrency in STEPS, f"signal {label} concurrency invalid")
         require(row.get("kind") in {"ACTUAL_FAILURE_SIGNAL", "THROUGHPUT_LATENCY_KNEE", "NO_SIGNAL"}, f"signal {label} kind invalid")
