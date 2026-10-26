@@ -193,9 +193,43 @@ def git_history(ref: str, field: str) -> list[str]:
 def require_append_only_review(ref: str, path: Path, field: str) -> None:
     commits = git_history(ref, field)
     require(len(commits) == 1, f"{field} must remain append-only after its first committed version")
-    completed = subprocess.run(["git", "show", f"{commits[0]}:{ref}"], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"cannot read initial committed bytes for {field}")
-    require(path.read_bytes() == completed.stdout, f"{field} bytes drift from initial committed material-delta review evidence")
+    object_ref = f"{commits[0]}:{ref}"
+    try:
+        size_result = subprocess.run(
+            ["git", "cat-file", "-s", object_ref], cwd=ROOT, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot inspect initial committed bytes for {field}") from None
+    require(
+        type(size_result.returncode) is int and size_result.returncode == 0
+        and isinstance(size_result.stdout, str)
+        and re.fullmatch(r"[0-9]+\n", size_result.stdout) is not None,
+        f"cannot inspect initial committed bytes for {field}",
+    )
+    size = int(size_result.stdout[:-1])
+    require(0 < size <= MAX_JSON_BYTES, f"{field} initial committed bytes size limit exceeded")
+    require(path.is_file() and not path.is_symlink(), f"{field} current review path unsafe")
+    try:
+        with path.open("rb") as source:
+            current = source.read(MAX_JSON_BYTES + 1)
+    except OSError:
+        raise Fail(f"cannot read current review bytes for {field}") from None
+    require(len(current) <= MAX_JSON_BYTES, f"{field} current review bytes size limit exceeded")
+    try:
+        completed = subprocess.run(
+            ["git", "show", object_ref], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot read initial committed bytes for {field}") from None
+    require(
+        type(completed.returncode) is int and completed.returncode == 0
+        and isinstance(completed.stdout, bytes),
+        f"cannot read initial committed bytes for {field}",
+    )
+    require(len(completed.stdout) == size, f"{field} initial committed bytes size mismatch")
+    require(current == completed.stdout, f"{field} bytes drift from initial committed material-delta review evidence")
 
 
 def require_utc_rfc3339(value: Any, field: str) -> str:

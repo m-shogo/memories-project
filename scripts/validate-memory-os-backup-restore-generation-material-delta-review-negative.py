@@ -399,10 +399,37 @@ def main() -> int:
             path.write_bytes(creation_bytes)
             module.git_history = lambda _ref, _field: ["a" * 40]
 
-            def synthetic_git_show(args, **_kwargs):
-                require(args == ["git", "show", f"{'a' * 40}:{review_ref}"],
-                        f"unexpected synthetic material-delta history transport: {args}")
-                return subprocess.CompletedProcess(args, 0, stdout=creation_bytes, stderr=b"")
+            object_ref = f"{'a' * 40}:{review_ref}"
+            state = {
+                "size": f"{len(creation_bytes)}\n", "size_exit": 0, "size_error": None,
+                "show": creation_bytes, "show_exit": 0, "show_error": None,
+            }
+            calls = []
+
+            def synthetic_git_show(args, **kwargs):
+                require(
+                    kwargs.get("cwd") == module.ROOT
+                    and kwargs.get("stdout") is subprocess.PIPE
+                    and kwargs.get("stderr") is subprocess.DEVNULL
+                    and kwargs.get("check") is False and kwargs.get("timeout") == 20,
+                    "append-only review Git transport privacy/timeout drift",
+                )
+                calls.append(args[1])
+                if args[1] == "cat-file":
+                    require(args == ["git", "cat-file", "-s", object_ref]
+                            and kwargs.get("text") is True,
+                            "append-only review Git size preflight drift")
+                    if state["size_error"] is not None:
+                        raise state["size_error"]
+                    return subprocess.CompletedProcess(
+                        args, state["size_exit"], stdout=state["size"], stderr=None)
+                require(args == ["git", "show", object_ref]
+                        and kwargs.get("text") is None,
+                        "append-only review Git show drift")
+                if state["show_error"] is not None:
+                    raise state["show_error"]
+                return subprocess.CompletedProcess(
+                    args, state["show_exit"], stdout=state["show"], stderr=None)
 
             module.subprocess.run = synthetic_git_show
             module.require_append_only_review(review_ref, path, "materialDeltaReviewRef")
@@ -414,6 +441,62 @@ def main() -> int:
                         f"material-delta review byte mutation wrong diagnostic: {exc}")
             else:
                 raise Fail("material-delta review changed after creation was accepted")
+            path.write_bytes(creation_bytes)
+            module.require_append_only_review(review_ref, path, "materialDeltaReviewRef")
+
+            marker = "PRIVATE_REVIEW_APPEND_ONLY_MARKER_DO_NOT_LOG"
+            cases = (
+                ("oversized-initial", {"size": f"{module.MAX_JSON_BYTES + 1}\n"},
+                 "materialDeltaReviewRef initial committed bytes size limit exceeded", 1),
+                ("empty-initial", {"size": "0\n"},
+                 "materialDeltaReviewRef initial committed bytes size limit exceeded", 1),
+                ("malformed-size", {"size": marker + "\n"},
+                 "cannot inspect initial committed bytes for materialDeltaReviewRef", 1),
+                ("nonzero-size", {"size_exit": 1},
+                 "cannot inspect initial committed bytes for materialDeltaReviewRef", 1),
+                ("boolean-size-exit", {"size_exit": True},
+                 "cannot inspect initial committed bytes for materialDeltaReviewRef", 1),
+                ("size-timeout", {"size_error": subprocess.TimeoutExpired(
+                    ["git", "cat-file"], 20, stderr=marker)},
+                 "cannot inspect initial committed bytes for materialDeltaReviewRef", 1),
+                ("show-timeout", {"show_error": subprocess.TimeoutExpired(
+                    ["git", "show"], 20, stderr=marker)},
+                 "cannot read initial committed bytes for materialDeltaReviewRef", 2),
+                ("show-oserror", {"show_error": OSError(marker)},
+                 "cannot read initial committed bytes for materialDeltaReviewRef", 2),
+                ("show-size-mismatch", {"show": b"bad"},
+                 "materialDeltaReviewRef initial committed bytes size mismatch", 2),
+                ("show-nonzero", {"show_exit": 1},
+                 "cannot read initial committed bytes for materialDeltaReviewRef", 2),
+                ("show-boolean-exit", {"show_exit": True},
+                 "cannot read initial committed bytes for materialDeltaReviewRef", 2),
+            )
+            clean_state = dict(state)
+            for label, mutation, expected, phases in cases:
+                state.update(clean_state)
+                state.update(mutation)
+                before = len(calls)
+                try:
+                    module.require_append_only_review(review_ref, path, "materialDeltaReviewRef")
+                except module.Fail as exc:
+                    require(str(exc) == expected and marker not in str(exc),
+                            f"append-only {label} wrong/private failure class: {exc}")
+                else:
+                    raise Fail(f"append-only {label} unexpectedly accepted")
+                require(len(calls) - before == phases,
+                        f"append-only {label} reached wrong Git phase")
+            state.update(clean_state)
+            path.write_bytes(b"x" * (module.MAX_JSON_BYTES + 1))
+            before = len(calls)
+            try:
+                module.require_append_only_review(review_ref, path, "materialDeltaReviewRef")
+            except module.Fail as exc:
+                require(str(exc) == "materialDeltaReviewRef current review bytes size limit exceeded",
+                        f"append-only oversized current review wrong rejection: {exc}")
+            else:
+                raise Fail("append-only oversized current review unexpectedly accepted")
+            require(calls[before:] == ["cat-file"],
+                    "append-only oversized current review reached Git show")
             path.write_bytes(creation_bytes)
             module.require_append_only_review(review_ref, path, "materialDeltaReviewRef")
     finally:
