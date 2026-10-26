@@ -48,8 +48,122 @@ def rejected(module, path, value, root, label):
         raise RuntimeError(f"database outage diagnostic accepted {label}")
 
 
+
+def verify_local_result_atomic_writer(module) -> None:
+    canonical_path = ROOT / module.RESULT_RELATIVE_PATH
+    value = json.loads(canonical_path.read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory(prefix="database-outage-result-atomic-", dir=ROOT) as temp:
+        root = Path(temp)
+        path = root / module.RESULT_RELATIVE_PATH
+        path.parent.mkdir(parents=True)
+        module.write_local_result(path, value, root)
+        if json.loads(path.read_text(encoding="utf-8")) != value:
+            raise RuntimeError("database outage local result positive bytes mismatch")
+        if stat.S_IMODE(path.stat().st_mode) != 0o600:
+            raise RuntimeError("database outage local result new mode drift")
+        path.chmod(0o640)
+        original = path.read_bytes()
+        module.write_local_result(path, value, root)
+        if path.read_bytes() != original or stat.S_IMODE(path.stat().st_mode) != 0o640:
+            raise RuntimeError("database outage local result mode drift")
+        for label, patch in (
+            ("production evidence", {"environment": dict(value["environment"], productionEvidence=True)}),
+            ("secret flag", {"environment": dict(value["environment"], containsSecrets=True)}),
+            ("synthetic credential", {"environment": dict(value["environment"], synthetic="postgres://SYNTHETIC_SECRET")}),
+            ("nonfinite duration", {"durationSeconds": float("inf")}),
+            ("huge duration", {"durationSeconds": 10 ** 500}),
+            ("extra field", {"unexpected": "SYNTHETIC_SECRET"}),
+        ):
+            rejected_result = dict(value, **patch)
+            try:
+                module.write_local_result(path, rejected_result, root)
+            except module.DiagnosticWriteFailure as exc:
+                if "SYNTHETIC_SECRET" in str(exc):
+                    raise RuntimeError("database outage result leaked synthetic marker") from None
+            else:
+                raise RuntimeError(f"database outage result accepted {label}")
+        previous_replace = module.os.replace
+        try:
+            def reject_replace(*args):
+                raise OSError("SYNTHETIC_SECRET")
+            module.os.replace = reject_replace
+            try:
+                module.write_local_result(path, value, root)
+            except module.DiagnosticWriteFailure as exc:
+                if "SYNTHETIC_SECRET" in str(exc):
+                    raise RuntimeError("database outage result leaked replace error") from None
+            else:
+                raise RuntimeError("database outage result accepted replace failure")
+        finally:
+            module.os.replace = previous_replace
+        if path.read_bytes() != original or stat.S_IMODE(path.stat().st_mode) != 0o640:
+            raise RuntimeError("database outage local result atomic rollback drift")
+        if list(path.parent.glob(f".{path.name}.*.tmp")):
+            raise RuntimeError("database outage local result left temporary files")
+        path.unlink()
+        path.mkdir()
+        try:
+            module.write_local_result(path, value, root)
+        except module.DiagnosticWriteFailure:
+            pass
+        else:
+            raise RuntimeError("database outage result accepted directory target")
+        path.rmdir()
+        if hasattr(os, "mkfifo"):
+            os.mkfifo(path)
+            try:
+                module.write_local_result(path, value, root)
+            except module.DiagnosticWriteFailure:
+                pass
+            else:
+                raise RuntimeError("database outage result accepted FIFO target")
+            path.unlink()
+        try:
+            module.write_local_result(root / "outside.json", value, root)
+        except module.DiagnosticWriteFailure:
+            pass
+        else:
+            raise RuntimeError("database outage result accepted noncanonical path")
+    with tempfile.TemporaryDirectory(prefix="database-outage-result-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary"
+        canary.write_bytes(b"SYNTHETIC_SECRET")
+        with tempfile.TemporaryDirectory(prefix="database-outage-result-link-", dir=ROOT) as temp:
+            root = Path(temp)
+            path = root / module.RESULT_RELATIVE_PATH
+            path.parent.mkdir(parents=True)
+            path.symlink_to(canary)
+            try:
+                module.write_local_result(path, value, root)
+            except module.DiagnosticWriteFailure:
+                pass
+            else:
+                raise RuntimeError("database outage result accepted symlink target")
+            path.unlink()
+            path.parent.rmdir()
+            path.parent.symlink_to(outside, target_is_directory=True)
+            try:
+                module.write_local_result(path, value, root)
+            except module.DiagnosticWriteFailure:
+                pass
+            else:
+                raise RuntimeError("database outage result accepted symlink ancestor")
+        if canary.read_bytes() != b"SYNTHETIC_SECRET":
+            raise RuntimeError("database outage result modified external canary")
+    with tempfile.TemporaryDirectory(prefix="database-outage-result-parent-", dir=ROOT) as temp:
+        root = Path(temp)
+        try:
+            module.write_local_result(root / module.RESULT_RELATIVE_PATH, value, root)
+        except module.DiagnosticWriteFailure:
+            pass
+        else:
+            raise RuntimeError("database outage result accepted missing parent")
+    print("PASS: database outage local result canonical atomic mode/rollback/path negatives")
+
+
 def main() -> int:
     module = load_helper()
+    verify_local_result_atomic_writer(module)
     source = WORKFLOW.read_text(encoding="utf-8")
     required = (
         "runpy.run_path(", "write_diagnostic", "stdout=subprocess.DEVNULL",
@@ -59,8 +173,9 @@ def main() -> int:
     for marker in required:
         if marker not in source:
             raise RuntimeError("database outage workflow diagnostic source binding missing")
-    if "completed.stdout[-4000:]" in source or "diagnostic_path.write_text(" in source:
-        raise RuntimeError("database outage workflow persists raw or non-atomic diagnostic")
+    if ("completed.stdout[-4000:]" in source or "diagnostic_path.write_text(" in source or
+            "result_path.write_text(" in source or 'writer["write_local_result"]' not in source):
+        raise RuntimeError("database outage workflow persists raw or non-atomic evidence")
     pr_source = source.split("  validate-pr:", 1)[1].split("  execute:", 1)[0]
     execute_source = source.split("  execute:", 1)[1]
     if "permissions:\n      contents: read" not in pr_source or "persist-credentials: false" not in pr_source:

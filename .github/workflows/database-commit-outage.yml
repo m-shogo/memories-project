@@ -244,10 +244,7 @@ jobs:
                   ],
               }
               result_path = root / "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
-              result_path.write_text(
-                  json.dumps(result, indent=2, ensure_ascii=False) + "\n",
-                  encoding="utf-8",
-              )
+              writer["write_local_result"](result_path, result, root)
 
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
               output.write(f"source_sha={source_sha}\n")
