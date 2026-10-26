@@ -55,6 +55,12 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, payload: bytes, *, _replace=os.replace) -> None:
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise Fail("deletion-worker saturation atomic symlink target/ancestor refused")
+    if path.exists() and not path.is_file():
+        raise Fail("deletion-worker saturation atomic target must be regular file")
+    if not path.parent.is_dir():
+        raise Fail("deletion-worker saturation atomic parent directory missing")
     existing_mode = (path.stat().st_mode & 0o777) if path.exists() else None
     temp_path: Path | None = None
     try:
