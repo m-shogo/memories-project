@@ -18,6 +18,7 @@ on:
       - "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"
+      - "scripts/run-memory-os-controlled-saturation-repeatability-disposable.py"
       - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
@@ -39,6 +40,7 @@ on:
       - "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"
+      - "scripts/run-memory-os-controlled-saturation-repeatability-disposable.py"
       - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
@@ -89,6 +91,7 @@ jobs:
             scripts/reconcile-memory-os-controlled-saturation-ramp-status.py \
             scripts/validate-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py \
+            scripts/run-memory-os-controlled-saturation-repeatability-disposable.py \
             scripts/reconcile-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-load-evidence-index.py \
@@ -107,12 +110,12 @@ jobs:
           if [[ "$code" == "0" ]]; then
             stage=reconcile-negative
             echo "STAGE: reconcile-negative" >> "$log"
-            python scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py >> "$log" 2>&1 || code=$?
+            python scripts/run-memory-os-controlled-saturation-repeatability-disposable.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             stage=authority-reconcile
             echo "STAGE: authority-reconcile" >> "$log"
-            python scripts/reconcile-memory-os-controlled-saturation-repeatability.py >> "$log" 2>&1 || code=$?
+            python scripts/run-memory-os-controlled-saturation-repeatability-disposable.py --reconcile-only >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             stage=combined-validation
@@ -178,6 +181,7 @@ jobs:
             scripts/reconcile-memory-os-controlled-saturation-ramp-status.py \
             scripts/validate-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py \
+            scripts/run-memory-os-controlled-saturation-repeatability-disposable.py \
             scripts/reconcile-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-load-evidence-index.py \
@@ -196,7 +200,7 @@ jobs:
           if [[ "$code" == "0" ]]; then
             stage=reconcile-negative
             echo "STAGE: reconcile-negative" >> "$log"
-            python scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py >> "$log" 2>&1 || code=$?
+            python scripts/run-memory-os-controlled-saturation-repeatability-disposable.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             stage=authority-reconcile
