@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/deletion-under-load-contract.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
+MAX_JSON_BYTES = 1024 * 1024
 
 
 class ValidationFailure(RuntimeError):
@@ -39,16 +40,34 @@ def parse_finite_float(value: str) -> float:
     return parsed
 
 
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate deletion load JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
+    require(isinstance(path, Path), "deletion load JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "deletion load JSON symlink rejected")
+    require(path.is_file(), "deletion load JSON file missing or unsafe")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"),
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise ValidationFailure("deletion load JSON path escaped repository") from None
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "deletion load JSON exceeds reviewed read limit")
+        value = json.loads(raw.decode("utf-8"),
                            parse_constant=reject_nonfinite_constant,
-                           parse_float=parse_finite_float)
-    except FileNotFoundError as exc:
-        raise ValidationFailure(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValidationFailure(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise ValidationFailure("deletion load JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "deletion load JSON root must be object")
     return value
 
 

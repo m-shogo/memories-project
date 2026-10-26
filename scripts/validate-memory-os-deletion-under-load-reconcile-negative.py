@@ -332,7 +332,65 @@ def exercise_existing_scenario_prewrite_rejection(module: ModuleType) -> None:
     require_snapshots_unchanged(snapshots)
 
 
+def exercise_deletion_load_json_reader() -> None:
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_json_negative", validator_path)
+    require(spec is not None and spec.loader is not None, "deletion load JSON validator loader missing")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    with tempfile.TemporaryDirectory(prefix="deletion-load-json-outside-") as outside_tmp, \
+         tempfile.TemporaryDirectory(prefix=".deletion-load-json-negative-", dir=ROOT) as inside_tmp:
+        outside, inside = Path(outside_tmp), Path(inside_tmp)
+        canary = outside / "canary.json"
+        canary.write_bytes(b'{"synthetic":true}')
+        good = inside / "good.json"
+        good.write_text('{"safe":true}', encoding="utf-8")
+        require(validator.load(good) == {"safe": True}, "deletion load JSON positive failed")
+        boundary = inside / "boundary.json"
+        boundary.write_bytes(b'{"padding":"' + b"x" * (validator.MAX_JSON_BYTES - 14) + b'"}')
+        require(len(boundary.read_bytes()) <= validator.MAX_JSON_BYTES and validator.load(boundary)["padding"],
+                "deletion load bounded JSON positive failed")
+        oversized = inside / "oversized.json"
+        oversized.write_bytes(b'{"padding":"' + b"x" * validator.MAX_JSON_BYTES + b'"}')
+        bad = (
+            ("oversized", oversized, "exceeds reviewed read limit"),
+            ("outside", canary, "escaped repository"),
+        )
+        nested = inside / "duplicate.json"
+        nested.write_text('{"outer":{"key":1,"key":2}}', encoding="utf-8")
+        bad += (("duplicate", nested, "duplicate deletion load JSON key"),)
+        invalid = inside / "invalid.json"
+        invalid.write_bytes(b'{"value":"' + bytes([255]) + b'"}')
+        bad += (("invalid UTF-8", invalid, "unreadable or invalid"),)
+        huge = inside / "huge.json"
+        huge.write_text('{"value":' + "9" * 5000 + "}", encoding="utf-8")
+        bad += (("huge integer", huge, "unreadable or invalid"),)
+        linked = inside / "linked.json"
+        linked.symlink_to(canary)
+        parent_link = inside / "linked-parent"
+        parent_link.symlink_to(outside, target_is_directory=True)
+        directory = inside / "directory.json"
+        directory.mkdir()
+        bad += (
+            ("direct symlink", linked, "symlink rejected"),
+            ("ancestor symlink", parent_link / "canary.json", "symlink rejected"),
+            ("directory", directory, "missing or unsafe"),
+            ("missing", inside / "missing.json", "missing or unsafe"),
+        )
+        for label, path, expected in bad:
+            try:
+                validator.load(path)
+            except validator.ValidationFailure as exc:
+                require(expected in str(exc) and "SYNTHETIC_SECRET" not in str(exc),
+                        "deletion load JSON wrong rejection: " + label)
+            else:
+                raise RuntimeError("deletion load JSON accepted " + label)
+        require(canary.read_bytes() == b'{"synthetic":true}', "deletion load JSON changed outside canary")
+    print("PASS: deletion-under-load bounded strict JSON and path negatives")
+
+
 def main() -> int:
+    exercise_deletion_load_json_reader()
     module = load_target()
     module.enforce_runtime_authorities()
     module.enforce_atomic_writer_authority()
