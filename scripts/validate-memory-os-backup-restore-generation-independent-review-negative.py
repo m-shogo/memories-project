@@ -972,6 +972,80 @@ def prove_source_order_bounded_creation_blob(module) -> None:
     print("PASS: source-order creation blob bounded/private with eleven real-reader negatives")
 
 
+
+def prove_source_order_bounded_current_blob(module) -> None:
+    """Exercise the actual row consumer with isolated oversized/unreadable review files."""
+    from datetime import datetime, timezone
+
+    source_order = module.load_review_source_order_validator()
+    original = {name: getattr(source_order, name) for name in (
+        "commit_exists", "commit_time", "canonical_review_ref",
+        "first_commit_for_path", "require_source_precedes_review",
+        "creation_blob", "load_json",
+    )}
+    row = base_row()
+    payload = b'{"reviewedAt":"2026-09-12T09:05:00Z"}' + bytes([10])
+    with tempfile.TemporaryDirectory(prefix="source-order-current-blob-negative-") as tmp:
+        path = Path(tmp) / "review.json"
+        path.write_bytes(payload)
+        observed = {"created": 0}
+
+        def fake_creation(*_args):
+            observed["created"] += 1
+            return payload
+
+        try:
+            source_order.commit_exists = lambda *_args: None
+            source_order.commit_time = lambda sha, _field: datetime(
+                2026, 9, 12, 9, 0 if sha == row["sourceCommitSha"] else 10,
+                tzinfo=timezone.utc,
+            )
+            source_order.canonical_review_ref = lambda ref, _field, material_delta=False: (ref, path)
+            source_order.first_commit_for_path = lambda *_args: "b" * 40
+            source_order.require_source_precedes_review = lambda *_args: None
+            source_order.creation_blob = fake_creation
+            source_order.load_json = lambda *_args: {"reviewedAt": "2026-09-12T09:05:00Z"}
+            source_order.validate_row(row, 0)
+            require(observed["created"] == 3, "current blob positive did not inspect all three reviews")
+            for label, fixture, expected in (
+                ("oversized", b"x" * (source_order.MAX_JSON_BYTES + 1),
+                 "records[0].securityReviewRef current blob size limit exceeded"),
+            ):
+                path.write_bytes(fixture)
+                before = observed["created"]
+                try:
+                    source_order.validate_row(row, 0)
+                except source_order.Fail as exc:
+                    require(str(exc) == expected,
+                            f"current blob {label} rejected at wrong boundary")
+                else:
+                    raise Fail(f"current blob {label} unexpectedly accepted")
+                require(observed["created"] == before,
+                        f"current blob {label} reached creation Git before size refusal")
+                require(path.read_bytes() == fixture, "current blob negative mutated fixture")
+            path.unlink()
+            path.mkdir()
+            before = observed["created"]
+            try:
+                source_order.validate_row(row, 0)
+            except source_order.Fail as exc:
+                require(str(exc) == "cannot read records[0].securityReviewRef current blob",
+                        "current blob directory failure leaked path details")
+            else:
+                raise Fail("current blob directory unexpectedly accepted")
+            require(observed["created"] == before,
+                    "unreadable current blob reached creation Git")
+            path.rmdir()
+            path.write_bytes(payload)
+            source_order.validate_row(row, 0)
+            require(observed["created"] == 6,
+                    "current blob restored positive did not inspect all three reviews")
+        finally:
+            for name, value in original.items():
+                setattr(source_order, name, value)
+    print("PASS: source-order current review bytes bounded and private with oversized/directory negatives")
+
+
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
@@ -979,6 +1053,7 @@ def main() -> int:
     prove_runtime_review_pair_controls()
     prove_source_order_bounded_git_output(module)
     prove_source_order_bounded_creation_blob(module)
+    prove_source_order_bounded_current_blob(module)
     prove_independent_review_json_reader(module)
     expect_source_order_execution(module)
 

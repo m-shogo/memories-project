@@ -292,9 +292,12 @@ def validate_row(row: dict[str, Any], index: int) -> None:
         review_commit = first_commit_for_path(ref, field)
         require_source_precedes_review(source_commit, review_commit, field)
         try:
-            current_blob = path.read_bytes()
-        except OSError as exc:
-            raise Fail(f"cannot read {field} current blob: {exc}") from exc
+            with path.open("rb") as source:
+                current_blob = source.read(MAX_JSON_BYTES + 1)
+        except OSError:
+            raise Fail(f"cannot read {field} current blob") from None
+        require(len(current_blob) <= MAX_JSON_BYTES,
+                f"{field} current blob size limit exceeded")
         require_creation_blob_immutable(current_blob, creation_blob(review_commit, ref, field), field)
         payload = load_json(path, field)
         reviewed_at = review_time(payload.get("reviewedAt"), field)
