@@ -106,10 +106,51 @@ def verify_deletion_timestamp_semantics() -> None:
     print("PASS: deletion load UTC positive and 7 timestamp negatives")
 
 
+
+def verify_deletion_batch_accounting() -> None:
+    """Use the actual batch validator on exact-status and throughput negative cases."""
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_batch_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("deletion load batch validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(ROOT / "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json")
+    pre = canonical["scenario"]["preFence"]
+    post = canonical["scenario"]["postFence"]
+    validator.validate_batch(copy.deepcopy(pre), "synthetic-pre-positive", 120, 200, 120, 0)
+    validator.validate_batch(copy.deepcopy(post), "synthetic-post-positive", 400, 401, 0, 400)
+    cases = (
+        ("float requests", ("summary", "requests"), 120.0),
+        ("float successes", ("summary", "successes"), 120.0),
+        ("float exact status count", ("statusCodeCounts", "200"), 120.0),
+        ("float 2xx class", ("summary", "statusClassCounts", "2xx"), 120.0),
+        ("boolean 5xx class", ("summary", "statusClassCounts", "5xx"), False),
+        ("unknown class", ("summary", "statusClassCounts", "6xx"), 1),
+        ("unreported 3xx", ("summary", "statusClassCounts", "3xx"), 1),
+        ("invented low throughput", ("summary", "throughput"), 0.001),
+        ("derived throughput overflow", ("summary", "durationSeconds"), 5e-324),
+    )
+    for label, keys, value in cases:
+        mutated = copy.deepcopy(pre)
+        cursor = mutated
+        for key in keys[:-1]:
+            cursor = cursor[key]
+        cursor[keys[-1]] = value
+        try:
+            validator.validate_batch(mutated, "synthetic-negative", 120, 200, 120, 0)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"deletion load accepted {label}")
+    print("PASS: deletion load batch positives and 9 status/throughput negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_deletion_numeric_boundary()
     verify_deletion_timestamp_semantics()
+    verify_deletion_batch_accounting()
     substitutions = {
         "CONTRACT_PATH": module.LOAD_PATH,
         "LOAD_PATH": module.CONTRACT_PATH,

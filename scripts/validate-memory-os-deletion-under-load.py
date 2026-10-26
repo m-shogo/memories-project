@@ -89,27 +89,37 @@ def validate_batch(value: Any, field: str, requests: int,
     exact = value.get("statusCodeCounts")
     require(isinstance(summary, dict), f"{field}.summary missing")
     require(isinstance(exact, dict), f"{field}.statusCodeCounts missing")
-    require(summary.get("requests") == requests,
+    require(integer(summary.get("requests"), f"{field}.requests", 1) == requests,
             f"{field} request count drift")
     integer(summary.get("concurrency"), f"{field}.concurrency", 1)
-    require(summary.get("successes") == expected_successes and
-            summary.get("failures") == expected_failures,
+    require(integer(summary.get("successes"), f"{field}.successes") == expected_successes and
+            integer(summary.get("failures"), f"{field}.failures") == expected_failures,
             f"{field} success/failure accounting drift")
-    positive_number(summary.get("durationSeconds"), f"{field}.durationSeconds")
-    positive_number(summary.get("throughput"), f"{field}.throughput")
+    duration = positive_number(summary.get("durationSeconds"), f"{field}.durationSeconds")
+    throughput = positive_number(summary.get("throughput"), f"{field}.throughput")
+    derived_throughput = requests / duration
+    require(math.isfinite(derived_throughput) and
+            math.isclose(throughput, derived_throughput, rel_tol=1e-6, abs_tol=1e-6),
+            f"{field} throughput does not match requests and duration")
     p50 = positive_number(summary.get("latencyP50Ms"), f"{field}.latencyP50Ms")
     p95 = positive_number(summary.get("latencyP95Ms"), f"{field}.latencyP95Ms")
     p99 = positive_number(summary.get("latencyP99Ms"), f"{field}.latencyP99Ms")
     require(p50 <= p95 <= p99, f"{field} latency percentiles are not monotonic")
-    require(exact == {str(expected_status): requests},
-            f"{field} exact status code accounting drift: {exact}")
+    require(set(exact) == {str(expected_status)} and
+            integer(exact.get(str(expected_status)), f"{field}.statusCodeCounts.{expected_status}") == requests,
+            f"{field} exact status code accounting drift")
     classes = summary.get("statusClassCounts")
     require(isinstance(classes, dict), f"{field}.statusClassCounts missing")
+    require(set(classes).issubset({"2xx", "3xx", "4xx", "5xx", "transport_error"}),
+            f"{field} unknown status class")
     expected_class = "2xx" if 200 <= expected_status < 300 else "4xx"
-    require(classes.get(expected_class) == requests,
+    require(integer(classes.get(expected_class), f"{field}.statusClassCounts.{expected_class}") == requests,
             f"{field} status class mismatch")
-    require(classes.get("5xx", 0) == 0 and classes.get("transport_error", 0) == 0,
-            f"{field} contains infrastructure failure")
+    for status_class in ("2xx", "3xx", "4xx", "5xx", "transport_error"):
+        if status_class != expected_class:
+            require(integer(classes.get(status_class, 0),
+                            f"{field}.statusClassCounts.{status_class}") == 0,
+                    f"{field} contains unexpected status class or infrastructure failure")
 
 
 
