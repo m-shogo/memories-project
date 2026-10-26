@@ -277,25 +277,22 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json
-          import os
-          import re
-          import stat
-          import tempfile
+          import json, os, re, stat, tempfile
           from pathlib import Path
-          text = Path("/tmp/memory-os-controlled-saturation.log").read_text(encoding="utf-8", errors="replace")
-          text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
-          text = re.sub(r"https?://[^\s]+", "<redacted-endpoint>", text)
-          text = text.replace("minioadmin", "<redacted-local-credential>")
-          text = re.sub(r"Bearer\s+\S+", "Bearer <redacted>", text, flags=re.I)
-          text = re.sub(r"acct_[A-Za-z0-9_-]+", "<redacted-synthetic-account>", text)
+          
+          source_sha = os.environ["SOURCE_SHA"]
+          if re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
+              raise SystemExit("invalid controlled saturation source SHA")
+          exit_code = int(os.environ["CONTROLLED_RAMP_EXIT_CODE"])
+          if exit_code == 0:
+              raise SystemExit("diagnostic requires nonzero exit code")
           value = {
               "schemaVersion": "memory-os-validator-diagnostic.v1",
               "workflow": "controlled-saturation-ramp",
-              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "sourceCommitSha": source_sha,
               "result": "FAIL",
-              "exitCode": int(os.environ["CONTROLLED_RAMP_EXIT_CODE"]),
-              "output": text[-12000:],
+              "exitCode": exit_code,
+              "output": "Controlled saturation ramp failed; raw harness output withheld.",
               "containsSecrets": False,
               "productionEvidence": False,
               "productionEquivalentDependencies": False,
@@ -303,17 +300,27 @@ jobs:
               "operationalThresholdApproved": False,
           }
           path = Path("docs/fixtures/memory-os-operability/controlled-saturation-ramp-diagnostic.last.json")
-          path.parent.mkdir(parents=True, exist_ok=True)
-          payload = (json.dumps(value, indent=2) + "\n").encode("utf-8")
-          existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+          repo = Path.cwd().resolve(strict=True)
+          if not path.parent.is_dir() or path.is_dir():
+              raise SystemExit("unsafe controlled saturation diagnostic target")
+          for candidate in (path, *path.parents):
+              if candidate.is_symlink():
+                  raise SystemExit("controlled saturation diagnostic symlink rejected")
+          try:
+              path.parent.resolve(strict=True).relative_to(repo)
+          except ValueError:
+              raise SystemExit("controlled saturation diagnostic path escaped repository") from None
+          if path.exists() and not path.is_file():
+              raise SystemExit("controlled saturation diagnostic target is not a file")
+          mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
+          payload = (json.dumps(value, indent=2, allow_nan=False) + "\n").encode("utf-8")
           tmp_path = None
           try:
               with tempfile.NamedTemporaryFile(mode="wb", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False) as handle:
                   tmp_path = Path(handle.name)
-                  if existing_mode is not None:
-                      os.fchmod(handle.fileno(), existing_mode)
                   handle.write(payload)
                   handle.flush()
+                  os.fchmod(handle.fileno(), mode)
                   os.fsync(handle.fileno())
               os.replace(tmp_path, path)
               tmp_path = None

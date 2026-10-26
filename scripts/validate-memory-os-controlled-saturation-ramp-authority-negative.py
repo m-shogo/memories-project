@@ -6,6 +6,10 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import stat
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -137,6 +141,71 @@ def verify_transaction_secret_redaction(module) -> None:
         if path.read_bytes() != content:
             raise RuntimeError("controlled saturation transaction redaction test changed canonical authority")
     print("PASS: controlled saturation primary and incomplete-rollback redaction (2 cases)")
+
+
+
+def verify_inline_ramp_diagnostic_negative() -> None:
+    workflow = (ROOT / ".github/workflows/controlled-saturation-ramp.yml").read_text(encoding="utf-8")
+    marker = "      - name: Record privacy-safe diagnostic" + "\n"
+    if workflow.count(marker) != 1 or "text[-12000:]" in workflow:
+        raise RuntimeError("controlled saturation diagnostic source drift")
+    opener, closer = "          python - <<'PY'" + "\n", "          PY" + "\n"
+    start = workflow.index(opener, workflow.index(marker)) + len(opener)
+    end = workflow.index(closer, start)
+    lines = workflow[start:end].splitlines()
+    if not lines or any(line and not line.startswith("          ") for line in lines):
+        raise RuntimeError("controlled saturation diagnostic indentation drift")
+    code = "\n".join(line[10:] for line in lines) + "\n"
+    compile(code, "<controlled-saturation-diagnostic>", "exec")
+    secret = "SYNTHETIC_CONTROLLED_SATURATION_DIAGNOSTIC_SECRET"
+    cases = ("existing", "new", "replace", "fsync", "symlink", "parent", "directory", "missing", "bad-sha", "zero-exit")
+    for case in cases:
+        with tempfile.TemporaryDirectory(prefix="controlled-saturation-diagnostic-") as temp:
+            root = Path(temp)
+            parent = root / "docs/fixtures/memory-os-operability"
+            parent.mkdir(parents=True)
+            target = parent / "controlled-saturation-ramp-diagnostic.last.json"
+            outside = root / "outside"
+            outside.mkdir()
+            canary = outside / "canary"
+            canary.write_bytes(secret.encode())
+            if case in ("existing", "replace", "fsync"):
+                target.write_bytes(b"before")
+                target.chmod(0o640)
+            if case == "symlink":
+                target.symlink_to(canary)
+            if case == "parent":
+                parent.rmdir()
+                parent.symlink_to(outside, target_is_directory=True)
+            if case == "directory":
+                target.mkdir()
+            if case == "missing":
+                parent.rmdir()
+            inject = ""
+            if case in ("replace", "fsync"):
+                inject = "import os\ndef deny(*args): raise OSError('synthetic failure')\nos." + case + " = deny\n"
+            env = dict(os.environ, SOURCE_SHA=("invalid" if case == "bad-sha" else "a" * 40),
+                       CONTROLLED_RAMP_EXIT_CODE=("0" if case == "zero-exit" else "125"))
+            result = subprocess.run([sys.executable, "-c", inject + code], cwd=root, env=env,
+                                    capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != (case in ("existing", "new")):
+                raise RuntimeError(f"controlled saturation diagnostic acceptance drift: {case}")
+            if secret in result.stdout + result.stderr or canary.read_bytes() != secret.encode():
+                raise RuntimeError("controlled saturation diagnostic secret or canary drift")
+            if case in ("existing", "new"):
+                value = json.loads(target.read_text(encoding="utf-8"))
+                if (value.get("output") != "Controlled saturation ramp failed; raw harness output withheld."
+                        or value.get("containsSecrets") is not False or value.get("productionEvidence") is not False
+                        or value.get("capacityBoundaryEstablished") is not False
+                        or value.get("sourceCommitSha") != "a" * 40 or value.get("exitCode") != 125):
+                    raise RuntimeError("controlled saturation diagnostic evidence boundary drift")
+                if stat.S_IMODE(target.stat().st_mode) != (0o640 if case == "existing" else 0o600):
+                    raise RuntimeError("controlled saturation diagnostic mode drift")
+            if case in ("replace", "fsync") and target.read_bytes() != b"before":
+                raise RuntimeError("controlled saturation diagnostic atomic rollback drift")
+            if parent.is_dir() and list(parent.glob(".*.tmp")):
+                raise RuntimeError("controlled saturation diagnostic temp residue")
+    print("PASS: controlled saturation actual inline diagnostic redaction/atomic runtime (10 cases)")
 
 
 def verify_atomic_path_negatives(module) -> None:
@@ -563,6 +632,7 @@ def main() -> int:
     module.enforce_runtime_authorities()
     verify_atomic_replace_failure(module)
     verify_transaction_secret_redaction(module)
+    verify_inline_ramp_diagnostic_negative()
     verify_atomic_path_negatives(module)
     verify_validator_output_negative(module)
     verify_reconciler_json_parser_negatives(module)
