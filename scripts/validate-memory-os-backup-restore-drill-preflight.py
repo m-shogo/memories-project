@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -106,13 +107,48 @@ def repo_relative(path: Path) -> Path:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
 
 
+MAX_JSON_BYTES = 1024 * 1024
+
+
+def reject_nonfinite_constant(value: str) -> None:
+    raise Fail("preflight JSON nonfinite constant refused")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "preflight JSON nonfinite number refused")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "preflight JSON duplicate key refused")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
-    relative = repo_relative(path)
+    require(isinstance(path, Path) and path.is_absolute(),
+            "preflight JSON path must be absolute Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "preflight JSON symlink refused")
+    require(path.is_file(), "preflight JSON missing or unsafe")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise Fail("preflight JSON escaped repository") from None
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "preflight JSON exceeds reviewed read limit")
+        value = json.loads(raw.decode("utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("preflight JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "preflight JSON root must be object")
     return value
 
 

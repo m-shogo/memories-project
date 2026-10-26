@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -70,6 +71,68 @@ def expect_path_rejected(validator: Any, name: str, path: Path) -> None:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"escaped path unexpectedly accepted: {name}")
+
+
+def expect_strict_preflight_json_reader(validator: Any) -> None:
+    """Actual preflight reader rejects noncanonical, unsafe or oversized JSON evidence."""
+    require(isinstance(validator.load(CONTRACT), dict), "preflight JSON canonical positive failed")
+    with (
+        tempfile.TemporaryDirectory(prefix=".preflight-json-negative-", dir=ROOT) as inside_tmp,
+        tempfile.TemporaryDirectory(prefix="preflight-json-outside-") as outside_tmp,
+    ):
+        inside, outside = Path(inside_tmp), Path(outside_tmp)
+        canary = outside / "canary.json"
+        canary.write_bytes(b'{"SYNTHETIC_EXTERNAL_CANARY":true}')
+        regular = inside / "regular.json"
+        regular.write_text('{"safe":true}', encoding="utf-8")
+        require(validator.load(regular) == {"safe": True}, "preflight JSON regular positive failed")
+        bounded = inside / "bounded.json"
+        bounded.write_bytes(b'{"padding":"' + b"x" * (validator.MAX_JSON_BYTES - 14) + b'"}')
+        require(validator.load(bounded)["padding"], "preflight JSON bounded positive failed")
+
+        def reject(label: str, path: object, expected: str) -> None:
+            try:
+                validator.load(path)
+            except validator.Fail as exc:
+                require(expected in str(exc) and "SYNTHETIC_EXTERNAL_CANARY" not in str(exc),
+                        f"preflight JSON wrong rejection: {label}")
+            else:
+                raise Fail(f"preflight JSON accepted {label}")
+
+        oversized = inside / "oversized.json"
+        oversized.write_bytes(b'{"padding":"' + b"x" * validator.MAX_JSON_BYTES + b'"}')
+        reject("oversized", oversized, "exceeds reviewed read limit")
+        reject("outside", canary, "escaped repository")
+        for label, raw, expected in (
+            ("nested duplicate", b'{"outer":{"key":1,"key":2}}', "duplicate"),
+            ("NaN", b'{"value":NaN}', "nonfinite"),
+            ("Infinity", b'{"value":Infinity}', "nonfinite"),
+            ("negative Infinity", b'{"value":-Infinity}', "nonfinite"),
+            ("float overflow", b'{"value":1e999}', "nonfinite"),
+            ("invalid UTF-8", b'{"value":"' + bytes([255]) + b'"}', "unreadable or invalid"),
+            ("huge integer", b'{"value":' + b"9" * 5000 + b"}", "unreadable or invalid"),
+        ):
+            path = inside / (label.replace(" ", "-") + ".json")
+            path.write_bytes(raw)
+            reject(label, path, expected)
+        direct = inside / "direct-link.json"
+        direct.symlink_to(canary)
+        reject("direct symlink", direct, "symlink refused")
+        alias = inside / "alias"
+        alias.symlink_to(outside, target_is_directory=True)
+        reject("ancestor symlink", alias / "canary.json", "symlink refused")
+        directory = inside / "directory.json"
+        directory.mkdir()
+        reject("directory", directory, "missing or unsafe")
+        fifo = inside / "fifo.json"
+        os.mkfifo(fifo)
+        reject("FIFO", fifo, "missing or unsafe")
+        reject("missing", inside / "missing.json", "missing or unsafe")
+        reject("non-Path", "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+               "absolute Path")
+        require(canary.read_bytes() == b'{"SYNTHETIC_EXTERNAL_CANARY":true}',
+                "preflight JSON reader changed outside canary")
+    print("PASS: preflight strict JSON 3 positives and 15 unsafe/nonfinite negatives")
 
 
 def expect_state_rejected(
@@ -357,6 +420,7 @@ def main() -> int:
         lambda _g, _o, d: d.__setitem__("currentExecutableRequestCount", False),
     )
     expect_helper_authority_substitution_rejected(validator, generations, objectives, drill_registry)
+    expect_strict_preflight_json_reader(validator)
     expect_upstream_validator_substitutions_rejected(validator)
     expect_upstream_validator_output_redacted(validator)
     expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
