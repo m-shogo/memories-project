@@ -93,16 +93,23 @@ def load(path: Path) -> dict[str, Any]:
             value[key] = item
         return value
 
+    # The reusable reader must authorize paths independently of its callers.
+    require(isinstance(path, Path), "local long-soak JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "local long-soak JSON symlink rejected")
+    require(path.is_file(), "local long-soak JSON file missing or unsafe")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise Fail("local long-soak JSON path escaped repository") from None
     try:
         value = json.loads(path.read_text(encoding="utf-8"),
                            parse_constant=reject_constant,
                            parse_float=finite_float,
                            object_pairs_hook=unique_object)
-    except FileNotFoundError:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from None
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}") from None
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        raise Fail("local long-soak JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "local long-soak JSON root must be object")
     return value
 
 

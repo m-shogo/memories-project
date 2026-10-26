@@ -195,6 +195,7 @@ def strict_json_parser_negative() -> None:
             ("duplicate", '{"a":1,"a":2}'),
             ("nested duplicate", '{"outer":{"a":1,"a":2}}'),
             ("malformed", '{"broken":'),
+            ("oversized integer", '{"huge":' + ("9" * 5000) + '}'),
             ("array root", '[1,2]'),
         ):
             path.write_text(raw, encoding="utf-8")
@@ -204,7 +205,38 @@ def strict_json_parser_negative() -> None:
                 pass
             else:
                 raise AssertionError("local long-soak accepted " + label)
-    print("PASS: local long-soak strict JSON positive and seven parser negatives")
+    print("PASS: local long-soak strict JSON positive and eight parser negatives")
+
+
+def strict_json_reader_path_negative() -> None:
+    """Reject external and linked JSON before any direct reader can parse it."""
+    with tempfile.TemporaryDirectory(prefix="local-long-soak-reader-outside-") as outside_temp, \\
+         tempfile.TemporaryDirectory(prefix=".local-long-soak-reader-", dir=ROOT) as inside_temp:
+        outside, inside = Path(outside_temp), Path(inside_temp)
+        canary = outside / "external.json"
+        canary.write_text('{"synthetic":true}', encoding="utf-8")
+        linked_file = inside / "linked.json"
+        linked_file.symlink_to(canary)
+        linked_parent = inside / "linked-parent"
+        linked_parent.symlink_to(outside, target_is_directory=True)
+        directory = inside / "directory.json"
+        directory.mkdir()
+        for label, path in (
+            ("external file", canary),
+            ("direct symlink", linked_file),
+            ("symlink ancestor", linked_parent / "external.json"),
+            ("directory", directory),
+            ("missing", inside / "missing.json"),
+        ):
+            try:
+                module.load(path)
+            except module.Fail:
+                pass
+            else:
+                raise AssertionError("local long-soak reader accepted " + label)
+        if canary.read_text(encoding="utf-8") != '{"synthetic":true}':
+            raise AssertionError("local long-soak reader modified outside canary")
+    print("PASS: local long-soak JSON reader five path negatives")
 
 
 def atomic_path_containment_negative() -> None:
@@ -395,6 +427,7 @@ def main() -> int:
     validator_output_and_rollback_redaction_negative()
     atomic_path_containment_negative()
     strict_json_parser_negative()
+    strict_json_reader_path_negative()
     delegated_local_soak_negatives_pass()
 
     print("Memory OS local long-soak load projection negative suite PASS")
