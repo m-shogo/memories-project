@@ -114,7 +114,7 @@ def exercise_rollback_failure(module: ModuleType) -> None:
     writer_calls: list[Path] = []
 
     def synthetic_primary_failure(*args: object, **kwargs: object) -> None:
-        raise module.ReconcileFailure("synthetic primary validator failure")
+        raise module.ReconcileFailure("SYNTHETIC_PRIMARY_SECRET_DO_NOT_LOG")
 
     def writer_with_first_rollback_failure(path: Path, payload: bytes) -> None:
         writer_calls.append(path)
@@ -138,8 +138,10 @@ def exercise_rollback_failure(module: ModuleType) -> None:
             module.write_and_validate_transactionally(contract, load_contract, status)
         except module.ReconcileFailure as exc:
             diagnostic = str(exc)
-            require("synthetic primary validator failure" in diagnostic,
-                    "rollback failure masked primary validator diagnostic")
+            require("ReconcileFailure" in diagnostic,
+                    "rollback failure lost primary exception class")
+            require("SYNTHETIC_PRIMARY_SECRET_DO_NOT_LOG" not in diagnostic,
+                    "rollback failure exposed primary secret")
             require("rollback incomplete" in diagnostic,
                     "rollback failure did not report incomplete rollback")
             require("RuntimeError" in diagnostic,
@@ -451,6 +453,38 @@ def exercise_deletion_load_reviewed_schema() -> None:
     print("PASS: deletion-under-load reviewed schema positive and 25 negative cases")
 
 
+
+def exercise_transaction_primary_failure_redaction(module: ModuleType) -> None:
+    snapshots = canonical_snapshots(module)
+    modes = canonical_modes(module)
+    original_run = module.run_validator
+
+    def synthetic_secret_failure(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("SYNTHETIC_TRANSACTION_SECRET_DO_NOT_LOG")
+
+    contract = module.load(module.CANONICAL_CONTRACT_PATH)
+    load_contract = module.load(module.CANONICAL_LOAD_PATH)
+    status = module.load(module.CANONICAL_STATUS_PATH)
+    module.run_validator = synthetic_secret_failure
+    try:
+        try:
+            module.write_and_validate_transactionally(contract, load_contract, status)
+        except module.ReconcileFailure as exc:
+            diagnostic = str(exc)
+            require("transaction failed (RuntimeError)" in diagnostic,
+                    "transaction failure lost primary exception class")
+            require("SYNTHETIC_TRANSACTION_SECRET_DO_NOT_LOG" not in diagnostic,
+                    "transaction failure exposed raw primary exception")
+            require("rollback incomplete" not in diagnostic,
+                    "complete rollback was incorrectly marked incomplete")
+        else:
+            raise RuntimeError("synthetic transaction failure was accepted")
+    finally:
+        module.run_validator = original_run
+    require_snapshots_unchanged(snapshots)
+    require_modes_unchanged(modes)
+
+
 def main() -> int:
     exercise_deletion_load_json_reader()
     exercise_deletion_load_reviewed_schema()
@@ -534,6 +568,7 @@ def main() -> int:
     exercise_validator_output_redaction(module)
     exercise_atomic_path_substitution_rejection(module)
     exercise_rollback_failure(module)
+    exercise_transaction_primary_failure_redaction(module)
     require_snapshots_unchanged(canonical_snapshots(module))
     require_modes_unchanged(canonical_modes(module))
     print("Deletion-under-load reconcile negative checks passed")

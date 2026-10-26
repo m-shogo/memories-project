@@ -221,12 +221,15 @@ def write_and_validate_transactionally(
                 CANONICAL_ATOMIC_WRITE_BYTES(path, data)
             except BaseException as rollback_exc:
                 rollback_errors.append(f"{path.relative_to(CANONICAL_ROOT)}: {type(rollback_exc).__name__}")
+        primary_class = type(primary_exc).__name__
         if rollback_errors:
             raise ReconcileFailure(
-                f"{primary_exc}; deletion-under-load authority rollback incomplete: "
+                f"deletion-under-load authority rollback incomplete after {primary_class}: "
                 + "; ".join(rollback_errors)
-            ) from primary_exc
-        raise
+            ) from None
+        raise ReconcileFailure(
+            f"deletion-under-load authority transaction failed ({primary_class})"
+        ) from None
 
 
 def main() -> int:
