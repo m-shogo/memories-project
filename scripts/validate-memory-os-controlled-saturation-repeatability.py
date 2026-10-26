@@ -84,6 +84,13 @@ def main() -> int:
     require(contract.get("requiredIndependentRuns") == 2, "required run count drift")
     require(contract.get("concurrencySteps") == source_ramp.get("concurrencySteps") == STEPS, "source ramp concurrency binding drift")
     require(contract.get("requestsPerStep") == source_ramp.get("requestsPerStep") == 64, "source ramp request-count binding drift")
+    required_boundaries = contract.get("requiredRunBoundaries")
+    require(isinstance(required_boundaries, dict), "repeatability required run boundaries missing")
+    for key in ("independentGitHubHostedRunner", "independentPostgreSQLService", "independentMinIOService",
+                "sameExactSourceCommit", "syntheticDataOnly"):
+        require(required_boundaries.get(key) is True, f"required run boundary weakened: {key}")
+    for key in ("productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies"):
+        require(required_boundaries.get(key) is False, f"required run boundary promoted: {key}")
     source_boundary = source_ramp.get("evidenceBoundary")
     require(isinstance(source_boundary, dict), "source ramp evidence boundary missing")
     for key in ("productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "capacityBoundaryEstablished", "operationalThresholdApproved", "independentReviewCompleted", "productionReady"):
@@ -94,11 +101,22 @@ def main() -> int:
     require(signal.get("maximumThroughputGainFromPreviousStep") == 0.05, "throughput knee rule drift")
     require(signal.get("minimumP95LatencyRatioFromPreviousStep") == 1.25, "latency knee rule drift")
     require(signal.get("repeatableWhenStepDistanceAtMost") == 1, "repeatability distance drift")
+    for key in ("actualFailureSignalTakesPrecedence", "degradationKneeRequiresPoolContention",
+                "singleRunPromotionForbidden", "missingSignalFailsClosed"):
+        require(signal.get(key) is True, f"signal policy weakened: {key}")
+    require(signal.get("poolContentionAloneIsSignal") is False, "pool contention alone cannot be a signal")
     boundary = contract.get("promotionBoundary")
     require(isinstance(boundary, dict), "promotion boundary missing")
     for key in ("capacityBoundaryEstablished", "operationalThresholdApproved", "productionCapacityEvidence", "productionEquivalentEvidence", "independentReviewCompleted", "productionReady"):
         require(boundary.get(key) is False, f"contract cannot enable {key}")
     require(boundary.get("productionDecision") == "NO_GO", "production decision drift")
+    require(boundary.get("repeatableLocalDegradationSignalMayBecomeTrue") is True,
+            "local signal promotion boundary missing")
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "repeatability readiness missing")
+    for key in ("capacityBoundaryEstablished", "operationalThresholdApproved",
+                "independentReviewCompleted", "productionReady"):
+        require(readiness.get(key) is False, f"repeatability readiness cannot enable {key}")
 
     require(result.get("schemaVersion") == "memory-os-controlled-saturation-repeatability-results.v1", "result schema drift")
     source = result.get("sourceCommitSha")
