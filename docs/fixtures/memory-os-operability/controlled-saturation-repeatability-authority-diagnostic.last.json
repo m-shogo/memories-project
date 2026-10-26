@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "reconcile-controlled-saturation-repeatability-authority",
+  "sourceCommitSha": "1e13335e8280d609f7e0cfd4022b4b1f18020c78",
+  "failureStage": "reconcile-negative",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Repeatability authority validation failed; raw validator output withheld.",
+  "containsSecrets": false,
+  "capacityBoundaryEstablished": false,
+  "operationalThresholdApproved": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
