@@ -373,6 +373,74 @@ def prove_data_and_executable_authority_rejection(reconciler: object) -> None:
     print(f"PASS boundary: direct preflight data/executable substitutions rejected: {len(cases)}")
 
 
+def prove_post_reconcile_output_suppression(reconciler: object) -> None:
+    """Bound and suppress all raw post-validation subprocess diagnostics."""
+    original_run = reconciler.subprocess.run
+    calls: list[list[str]] = []
+
+    def reviewed_run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(command)
+        require(command == [reconciler.sys.executable, str(reconciler.VALIDATOR_MODULE)],
+                "preflight post-validator command drift")
+        require(kwargs.get("cwd") == reconciler.ROOT and
+                kwargs.get("stdout") == reconciler.subprocess.DEVNULL and
+                kwargs.get("stderr") == reconciler.subprocess.DEVNULL and
+                kwargs.get("check") is False and kwargs.get("timeout") == 180,
+                "preflight post-validator output/timeout boundary drift")
+        return SimpleNamespace(returncode=0)
+
+    try:
+        reconciler.subprocess.run = reviewed_run
+        reconciler.run_post_reconcile_validator(reconciler.VALIDATOR_MODULE, "preflight")
+        require(len(calls) == 1, "preflight post-validator positive was not invoked")
+
+        reconciler.subprocess.run = lambda *args, **kwargs: SimpleNamespace(
+            returncode=1, stdout="SYNTHETIC_SECRET_STDOUT_DO_NOT_LOG",
+            stderr="SYNTHETIC_SECRET_STDERR_DO_NOT_LOG",
+        )
+        try:
+            reconciler.run_post_reconcile_validator(reconciler.VALIDATOR_MODULE, "preflight")
+        except reconciler.Fail as exc:
+            require("post-reconcile preflight validator failed" in str(exc) and
+                    "SYNTHETIC_SECRET" not in str(exc),
+                    "preflight post-validator exposed raw output")
+        else:
+            raise Fail("preflight post-validator failed exit accepted")
+
+        reconciler.subprocess.run = lambda *args, **kwargs: SimpleNamespace(returncode=True)
+        try:
+            reconciler.run_post_reconcile_validator(reconciler.VALIDATOR_MODULE, "preflight")
+        except reconciler.Fail:
+            pass
+        else:
+            raise Fail("preflight post-validator boolean exit accepted")
+
+        def timeout(*args: object, **kwargs: object) -> None:
+            raise reconciler.subprocess.TimeoutExpired("SYNTHETIC_SECRET_COMMAND", 180)
+        reconciler.subprocess.run = timeout
+        try:
+            reconciler.run_post_reconcile_validator(reconciler.VALIDATOR_MODULE, "preflight")
+        except reconciler.Fail as exc:
+            require("TimeoutExpired" in str(exc) and "SYNTHETIC_SECRET" not in str(exc),
+                    "preflight post-validator timeout leaked command")
+        else:
+            raise Fail("preflight post-validator timeout accepted")
+
+        def os_failure(*args: object, **kwargs: object) -> None:
+            raise OSError("SYNTHETIC_SECRET_OSERROR_DO_NOT_LOG")
+        reconciler.subprocess.run = os_failure
+        try:
+            reconciler.run_post_reconcile_validator(reconciler.VALIDATOR_MODULE, "preflight")
+        except reconciler.Fail as exc:
+            require("OSError" in str(exc) and "SYNTHETIC_SECRET" not in str(exc),
+                    "preflight post-validator OS failure leaked secret")
+        else:
+            raise Fail("preflight post-validator OS failure accepted")
+    finally:
+        reconciler.subprocess.run = original_run
+    print("PASS: preflight post-reconcile bounded output-suppressed positive and 4 negatives")
+
+
 def prove_atomic_write_failure(reconciler: object) -> None:
     canonical_contract_before = CANONICAL_CONTRACT.read_bytes()
     canonical_status_before = CANONICAL_STATUS.read_bytes()
@@ -512,7 +580,7 @@ def prove_rollback_failure_diagnostics(reconciler: object, tmp: Path) -> None:
             reconciler._reconcile()
         except reconciler.Fail as exc:
             diagnostic = str(exc)
-            require("forced post-reconcile operability validator failure" in diagnostic, f"primary preflight failure diagnostic lost: {diagnostic}")
+            require("post-reconcile operability validator failed" in diagnostic, f"primary preflight failure diagnostic lost: {diagnostic}")
             require("rollback incomplete" in diagnostic, f"rollback incompleteness diagnostic missing: {diagnostic}")
             require("synthetic first rollback write failure" in diagnostic, f"rollback failure diagnostic missing: {diagnostic}")
         else:
@@ -544,6 +612,7 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
 
     prove_data_and_executable_authority_rejection(reconciler)
+    prove_post_reconcile_output_suppression(reconciler)
     prove_atomic_write_failure(reconciler)
 
     with guarded_temporary_directory(".tmp-preflight-load-", TMP_PARENT) as tmpdir:

@@ -173,18 +173,19 @@ def run_post_reconcile_validator(path: Path, label: str) -> None:
         relative = require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
     else:
         relative = require_repo_file(path, f"{label} validator missing")
-    completed = subprocess.run(
-        [sys.executable, str(ROOT / relative)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    require(
-        completed.returncode == 0,
-        f"post-reconcile {label} validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}",
-    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / relative)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise Fail(f"post-reconcile {label} validator unavailable ({type(exc).__name__})") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"post-reconcile {label} validator failed without exposing subprocess output")
 
 
 def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_error: Exception) -> None:
