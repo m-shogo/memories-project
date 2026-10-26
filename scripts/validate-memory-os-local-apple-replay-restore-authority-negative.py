@@ -49,7 +49,7 @@ def require_workflow_source(source: str) -> None:
         "  replay-restore:\n    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'\n    permissions:\n      contents: write\n" in source,
         "Apple workflow write job not restricted to so",
     )
-    uses = [line.strip().split("uses: ", 1)[1] for line in source.splitlines() if line.strip().startswith("uses: ")]
+    uses = [line.strip().split("uses: ", 1)[1] for line in source.splitlines() if line.strip().startswith(("uses: ", "- uses: "))]
     require(
         uses.count("actions/checkout@11d5960a326750d5838078e36cf38b85af677262") == 2
         and uses.count("actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065") == 2
