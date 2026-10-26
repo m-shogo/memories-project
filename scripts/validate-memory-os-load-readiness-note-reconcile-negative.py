@@ -85,6 +85,39 @@ def atomic_replacement_is_fail_closed(module) -> None:
             raise RuntimeError("successful readiness atomic replacement changed authority mode")
 
 
+def symlink_and_directory_targets_are_fail_closed(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-load-readiness-symlink-") as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "authority.json"
+        canary.write_bytes(b"SYNTHETIC_CANARY_UNCHANGED")
+        direct = root / "direct.json"
+        direct.symlink_to(canary)
+        ancestor = root / "linked"
+        ancestor.symlink_to(outside, target_is_directory=True)
+        directory = root / "directory.json"
+        directory.mkdir()
+        for target, expected in (
+            (direct, "load readiness atomic symlink target/ancestor refused"),
+            (ancestor / "authority.json", "load readiness atomic symlink target/ancestor refused"),
+            (directory, "load readiness atomic target must be a regular file"),
+        ):
+            try:
+                module.atomic_write_bytes(target, b"synthetic overwrite")
+            except RuntimeError as exc:
+                if expected not in str(exc):
+                    raise RuntimeError(f"unexpected atomic target rejection: {exc}") from exc
+            else:
+                raise RuntimeError(f"load readiness atomic writer accepted substituted target: {target}")
+            if canary.read_bytes() != b"SYNTHETIC_CANARY_UNCHANGED":
+                raise RuntimeError("load readiness symlink target escaped to outside canary")
+        if not direct.is_symlink() or not ancestor.is_symlink() or not directory.is_dir():
+            raise RuntimeError("load readiness symlink/directory target was replaced")
+        if list(root.rglob(".*.tmp")):
+            raise RuntimeError("load readiness rejected target left temp residue")
+
+
 def rejected_load_validator_rolls_back(module, original: bytes) -> None:
     calls = 0
     original_validate = module.validate_canonical_load
@@ -157,6 +190,7 @@ def main() -> int:
     original_mode = stat.S_IMODE(CANONICAL_LOAD.stat().st_mode)
     authority_substitution_rejected(module)
     atomic_replacement_is_fail_closed(module)
+    symlink_and_directory_targets_are_fail_closed(module)
     rejected_load_validator_rolls_back(module, original)
     rejected_operability_validator_rolls_back(module, original)
 
