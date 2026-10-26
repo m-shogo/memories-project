@@ -131,6 +131,8 @@ def signal_for(result: dict[str, Any]) -> dict[str, Any]:
     require(scenario.get("requestsPerStep") == 64, "source requestsPerStep drift")
     rows = scenario.get("steps")
     require(isinstance(rows, list) and len(rows) == len(STEPS), "source steps incomplete")
+    first_failure = None
+    first_contention = None
     for index, concurrency in enumerate(STEPS):
         row = rows[index]
         require(isinstance(row, dict) and row.get("concurrency") == concurrency, f"source step {index} drift")
@@ -141,6 +143,27 @@ def signal_for(result: dict[str, Any]) -> dict[str, Any]:
         require(finite_nonnegative(batch.get("throughput")), f"source step {index} throughput invalid")
         require(finite_nonnegative(batch.get("latencyP95Ms")), f"source step {index} p95 invalid")
         require(type(delta.get("emptyAcquireCount")) is int and delta["emptyAcquireCount"] >= 0, f"source step {index} contention invalid")
+        successes, failures = batch.get("successes"), batch.get("failures")
+        require(type(successes) is int and type(failures) is int
+                and successes >= 0 and failures >= 0 and successes + failures == 64,
+                f"source step {index} lifecycle accounting invalid")
+        counts = batch.get("statusClassCounts")
+        require(isinstance(counts, dict), f"source step {index} status counts missing")
+        values = [counts.get(key, 0) for key in ("2xx", "3xx", "4xx", "5xx", "transport_error")]
+        require(all(type(value) is int and value >= 0 for value in values),
+                f"source step {index} status count invalid")
+        two_xx, three_xx, four_xx, five_xx, transport = values
+        require(two_xx == successes and three_xx == 0 and four_xx == 0
+                and five_xx + transport == failures,
+                f"source step {index} status accounting mismatch")
+        if failures > 0 and first_failure is None:
+            first_failure = concurrency
+        if delta["emptyAcquireCount"] > 0 and first_contention is None:
+            first_contention = concurrency
+    require(scenario.get("firstSaturationSignal") == first_failure,
+            "source first saturation signal does not match measured failures")
+    require(scenario.get("firstPoolContentionSignal") == first_contention,
+            "source first pool contention signal does not match measurements")
     actual = scenario.get("firstSaturationSignal")
     if actual is not None:
         require(actual in STEPS, "actual saturation signal outside configured steps")
