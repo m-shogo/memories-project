@@ -42,7 +42,12 @@ def require(condition: bool, message: str) -> None:
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
     require(canonical.is_file(), f"canonical {label} missing")
-    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    for candidate in (canonical, *canonical.parents):
+        require(not candidate.is_symlink(), f"canonical {label} symlink path rejected")
+    try:
+        canonical.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise Fail(f"canonical {label} escaped repository") from None
 
 
 def validate_authorities() -> None:
@@ -83,7 +88,16 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_replace_bytes(path: Path, payload: bytes, mode: int | None = None) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # The writer must authorize its own path, including direct helper calls.
+    require(path.parent.is_dir(), "local long-soak authority parent missing")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "local long-soak authority symlink path rejected")
+    require(not path.is_dir(), "local long-soak authority directory target rejected")
+    try:
+        path.parent.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise Fail("local long-soak authority path escaped repository") from None
+    require(not path.exists() or path.is_file(), "local long-soak authority target is not a file")
     if mode is None and path.exists():
         mode = stat.S_IMODE(path.stat().st_mode)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)

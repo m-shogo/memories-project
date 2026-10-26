@@ -8,6 +8,7 @@ import importlib.util
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -179,6 +180,64 @@ def transaction_rollback_rejected() -> None:
 
 
 
+
+def atomic_path_containment_negative() -> None:
+    secret = b"SYNTHETIC_LOCAL_LONG_SOAK_OUTSIDE_CANARY"
+    with tempfile.TemporaryDirectory(prefix="local-long-soak-outside-") as outside_temp, \
+         tempfile.TemporaryDirectory(prefix=".local-long-soak-path-", dir=ROOT) as inside_temp:
+        inside = Path(inside_temp)
+        outside = Path(outside_temp)
+        canary = outside / "canary"
+        canary.write_bytes(secret)
+        target = inside / "authority.json"
+        target.write_bytes(b"original")
+        target.chmod(0o640)
+        module.atomic_replace_bytes(target, b"updated")
+        if target.read_bytes() != b"updated" or file_mode(target) != 0o640:
+            raise AssertionError("local long-soak atomic existing-file positive drift")
+        new = inside / "new.json"
+        module.atomic_replace_bytes(new, b"new")
+        if new.read_bytes() != b"new" or file_mode(new) != 0o600:
+            raise AssertionError("local long-soak atomic new-file mode drift")
+        link = inside / "link.json"
+        link.symlink_to(canary)
+        parent_link = inside / "linked-parent"
+        parent_link.symlink_to(outside, target_is_directory=True)
+        directory = inside / "directory"
+        directory.mkdir()
+        for unsafe in (link, parent_link / "canary", directory, inside / "missing" / "file", canary):
+            try:
+                module.atomic_replace_bytes(unsafe, b"forbidden")
+            except module.Fail:
+                pass
+            else:
+                raise AssertionError("local long-soak atomic writer accepted unsafe path")
+        for unsafe in (link, parent_link / "canary", canary):
+            try:
+                module.require_exact_authority(unsafe, unsafe, "synthetic")
+            except module.Fail:
+                pass
+            else:
+                raise AssertionError("local long-soak authority reader accepted unsafe path")
+        if canary.read_bytes() != secret or list(outside.iterdir()) != [canary]:
+            raise AssertionError("local long-soak outside canary changed")
+        for operation in ("replace", "fsync"):
+            original = getattr(module.os, operation)
+            setattr(module.os, operation, lambda *args: (_ for _ in ()).throw(OSError("synthetic atomic failure")))
+            try:
+                try:
+                    module.atomic_replace_bytes(target, b"forbidden")
+                except OSError:
+                    pass
+                else:
+                    raise AssertionError("local long-soak accepted synthetic atomic failure")
+            finally:
+                setattr(module.os, operation, original)
+            if target.read_bytes() != b"updated" or list(inside.glob(".authority.json.*.tmp")):
+                raise AssertionError("local long-soak atomic failure changed bytes or left residue")
+    print("PASS: local long-soak atomic writer/reader containment and rollback negatives")
+
+
 def validator_output_and_rollback_redaction_negative() -> None:
     marker = "SYNTHETIC_LOCAL_LONG_SOAK_SECRET"
     original_run = module.subprocess.run
@@ -308,6 +367,7 @@ def main() -> int:
     successful_replacement_preserves_mode()
     transaction_rollback_rejected()
     validator_output_and_rollback_redaction_negative()
+    atomic_path_containment_negative()
     delegated_local_soak_negatives_pass()
 
     print("Memory OS local long-soak load projection negative suite PASS")
