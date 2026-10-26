@@ -9,6 +9,7 @@ import math
 import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ EXPECTED_STEPS = [4, 8, 16, 24, 32, 48]
 REQUESTS_PER_STEP = 64
 SCENARIO_ID = "signed-upload-controlled-saturation-ramp-local-dependencies"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+UTC_TIMESTAMP_RE = re.compile(r"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$")
 
 
 class ValidationFailure(RuntimeError):
@@ -51,6 +53,24 @@ def load(path: Path) -> dict[str, Any]:
         raise ValidationFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def strict_utc_timestamp(value: Any, field: str) -> datetime:
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            f"{field} must be RFC3339 UTC")
+    try:
+        return datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        raise ValidationFailure(f"{field} is not a valid UTC timestamp") from None
+
+
+def validate_ramp_timestamps(result: dict[str, Any]) -> None:
+    scenario = result.get("scenario")
+    require(isinstance(scenario, dict), "ramp scenario missing for timestamps")
+    started = strict_utc_timestamp(scenario.get("startedAt"), "scenario.startedAt")
+    completed = strict_utc_timestamp(scenario.get("completedAt"), "scenario.completedAt")
+    generated = strict_utc_timestamp(result.get("generatedAt"), "generatedAt")
+    require(started <= completed <= generated, "ramp timestamps must be chronological")
 
 
 def integer(value: Any, field: str) -> int:
@@ -159,6 +179,7 @@ def main() -> int:
 
     scenario = result.get("scenario")
     require(isinstance(scenario, dict), "scenario must be object")
+    validate_ramp_timestamps(result)
     require(scenario.get("scenarioId") == SCENARIO_ID, "scenario id drift")
     require(scenario.get("workloadType") == "CONTROLLED_RAMP", "workload type drift")
     require(scenario.get("requestsPerStep") == REQUESTS_PER_STEP, "scenario request count drift")
