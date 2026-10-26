@@ -144,6 +144,68 @@ def verify_transaction_secret_redaction(module) -> None:
 
 
 
+
+def verify_ramp_source_identity_negative() -> None:
+    workflow = (ROOT / ".github/workflows/controlled-saturation-ramp.yml").read_text(encoding="utf-8")
+    for action in ("checkout@11d5960a326750d5838078e36cf38b85af677262",
+                   "setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
+                   "setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"):
+        if workflow.count("actions/" + action) != 1:
+            raise RuntimeError("controlled saturation ramp immutable action drift: " + action)
+    for floating in ("checkout@v4", "setup-go@v5", "setup-python@v5"):
+        if floating in workflow:
+            raise RuntimeError("controlled saturation ramp floating action")
+    if ("github.ref == 'refs/heads/so'" not in workflow
+            or "github.event_name == 'schedule'" not in workflow
+            or "persist-credentials: true" not in workflow):
+        raise RuntimeError("controlled saturation ramp writer job event/ref boundary drift")
+    marker = "      - name: Capture exact source" + "\n"
+    if workflow.count(marker) != 1:
+        raise RuntimeError("controlled saturation ramp source step drift")
+    start = workflow.index("        run: |\n", workflow.index(marker)) + len("        run: |\n")
+    end = workflow.index("\n      - name: Start local MinIO", start)
+    lines = workflow[start:end].splitlines()
+    if not lines or any(line and not line.startswith("          ") for line in lines):
+        raise RuntimeError("controlled saturation ramp source script indentation drift")
+    script = "\n".join(line[10:] for line in lines) + "\n"
+    for required in ("GITHUB_EVENT_NAME", "GITHUB_REF", "GITHUB_SHA", "refs/heads/so",
+                     "git rev-parse HEAD", "git rev-parse origin/so", "git status --porcelain"):
+        if required not in script:
+            raise RuntimeError("controlled saturation ramp source guard missing " + required)
+    with tempfile.TemporaryDirectory(prefix="controlled-saturation-source-") as temp:
+        root = Path(temp)
+        git = root / "git"
+        sha = "a" * 40
+        git.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"fetch\" ]; then exit 0; fi\n"
+            "if [ \"$1\" = \"status\" ]; then if [ \"$DIRTY\" = \"1\" ]; then echo ' M dirty'; fi; exit 0; fi\n"
+            "if [ \"$1\" = \"rev-parse\" ]; then if [ \"$2\" = \"origin/so\" ] && [ \"$DRIFT\" = \"1\" ]; then echo '" + "b" * 40 + "'; else echo '" + sha + "'; fi; exit 0; fi\n"
+            "exit 1\n", encoding="utf-8",
+        )
+        git.chmod(0o755)
+        cases = (
+            ("push", "refs/heads/so", sha, "0", "0", True),
+            ("workflow_dispatch", "refs/heads/so", sha, "0", "0", True),
+            ("schedule", "refs/heads/so", sha, "0", "0", True),
+            ("push", "refs/heads/main", sha, "0", "0", False),
+            ("pull_request", "refs/heads/so", sha, "0", "0", False),
+            ("push", "refs/heads/so", "bad", "0", "0", False),
+            ("push", "refs/heads/so", "b" * 40, "0", "0", False),
+            ("push", "refs/heads/so", sha, "1", "0", False),
+            ("push", "refs/heads/so", sha, "0", "1", False),
+        )
+        for event, ref, event_sha, dirty, drift, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_REF=ref, GITHUB_SHA=event_sha,
+                       DIRTY=dirty, DRIFT=drift, GITHUB_ENV=str(root / "env"))
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", script],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise RuntimeError(f"controlled saturation ramp source identity drift: {event}/{ref}")
+    print("PASS: controlled saturation ramp immutable source identity shell runtime (9 cases)")
+
+
 def verify_inline_ramp_diagnostic_negative() -> None:
     workflow = (ROOT / ".github/workflows/controlled-saturation-ramp.yml").read_text(encoding="utf-8")
     marker = "      - name: Record privacy-safe diagnostic" + "\n"
@@ -633,6 +695,7 @@ def main() -> int:
     verify_atomic_replace_failure(module)
     verify_transaction_secret_redaction(module)
     verify_inline_ramp_diagnostic_negative()
+    verify_ramp_source_identity_negative()
     verify_atomic_path_negatives(module)
     verify_validator_output_negative(module)
     verify_reconciler_json_parser_negatives(module)
