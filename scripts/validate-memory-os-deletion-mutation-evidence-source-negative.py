@@ -15,7 +15,13 @@ SELF = "scripts/validate-memory-os-deletion-mutation-evidence-source-negative.py
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_PUBLISHER = "a8f7e07803fdc88ce3183017d754986e0488bf57"
-REVIEWED_INDEPENDENT = "ec4a7c49310459797bf82823c165da8dd7d3c3ad"
+REVIEWED_INDEPENDENT = "34127c6c007016ef570072c567c7f3144a9763ca"
+RECONCILER = "scripts/reconcile-memory-os-deletion-mutation-evidence.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py"
+CROSS_NEGATIVE = "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
+REVIEWED_RECONCILER = "9c54f24dce5049c4a383c90179c30da48aeeb3f5"
+REVIEWED_RECONCILE_NEGATIVE = "2b225eb64dd523de281aa29ae783af9d4465d3aa"
+REVIEWED_CROSS_NEGATIVE = "e223b480edd404d0e3b3ef9f5699e7b46ff073b6"
 
 def blob(content: str) -> str:
     data = content.encode("utf-8")
@@ -204,12 +210,20 @@ else:
 
 def main() -> None:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SELF, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, INDEPENDENT, SELF, RECONCILER, RECONCILE_NEGATIVE, CROSS_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    'test "$(git rev-parse HEAD)" = "$expected"',
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("mutation-evidence independent CI reachability drift: " + marker)
+    for path, expected in ((RECONCILER, REVIEWED_RECONCILER),
+                           (RECONCILE_NEGATIVE, REVIEWED_RECONCILE_NEGATIVE),
+                           (CROSS_NEGATIVE, REVIEWED_CROSS_NEGATIVE)):
+        reviewed_source(read(path), expected, path)
+    if (independent.count(RECONCILER) != 2
+            or independent.count(RECONCILE_NEGATIVE) != 3
+            or independent.count(CROSS_NEGATIVE) != 2):
+        raise AssertionError("mutation evidence transitive negative CI reachability drift")
     reviewed_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)

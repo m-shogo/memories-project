@@ -318,13 +318,15 @@ def main() -> int:
             try:
                 atomic_write_bytes(path, payload)
             except BaseException as rollback_exc:
-                rollback_errors.append(f"{label}: {rollback_exc}")
+                rollback_errors.append(f"{label}: {type(rollback_exc).__name__}")
         if rollback_errors:
             raise Fail(
-                f"mutation evidence post-write validation failed: {exc}; rollback incomplete: "
-                + "; ".join(rollback_errors)
-            ) from exc
-        raise
+                "mutation evidence post-write validation failed: " + type(exc).__name__
+                + "; rollback incomplete: " + "; ".join(rollback_errors)
+            ) from None
+        raise Fail(
+            "mutation evidence post-write validation failed: " + type(exc).__name__
+        ) from None
 
     print("Memory OS deletion mutation evidence reconciled")
     print("Apply pre-fence linearization: true")

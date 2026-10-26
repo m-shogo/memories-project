@@ -8,6 +8,9 @@ on:
       - ".github/workflows/reconcile-deletion-mutation-evidence.yml"
       - ".github/workflows/deletion-mutation-evidence-source-negative.yml"
       - "scripts/validate-memory-os-deletion-mutation-evidence-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-mutation-evidence.py"
+      - "scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
   push:
     branches:
       - so
@@ -15,6 +18,9 @@ on:
       - ".github/workflows/reconcile-deletion-mutation-evidence.yml"
       - ".github/workflows/deletion-mutation-evidence-source-negative.yml"
       - "scripts/validate-memory-os-deletion-mutation-evidence-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-mutation-evidence.py"
+      - "scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
 
 permissions:
   contents: read
@@ -57,6 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-deletion-mutation-evidence-source-negative.py
+          python scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"

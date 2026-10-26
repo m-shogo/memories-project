@@ -12,7 +12,7 @@ SELF = "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-nega
 INDEPENDENT = ".github/workflows/deletion-deferred-reason-cross-publisher-negative.yml"
 REVIEWED_INDEPENDENT = "1df630c6cb93013d0d0592b46ec2c49374e92882"
 SOURCES = {
-    "scripts/reconcile-memory-os-deletion-mutation-evidence.py": "ce82e4329b8ae388157599b3e72f7a43131d0081",
+    "scripts/reconcile-memory-os-deletion-mutation-evidence.py": "9c54f24dce5049c4a383c90179c30da48aeeb3f5",
     "scripts/reconcile-memory-os-deletion-advanced-evidence.py": "4a1358636f0b4e199d37155dfd2ee1c47fba03cd",
     "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py": "e57a2e8827208bcbcbec3aad583671727554dc71",
     "scripts/reconcile-memory-os-load-readiness-note.py": "8012804fe785223250921e5fcf0b8657489caf59",

@@ -311,8 +311,11 @@ def main() -> int:
         module.subprocess.run = failing_run
         try:
             module.main()
-        except subprocess.CalledProcessError:
-            pass
+        except module.Fail as exc:
+            if ("mutation evidence post-write validation failed: CalledProcessError" not in str(exc)
+                    or "returned non-zero exit status" in str(exc)
+                    or not exc.__suppress_context__):
+                raise AssertionError("mutation reconcile leaked primary validator exception") from exc
         else:
             raise AssertionError("aggregate operability rejection must fail mutation reconcile")
 
@@ -372,12 +375,14 @@ def main() -> int:
         if caught is None:
             raise AssertionError("mutation reconcile accepted rollback writer failure")
         text = str(caught)
-        if "returned non-zero exit status 17" not in text:
-            raise AssertionError(f"mutation rollback failure masked primary diagnostic: {text}")
-        if "rollback incomplete" not in text:
-            raise AssertionError(f"mutation rollback failure omitted incomplete diagnostic: {text}")
-        if "synthetic mutation rollback replacement failure" not in text:
-            raise AssertionError(f"mutation rollback failure omitted rollback diagnostic: {text}")
+        if not isinstance(caught, module.Fail):
+            raise AssertionError("mutation rollback did not raise canonical domain failure")
+        if "mutation evidence post-write validation failed: CalledProcessError" not in text:
+            raise AssertionError("mutation rollback lost primary validator exception class")
+        if "rollback incomplete" not in text or "load authority: OSError" not in text:
+            raise AssertionError("mutation rollback lost incomplete status/class")
+        if "synthetic" in text or "returned non-zero exit status" in text or not caught.__suppress_context__:
+            raise AssertionError("mutation rollback leaked untrusted exception text")
         if rollback_replace_calls != 2:
             raise AssertionError(
                 f"mutation rollback stopped before restoring every authority: replace calls={rollback_replace_calls}"
@@ -391,7 +396,7 @@ def main() -> int:
         if list(root.glob(".*.tmp")):
             raise AssertionError("mutation rollback failure left atomic temp residue")
 
-    print("PASS: deletion mutation authority preserves independent upload completion, atomic mode, and exhaustive rollback")
+    print("PASS: deletion mutation authority preserves independent upload completion, atomic mode, secret-free diagnostics, and exhaustive rollback")
     return 0
 
 
