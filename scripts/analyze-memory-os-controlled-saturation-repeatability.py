@@ -165,6 +165,8 @@ def signal_for(result: dict[str, Any]) -> dict[str, Any]:
                 f"source step {index} lifecycle accounting invalid")
         counts = batch.get("statusClassCounts")
         require(isinstance(counts, dict), f"source step {index} status counts missing")
+        require(set(counts).issubset({"2xx", "3xx", "4xx", "5xx", "transport_error"}),
+                f"source step {index} contains unknown status class")
         values = [counts.get(key, 0) for key in ("2xx", "3xx", "4xx", "5xx", "transport_error")]
         require(all(type(value) is int and value >= 0 for value in values),
                 f"source step {index} status count invalid")

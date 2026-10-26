@@ -1160,6 +1160,7 @@ def run_repeatability_nonfinite_negatives() -> None:
         ("inconsistent failures", lambda run: run["scenario"]["steps"][0]["batch"].update({"failures": 1})),
         ("boolean successes", lambda run: run["scenario"]["steps"][0]["batch"].update({"successes": True})),
         ("status count mismatch", lambda run: run["scenario"]["steps"][0]["batch"]["statusClassCounts"].update({"2xx": 63})),
+        ("unknown status class", lambda run: run["scenario"]["steps"][0]["batch"]["statusClassCounts"].update({"unclassified": 1})),
     ):
         fixture = copy.deepcopy(run)
         mutate(fixture)
