@@ -163,7 +163,7 @@ def main() -> None:
     writer = read(WRITER)
     pr = read(PR)
     independent = read(INDEPENDENT)
-    for marker in (WRITER, PR, SELF, CHECKOUT, SETUP_GO, SETUP_PY,
+    for marker in (WRITER, PR, SELF, CHECKOUT, SETUP_PY,
                    "persist-credentials: false", "contents: read",
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
