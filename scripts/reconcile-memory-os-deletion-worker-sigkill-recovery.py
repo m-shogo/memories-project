@@ -105,11 +105,11 @@ def write_contract_transactionally(contract: dict[str, Any], expected_sha: str) 
         try:
             CANONICAL_ATOMIC_WRITE_BYTES(CONTRACT_PATH, original)
         except BaseException as rollback_exc:
-            raise Fail(
+            raise ReconcileFailure(
                 "SIGKILL recovery post-write validation failed: " + type(exc).__name__
                 + "; rollback incomplete: " + type(rollback_exc).__name__
             ) from None
-        raise Fail("SIGKILL recovery post-write validation failed: " + type(exc).__name__) from None
+        raise ReconcileFailure("SIGKILL recovery post-write validation failed: " + type(exc).__name__) from None
 
 
 def main() -> int:

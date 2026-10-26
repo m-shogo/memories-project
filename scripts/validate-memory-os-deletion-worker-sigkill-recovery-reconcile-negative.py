@@ -127,7 +127,7 @@ def expect_post_write_rollback(module: ModuleType, original_contract: bytes) -> 
     try:
         try:
             module.write_contract_transactionally(candidate, "0" * 40)
-        except module.Fail as exc:
+        except module.ReconcileFailure as exc:
             diagnostic = str(exc)
             if "SIGKILL recovery post-write validation failed: RuntimeError" not in diagnostic:
                 raise AssertionError("primary exception class missing") from exc
@@ -160,7 +160,7 @@ def expect_rollback_failure_diagnostic(module: ModuleType, original_contract: by
     try:
         try:
             module.write_contract_transactionally(candidate, "0" * 40)
-        except module.Fail as exc:
+        except module.ReconcileFailure as exc:
             diagnostic = str(exc)
             if "SIGKILL recovery post-write validation failed: RuntimeError" not in diagnostic:
                 raise AssertionError("primary exception class missing") from exc
