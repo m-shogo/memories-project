@@ -23,7 +23,7 @@ REVIEWED_RECONCILER = "859aef0f7a54542e980d7e854cb29fb2c1b3975b"
 REVIEWED_RECONCILE_NEGATIVE = "01107043d2a73170380ab76efd857f1f1e3c2e39"
 REVIEWED_RECONCILE_VALIDATOR = "ebc4a6370702e251ec52f8023ad7bd13aba79fc5"
 REVIEWED = "a671ebaddffe34d27b9b152044e2f510befe3f61"
-REVIEWED_INDEPENDENT = "90b6ed52a3f1551a7f38d91fe493f3be8c5fd4ef"
+REVIEWED_INDEPENDENT = "717e9b93b3e1c80c85da76780fe57512e2e262ff"
 TARGET = "docs/fixtures/memory-os-operability/deletion-worker-saturation-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -235,7 +235,7 @@ def main():
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
-    for path in (RECONCILER, RECONCILE_NEGATIVE, RECONCILE_VALIDATOR, RECONCILE_CONTRACT):
+    for path in (RECONCILER, RECONCILE_NEGATIVE, RECONCILE_VALIDATOR, RECONCILE_CONTRACT, RECONCILE_RESULT):
         if independent.count('      - "' + path + '"') != 2:
             raise AssertionError("saturation reconcile CI path trigger missing: " + path)
     if blob(independent) != REVIEWED_INDEPENDENT:
