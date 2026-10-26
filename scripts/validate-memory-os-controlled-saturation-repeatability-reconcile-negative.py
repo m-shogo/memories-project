@@ -675,7 +675,7 @@ def run_repeatability_rebase_cas_negatives() -> None:
     for critical in ("scripts/analyze-memory-os-controlled-saturation-repeatability.py",
                      "scripts/validate-memory-os-controlled-saturation-repeatability.py",
                      "contracts/operations/controlled-saturation-repeatability-contract.v1.json"):
-        mutated = script.replace("            " + critical + "\n", "", 1)
+        mutated = script.replace("  " + critical + "\n", "", 1)
         if mutated == script:
             raise RuntimeError("repeatability critical-source negative fixture missing")
         try:
