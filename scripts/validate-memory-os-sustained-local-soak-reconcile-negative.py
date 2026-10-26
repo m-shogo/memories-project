@@ -303,7 +303,44 @@ def validate_cross_run_delta_nonfinite_negatives() -> None:
     print("PASS: sustained local-soak cross-run delta positives and 6 finite negatives")
 
 
+def validate_trend_json_parser_negatives() -> None:
+    """Exercise both real cross-run trend readers on ambiguous JSON inputs."""
+    producer = load_trend_reviewer()
+    consumer = load_module(
+        ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py",
+        "memory_os_sustained_local_soak_trend_json_negative",
+    )
+    with tempfile.TemporaryDirectory(prefix=".sustained-local-soak-trend-json-", dir=ROOT) as temp:
+        path = Path(temp) / "trend.json"
+        path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+        for reader in (producer, consumer):
+            if reader.load(path) != {"outer": {"a": 1, "b": 2}}:
+                raise AssertionError("sustained local-soak trend JSON positive control failed")
+        cases = (
+            b'{"value":Infinity}',
+            b'{"value":NaN}',
+            b'{"value":1e999}',
+            b'{"a":1,"a":2}',
+            b'{"outer":{"a":1,"a":2}}',
+            b'{"SYNTHETIC_SECRET_CANARY":',
+            b'{"huge":' + b"9" * 5000 + b"}",
+            b"\xff\xfe",
+        )
+        for payload in cases:
+            path.write_bytes(payload)
+            for reader in (producer, consumer):
+                try:
+                    reader.load(path)
+                except reader.Fail as exc:
+                    if "SYNTHETIC_SECRET_CANARY" in str(exc):
+                        raise AssertionError("sustained local-soak trend JSON diagnostic leaked source")
+                else:
+                    raise AssertionError("sustained local-soak trend parser accepted malformed JSON")
+    print("PASS: sustained local-soak trend producer/consumer positives and 16 JSON negatives")
+
+
 def main() -> int:
+    validate_trend_json_parser_negatives()
     validate_cross_run_delta_nonfinite_negatives()
     validate_result_json_parser_negatives()
     validate_result_numeric_overflow_negatives()

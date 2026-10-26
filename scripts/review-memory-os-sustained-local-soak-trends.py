@@ -85,12 +85,33 @@ def atomic_replace_bytes(path: Path, payload: bytes, mode: int | None = None) ->
             pass
 
 
+def reject_nonfinite_constant(_token: str) -> None:
+    raise Fail("sustained local-soak trend JSON non-finite constant rejected")
+
+
+def parse_finite_float(token: str) -> float:
+    value = float(token)
+    require(math.isfinite(value), "sustained local-soak trend JSON non-finite number rejected")
+    return value
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "sustained local-soak trend JSON duplicate key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        raise Fail("sustained local-soak trend JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "sustained local-soak trend JSON root must be object")
     return value
 
 
