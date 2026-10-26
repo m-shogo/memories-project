@@ -17,6 +17,14 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-uplo
 RUNNER_PATH = ROOT / "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+EXPECTED_PATHS: dict[str, str] = {
+    "resultPath": "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json",
+    "runner": "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go",
+    "validator": "scripts/validate-memory-os-deletion-prefence-upload-completion.py",
+    "reconcile": "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py",
+    "workflow": ".github/workflows/deletion-prefence-upload-completion.yml",
+}
+
 EXPECTED_CRITERIA: dict[str, Any] = {
     "issuedAndUploadedBeforeFence": 16,
     "realHeadCompletedBeforeFence": 16,
@@ -102,6 +110,9 @@ def validate_contract(contract: dict[str, Any]) -> None:
         actual = criteria[key]
         require(type(actual) is type(expected) and actual == expected,
                 f"success criterion type/value drift: {key}")
+
+    for key, expected in EXPECTED_PATHS.items():
+        require(contract.get(key) == expected, f"contract source/path binding drift: {key}")
 
     rules = contract.get("validationRules")
     require(isinstance(rules, dict), "validationRules must be object")
