@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+RUN_REF = re.compile(r"^docs/fixtures/memory-os-operability/controlled-saturation-ramp-results\\.repeat-([0-9]+)-([0-9]+)-([ab])\\.v1\\.json$")
 STEPS = [4, 8, 16, 24, 32, 48]
 
 
@@ -82,14 +83,23 @@ def main() -> int:
     refs = result.get("runRefs")
     require(isinstance(refs, list) and len(refs) == 2 and all(isinstance(ref, str) for ref in refs)
             and len(set(refs)) == 2, "two unique runRefs required")
+    matches = [RUN_REF.fullmatch(ref) for ref in refs]
+    require(all(match is not None for match in matches), "runRefs must bind matrix run ID, attempt and ordinal")
+    require(matches[0].group(3) == "a" and matches[1].group(3) == "b"
+            and matches[0].group(1, 2) == matches[1].group(1, 2),
+            "runRefs must bind the same matrix run and attempt with distinct a/b ordinals")
     for ref in refs:
         run_path = safe_repo_ref(ref, "runRef")
         run = load(run_path)
+        require(run.get("schemaVersion") == "memory-os-controlled-saturation-ramp-results.v1",
+                f"run schema drift: {ref}")
         require(run.get("commitSha") == source, f"run source mismatch: {ref}")
         environment = run.get("environment")
         require(isinstance(environment, dict), f"run environment missing: {ref}")
         require(environment.get("dependencyMode") == contract.get("dependencyMode"), f"run dependency mode mismatch: {ref}")
-        for key in ("productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies"):
+        require(environment.get("syntheticDataOnly") is True and environment.get("loopbackDependenciesOnly") is True,
+                f"run must remain synthetic and loopback-only: {ref}")
+        for key in ("productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "containsSecrets"):
             require(environment.get(key) is False, f"run cannot enable {key}: {ref}")
         scenario = run.get("scenario")
         require(isinstance(scenario, dict), f"run scenario missing: {ref}")
