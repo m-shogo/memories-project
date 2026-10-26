@@ -256,6 +256,34 @@ jobs:
           test -z "$(git status --porcelain)"
           git fetch origin so
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+      - name: Reject mixed-source repeatability aggregate
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" HEAD; then
+            echo "Original repeatability source is not an ancestor; refusing aggregate."
+            exit 75
+          fi
+          critical=(
+            services/import-api/internal/httpserver/controlled_saturation_ramp_test.go
+            services/import-api/internal/httpserver/live_object_load_test.go
+            services/import-api/internal/httpserver/server_live_test.go
+            services/import-api/internal/pgrepo
+            services/import-api/internal/upload
+            services/import-api/internal/objectstore
+            services/import-api/go.mod services/import-api/go.sum
+            infra/postgresql/security
+            contracts/operations/controlled-saturation-ramp-contract.v1.json
+            contracts/operations/controlled-saturation-repeatability-contract.v1.json
+            .github/workflows/controlled-saturation-repeatability.yml
+            scripts/analyze-memory-os-controlled-saturation-repeatability.py
+            scripts/validate-memory-os-controlled-saturation-repeatability.py
+            scripts/validate-memory-os-controlled-saturation-ramp.py
+            scripts/reconcile-memory-os-controlled-saturation-repeatability.py
+          )
+          if ! git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"; then
+            echo "Critical repeatability source changed since ramp; refusing mixed-source aggregate."
+            exit 75
+          fi
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"

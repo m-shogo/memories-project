@@ -556,6 +556,58 @@ def run_repeatability_source_identity_negatives() -> None:
 
 
 
+def run_repeatability_aggregate_source_drift_negatives() -> None:
+    workflow = (ROOT / ".github/workflows/controlled-saturation-repeatability.yml").read_text(encoding="utf-8")
+    marker = "      - name: Reject mixed-source repeatability aggregate\n"
+    if workflow.count(marker) != 1:
+        raise RuntimeError("repeatability aggregate source gate missing")
+    start = workflow.index("        run: |\n", workflow.index(marker)) + len("        run: |\n")
+    end = workflow.find("\n      - ", start)
+    if end < 0:
+        raise RuntimeError("repeatability aggregate gate boundary missing")
+    lines = workflow[start:end].splitlines()
+    script = "\n".join(line[10:] if line.startswith("          ") else line for line in lines) + "\n"
+    required = (
+        'git merge-base --is-ancestor "$GITHUB_SHA" HEAD',
+        'git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"',
+        "scripts/analyze-memory-os-controlled-saturation-repeatability.py",
+        "scripts/validate-memory-os-controlled-saturation-repeatability.py",
+        "contracts/operations/controlled-saturation-repeatability-contract.v1.json",
+    )
+    def policy(value):
+        for item in required:
+            if item not in value:
+                raise RuntimeError("repeatability aggregate source policy missing: " + item)
+    policy(script)
+    for item in required:
+        mutated = script.replace(item, "REMOVED_SOURCE_POLICY", 1)
+        try:
+            policy(mutated)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("repeatability aggregate policy mutation accepted")
+    with tempfile.TemporaryDirectory(prefix="repeatability-aggregate-source-") as temp:
+        root = Path(temp)
+        git = root / "git"
+        git.write_text("\n".join((
+            '#!/bin/sh',
+            'if [ "$1" = "merge-base" ]; then exit "$ANCESTOR_CODE"; fi',
+            'if [ "$1" = "diff" ]; then exit "$DIFF_CODE"; fi',
+            'exit 1',
+        )) + "\n", encoding="utf-8")
+        git.chmod(0o755)
+        for ancestor, diff, allowed in (("0", "0", True), ("1", "0", False),
+                                        ("0", "1", False), ("0", "128", False)):
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_SHA="a" * 40, ANCESTOR_CODE=ancestor, DIFF_CODE=diff)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", script],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != allowed:
+                raise RuntimeError("repeatability aggregate ancestor/source drift guard failed")
+    print("PASS: repeatability aggregate source ancestry, drift and policy negatives (9 cases)")
+
+
 def run_repeatability_authority_identity_negatives() -> None:
     workflow = (ROOT / ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml").read_text(encoding="utf-8")
     checkout = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -1172,6 +1224,7 @@ def main() -> int:
     run_inline_diagnostic_writer_negatives()
     run_inline_ramp_diagnostic_negatives()
     run_repeatability_source_identity_negatives()
+    run_repeatability_aggregate_source_drift_negatives()
     run_repeatability_authority_identity_negatives()
     run_repeatability_rebase_cas_negatives()
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
