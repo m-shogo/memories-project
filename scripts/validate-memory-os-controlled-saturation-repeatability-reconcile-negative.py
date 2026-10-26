@@ -792,6 +792,8 @@ def run_repeatability_matrix_boundary_negatives() -> None:
         ("non-loopback run", {}, ("environment", "loopbackDependenciesOnly", False)),
         ("secret-bearing run", {}, ("environment", "containsSecrets", True)),
         ("run schema drift", {}, ("schemaVersion", None, "invalid")),
+        ("run result failure", {}, ("scenario", "result", "FAIL")),
+        ("run integrity failure", {}, ("scenario", "integrityResult", "FAIL")),
     )
     for label, result_override, run_override in cases:
         fixture_result = copy.deepcopy(result)
@@ -822,7 +824,7 @@ def run_repeatability_matrix_boundary_negatives() -> None:
                     raise RuntimeError(f"repeatability matrix boundary accepted: {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability matrix run/attempt/ordinal/synthetic boundary negatives (9 cases)")
+    print("PASS: repeatability matrix run/attempt/ordinal/synthetic/integrity negatives (11 cases)")
 
 
 
@@ -849,6 +851,15 @@ def run_repeatability_nonfinite_negatives() -> None:
     run = analyzer.load(ROOT / result["runRefs"][0])
     if analyzer.signal_for(run)["concurrency"] is None:
         raise RuntimeError("repeatability numeric analyzer positive control failed")
+    for field in ("result", "integrityResult"):
+        fixture = copy.deepcopy(run)
+        fixture["scenario"][field] = "FAIL"
+        try:
+            analyzer.signal_for(fixture)
+        except analyzer.Fail:
+            pass
+        else:
+            raise RuntimeError("repeatability analyzer accepted failed run or integrity")
     with contextlib.redirect_stdout(io.StringIO()):
         if validator.main() != 0:
             raise RuntimeError("repeatability numeric validator positive control failed")
@@ -896,7 +907,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator nonfinite and signal consistency negatives (11 cases)")
+    print("PASS: repeatability analyzer/validator nonfinite, integrity and signal negatives (13 cases)")
 
 
 
