@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -26,8 +27,22 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise Fail("non-finite JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite JSON number rejected")
+    return parsed
+
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        parse_constant=reject_nonfinite_constant,
+        parse_float=parse_finite_float,
+    )
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
 
@@ -116,6 +131,13 @@ def main() -> int:
         concurrency = row.get("concurrency")
         require(concurrency is None or concurrency in STEPS, f"signal {label} concurrency invalid")
         require(row.get("kind") in {"ACTUAL_FAILURE_SIGNAL", "THROUGHPUT_LATENCY_KNEE", "NO_SIGNAL"}, f"signal {label} kind invalid")
+        require((row.get("kind") == "NO_SIGNAL") is (concurrency is None),
+                f"signal {label} kind/concurrency mismatch")
+        for metric in ("throughputGainFromPrevious", "p95LatencyRatioFromPrevious"):
+            if metric in row:
+                value = row[metric]
+                require(isinstance(value, (int, float)) and not isinstance(value, bool)
+                        and math.isfinite(value), f"signal {label} {metric} must be finite")
         concurrencies.append(concurrency)
     expected_repeatable = False
     expected_distance = None
