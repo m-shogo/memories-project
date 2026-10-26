@@ -153,8 +153,16 @@ def run_validator(path: Path, name: str) -> None:
     expected = expected_by_name.get(name)
     require(isinstance(expected, Path), f"unknown upstream validator authority: {name}")
     require_exact_executable(path, expected, f"{name} validator")
-    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"{name} validator failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)], cwd=ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise Fail(f"{name} validator unavailable ({type(exc).__name__})") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"{name} validator failed without exposing subprocess output")
 
 
 def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_registry: dict[str, Any]) -> dict[str, Any]:

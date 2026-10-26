@@ -8,6 +8,7 @@ import importlib.util
 import json
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -128,6 +129,74 @@ def expect_upstream_validator_substitutions_rejected(validator: Any) -> None:
             raise Fail(f"runtime {label} validator substitution unexpectedly accepted")
         finally:
             setattr(validator, attribute, original)
+
+
+def expect_upstream_validator_output_redacted(validator: Any) -> None:
+    """Upstream validator failures cannot expose their raw stdout/stderr or exception text."""
+    original_run = validator.subprocess.run
+    calls: list[list[str]] = []
+
+    def reviewed_run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        calls.append(command)
+        require(command == [validator.sys.executable, str(validator.GEN_VALIDATOR)],
+                "preflight upstream executable drift")
+        require(kwargs.get("cwd") == validator.ROOT and
+                kwargs.get("stdout") == validator.subprocess.DEVNULL and
+                kwargs.get("stderr") == validator.subprocess.DEVNULL and
+                kwargs.get("check") is False and kwargs.get("timeout") == 180,
+                "preflight upstream output/timeout boundary drift")
+        return SimpleNamespace(returncode=0)
+
+    try:
+        validator.subprocess.run = reviewed_run
+        validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
+        require(len(calls) == 1, "preflight reviewed upstream positive not executed")
+
+        validator.subprocess.run = lambda *args, **kwargs: SimpleNamespace(
+            returncode=1, stdout="SYNTHETIC_SECRET_STDOUT_DO_NOT_LOG",
+            stderr="SYNTHETIC_SECRET_STDERR_DO_NOT_LOG",
+        )
+        try:
+            validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
+        except validator.Fail as exc:
+            require("validator failed" in str(exc) and
+                    "SYNTHETIC_SECRET" not in str(exc),
+                    "preflight upstream raw failure output exposed")
+        else:
+            raise Fail("preflight upstream failed exit accepted")
+
+        validator.subprocess.run = lambda *args, **kwargs: SimpleNamespace(returncode=True)
+        try:
+            validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
+        except validator.Fail:
+            pass
+        else:
+            raise Fail("preflight upstream boolean exit accepted")
+
+        def timed_out(*args: Any, **kwargs: Any) -> None:
+            raise validator.subprocess.TimeoutExpired("SYNTHETIC_SECRET_COMMAND", 180)
+        validator.subprocess.run = timed_out
+        try:
+            validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
+        except validator.Fail as exc:
+            require("TimeoutExpired" in str(exc) and "SYNTHETIC_SECRET" not in str(exc),
+                    "preflight upstream timeout exposed command")
+        else:
+            raise Fail("preflight upstream timeout accepted")
+
+        def failed_os(*args: Any, **kwargs: Any) -> None:
+            raise OSError("SYNTHETIC_SECRET_OSERROR_DO_NOT_LOG")
+        validator.subprocess.run = failed_os
+        try:
+            validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
+        except validator.Fail as exc:
+            require("OSError" in str(exc) and "SYNTHETIC_SECRET" not in str(exc),
+                    "preflight upstream OS failure exposed secret")
+        else:
+            raise Fail("preflight upstream OS failure accepted")
+    finally:
+        validator.subprocess.run = original_run
+    print("PASS: preflight upstream bounded output-suppressed positive and 4 negatives")
 
 
 def expect_unexpected_helper_exception_preserved(
@@ -289,6 +358,7 @@ def main() -> int:
     )
     expect_helper_authority_substitution_rejected(validator, generations, objectives, drill_registry)
     expect_upstream_validator_substitutions_rejected(validator)
+    expect_upstream_validator_output_redacted(validator)
     expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
