@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Independent read-only missing-evidence authority source and runtime negatives."""
+from __future__ import annotations
+import hashlib
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PUBLISHER = ".github/workflows/reconcile-load-missing-evidence.yml"
+INDEPENDENT = ".github/workflows/load-missing-evidence-source-negative.yml"
+SELF = "scripts/validate-memory-os-load-missing-source-negative.py"
+CHECKOUT = "uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+REVIEWED_PUBLISHER = "f51a30f3e51fe695dfb77da808a9e2afb8f980b1"
+
+def read(path: str) -> str:
+    p = ROOT / path
+    if p.is_symlink() or not p.is_file():
+        raise AssertionError("load missing source substituted: " + path)
+    if p.resolve(strict=True).relative_to(ROOT.resolve(strict=True)).as_posix() != path:
+        raise AssertionError("load missing source escaped root")
+    return p.read_text(encoding="utf-8")
+
+def blob(s: str) -> str:
+    data = s.encode("utf-8")
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+REQUIRED = (
+    "if: github.event_name == 'pull_request' && github.base_ref == 'so'",
+    "if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'",
+    "persist-credentials: false",
+    "persist-credentials: true",
+    'test "$' + '{GITHUB_EVENT_NAME:-}" = "pull_request"',
+    'test "$' + '{GITHUB_BASE_REF:-}" = "so"',
+    '[[ "$' + '{PR_HEAD_SHA:-}" =~ ^[0-9a-f]{40}$ ]]',
+    'test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"',
+    'test "$' + '{GITHUB_REF:-}" = "refs/heads/so"',
+    '[[ "$' + '{GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]',
+    'test "$(git rev-parse HEAD)" = "$' + '{GITHUB_SHA:-}"',
+    'echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"',
+    "git push origin HEAD:so",
+)
+
+def policy(s: str) -> None:
+    if s.count(CHECKOUT) != 2 or s.count(SETUP) != 2:
+        raise AssertionError("missing-evidence immutable Actions drift")
+    if s.count("persist-credentials: false") != 1 or s.count("persist-credentials: true") != 1:
+        raise AssertionError("missing-evidence credential separation drift")
+    if "actions/checkout@v4" in s or "actions/setup-python@v5" in s:
+        raise AssertionError("missing-evidence floating Action regression")
+    for marker in REQUIRED:
+        if marker not in s:
+            raise AssertionError("missing-evidence required source marker absent: " + marker)
+    if s.count('test -z "$(git status --porcelain)"') != 3:
+        raise AssertionError("missing-evidence source/final clean multiplicity drift")
+
+def step(source: str, name: str) -> str:
+    marker = "      - name: " + name + "\n"
+    if source.count(marker) != 1:
+        raise AssertionError("missing-evidence step missing/duplicated: " + name)
+    start = source.index("        run: |\n", source.index(marker)) + len("        run: |\n")
+    boundaries = [p for p in (source.find("\n      - name:", start),
+                             source.find("\n  reconcile:", start),
+                             source.find("\n  validate-pr:", start)) if p >= 0]
+    end = min(boundaries) if boundaries else len(source)
+    lines = source[start:end].splitlines()
+    if any(line and not line.startswith("          ") for line in lines):
+        raise AssertionError("missing-evidence shell crossed job boundary")
+    return "\n".join(line[10:] if line else "" for line in lines) + "\n"
+
+def runtime(source: str, name: str, cases: tuple, prefix_only: bool) -> None:
+    shell = step(source, name)
+    if prefix_only:
+        if shell.count("python -m py_compile") != 1:
+            raise AssertionError("missing-evidence PR validator boundary drift")
+        shell = shell.split("python -m py_compile", 1)[0]
+    head = "a" * 40
+    with tempfile.TemporaryDirectory(prefix="load-missing-source-") as tmp:
+        root = Path(tmp)
+        git = root / "git"
+        git.write_text("#!/bin/sh\n"
+                       "if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then echo " + head + "; exit 0; fi\n"
+                       "if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then exit 0; fi\n"
+                       "exit 1\n", encoding="utf-8")
+        git.chmod(0o755)
+        envfile = root / "env"
+        for event, base, ref, sha, accepted in cases:
+            envfile.write_text("", encoding="utf-8")
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_ENV=str(envfile), GITHUB_EVENT_NAME=event,
+                       GITHUB_BASE_REF=base, GITHUB_REF=ref, GITHUB_SHA=sha, PR_HEAD_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                                    cwd=root, env=env, capture_output=True, text=True,
+                                    timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise AssertionError(f"missing-evidence actual shell source drift: {name} {(event, base, ref, sha, result.returncode)}")
+            if accepted and not prefix_only and envfile.read_text() != "SOURCE_SHA=" + head + "\n":
+                raise AssertionError("missing-evidence writer source SHA capture drift")
+    print(f"PASS: missing-evidence {name} actual event/base/ref/SHA shell ({len(cases)} cases)")
+
+def main() -> None:
+    source = read(PUBLISHER)
+    independent = read(INDEPENDENT)
+    for marker in (PUBLISHER, SELF, CHECKOUT, SETUP, "persist-credentials: false",
+                   "contents: read", 'test -z "$(git status --porcelain)"'):
+        if marker not in independent:
+            raise AssertionError("missing-evidence independent CI reachability missing: " + marker)
+    if blob(source) != REVIEWED_PUBLISHER:
+        raise AssertionError("missing-evidence complete publisher Git blob drift")
+    if blob(source + "\n# synthetic whole-source drift\n") == REVIEWED_PUBLISHER:
+        raise AssertionError("missing-evidence whole-source mutation accepted")
+    policy(source)
+    for index, marker in enumerate(REQUIRED):
+        changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
+        if changed == source:
+            raise AssertionError("missing-evidence negative unreachable: " + str(index))
+        try:
+            policy(changed)
+        except AssertionError:
+            continue
+        raise AssertionError("missing-evidence source mutation accepted: " + str(index))
+    print(f"PASS: missing-evidence publisher reviewed blob and {len(REQUIRED)} source negatives")
+    head = "a" * 40
+    runtime(source, "Normalize read-only PR blocker authority", (
+        ("pull_request", "so", "", head, True),
+        ("pull_request", "main", "", head, False),
+        ("push", "so", "", head, False),
+        ("pull_request", "so", "", "b" * 40, False),
+        ("pull_request", "so", "", "A" * 40, False),
+        ("pull_request", "so", "", "a" * 39, False),
+    ), True)
+    runtime(source, "Capture exact clean source", (
+        ("push", "", "refs/heads/so", head, True),
+        ("workflow_dispatch", "", "refs/heads/so", head, True),
+        ("schedule", "", "refs/heads/so", head, False),
+        ("pull_request", "", "refs/heads/so", head, False),
+        ("push", "", "refs/heads/main", head, False),
+        ("push", "", "refs/heads/so", "b" * 40, False),
+        ("push", "", "refs/heads/so", "A" * 40, False),
+        ("push", "", "refs/heads/so", "a" * 39, False),
+    ), False)
+    print("PASS: independent read-only missing-evidence source guard; production evidence generated: false")
+
+if __name__ == "__main__":
+    main()
