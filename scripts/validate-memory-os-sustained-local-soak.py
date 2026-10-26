@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,13 +23,32 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def reject_nonfinite_constant(_token: str) -> None:
+    raise Fail("sustained local-soak contract non-finite JSON constant rejected")
+
+
+def parse_finite_float(token: str) -> float:
+    value = float(token)
+    require(math.isfinite(value), "sustained local-soak contract non-finite JSON number rejected")
+    return value
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "sustained local-soak contract duplicate JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        raise Fail("sustained local-soak contract JSON unreadable or invalid") from None
     require(isinstance(value, dict), "contract root must be object")
     return value
 

@@ -206,16 +206,23 @@ def validate_second_replace_transaction_rollback(module, paths: tuple[Path, ...]
 
 
 def validate_result_json_parser_negatives() -> None:
-    """Exercise actual result reader with ambiguous, nonfinite and malformed JSON."""
-    validator = load_module(
-        ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py",
-        "memory_os_sustained_local_soak_result_json_negative",
+    """Exercise both canonical local-soak readers against ambiguous JSON."""
+    readers = (
+        load_module(
+            ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py",
+            "memory_os_sustained_local_soak_result_json_negative",
+        ),
+        load_module(
+            ROOT / "scripts/validate-memory-os-sustained-local-soak.py",
+            "memory_os_sustained_local_soak_contract_json_negative",
+        ),
     )
     with tempfile.TemporaryDirectory(prefix=".sustained-local-soak-result-json-", dir=ROOT) as temp:
         path = Path(temp) / "result.json"
         path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
-        if validator.load(path) != {"outer": {"a": 1, "b": 2}}:
-            raise AssertionError("sustained local-soak result JSON positive control failed")
+        for reader in readers:
+            if reader.load(path) != {"outer": {"a": 1, "b": 2}}:
+                raise AssertionError("sustained local-soak JSON positive control failed")
         cases = (
             b'{"value":Infinity}',
             b'{"value":NaN}',
@@ -228,15 +235,15 @@ def validate_result_json_parser_negatives() -> None:
         )
         for payload in cases:
             path.write_bytes(payload)
-            try:
-                validator.load(path)
-            except validator.Fail as exc:
-                if "SYNTHETIC_SECRET_CANARY" in str(exc):
-                    raise AssertionError("sustained local-soak result JSON diagnostic leaked source")
-            else:
-                raise AssertionError("sustained local-soak result parser accepted malformed JSON")
-    print("PASS: sustained local-soak result JSON positive and 8 parser negatives")
-
+            for reader in readers:
+                try:
+                    reader.load(path)
+                except reader.Fail as exc:
+                    if "SYNTHETIC_SECRET_CANARY" in str(exc):
+                        raise AssertionError("sustained local-soak JSON diagnostic leaked source")
+                else:
+                    raise AssertionError("sustained local-soak parser accepted malformed JSON")
+    print("PASS: sustained local-soak result/contract JSON positives and 16 parser negatives")
 
 def main() -> int:
     validate_result_json_parser_negatives()
