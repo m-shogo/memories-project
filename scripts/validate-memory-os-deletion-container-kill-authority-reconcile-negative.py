@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 import stat
 import tempfile
 from pathlib import Path
@@ -237,6 +239,10 @@ def main() -> int:
     if residue:
         raise SystemExit(f"container-kill rollback left temp residue: {residue!r}")
 
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py")],
+        cwd=ROOT, check=True,
+    )
     print("PASS: container-kill authority identity, atomic mode, primary diagnostics, and exhaustive rollback are fail-closed")
     return 0
 

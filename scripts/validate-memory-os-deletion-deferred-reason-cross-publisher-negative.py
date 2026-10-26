@@ -15,6 +15,7 @@ SOURCES = {
     "scripts/reconcile-memory-os-deletion-advanced-evidence.py": "edf3a505c993405ba0830d3c2e90f7b5ceff3ba2",
     "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py": "1359e7c0ae28418a56d35bc5d1a1b55e3c121b4b",
     "scripts/reconcile-memory-os-load-readiness-note.py": "219e1f1630c7fb9a7ee5cfa40ec4452d861d3945",
+    "scripts/reconcile-memory-os-deletion-container-kill-authority.py": "a80a0222479bdba82ad3a1890215ac8f962b6160",
 }
 
 def blob(content: str) -> str:
@@ -52,22 +53,33 @@ def main() -> None:
         if blob(source) != expected or blob(source + "\n# synthetic drift\n") == expected:
             raise AssertionError("deletion reason reviewed publisher source drift: " + path)
         if path not in ci:
-            raise AssertionError("deletion reason source not in CI triggers: " + path)
+            # Fifth publisher is reached through its full exact-source workflow;
+            # that workflow executes the reconcile-negative invoking this guard.
+            if path != "scripts/reconcile-memory-os-deletion-container-kill-authority.py":
+                raise AssertionError("deletion reason source not in CI triggers: " + path)
+            full = read(".github/workflows/reconcile-deletion-container-kill-authority.yml")
+            container_test = read("scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py")
+            if path not in full or "scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py" not in full:
+                raise AssertionError("deletion reason container-kill full CI trigger missing")
+            if SELF not in container_test:
+                raise AssertionError("deletion reason container-kill full CI cross-guard invocation missing")
 
     mutation = module("scripts/reconcile-memory-os-deletion-mutation-evidence.py", "deletion_reason_mutation")
     advanced = module("scripts/reconcile-memory-os-deletion-advanced-evidence.py", "deletion_reason_advanced")
     lease = module("scripts/reconcile-memory-os-deletion-lease-recovery-authority.py", "deletion_reason_lease")
     normalizer = module("scripts/reconcile-memory-os-load-readiness-note.py", "deletion_reason_normalizer")
+    container = module("scripts/reconcile-memory-os-deletion-container-kill-authority.py", "deletion_reason_container_kill")
     expected = mutation.NORMALIZED_CANONICAL_REASON
-    if expected != advanced.NORMALIZED_CANONICAL_REASON or expected != lease.NORMALIZED_CANONICAL_REASON:
+    if expected != advanced.NORMALIZED_CANONICAL_REASON or expected != lease.NORMALIZED_CANONICAL_REASON or expected != container.NORMALIZED_CANONICAL_REASON:
         raise AssertionError("deletion reason canonical normalized authority diverged")
     flags = tuple(normalizer.REQUIRED_TRUE)
-    if flags != tuple(mutation.NORMALIZED_REQUIRED_TRUE) or flags != tuple(advanced.NORMALIZED_REQUIRED_TRUE) or flags != tuple(lease.NORMALIZED_REQUIRED_TRUE):
+    if flags != tuple(mutation.NORMALIZED_REQUIRED_TRUE) or flags != tuple(advanced.NORMALIZED_REQUIRED_TRUE) or flags != tuple(lease.NORMALIZED_REQUIRED_TRUE) or flags != tuple(container.NORMALIZED_REQUIRED_TRUE):
         raise AssertionError("deletion reason typed required-flag set drift")
     ready = {key: True for key in flags}
     for label, func, failure in (
         ("advanced", advanced.preserve_stronger_deferred_reason, advanced.Fail),
         ("lease", lease.preserve_container_deferred_reason, SystemExit),
+        ("container-kill", container.preserve_stronger_deferred_reason, container.ReconcileFailure),
     ):
         if func(expected, ready) is not True:
             raise AssertionError("deletion reason normalized coverage demoted: " + label)
@@ -81,7 +93,7 @@ def main() -> None:
             raise AssertionError("deletion reason accepted unsupported normalized claim: " + label + "/" + key)
     if "existing_deferred_reason == NORMALIZED_CANONICAL_REASON" not in read("scripts/reconcile-memory-os-deletion-mutation-evidence.py"):
         raise AssertionError("mutation main-path normalized authority check unreachable")
-    print("PASS: deletion deferred reason 4 reviewed source bindings, canonical equality and 22 typed flag negatives")
+    print("PASS: deletion deferred reason 5 reviewed source bindings, canonical equality and 33 typed flag negatives")
     print("PASS: cross-publisher guard is local-only; production evidence generated: false")
 
 if __name__ == "__main__":
