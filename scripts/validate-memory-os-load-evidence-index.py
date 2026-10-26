@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -93,14 +94,43 @@ def require(condition: bool, message: str) -> None:
         raise ValidationFailure(message)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise ValidationFailure("non-finite load index JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite load index JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate load index JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
+    require(isinstance(path, Path), "load index JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "load index JSON symlink path rejected")
+    require(path.is_file(), "load index JSON file missing or unsafe")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ValidationFailure(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValidationFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise ValidationFailure("load index JSON path escaped repository") from None
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonfinite_constant,
+            parse_float=parse_finite_float,
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+        raise ValidationFailure("load index JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "load index JSON root must be object")
     return value
 
 

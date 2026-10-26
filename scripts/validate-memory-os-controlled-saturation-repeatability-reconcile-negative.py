@@ -1119,6 +1119,59 @@ def run_repeatability_reconciler_json_negatives(module) -> None:
     print("PASS: repeatability reconciler JSON parser, path and output negatives (11 cases)")
 
 
+def run_load_index_json_negatives() -> None:
+    """Exercise the actual load evidence-index JSON admission boundary."""
+    path = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
+    spec = importlib.util.spec_from_file_location("repeatability_load_index_json_negative", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("load index JSON negative import failed")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    secret = "SYNTHETIC_LOAD_INDEX_SECRET"
+    with tempfile.TemporaryDirectory(prefix="load-index-json-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_text('{"canary":true}', encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".load-index-json-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            target = inside / "input.json"
+            target.write_text('{"outer":{"ok":true}}', encoding="utf-8")
+            if module.load(target) != {"outer": {"ok": True}}:
+                raise RuntimeError("load index JSON positive control failed")
+            for raw in (
+                b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
+                b'{"a":1,"a":2}', b'{"outer":{"a":1,"a":2}}',
+                b'{"value":' + b'9' * 5000 + b'}',
+                b'{"' + secret.encode() + b'":', bytes((0xFF, 0xFE)),
+                b'[1,2,3]',
+            ):
+                target.write_bytes(raw)
+                try:
+                    module.load(target)
+                except module.ValidationFailure as exc:
+                    if secret in str(exc):
+                        raise RuntimeError("load index JSON error leaked synthetic secret")
+                else:
+                    raise RuntimeError("load index accepted invalid or ambiguous JSON")
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            directory = inside / "directory"
+            directory.mkdir()
+            for unsafe in (linked_file, linked_parent / "canary.json", canary,
+                           inside / "missing.json", directory):
+                try:
+                    module.load(unsafe)
+                except module.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError("load index accepted unsafe JSON path")
+        if canary.read_text(encoding="utf-8") != '{"canary":true}':
+            raise RuntimeError("load index changed external JSON canary")
+    print("PASS: load evidence index strict JSON and path negatives (14 cases)")
+
+
 def run_load_validator_json_negatives() -> None:
     """Exercise the actual load validator's JSON and diagnostic boundaries."""
     path = ROOT / "scripts/validate-memory-os-load.py"
@@ -1641,6 +1694,7 @@ def main() -> int:
     run_repeatability_matrix_boundary_negatives()
     run_repeatability_contract_policy_negatives()
     run_load_validator_json_negatives()
+    run_load_index_json_negatives()
     run_repeatability_nonfinite_negatives()
     run_repeatability_reconciler_json_negatives(module)
     run_repeatability_analyzer_matrix_producer_negatives()
