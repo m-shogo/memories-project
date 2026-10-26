@@ -10,6 +10,8 @@ on:
       - "scripts/validate-memory-os-deletion-worker-saturation-diagnostic-source-negative.py"
       - "scripts/reconcile-memory-os-deletion-worker-saturation.py"
       - "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-worker-saturation.py"
+      - "contracts/operations/deletion-worker-saturation-contract.v1.json"
   push:
     branches:
       - so
@@ -19,6 +21,8 @@ on:
       - "scripts/validate-memory-os-deletion-worker-saturation-diagnostic-source-negative.py"
       - "scripts/reconcile-memory-os-deletion-worker-saturation.py"
       - "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-worker-saturation.py"
+      - "contracts/operations/deletion-worker-saturation-contract.v1.json"
 
 permissions:
   contents: read
