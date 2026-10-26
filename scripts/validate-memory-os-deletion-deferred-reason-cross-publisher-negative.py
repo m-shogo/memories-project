@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,38 @@ def module(path: str, name: str):
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result
+
+def atomic_path_runtime(label: str, writer, failure: type[BaseException]) -> None:
+    with tempfile.TemporaryDirectory(prefix="deletion-cross-writer-atomic-") as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "authority.json"
+        canary.write_bytes(b"SYNTHETIC_CROSS_WRITER_CANARY")
+        direct = root / "direct.json"
+        direct.symlink_to(canary)
+        ancestor = root / "linked"
+        ancestor.symlink_to(outside, target_is_directory=True)
+        directory = root / "directory.json"
+        directory.mkdir()
+        for target in (direct, ancestor / "authority.json", directory):
+            try:
+                writer(target, b"synthetic overwrite")
+            except failure:
+                pass
+            else:
+                raise AssertionError("deletion cross-writer accepted substituted atomic path: " + label)
+            if canary.read_bytes() != b"SYNTHETIC_CROSS_WRITER_CANARY":
+                raise AssertionError("deletion cross-writer modified external canary: " + label)
+        if not direct.is_symlink() or not ancestor.is_symlink() or not directory.is_dir():
+            raise AssertionError("deletion cross-writer replaced substituted path: " + label)
+        positive = root / "valid.json"
+        writer(positive, b"synthetic valid local payload")
+        if positive.read_bytes() != b"synthetic valid local payload":
+            raise AssertionError("deletion cross-writer rejected legitimate local atomic path: " + label)
+        if list(root.rglob(".*.tmp")):
+            raise AssertionError("deletion cross-writer left atomic temporary residue: " + label)
+
 
 def main() -> None:
     ci = read(INDEPENDENT)
@@ -93,6 +126,15 @@ def main() -> None:
             raise AssertionError("deletion reason accepted unsupported normalized claim: " + label + "/" + key)
     if "existing_deferred_reason == NORMALIZED_CANONICAL_REASON" not in read("scripts/reconcile-memory-os-deletion-mutation-evidence.py"):
         raise AssertionError("mutation main-path normalized authority check unreachable")
+    for label, writer, failure in (
+        ("mutation", mutation.atomic_write_bytes, mutation.Fail),
+        ("advanced", advanced.atomic_write_bytes, advanced.Fail),
+        ("lease", lease.atomic_write_bytes, SystemExit),
+        ("normalizer", normalizer.atomic_write_bytes, RuntimeError),
+        ("container-kill", container.atomic_write_bytes, container.ReconcileFailure),
+    ):
+        atomic_path_runtime(label, writer, failure)
+    print("PASS: five actual local atomic writers, 15 substituted-path negatives and five positive cases")
     print("PASS: deletion deferred reason 5 reviewed source bindings, canonical equality and 33 typed flag negatives")
     print("PASS: cross-publisher guard is local-only; production evidence generated: false")
 
