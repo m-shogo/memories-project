@@ -209,11 +209,45 @@ def verify_pool_snapshot_and_delta_accounting() -> None:
     print("PASS: controlled saturation pool full-validator positive and 8 negatives")
 
 
+
+def verify_batch_status_accounting() -> None:
+    """Reject impossible signed-upload lifecycle counts using the actual validator."""
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+    spec = importlib.util.spec_from_file_location("controlled_saturation_status_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("controlled saturation status validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    batch = validator.load(validator.RESULT_PATH)["scenario"]["steps"][0]["batch"]
+    if not validator.validate_batch(copy.deepcopy(batch), 4, 64, "synthetic-positive"):
+        raise RuntimeError("controlled saturation status positive control failed")
+    cases = (
+        ("negative 5xx offset", {"5xx": -1, "transport_error": 1}, 64, 0),
+        ("negative transport offset", {"5xx": 1, "transport_error": -1}, 64, 0),
+        ("negative successes", {"2xx": -1, "5xx": 65}, -1, 65),
+        ("negative failures", {"2xx": 65, "5xx": -1}, 65, -1),
+        ("unknown status class", {"6xx": 1}, 64, 0),
+    )
+    for label, classes, successes, failures in cases:
+        mutated = copy.deepcopy(batch)
+        mutated["statusClassCounts"].update(classes)
+        mutated["successes"] = successes
+        mutated["failures"] = failures
+        try:
+            validator.validate_batch(mutated, 4, 64, "synthetic-negative")
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"controlled saturation accepted {label}")
+    print("PASS: controlled saturation status accounting positive and 5 negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_nonfinite_ramp_measurements()
     verify_ramp_timestamp_semantics()
     verify_pool_snapshot_and_delta_accounting()
+    verify_batch_status_accounting()
     substitutions = {
         "CONTROLLED_CONTRACT": module.LOAD_CONTRACT,
         "LOAD_CONTRACT": module.CONTROLLED_CONTRACT,

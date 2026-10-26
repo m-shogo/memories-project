@@ -91,8 +91,11 @@ def number(value: Any, field: str) -> float:
 def status_count(batch: dict[str, Any], key: str, field: str) -> int:
     counts = batch.get("statusClassCounts")
     require(isinstance(counts, dict), f"{field}.statusClassCounts must be object")
-    value = counts.get(key, 0)
-    return integer(value, f"{field}.statusClassCounts.{key}")
+    require(set(counts).issubset({"2xx", "3xx", "4xx", "5xx", "transport_error"}),
+            f"{field}.statusClassCounts contains unknown status class")
+    value = integer(counts.get(key, 0), f"{field}.statusClassCounts.{key}")
+    require(value >= 0, f"{field}.statusClassCounts.{key} must be non-negative")
+    return value
 
 
 def validate_batch(batch: Any, concurrency: int, total: int, field: str) -> bool:
@@ -101,6 +104,7 @@ def validate_batch(batch: Any, concurrency: int, total: int, field: str) -> bool
     actual_concurrency = integer(batch.get("concurrency"), f"{field}.concurrency")
     successes = integer(batch.get("successes"), f"{field}.successes")
     failures = integer(batch.get("failures"), f"{field}.failures")
+    require(successes >= 0 and failures >= 0, f"{field}: lifecycle counts must be non-negative")
     require(requests == total, f"{field}: requests drift")
     require(actual_concurrency == concurrency, f"{field}: concurrency drift")
     require(successes + failures == total, f"{field}: successes + failures must equal requests")
