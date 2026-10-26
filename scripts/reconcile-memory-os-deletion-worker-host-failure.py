@@ -129,7 +129,7 @@ def load_host_validator(
     try:
         resolved = VALIDATOR.resolve(strict=True).relative_to(CANONICAL_ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail("canonical host-failure validator missing or escapes repository") from exc
+        raise Fail("canonical host-failure validator missing or escapes repository") from None
     require(resolved == CANONICAL_HOST_VALIDATOR.relative_to(CANONICAL_ROOT), "host-failure validator authority drift")
     require(importlib.util.spec_from_file_location is _spec_from_file_location,
             "host-failure module spec loader is not canonical")
@@ -141,7 +141,7 @@ def load_host_validator(
     try:
         spec.loader.exec_module(module)
     except Exception as exc:  # noqa: BLE001 - convert dependency failures into domain failure
-        raise Fail(f"cannot load canonical host-failure validator: {exc}") from exc
+        raise Fail("cannot load canonical host-failure validator: " + type(exc).__name__) from None
     require(callable(getattr(module, "canonical_generation_count", None)), "host-failure generation authority helper missing")
     require(callable(getattr(module, "validate_generation_projection", None)), "host-failure generation projection validator missing")
     require(isinstance(getattr(module, "NO_GENERATION_LIMITATION", None), str), "host-failure generation limitation authority missing")
@@ -153,7 +153,7 @@ def reconcile_generation_projection(contract: dict[str, Any]) -> int:
     try:
         registered = host_validator.canonical_generation_count()
     except Exception as exc:  # noqa: BLE001 - shared authority must fail closed
-        raise Fail(f"canonical generation authority validation failed: {exc}") from exc
+        raise Fail("canonical generation authority validation failed: " + type(exc).__name__) from None
 
     generation_available = registered > 0
     boundary = contract.get("currentBoundary")
@@ -174,16 +174,17 @@ def reconcile_generation_projection(contract: dict[str, Any]) -> int:
     try:
         host_validator.validate_generation_projection(contract, registered)
     except Exception as exc:  # noqa: BLE001 - projection must match shared validator
-        raise Fail(f"host-failure generation projection invalid: {exc}") from exc
+        raise Fail("host-failure generation projection invalid: " + type(exc).__name__) from None
     return registered
 
 
 def validate_load_authority() -> None:
     validate_executable_authorities()
     try:
-        CANONICAL_SUBPROCESS_RUN([sys.executable, str(LOAD_VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
+        CANONICAL_SUBPROCESS_RUN([sys.executable, str(LOAD_VALIDATOR)], cwd=CANONICAL_ROOT, check=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError as exc:
-        raise Fail(f"canonical load authority validation failed: {exc}") from exc
+        raise Fail("canonical load authority validation failed: " + type(exc).__name__) from None
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
@@ -221,9 +222,9 @@ def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> N
         CANONICAL_ATOMIC_WRITE_BYTES(STATUS, (json.dumps(status, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
         validate_executable_authorities()
         validate_atomic_writer_authority()
-        CANONICAL_SUBPROCESS_RUN([sys.executable, str(VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
-        CANONICAL_SUBPROCESS_RUN([sys.executable, str(LOAD_VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
-        CANONICAL_SUBPROCESS_RUN([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=CANONICAL_ROOT, check=True)
+        for validator_path in (VALIDATOR, LOAD_VALIDATOR, OPERABILITY_VALIDATOR):
+            CANONICAL_SUBPROCESS_RUN([sys.executable, str(validator_path)], cwd=CANONICAL_ROOT, check=True,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as exc:
         rollback_errors: list[str] = []
         for label, path, payload in (
