@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import stat
+import tempfile
 from pathlib import Path
 from types import ModuleType
 
@@ -176,6 +177,87 @@ def expect_rollback_failure_diagnostic(module: ModuleType, original_contract: by
             original_restore(module.CANONICAL_CONTRACT_PATH, original_contract)
 
 
+
+def expect_atomic_path_guard(module: ModuleType) -> None:
+    """Exercise the real atomic helper with disposable paths and an outside canary."""
+    with tempfile.TemporaryDirectory(prefix="prefence-atomic-path-") as temp:
+        root = Path(temp)
+        parent = root / "inside"
+        parent.mkdir()
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "canary"
+        canary.write_bytes(b"SYNTHETIC_SECRET_CANARY")
+        target = parent / "contract.json"
+
+        def reject(path: Path, label: str) -> None:
+            try:
+                module.CANONICAL_ATOMIC_WRITE_BYTES(path, b"changed")
+            except module.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence atomic writer accepted " + label)
+            if canary.read_bytes() != b"SYNTHETIC_SECRET_CANARY":
+                raise AssertionError("pre-fence atomic writer changed outside canary")
+            if list(parent.glob(".*.tmp")):
+                raise AssertionError("pre-fence atomic writer left temporary residue")
+
+        target.symlink_to(canary)
+        reject(target, "symlink target")
+        target.unlink()
+
+        parent.rmdir()
+        parent.symlink_to(outside, target_is_directory=True)
+        reject(target, "symlink ancestor")
+        parent.unlink()
+        parent.mkdir()
+
+        target.mkdir()
+        reject(target, "directory target")
+        target.rmdir()
+        reject(root / "missing" / "contract.json", "missing parent")
+
+        target.write_bytes(b"before")
+        target.chmod(0o640)
+        module.CANONICAL_ATOMIC_WRITE_BYTES(target, b"after")
+        if target.read_bytes() != b"after" or stat.S_IMODE(target.stat().st_mode) != 0o640:
+            raise AssertionError("pre-fence atomic writer did not preserve bytes/mode")
+
+        original_replace = module.os.replace
+        def deny_replace(*_args):
+            raise OSError("synthetic replace failure")
+        module.os.replace = deny_replace
+        try:
+            try:
+                module.CANONICAL_ATOMIC_WRITE_BYTES(target, b"wrong")
+            except OSError:
+                pass
+            else:
+                raise AssertionError("pre-fence atomic writer accepted replace failure")
+        finally:
+            module.os.replace = original_replace
+
+        original_fsync = module.os.fsync
+        def deny_fsync(*_args):
+            raise OSError("synthetic fsync failure")
+        module.os.fsync = deny_fsync
+        try:
+            try:
+                module.CANONICAL_ATOMIC_WRITE_BYTES(target, b"wrong")
+            except OSError:
+                pass
+            else:
+                raise AssertionError("pre-fence atomic writer accepted fsync failure")
+        finally:
+            module.os.fsync = original_fsync
+
+        if (target.read_bytes() != b"after" or stat.S_IMODE(target.stat().st_mode) != 0o640
+                or canary.read_bytes() != b"SYNTHETIC_SECRET_CANARY"
+                or list(parent.glob(".*.tmp"))):
+            raise AssertionError("pre-fence atomic rollback/mode/canary drift")
+    print("PASS: pre-fence reconcile atomic symlink/path/rollback runtime (7 cases)")
+
+
 def main() -> int:
     module = load_module()
     original_contract = module.CANONICAL_CONTRACT_PATH.read_bytes()
@@ -187,6 +269,7 @@ def main() -> int:
     expect_atomic_writer_rejection(module, original_contract)
     expect_atomic_replace_rejection(module, original_contract)
     expect_mode_preservation(module, original_contract)
+    expect_atomic_path_guard(module)
     expect_post_write_rollback(module, original_contract)
     expect_rollback_failure_diagnostic(module, original_contract)
 

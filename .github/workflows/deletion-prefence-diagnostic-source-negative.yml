@@ -8,6 +8,8 @@ on:
       - ".github/workflows/deletion-prefence-linearization.yml"
       - ".github/workflows/deletion-prefence-diagnostic-source-negative.yml"
       - "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
+      - "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
   push:
     branches:
       - so
@@ -15,6 +17,8 @@ on:
       - ".github/workflows/deletion-prefence-linearization.yml"
       - ".github/workflows/deletion-prefence-diagnostic-source-negative.yml"
       - "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
+      - "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
 
 permissions:
   contents: read

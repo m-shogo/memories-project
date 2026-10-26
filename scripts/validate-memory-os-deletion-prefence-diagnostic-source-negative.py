@@ -13,8 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-prefence-linearization.yml"
 INDEPENDENT = ".github/workflows/deletion-prefence-diagnostic-source-negative.yml"
 SCRIPT = "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negative.py"
+RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
+REVIEWED_RECONCILER = "812d5dfabb0e400337706b1c3ab2fbe8a9c07743"
+REVIEWED_RECONCILE_NEGATIVE = "90bd96e96a844dd266a4d03ba009900bac348c92"
 REVIEWED = "fdcc951be6c589518f1f48bcb363b5dcd0b88602"
-REVIEWED_INDEPENDENT = "f5a6fd14a2c39a42be23bd2c47953327a45d6123"
+REVIEWED_INDEPENDENT = "3f6837895d1608b728b64931d389bb5b3e00e07e"
 TARGET = "docs/fixtures/memory-os-operability/deletion-prefence-linearization-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -270,18 +274,24 @@ def main():
     if blob(publisher) != REVIEWED:
         raise SystemExit("SIGKILL publisher complete Git blob unreviewed")
     independent = source(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, RECONCILER, RECONCILE_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
+    if blob(source(RECONCILER)) != REVIEWED_RECONCILER:
+        raise SystemExit("pre-fence reconciler complete Git blob unreviewed")
+    if blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
+        raise SystemExit("pre-fence reconciler negative complete Git blob unreviewed")
     identity_runtime(independent, "Require exact clean pre-fence diagnostic source")
     policy(publisher)
     mutations(publisher)
     writer_runtime(publisher)
     result_commit_runtime(publisher)
+    subprocess.run([sys.executable, str(ROOT / RECONCILE_NEGATIVE)],
+                   cwd=ROOT, check=True, timeout=30)
     print("PASS: pre-fence exact-source read-only diagnostic proof; production evidence generated: false; production decision changed: false")
 
 
