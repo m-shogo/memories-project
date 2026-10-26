@@ -6,7 +6,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -50,10 +49,10 @@ def require_workflow_source(source: str) -> None:
         "  replay-restore:\n    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'\n    permissions:\n      contents: write\n" in source,
         "Apple workflow write job not restricted to so",
     )
-    uses = re.findall(r"^\\s+uses: (actions/(?:checkout|setup-python))@([^\\s]+)$", source, re.MULTILINE)
+    uses = [line.strip().split("uses: ", 1)[1] for line in source.splitlines() if line.strip().startswith("uses: ")]
     require(
-        uses.count(("actions/checkout", "11d5960a326750d5838078e36cf38b85af677262")) == 2
-        and uses.count(("actions/setup-python", "a26af69be951a213d495a4c3e4e4022e16d87065")) == 2
+        uses.count("actions/checkout@11d5960a326750d5838078e36cf38b85af677262") == 2
+        and uses.count("actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065") == 2
         and len(uses) == 4,
         "Apple workflow floating or substituted action",
     )
@@ -99,10 +98,13 @@ def prove_workflow_diagnostic_negative() -> None:
         else:
             raise AssertionError("Apple workflow unsafe source mutation accepted")
 
-    match = re.search(r"DRILL_EXIT_CODE=\\\"\\$code\\\" python - <<'PY'\\n(?P<body>.*?)\\n          PY", source, re.DOTALL)
-    if match is None:
+    marker = """DRILL_EXIT_CODE="$code" python - <<'PY'\n"""
+    if source.count(marker) != 1:
         raise AssertionError("Apple workflow diagnostic Python body missing")
-    body = textwrap.dedent(match.group("body"))
+    suffix = source.split(marker, 1)[1]
+    if "\n          PY" not in suffix:
+        raise AssertionError("Apple workflow diagnostic Python terminator missing")
+    body = textwrap.dedent(suffix.split("\n          PY", 1)[0])
     if "read_text" in body or "subprocess" in body or "eval(" in body:
         raise AssertionError("Apple workflow diagnostic body can read private output")
     with tempfile.TemporaryDirectory(prefix="memory-os-apple-diagnostic-negative-") as tmp:
