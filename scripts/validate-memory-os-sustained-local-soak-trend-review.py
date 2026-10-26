@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -19,6 +20,9 @@ REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
 TIMESTAMP_DURATION_TOLERANCE_SECONDS = 2.0
 GENERATION_LAG_LIMIT_SECONDS = 120.0
+UTC_TIMESTAMP_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z$"
+)
 
 
 class Fail(RuntimeError):
@@ -79,7 +83,8 @@ def bounded_delta(a: Any, b: Any, field: str) -> float:
 
 
 def utc_timestamp(value: Any, field: str) -> datetime:
-    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            f"{field} must be strict UTC RFC3339 ending in Z")
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError:

@@ -584,17 +584,27 @@ def validate_trend_child_output_privacy() -> None:
                 raise AssertionError("trend child failure accepted")
         finally:
             module.subprocess.run = original_run
-        positive = module.utc_timestamp("2026-10-26T11:00:00Z", "positive")
-        if positive.year != 2026:
-            raise AssertionError("trend UTC timestamp positive control failed")
-        try:
-            module.utc_timestamp("SYNTHETIC_SECRET_CANARYZ", "synthetic")
-        except module.Fail as exc:
-            if "SYNTHETIC_SECRET_CANARY" in str(exc):
-                raise AssertionError("trend timestamp diagnostic leaked raw value")
-        else:
-            raise AssertionError("trend malformed timestamp accepted")
-    print("PASS: trend producer/consumer child-output and timestamp privacy negatives")
+        for valid in ("2026-10-26T11:00:00Z", "2026-10-26T11:00:00.123456789Z"):
+            positive = module.utc_timestamp(valid, "positive")
+            if positive.year != 2026:
+                raise AssertionError("trend UTC timestamp positive control failed")
+        for invalid in (
+            "2026-10-26 11:00:00Z",
+            "2026-10-26T11:00Z",
+            "2026-W44-1T11:00:00Z",
+            "2026-02-30T11:00:00Z",
+            "2026-10-26T11:00:00+00:00",
+            "2026-10-26T11:00:00.1234567890Z",
+            "SYNTHETIC_SECRET_CANARYZ",
+        ):
+            try:
+                module.utc_timestamp(invalid, "synthetic")
+            except module.Fail as exc:
+                if "SYNTHETIC_SECRET_CANARY" in str(exc):
+                    raise AssertionError("trend timestamp diagnostic leaked raw value")
+            else:
+                raise AssertionError("trend malformed timestamp accepted")
+    print("PASS: trend producer/consumer child-output and 14 strict timestamp negatives")
 
 
 def validate_status_reconciler_admission_negatives() -> None:

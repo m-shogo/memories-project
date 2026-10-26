@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -27,6 +28,9 @@ RESULT_VALIDATOR = CANONICAL_RESULT_VALIDATOR
 REVIEW_PATH = CANONICAL_REVIEW_PATH
 TIMESTAMP_DURATION_TOLERANCE_SECONDS = 2.0
 GENERATION_LAG_LIMIT_SECONDS = 120.0
+UTC_TIMESTAMP_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z$"
+)
 
 
 class Fail(RuntimeError):
@@ -126,7 +130,8 @@ def finite_number(value: Any, field: str) -> float:
 
 
 def utc_timestamp(value: Any, field: str) -> datetime:
-    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            f"{field} must be strict UTC RFC3339 ending in Z")
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError:
