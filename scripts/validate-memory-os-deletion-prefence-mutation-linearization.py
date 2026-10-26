@@ -16,6 +16,25 @@ CONTRACT_PATH = ROOT / "contracts/operations/deletion-prefence-mutation-lineariz
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+EXPECTED_CRITERIA: dict[str, Any] = {
+    "authenticatedBeforeFence": 32,
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "applyUnauthorizedAfterFence": 16,
+    "uploadAuthorizationUnauthorizedAfterFence": 16,
+    "unexpectedStatusCount": 0,
+    "transportErrors": 0,
+    "preWorkerApplyConfirmationRows": 0,
+    "preWorkerMemoryItemRows": 0,
+    "preWorkerUploadAuthorizationRows": 0,
+    "preWorkerQuarantineRows": 0,
+    "workerReceiptCount": 1,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "productionEvidence": False,
+}
+
 
 class Fail(RuntimeError):
     pass
@@ -70,14 +89,22 @@ def validate_contract(contract: dict[str, Any]) -> None:
     require(contract.get("resultsSchemaVersion") == "memory-os-deletion-prefence-mutation-linearization-results.v1", "result schema drift")
     require(contract.get("scenarioId") == "account-deletion-prefence-mutation-linearization-local-dependencies", "scenario drift")
     require(contract.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "dependency mode drift")
-    require(contract.get("applyRequests") == 16, "Apply request count drift")
-    require(contract.get("uploadAuthorizationRequests") == 16, "upload authorization request count drift")
-    require(contract.get("totalInFlightRequests") == 32, "total in-flight request count drift")
+    require(type(contract.get("applyRequests")) is int and contract["applyRequests"] == 16, "Apply request count drift")
+    require(type(contract.get("uploadAuthorizationRequests")) is int and contract["uploadAuthorizationRequests"] == 16, "upload authorization request count drift")
+    require(type(contract.get("totalInFlightRequests")) is int and contract["totalInFlightRequests"] == 32, "total in-flight request count drift")
     surfaces = contract.get("surfaces")
     require(isinstance(surfaces, list) and set(surfaces) == {
         "POST /v1/previews/{previewId}/apply",
         "POST /v1/import-jobs/{jobId}/upload-authorizations",
     }, "surface set drift")
+
+    criteria = contract.get("successCriteria")
+    require(isinstance(criteria, dict) and criteria.keys() == EXPECTED_CRITERIA.keys(),
+            "success criteria key set drift")
+    for key, expected in EXPECTED_CRITERIA.items():
+        actual = criteria[key]
+        require(type(actual) is type(expected) and actual == expected,
+                f"success criterion type/value drift: {key}")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")
@@ -146,9 +173,10 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
         "finalAccountState",
         "finalAccountEpoch",
     ):
-        require(scenario.get(key) == criteria.get(key), f"result criterion mismatch: {key}")
-    require(scenario.get("applyRequests") == contract.get("applyRequests"), "Apply request count mismatch")
-    require(scenario.get("uploadAuthorizationRequests") == contract.get("uploadAuthorizationRequests"), "upload authorization count mismatch")
+        require(key in scenario and type(scenario[key]) is type(criteria[key])
+                and scenario[key] == criteria[key], f"result criterion mismatch: {key}")
+    require(type(scenario.get("applyRequests")) is int and scenario["applyRequests"] == contract["applyRequests"], "Apply request count mismatch")
+    require(type(scenario.get("uploadAuthorizationRequests")) is int and scenario["uploadAuthorizationRequests"] == contract["uploadAuthorizationRequests"], "upload authorization count mismatch")
     require(scenario.get("result") == "PASS", "result must PASS")
     require(scenario.get("integrityResult") == "PASS", "integrity must PASS")
 

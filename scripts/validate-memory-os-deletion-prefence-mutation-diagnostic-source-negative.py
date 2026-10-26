@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-sourc
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-REVIEWED_VALIDATOR = "062dd4395d363ee7101fc23077e2fcc8c6b1580c"
+REVIEWED_VALIDATOR = "7edf7c325b7648f35b2b51699a68fe906bc98424"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
@@ -470,6 +470,83 @@ def strict_validator_runtime():
     print(f"PASS: pre-fence mutation actual strict JSON/path/mixed-case runtime ({cases} negative cases)")
 
 
+def typed_criteria_runtime():
+    """Reject coordinated mutation criteria weakening and bool/float count aliases."""
+    spec = importlib.util.spec_from_file_location("prefence_mutation_typed_validator", ROOT / VALIDATOR)
+    if spec is None or spec.loader is None:
+        raise AssertionError("pre-fence mutation typed validator loader missing")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    contract = validator.load(validator.CONTRACT_PATH)
+    validator.validate_contract(contract)
+    validator.validate_result(contract, None)
+    canonical = validator.load(validator.RESULT_PATH)
+    cases = 0
+
+    for key, expected in validator.EXPECTED_CRITERIA.items():
+        candidate = copy.deepcopy(contract)
+        candidate["successCriteria"][key] = (
+            float(expected) if type(expected) is int else
+            0 if type(expected) is bool else expected.upper()
+        )
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence mutation accepted contract criterion: " + key)
+        cases += 1
+
+    for label, mutate in (
+        ("missing criterion", lambda c: c["successCriteria"].pop("unexpectedStatusCount")),
+        ("extra criterion", lambda c: c["successCriteria"].update({"synthetic": True})),
+        ("float apply count", lambda c: c.update({"applyRequests": 16.0})),
+        ("float upload count", lambda c: c.update({"uploadAuthorizationRequests": 16.0})),
+        ("float total count", lambda c: c.update({"totalInFlightRequests": 32.0})),
+        ("bool apply count", lambda c: c.update({"applyRequests": True})),
+    ):
+        candidate = copy.deepcopy(contract)
+        mutate(candidate)
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence mutation accepted " + label)
+        cases += 1
+
+    with tempfile.TemporaryDirectory(prefix=".prefence-mutation-typed-", dir=ROOT) as temp:
+        synthetic = Path(temp) / "result.json"
+        original = validator.RESULT_PATH
+        validator.RESULT_PATH = synthetic
+        try:
+            for label, key, value in (
+                ("float authenticated", "authenticatedBeforeFence", 32.0),
+                ("bool zero", "unexpectedStatusCount", False),
+                ("float epoch", "deletionEpoch", 2.0),
+                ("float apply", "applyRequests", 16.0),
+                ("float upload", "uploadAuthorizationRequests", 16.0),
+                ("changed state", "finalAccountState", "DELETED"),
+                ("missing criterion", "workerReceiptCount", None),
+            ):
+                candidate = copy.deepcopy(canonical)
+                if value is None:
+                    candidate["scenario"].pop(key)
+                else:
+                    candidate["scenario"][key] = value
+                synthetic.write_text(json.dumps(candidate), encoding="utf-8")
+                try:
+                    validator.validate_result(contract, None)
+                except validator.Fail:
+                    pass
+                else:
+                    raise AssertionError("pre-fence mutation accepted typed result: " + label)
+                cases += 1
+        finally:
+            validator.RESULT_PATH = original
+    print(f"PASS: pre-fence mutation actual typed contract/result criteria runtime ({cases} negative cases)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -499,6 +576,7 @@ def main():
     result_commit_runtime(publisher)
     authority_reconcile_runtime(publisher)
     strict_validator_runtime()
+    typed_criteria_runtime()
     subprocess.run([sys.executable, str(ROOT / RECONCILE_NEGATIVE)],
                    cwd=ROOT, check=True, timeout=30)
     subprocess.run([sys.executable, str(ROOT / SECONDARY_NEGATIVE)],
