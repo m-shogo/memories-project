@@ -100,11 +100,63 @@ def exercise_registry_corruption(writer: Any) -> None:
         expect_rejected(writer, name, lambda mutated=mutated: writer.validate_registry_for_append(mutated))
 
 
+def prove_recovery_objective_json_reader(validator) -> None:
+    """Exercise the real objective reader without creating human approval evidence."""
+    before = (validator.CONTRACT.read_bytes(), validator.REGISTRY.read_bytes())
+    with tempfile.TemporaryDirectory(prefix="memory-os-recovery-objective-json-", dir=ROOT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}}, "recovery objective JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "recovery objective JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "recovery objective JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "recovery objective JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "recovery objective JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "recovery objective JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "recovery objective JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "recovery objective JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * validator.MAX_JSON_BYTES + b'"}', "recovery objective JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "recovery objective JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"synthetic-secret",', "recovery objective JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "recovery objective JSON root must be object"),
+        )
+        def rejected(candidate, expected: str, label: str) -> None:
+            try:
+                validator.load(candidate)
+            except validator.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong recovery objective JSON rejection boundary")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe recovery objective JSON accepted")
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "recovery objective JSON path unsafe", "symlink")
+        rejected(Path(directory), "recovery objective JSON path unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "recovery objective JSON path missing or outside repository", "missing")
+        rejected("candidate.json", "recovery objective JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-objective-json-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "escaped.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "recovery objective JSON path missing or outside repository", "external symlink")
+            require(canary.read_bytes() == positive, "recovery objective JSON modified external canary")
+        require(path.read_bytes() == positive, "recovery objective JSON mutated positive fixture")
+    require((validator.CONTRACT.read_bytes(), validator.REGISTRY.read_bytes()) == before, "recovery objective JSON mutated protected authorities")
+    print("PASS: actual recovery objective JSON reader positive and 16 fail-closed negatives")
+
+
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
     writer = load_writer()
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
+    prove_recovery_objective_json_reader(validator)
 
     canonical_lock = writer.LOCK
     writer.LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
