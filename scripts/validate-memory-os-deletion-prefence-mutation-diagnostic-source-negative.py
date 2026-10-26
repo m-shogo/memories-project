@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-sourc
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-REVIEWED_VALIDATOR = "f36013e03412cb1c36724091c951ed185f1d77a9"
+REVIEWED_VALIDATOR = "6dbf3c2f5b4d6e948b3727900cf5e6e2d978dc08"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
@@ -496,6 +496,34 @@ def typed_criteria_runtime():
             pass
         else:
             raise AssertionError("pre-fence mutation accepted contractId " + label)
+        cases += 1
+
+    # Reviewed boundary/readiness keys are complete typed authority, not open dictionaries.
+    for field in ("evidenceBoundary", "readiness"):
+        for label in ("extra", "missing", "nonobject"):
+            candidate = copy.deepcopy(contract)
+            if label == "extra":
+                candidate[field]["syntheticUnreviewed"] = True
+            elif label == "missing":
+                candidate[field].pop(next(iter(candidate[field])))
+            else:
+                candidate[field] = ["synthetic"]
+            try:
+                validator.validate_contract(candidate)
+            except validator.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence mutation accepted " + field + " " + label)
+            cases += 1
+    for key in ("exactSourceResultCommitted", "preFenceMutationLinearizationProven"):
+        candidate = copy.deepcopy(contract)
+        candidate["readiness"][key] = "synthetic-unreviewed"
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence mutation accepted readiness type " + key)
         cases += 1
 
     for key, expected in validator.EXPECTED_CRITERIA.items():

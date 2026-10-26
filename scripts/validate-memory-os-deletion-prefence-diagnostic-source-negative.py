@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negativ
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-linearization.py"
-REVIEWED_VALIDATOR = "732a6832f41f850ebe0640752912dca6f040440f"
+REVIEWED_VALIDATOR = "e5d2a1a0376096fa727898dfe2992e4f71af8e51"
 REVIEWED_RECONCILER = "75c848b6d45f0fa1f51a187ac67344339bcc05d9"
 REVIEWED_RECONCILE_NEGATIVE = "623c4b0bd3ceffbc034de9ae0639013327b2b252"
 REVIEWED = "fdcc951be6c589518f1f48bcb363b5dcd0b88602"
@@ -492,6 +492,34 @@ def typed_criteria_runtime():
             pass
         else:
             raise AssertionError("pre-fence accepted contractId " + label)
+        cases += 1
+
+    # Reviewed boundary/readiness keys are complete typed authority, not open dictionaries.
+    for field in ("evidenceBoundary", "readiness"):
+        for label in ("extra", "missing", "nonobject"):
+            candidate = copy.deepcopy(contract)
+            if label == "extra":
+                candidate[field]["syntheticUnreviewed"] = True
+            elif label == "missing":
+                candidate[field].pop(next(iter(candidate[field])))
+            else:
+                candidate[field] = ["synthetic"]
+            try:
+                validator.validate_contract(candidate)
+            except validator.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence preview accepted " + field + " " + label)
+            cases += 1
+    for key in ("exactSourceResultCommitted", "preFenceInFlightLinearizationProven"):
+        candidate = copy.deepcopy(contract)
+        candidate["readiness"][key] = "synthetic-unreviewed"
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence preview accepted readiness type " + key)
         cases += 1
 
     for key, expected in validator.EXPECTED_CRITERIA.items():

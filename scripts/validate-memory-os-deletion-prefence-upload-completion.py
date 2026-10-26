@@ -17,6 +17,9 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-uplo
 RUNNER_PATH = ROOT / "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+EXPECTED_BOUNDARY_KEYS = ("syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "realMinioHeadCovered", "postHeadFenceCovered", "hostFailureCovered", "productionReady",)
+EXPECTED_READINESS_KEYS = ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented", "exactSourceResultCommitted", "preFenceUploadCompletionLinearizationProven", "productionDependenciesTested", "independentReviewCompleted", "productionReady",)
+
 EXPECTED_PATHS: dict[str, str] = {
     "resultPath": "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json",
     "runner": "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go",
@@ -193,6 +196,7 @@ def validate_contract(contract: dict[str, Any]) -> None:
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")
+    require(boundary.keys() == set(EXPECTED_BOUNDARY_KEYS), "evidence boundary key set drift")
     require(boundary.get("syntheticDataOnly") is True, "synthetic-only boundary required")
     require(boundary.get("realMinioHeadCovered") is True, "real MinIO HEAD coverage required")
     require(boundary.get("postHeadFenceCovered") is True, "post-HEAD fence coverage required")
@@ -208,6 +212,9 @@ def validate_contract(contract: dict[str, Any]) -> None:
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be object")
+    require(readiness.keys() == set(EXPECTED_READINESS_KEYS), "readiness key set drift")
+    for key in EXPECTED_READINESS_KEYS:
+        require(type(readiness[key]) is bool, f"readiness.{key} must be boolean")
     for key in ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented"):
         require(isinstance(readiness.get(key), bool), f"readiness.{key} must be boolean")
     for key in ("productionDependenciesTested", "independentReviewCompleted", "productionReady"):
