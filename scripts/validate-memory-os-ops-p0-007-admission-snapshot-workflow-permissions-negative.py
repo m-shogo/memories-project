@@ -3031,6 +3031,72 @@ def prove_snapshot_diagnostic_redaction_runtime(publish: str) -> None:
     print("PASS: strict OPS-P0-007 diagnostic redaction/atomic runtime (5 cases)")
 
 
+
+def prove_publisher_stage_runtime(publish: str) -> None:
+    """Execute the exact reviewed capture body with synthetic child failures."""
+    require_publisher_compile_stage(publish)
+    lines = publish.splitlines()
+    marker = "      - name: Generate and validate strict snapshot"
+    starts = [index for index, line in enumerate(lines) if line == marker]
+    require(len(starts) == 1, "strict snapshot stage runtime step boundary drift")
+    start = starts[0]
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].startswith("      - ")), len(lines))
+    runs = [index for index in range(start + 1, end) if lines[index] == "        run: |"]
+    require(len(runs) == 1, "strict snapshot stage runtime run boundary drift")
+    body = "\n".join(line[10:] for line in lines[runs[0] + 1:end]
+                     if line.startswith("          ")) + "\n"
+    canonical_log = "log=/tmp/ops-p0-007-admission-snapshot.log"
+    require(body.count(canonical_log) == 1, "strict snapshot stage runtime log fixture drift")
+    body = body.replace(canonical_log, 'log="$PRIVATE_LOG"', 1)
+    # This Bash function replaces only the disposable child invocation; the
+    # reviewed validator chain, stage assignments and final gate are executed.
+    stub = (
+        "python() {\n"
+        '  if [[ "$stage" == "$FAIL_STAGE" ]]; then\n'
+        "    printf 'PRIVATE_CANARY_STAGE_RUNTIME\\n'\n"
+        "    return 19\n"
+        "  fi\n"
+        "  return 0\n"
+        "}\n"
+    )
+    with tempfile.TemporaryDirectory(prefix="ops-p0-007-stage-runtime-") as directory:
+        private_log = Path(directory) / "private.log"
+        output = Path(directory) / "github-output"
+        for failure_stage in ("NONE", "COMPILE", *PUBLISH_STAGE_CLASSES):
+            output.write_text("", encoding="utf-8")
+            env = os.environ.copy()
+            env.update({
+                "FAIL_STAGE": failure_stage,
+                "PRIVATE_LOG": str(private_log),
+                "GITHUB_OUTPUT": str(output),
+            })
+            try:
+                result = subprocess.run(
+                    ["bash", "-c", stub + body], cwd=ROOT, env=env,
+                    capture_output=True, text=True, check=False, timeout=15,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise Fail("strict snapshot stage runtime synthetic shell timed out") from exc
+            expected_code = 0 if failure_stage == "NONE" else 19
+            expected_stdout = (
+                f"OPS-P0-007 snapshot validation exit code: {expected_code}; "
+                f"failed stage: {failure_stage} (raw validator log suppressed)\n"
+            )
+            require(result.returncode == 0 and result.stdout == expected_stdout
+                    and result.stderr == "",
+                    f"strict snapshot stage runtime failed exact output for {failure_stage}")
+            require(output.read_text(encoding="utf-8") == f"exit_code={expected_code}\n",
+                    f"strict snapshot stage runtime changed fail-closed exit binding: {failure_stage}")
+            private_content = private_log.read_text(encoding="utf-8")
+            require(private_content == ("" if failure_stage == "NONE"
+                                        else "PRIVATE_CANARY_STAGE_RUNTIME\n"),
+                    f"strict snapshot stage runtime did not isolate private child output: {failure_stage}")
+            require("PRIVATE_CANARY_STAGE_RUNTIME" not in result.stdout + result.stderr,
+                    f"strict snapshot stage runtime leaked private child output: {failure_stage}")
+    print("PASS: strict OPS-P0-007 bounded stage runtime (16 synthetic cases)")
+
+
 def main() -> int:
     prove_snapshot_permission_gate_source_negatives()
     require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
@@ -3075,6 +3141,7 @@ def main() -> int:
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
     prove_publisher_capture_status_negative(publish)
     prove_publisher_compile_stage_negative(publish)
+    prove_publisher_stage_runtime(publish)
     prove_publisher_staging_negative(publish)
     prove_publisher_revalidation_call_binding(publish)
     prove_publisher_shell_fail_closed_negative(publish)
