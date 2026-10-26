@@ -579,6 +579,22 @@ def run_repeatability_aggregate_source_drift_negatives() -> None:
             if item not in value:
                 raise RuntimeError("repeatability aggregate source policy missing: " + item)
     policy(script)
+    aggregate = workflow.split("      - name: Analyze and reconcile two independent runs\n", 1)
+    if len(aggregate) != 2:
+        raise RuntimeError("repeatability aggregate analysis step missing")
+    invocation = ('python scripts/analyze-memory-os-controlled-saturation-repeatability.py '
+                  '--run-a "$a" --run-b "$b" --expected-commit-sha "${GITHUB_SHA}"')
+    def require_source_binding(value):
+        if invocation not in value:
+            raise RuntimeError("repeatability aggregate analyzer original-source binding missing")
+    require_source_binding(aggregate[1])
+    weakened = aggregate[1].replace(' --expected-commit-sha "${GITHUB_SHA}"', "", 1)
+    try:
+        require_source_binding(weakened)
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("repeatability aggregate analyzer binding mutation accepted")
     for item in required:
         mutated = script.replace(item, "REMOVED_SOURCE_POLICY", 1)
         try:
