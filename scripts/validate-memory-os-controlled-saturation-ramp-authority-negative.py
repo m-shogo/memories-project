@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,8 +83,55 @@ def verify_atomic_replace_failure(module) -> None:
                 module.atomic_write_bytes(path, payload)
 
 
+def verify_nonfinite_ramp_measurements() -> None:
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+    spec = importlib.util.spec_from_file_location("controlled_saturation_numeric_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("controlled saturation numeric validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    result = validator.load(validator.RESULT_PATH)
+    batch = result["scenario"]["steps"][0]["batch"]
+    if not validator.validate_batch(copy.deepcopy(batch), 4, 64, "synthetic-positive"):
+        raise RuntimeError("controlled saturation numeric positive control failed")
+    for label, field, bad in (
+        ("infinite throughput", "throughput", float("inf")),
+        ("infinite p95", "latencyP95Ms", float("inf")),
+        ("nan p99", "latencyP99Ms", float("nan")),
+        ("overflow duration", "durationSeconds", 10 ** 500),
+    ):
+        mutated = copy.deepcopy(batch)
+        mutated[field] = bad
+        try:
+            validator.validate_batch(mutated, 4, 64, "synthetic-negative")
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"controlled saturation accepted {label}")
+    for label, value in (("infinite pool duration", float("inf")),
+                         ("overflow pool duration", 10 ** 500)):
+        try:
+            validator.number(value, "synthetic-pool-delta")
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"controlled saturation accepted {label}")
+    with tempfile.TemporaryDirectory(prefix=".saturation-numeric-negative-", dir=ROOT) as temp:
+        path = Path(temp) / "synthetic.json"
+        for raw in ('{"value": Infinity}', '{"value": 1e999}'):
+            path.write_text(raw, encoding="utf-8")
+            try:
+                validator.load(path)
+            except validator.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError("controlled saturation accepted nonfinite JSON")
+    print("PASS: controlled saturation numeric parser and measurement negatives (8 cases)")
+
+
 def main() -> int:
     module = load_module()
+    verify_nonfinite_ramp_measurements()
     substitutions = {
         "CONTROLLED_CONTRACT": module.LOAD_CONTRACT,
         "LOAD_CONTRACT": module.CONTROLLED_CONTRACT,
