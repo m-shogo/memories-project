@@ -1329,7 +1329,30 @@ def exercise_deletion_load_runner_source_binding() -> None:
     print("PASS: deletion-load complete Go runner Git blob and CI reachability")
 
 
+
+def exercise_deletion_load_proof_log_cleanup() -> None:
+    """Run the exact publisher EXIT trap with a synthetic private log."""
+    workflow = (ROOT / ".github/workflows/deletion-under-load.yml").read_text(encoding="utf-8")
+    marker = 'trap \'rm -f "$log"\' EXIT'
+    require(workflow.count(marker) == 1, "deletion-load proof log cleanup trap missing or duplicated")
+    require('"/tmp/memory-os-deletion-under-load.log").read_text' not in workflow,
+            "deletion-load diagnostic unexpectedly rereads private proof log")
+    line = next(value.strip() for value in workflow.splitlines() if marker in value)
+    with tempfile.TemporaryDirectory(prefix="deletion-load-log-negative-") as tmp:
+        path = Path(tmp) / "synthetic-proof.log"
+        script = 'log="$1"; : > "$log"; ' + line + '; printf "SYNTHETIC_SECRET" >> "$log"; exit 17'
+        result = subprocess.run(["bash", "-c", script, "bash", str(path)],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                timeout=10, check=False)
+        require(result.returncode == 17 and not path.exists(),
+                "deletion-load proof log cleanup did not run on failed test")
+        require(b"SYNTHETIC_SECRET" not in result.stdout + result.stderr,
+                "deletion-load proof log cleanup leaked synthetic log")
+    print("PASS: deletion-load exact publisher trap removes private log on failure")
+
+
 def main() -> int:
+    exercise_deletion_load_proof_log_cleanup()
     exercise_deletion_load_authority_gate_source()
     exercise_deletion_load_runner_source_binding()
     exercise_deletion_load_workflow_diagnostic()

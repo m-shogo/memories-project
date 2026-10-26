@@ -120,6 +120,7 @@ jobs:
           set +e
           log=/tmp/memory-os-deletion-under-load.log
           : > "$log"
+          trap 'rm -f "$log"' EXIT
           code=0
           echo "STAGE: format-and-compile" >> "$log"
           test -z "$(gofmt -l services/import-api/internal/httpserver/deletion_under_load_test.go)" \
