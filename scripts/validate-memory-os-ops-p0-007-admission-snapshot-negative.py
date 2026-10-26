@@ -25,6 +25,7 @@ GENERATION = ROOT / "contracts/operations/backup-restore-generation-evidence-reg
 TYPED = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 OBJECTIVE_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+LOCAL_APPLE_VALIDATOR = ROOT / "scripts/validate-memory-os-local-apple-replay-restore.py"
 
 
 class Fail(RuntimeError):
@@ -252,14 +253,34 @@ def run_validator(expect_success: bool, label: str) -> None:
     require_case_specific_validator_rejection(proc.stderr, expected, label)
 
 
-# Canonical typed admission can return a two-line nested local-restore
-# diagnostic. Bind its second line to the exact mutation rather than accepting
-# arbitrary multiline errors or requiring an incorrect one-line format.
+# The typed admission child transport now suppresses raw child stdout/stderr.
+# Bind its fixed privacy-safe wrapper to a separate exact child rejection
+# observed by this disposable negative harness, never to arbitrary failures.
 NESTED_GENERATOR_REJECTIONS = {
     "generator canonical blocker replacement": "LOCAL APPLE REPLAY RESTORE VALIDATION FAILED: OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers",
     "generator canonical blocker ordering drift": "LOCAL APPLE REPLAY RESTORE VALIDATION FAILED: OPS-P0-007 missingEvidence must equal the ordered canonical six production blockers",
     "generator production decision promotion": "LOCAL APPLE REPLAY RESTORE VALIDATION FAILED: local replay restore cannot change production decision",
 }
+
+REDACTED_TYPED_APPLE_REJECTION = (
+    "typed non-resurrection canonical admission authority invalid: "
+    "local Apple replay restore validator failed without exposing subprocess output"
+)
+
+
+def require_inner_apple_replay_diagnostic(proc: subprocess.CompletedProcess[str], label: str) -> None:
+    expected = NESTED_GENERATOR_REJECTIONS.get(label)
+    if expected is None:
+        raise Fail(f"{label}: missing inner Apple replay diagnostic binding")
+    if proc.returncode != 1 or proc.stdout != "" or proc.stderr != expected + "\n":
+        # Never print captured child output; it is used only for exact private comparison.
+        raise Fail(f"{label}: inner Apple replay rejection did not match intended mutation")
+
+
+def require_inner_apple_replay_rejection(label: str) -> None:
+    proc = run_bounded_python(LOCAL_APPLE_VALIDATOR, f"{label} inner Apple replay")
+    require_inner_apple_replay_diagnostic(proc, label)
+
 
 
 EXACT_GENERATOR_REJECTIONS = {
@@ -287,15 +308,10 @@ def require_expected_generator_diagnostic(output: str, allowed: tuple[str, ...],
         for prefix in (message, f"generated strict snapshot invalid: {message}")
     )
     nested = NESTED_GENERATOR_REJECTIONS.get(label)
-    # A nested case must reach its exact two-line cause. A generic single-line
-    # typed-admission failure is not proof that the intended mutation ran.
+    # The public wrapper is intentionally generic and cannot alone prove the
+    # mutation; run_generator_rejects separately checks the exact child cause.
     valid_single = nested is None and len(lines) == 1 and lines[0].startswith(prefixes)
-    valid_nested = (
-        nested is not None
-        and len(lines) == 2
-        and lines[0] == "typed non-resurrection canonical admission authority invalid: local Apple replay restore validator failed:"
-        and lines[1] == nested
-    )
+    valid_nested = nested is not None and lines == [REDACTED_TYPED_APPLE_REJECTION]
     if not (valid_single or valid_nested):
         raise Fail(f"{label}: generator rejection did not use one intended authority diagnostic: {output!r}")
 
@@ -380,26 +396,42 @@ def prove_generator_diagnostic_classifier() -> None:
                 raise Fail(f"mixed generator output rejected outside intended guard: {exc}") from exc
         else:
             raise Fail("generator rejection classifier accepted unrelated or publication stdout")
-    nested_prefix = "typed non-resurrection canonical admission authority invalid: local Apple replay restore validator failed:"
     nested_label = "generator canonical blocker replacement"
-    nested_line = NESTED_GENERATOR_REJECTIONS[nested_label]
     require_expected_generator_diagnostic(
-        nested_prefix + "\n" + nested_line + "\n",
+        REDACTED_TYPED_APPLE_REJECTION + "\n",
         ("typed non-resurrection canonical admission authority invalid",),
         nested_label,
     )
-    # Prove nested labels cannot be satisfied by an unrelated single-line
-    # typed-admission rejection, a suffixed wrapper or a wrong second line.
-    for nested_case, second_line in NESTED_GENERATOR_REJECTIONS.items():
-        good = nested_prefix + "\n" + second_line + "\n"
+    # Generic redacted wrapper is allowed only when the actual mutated child
+    # validator separately proves the exact intended corruption.
+    for nested_case, expected_inner in NESTED_GENERATOR_REJECTIONS.items():
+        good = subprocess.CompletedProcess(
+            args=["synthetic"], returncode=1, stdout="", stderr=expected_inner + "\n"
+        )
+        require_inner_apple_replay_diagnostic(good, nested_case)
         require_expected_generator_diagnostic(
-            good, ("typed non-resurrection canonical admission authority invalid",), nested_case
+            REDACTED_TYPED_APPLE_REJECTION + "\n",
+            ("typed non-resurrection canonical admission authority invalid",),
+            nested_case,
         )
         for wrong in (
-            nested_prefix + "\n",
-            nested_prefix + " unrelated\n" + second_line + "\n",
-            nested_prefix + "\n" + second_line + " unrelated\n",
-            good + second_line + "\n",
+            subprocess.CompletedProcess(args=["synthetic"], returncode=0, stdout="", stderr=expected_inner + "\n"),
+            subprocess.CompletedProcess(args=["synthetic"], returncode=1, stdout="unexpected", stderr=expected_inner + "\n"),
+            subprocess.CompletedProcess(args=["synthetic"], returncode=1, stdout="", stderr=expected_inner + " unrelated\n"),
+            subprocess.CompletedProcess(args=["synthetic"], returncode=1, stdout="", stderr="unrelated failure\n"),
+        ):
+            try:
+                require_inner_apple_replay_diagnostic(wrong, nested_case)
+            except Fail as exc:
+                if "inner Apple replay rejection did not match intended mutation" not in str(exc):
+                    raise Fail(f"{nested_case}: inner classifier rejected outside intended guard") from exc
+            else:
+                raise Fail(f"{nested_case}: accepted wrong inner Apple replay rejection")
+        for wrong in (
+            REDACTED_TYPED_APPLE_REJECTION + " unrelated\n",
+            REDACTED_TYPED_APPLE_REJECTION + "\n" + expected_inner + "\n",
+            "typed non-resurrection canonical admission authority invalid: unrelated child failure\n",
+            REDACTED_TYPED_APPLE_REJECTION + "\n" + REDACTED_TYPED_APPLE_REJECTION + "\n",
         ):
             try:
                 require_expected_generator_diagnostic(
@@ -407,15 +439,15 @@ def prove_generator_diagnostic_classifier() -> None:
                 )
             except Fail as exc:
                 if "one intended authority diagnostic" not in str(exc):
-                    raise Fail(f"nested generator classifier rejected outside intended guard: {exc}") from exc
+                    raise Fail(f"{nested_case}: redacted wrapper rejected outside intended guard") from exc
             else:
-                raise Fail(f"{nested_case}: accepted unrelated or incomplete nested diagnostic")
+                raise Fail(f"{nested_case}: accepted unrelated redacted wrapper")
     for output in (
         "unrelated failure: " + valid + "\n",
         "unrelated failure\n" + valid + "\n",
         valid + "\nunrelated failure\n",
-        nested_prefix + "\nunrelated failure\n",
-        nested_prefix + "\n" + nested_line + "\nunrelated failure\n",
+        REDACTED_TYPED_APPLE_REJECTION + "\nunrelated failure\n",
+        REDACTED_TYPED_APPLE_REJECTION + "\n" + NESTED_GENERATOR_REJECTIONS[nested_label] + "\nunrelated failure\n",
     ):
         try:
             require_expected_generator_diagnostic(output, expected, "synthetic unrelated diagnostic")
@@ -461,6 +493,8 @@ def prove_snapshot_state_classifier() -> None:
 def run_generator_rejects(label: str, expected_messages: str | tuple[str, ...], preflight_stdout: str) -> None:
     require_known_generator_case(label)
     before = snapshot_state()
+    if label in NESTED_GENERATOR_REJECTIONS:
+        require_inner_apple_replay_rejection(label)
     proc = run_bounded_python(GENERATOR, label)
     if proc.returncode != 1:
         raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
