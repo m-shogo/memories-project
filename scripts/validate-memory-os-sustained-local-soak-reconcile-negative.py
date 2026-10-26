@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
 AGGREGATE_UPDATER = ROOT / "scripts/update-memory-os-sustained-local-soak-aggregate.py"
 TREND_REVIEWER = ROOT / "scripts/review-memory-os-sustained-local-soak-trends.py"
+AGGREGATE_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
 WORKFLOW = ROOT / ".github/workflows/reconcile-sustained-local-soak-authority.yml"
 MAIN_WORKFLOW = ROOT / ".github/workflows/sustained-local-soak.yml"
 
@@ -339,7 +340,74 @@ def validate_trend_json_parser_negatives() -> None:
     print("PASS: sustained local-soak trend producer/consumer positives and 16 JSON negatives")
 
 
+def validate_aggregate_admission_negatives() -> None:
+    """Exercise actual aggregate consumer JSON, arithmetic and child-output boundaries."""
+    validator = load_module(AGGREGATE_VALIDATOR, "memory_os_sustained_soak_aggregate_negative")
+    with tempfile.TemporaryDirectory(prefix=".sustained-soak-aggregate-json-", dir=ROOT) as temp:
+        path = Path(temp) / "aggregate.json"
+        path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+        if validator.load(path) != {"outer": {"a": 1, "b": 2}}:
+            raise AssertionError("aggregate JSON positive control failed")
+        cases = (
+            b'{"value":Infinity}',
+            b'{"value":NaN}',
+            b'{"value":1e999}',
+            b'{"a":1,"a":2}',
+            b'{"outer":{"a":1,"a":2}}',
+            b'{"SYNTHETIC_SECRET_CANARY":',
+            b'{"huge":' + b"9" * 5000 + b"}",
+            b"\xff\xfe",
+        )
+        for payload in cases:
+            path.write_bytes(payload)
+            try:
+                validator.load(path)
+            except validator.Fail as exc:
+                if "SYNTHETIC_SECRET_CANARY" in str(exc):
+                    raise AssertionError("aggregate JSON diagnostic leaked source")
+            else:
+                raise AssertionError("aggregate accepted ambiguous or invalid JSON")
+    if validator.finite_number(2.0, "positive") != 2.0:
+        raise AssertionError("aggregate finite numeric positive drift")
+    if validator.pair_delta({"metric": 2.0}, {"metric": 5.0}, "metric") != 3.0:
+        raise AssertionError("aggregate delta positive drift")
+    for label, action in (
+        ("huge numeric", lambda: validator.finite_number(10 ** 500, "huge")),
+        ("infinite numeric", lambda: validator.finite_number(float("inf"), "infinite")),
+        ("boolean numeric", lambda: validator.finite_number(True, "boolean")),
+        ("derived infinite delta", lambda: validator.pair_delta({"metric": -1e308}, {"metric": 1e308}, "metric")),
+        ("infinite delta input", lambda: validator.pair_delta({"metric": 1.0}, {"metric": float("inf")}, "metric")),
+        ("huge delta input", lambda: validator.pair_delta({"metric": 1.0}, {"metric": 10 ** 500}, "metric")),
+    ):
+        try:
+            action()
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("aggregate numeric boundary accepted " + label)
+    original_run = validator.subprocess.run
+
+    class SyntheticChildResult:
+        returncode = 17
+        stdout = "SYNTHETIC_SECRET_CANARY"
+        stderr = "SYNTHETIC_SECRET_CANARY"
+
+    try:
+        validator.subprocess.run = lambda *args, **kwargs: SyntheticChildResult()
+        try:
+            validator.run_validator(["synthetic"], "aggregate child")
+        except validator.Fail as exc:
+            if "SYNTHETIC_SECRET_CANARY" in str(exc) or "exit 17" not in str(exc):
+                raise AssertionError("aggregate child diagnostic leaked or lost exit code")
+        else:
+            raise AssertionError("aggregate child failure accepted")
+    finally:
+        validator.subprocess.run = original_run
+    print("PASS: aggregate reader 8 JSON, 6 numeric and 1 child-output negatives")
+
+
 def main() -> int:
+    validate_aggregate_admission_negatives()
     validate_trend_json_parser_negatives()
     validate_cross_run_delta_nonfinite_negatives()
     validate_result_json_parser_negatives()

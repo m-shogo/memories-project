@@ -30,14 +30,35 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def reject_nonfinite_constant(_token: str) -> None:
+    raise Fail("sustained local-soak aggregate JSON non-finite constant rejected")
+
+
+def parse_finite_float(token: str) -> float:
+    value = float(token)
+    require(math.isfinite(value), "sustained local-soak aggregate JSON non-finite number rejected")
+    return value
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "sustained local-soak aggregate JSON duplicate key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonfinite_constant,
+            parse_float=parse_finite_float,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        raise Fail("sustained local-soak aggregate JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "sustained local-soak aggregate JSON root must be object")
     return value
 
 
@@ -50,15 +71,16 @@ def run_validator(command: list[str], label: str) -> None:
         check=False,
     )
     if completed.returncode != 0:
-        raise Fail(
-            f"{label} failed:\n"
-            f"{completed.stdout[-4000:]}{completed.stderr[-4000:]}"
-        )
+        # Never propagate raw child validator stdout/stderr into diagnostics.
+        raise Fail(f"{label} failed (exit {completed.returncode})") from None
 
 
 def finite_number(value: Any, field: str) -> float:
     require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
-    number = float(value)
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        raise Fail(f"{field} must be finite") from None
     require(math.isfinite(number), f"{field} must be finite")
     return number
 
@@ -120,7 +142,11 @@ def review_trend_projection(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def pair_delta(a: dict[str, Any], b: dict[str, Any], field: str) -> float:
-    return float(b[field]) - float(a[field])
+    left = finite_number(a.get(field), f"{field} runA")
+    right = finite_number(b.get(field), f"{field} runB")
+    delta = right - left
+    require(math.isfinite(delta), f"{field} cross-run delta must remain finite")
+    return delta
 
 
 def main() -> int:
