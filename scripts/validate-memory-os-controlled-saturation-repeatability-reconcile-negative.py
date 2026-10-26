@@ -825,12 +825,78 @@ def run_repeatability_matrix_boundary_negatives() -> None:
     print("PASS: repeatability matrix run/attempt/ordinal/synthetic boundary negatives (9 cases)")
 
 
+
+def run_repeatability_nonfinite_negatives() -> None:
+    def imported(name, path):
+        spec = importlib.util.spec_from_file_location(name, ROOT / path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("repeatability numeric source import failed")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    analyzer = imported("repeatability_numeric_analyzer", "scripts/analyze-memory-os-controlled-saturation-repeatability.py")
+    validator = imported("repeatability_numeric_validator", "scripts/validate-memory-os-controlled-saturation-repeatability.py")
+    result = validator.load(validator.RESULT)
+    run = analyzer.load(ROOT / result["runRefs"][0])
+    if analyzer.signal_for(run)["concurrency"] is None:
+        raise RuntimeError("repeatability numeric analyzer positive control failed")
+    with contextlib.redirect_stdout(io.StringIO()):
+        if validator.main() != 0:
+            raise RuntimeError("repeatability numeric validator positive control failed")
+    for section, field, value in (
+        ("batch", "throughput", float("inf")),
+        ("batch", "latencyP95Ms", float("inf")),
+        ("batch", "throughput", 10 ** 500),
+        ("poolDelta", "emptyAcquireCount", True),
+    ):
+        fixture = copy.deepcopy(run)
+        fixture["scenario"]["steps"][1][section][field] = value
+        try:
+            analyzer.signal_for(fixture)
+        except analyzer.Fail:
+            pass
+        else:
+            raise RuntimeError("repeatability analyzer accepted nonfinite/invalid metric")
+    with tempfile.TemporaryDirectory(prefix="repeatability-nonfinite-json-", dir=ROOT) as temp:
+        path = Path(temp) / "numeric.json"
+        for raw in ('{"value": Infinity}', '{"value": 1e999}'):
+            path.write_text(raw, encoding="utf-8")
+            for module in (analyzer, validator):
+                try:
+                    module.load(path)
+                except module.Fail:
+                    pass
+                else:
+                    raise RuntimeError("repeatability parser accepted nonfinite JSON")
+    original_load = validator.load
+    for label, mutate in (
+        ("infinite throughput gain", lambda doc: doc["signals"]["a"].update({"throughputGainFromPrevious": float("inf")})),
+        ("infinite p95 ratio", lambda doc: doc["signals"]["b"].update({"p95LatencyRatioFromPrevious": float("inf")})),
+        ("signal kind mismatch", lambda doc: doc["signals"]["a"].update({"kind": "NO_SIGNAL"})),
+    ):
+        fixture = copy.deepcopy(result)
+        mutate(fixture)
+        validator.load = lambda path: fixture if path == validator.RESULT else original_load(path)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    validator.main()
+                except validator.Fail:
+                    pass
+                else:
+                    raise RuntimeError(f"repeatability validator accepted {label}")
+        finally:
+            validator.load = original_load
+    print("PASS: repeatability analyzer/validator nonfinite and signal consistency negatives (11 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
     run_authority_path_negatives(module)
     run_repeatability_runref_path_negatives()
     run_repeatability_matrix_boundary_negatives()
+    run_repeatability_nonfinite_negatives()
     run_prewrite_failure(module)
     run_postwrite_failure(module)
     run_atomic_replace_failure(module)
