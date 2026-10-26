@@ -1235,6 +1235,36 @@ def run_repeatability_nonfinite_negatives() -> None:
             pass
         else:
             raise RuntimeError(f"repeatability analyzer accepted {label}")
+    # The ordinary overflow fixtures above can be rejected by canonical ramp
+    # admission before the downstream ratio guard executes. Isolate that guard
+    # explicitly so a regression cannot pass merely because an earlier check fails.
+    original_canonical = analyzer.validate_canonical_ramp
+    analyzer.validate_canonical_ramp = lambda document: None
+    try:
+        for label, field in (("throughput gain", "throughput"),
+                             ("p95 latency ratio", "latencyP95Ms")):
+            fixture = copy.deepcopy(run)
+            steps = fixture["scenario"]["steps"]
+            for row in steps:
+                batch = row["batch"]
+                batch["successes"] = 64
+                batch["failures"] = 0
+                batch["statusClassCounts"] = {"2xx": 64, "5xx": 0, "transport_error": 0}
+            fixture["scenario"]["firstSaturationSignal"] = None
+            fixture["scenario"]["firstPoolContentionSignal"] = next(
+                (row["concurrency"] for row in steps
+                 if row["poolDelta"]["emptyAcquireCount"] > 0), None)
+            steps[0]["batch"][field] = 1e-308
+            steps[1]["batch"][field] = 1e308
+            try:
+                analyzer.signal_for(fixture)
+            except analyzer.Fail as exc:
+                if str(exc) != "derived repeatability signal ratios must be finite":
+                    raise RuntimeError(f"repeatability {label} missed the derived-ratio guard") from None
+            else:
+                raise RuntimeError(f"repeatability analyzer accepted derived {label} overflow")
+    finally:
+        analyzer.validate_canonical_ramp = original_canonical
     with tempfile.TemporaryDirectory(prefix="repeatability-nonfinite-json-", dir=ROOT) as temp:
         path = Path(temp) / "numeric.json"
         path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
@@ -1303,7 +1333,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator canonical ramp, nonfinite, malformed JSON, integrity, path and signal negatives (48 cases)")
+    print("PASS: repeatability analyzer/validator canonical ramp, nonfinite, malformed JSON, integrity, path and signal negatives (50 cases)")
 
 
 
