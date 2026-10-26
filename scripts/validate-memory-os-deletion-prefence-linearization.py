@@ -16,6 +16,21 @@ CONTRACT_PATH = ROOT / "contracts/operations/deletion-prefence-linearization-con
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+EXPECTED_CRITERIA: dict[str, Any] = {
+    "authenticatedBeforeFence": 32,
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "releasedAfterFence": 32,
+    "unauthorizedAfterFence": 32,
+    "unexpectedStatusCount": 0,
+    "transportErrors": 0,
+    "workerReceiptCount": 1,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "productionEvidence": False,
+}
+
 
 class Fail(RuntimeError):
     pass
@@ -70,8 +85,17 @@ def validate_contract(contract: dict[str, Any]) -> None:
     require(contract.get("resultsSchemaVersion") == "memory-os-deletion-prefence-linearization-results.v1", "result schema drift")
     require(contract.get("scenarioId") == "account-deletion-prefence-inflight-linearization-local-dependencies", "scenario drift")
     require(contract.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "dependency mode drift")
-    require(contract.get("inFlightRequests") == 32, "in-flight request count drift")
+    require(type(contract.get("inFlightRequests")) is int and contract["inFlightRequests"] == 32,
+            "in-flight request count drift")
     require(contract.get("surface") == "GET /v1/import-jobs/{jobId}/preview", "surface drift")
+
+    criteria = contract.get("successCriteria")
+    require(isinstance(criteria, dict) and criteria.keys() == EXPECTED_CRITERIA.keys(),
+            "success criteria key set drift")
+    for key, expected in EXPECTED_CRITERIA.items():
+        actual = criteria[key]
+        require(type(actual) is type(expected) and actual == expected,
+                f"success criterion type/value drift: {key}")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")
@@ -135,8 +159,10 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
         "finalAccountState",
         "finalAccountEpoch",
     ):
-        require(scenario.get(key) == criteria.get(key), f"result criterion mismatch: {key}")
-    require(scenario.get("inFlightRequests") == contract.get("inFlightRequests"), "in-flight request count mismatch")
+        require(key in scenario and type(scenario[key]) is type(criteria[key])
+                and scenario[key] == criteria[key], f"result criterion mismatch: {key}")
+    require(type(scenario.get("inFlightRequests")) is int
+            and scenario["inFlightRequests"] == contract["inFlightRequests"], "in-flight request count mismatch")
     require(scenario.get("result") == "PASS", "result must PASS")
     require(scenario.get("integrityResult") == "PASS", "integrity must PASS")
     assertions = scenario.get("assertions")

@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negativ
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-linearization.py"
-REVIEWED_VALIDATOR = "ca56e80381904d97bf30b31ab782b2e8262dff6c"
+REVIEWED_VALIDATOR = "9b1cbb8aed09a9b519073ab6eff437630c30965c"
 REVIEWED_RECONCILER = "75c848b6d45f0fa1f51a187ac67344339bcc05d9"
 REVIEWED_RECONCILE_NEGATIVE = "623c4b0bd3ceffbc034de9ae0639013327b2b252"
 REVIEWED = "fdcc951be6c589518f1f48bcb363b5dcd0b88602"
@@ -466,6 +466,80 @@ def strict_validator_runtime():
     print(f"PASS: pre-fence actual strict JSON/path/mixed-case runtime ({cases} negative cases)")
 
 
+def typed_criteria_runtime():
+    """Reject coordinated contract weakening and Python bool/float numeric equality."""
+    spec = importlib.util.spec_from_file_location("prefence_typed_validator", ROOT / VALIDATOR)
+    if spec is None or spec.loader is None:
+        raise AssertionError("pre-fence typed validator loader missing")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    contract = validator.load(validator.CONTRACT_PATH)
+    validator.validate_contract(contract)
+    validator.validate_result(contract, None)
+    canonical = validator.load(validator.RESULT_PATH)
+    cases = 0
+
+    for key, expected in validator.EXPECTED_CRITERIA.items():
+        candidate = copy.deepcopy(contract)
+        candidate["successCriteria"][key] = (
+            float(expected) if type(expected) is int else
+            0 if type(expected) is bool else expected.upper()
+        )
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence accepted contract criterion mutation: " + key)
+        cases += 1
+
+    for label, mutate in (
+        ("missing criterion", lambda c: c["successCriteria"].pop("unexpectedStatusCount")),
+        ("extra criterion", lambda c: c["successCriteria"].update({"synthetic": True})),
+        ("float in-flight", lambda c: c.update({"inFlightRequests": 32.0})),
+        ("bool in-flight", lambda c: c.update({"inFlightRequests": True})),
+    ):
+        candidate = copy.deepcopy(contract)
+        mutate(candidate)
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence accepted " + label)
+        cases += 1
+
+    with tempfile.TemporaryDirectory(prefix=".prefence-typed-", dir=ROOT) as temp:
+        synthetic = Path(temp) / "result.json"
+        original = validator.RESULT_PATH
+        validator.RESULT_PATH = synthetic
+        try:
+            for label, key, value in (
+                ("float authenticated", "authenticatedBeforeFence", 32.0),
+                ("bool zero", "unexpectedStatusCount", False),
+                ("float epoch", "deletionEpoch", 2.0),
+                ("float in-flight", "inFlightRequests", 32.0),
+                ("changed state", "finalAccountState", "DELETED"),
+                ("missing criterion", "workerReceiptCount", None),
+            ):
+                candidate = copy.deepcopy(canonical)
+                if value is None:
+                    candidate["scenario"].pop(key)
+                else:
+                    candidate["scenario"][key] = value
+                synthetic.write_text(json.dumps(candidate), encoding="utf-8")
+                try:
+                    validator.validate_result(contract, None)
+                except validator.Fail:
+                    pass
+                else:
+                    raise AssertionError("pre-fence accepted typed result mutation: " + label)
+                cases += 1
+        finally:
+            validator.RESULT_PATH = original
+    print(f"PASS: pre-fence actual typed contract/result criteria runtime ({cases} negative cases)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -493,6 +567,7 @@ def main():
     result_commit_runtime(publisher)
     authority_reconcile_runtime(publisher)
     strict_validator_runtime()
+    typed_criteria_runtime()
     subprocess.run([sys.executable, str(ROOT / RECONCILE_NEGATIVE)],
                    cwd=ROOT, check=True, timeout=30)
     print("PASS: pre-fence exact-source read-only diagnostic proof; production evidence generated: false; production decision changed: false")
