@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
-RUN_REF = re.compile(r"^docs/fixtures/memory-os-operability/controlled-saturation-ramp-results\\.repeat-([0-9]+)-([0-9]+)-([ab])\\.v1\\.json$")
+RUN_REF = re.compile(r"^docs/fixtures/memory-os-operability/controlled-saturation-ramp-results\.repeat-([0-9]+)-([0-9]+)-([ab])\.v1\.json$")
 STEPS = [4, 8, 16, 24, 32, 48]
 
 
