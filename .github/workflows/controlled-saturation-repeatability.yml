@@ -130,6 +130,12 @@ jobs:
             services/import-api/go.mod services/import-api/go.sum
             infra/postgresql/security
             contracts/operations/controlled-saturation-ramp-contract.v1.json
+            contracts/operations/controlled-saturation-repeatability-contract.v1.json
+            .github/workflows/controlled-saturation-repeatability.yml
+            scripts/analyze-memory-os-controlled-saturation-repeatability.py
+            scripts/validate-memory-os-controlled-saturation-repeatability.py
+            scripts/validate-memory-os-controlled-saturation-ramp.py
+            scripts/reconcile-memory-os-controlled-saturation-repeatability.py
           )
           verify_critical_source() {
             git fetch origin so
