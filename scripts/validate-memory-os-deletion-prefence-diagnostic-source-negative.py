@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-prefence-linearization.yml"
 INDEPENDENT = ".github/workflows/deletion-prefence-diagnostic-source-negative.yml"
 SCRIPT = "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negative.py"
-REVIEWED = "baa9b76bf6f2de92ba3bd3d906ab453935fdcba6"
+REVIEWED = "fdcc951be6c589518f1f48bcb363b5dcd0b88602"
 REVIEWED_INDEPENDENT = "f5a6fd14a2c39a42be23bd2c47953327a45d6123"
 TARGET = "docs/fixtures/memory-os-operability/deletion-prefence-linearization-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -53,6 +53,10 @@ REQUIRED = (
     "os.fsync(handle.fileno())",
     "os.replace(tmp, path)",
     "tmp.unlink()",
+    'if git diff --cached --quiet; then',
+    'echo "RESULT_COMMIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"',
+    'Branch advanced before pre-fence result push; refusing stale evidence.',
+    'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then',
 )
 
 
@@ -60,7 +64,7 @@ def policy(value):
     for marker in REQUIRED:
         if marker not in value:
             raise AssertionError("Pre-fence diagnostic source policy missing: " + marker[:70])
-    if value.count("git fetch origin so") != 6:
+    if value.count("git fetch origin so") != 7:
         raise AssertionError("Pre-fence CAS fetch multiplicity drift")
     if value.count(CHECKOUT) != 1 or value.count(SETUP) != 1 or value.count(SETUP_GO) != 1:
         raise AssertionError("Pre-fence immutable Actions source drift")
@@ -189,6 +193,74 @@ def identity_runtime(ci, title):
 
 
 
+
+def result_commit_runtime(publisher):
+    """Execute the real result publisher in a disposable fake-Git CAS/no-op sandbox."""
+    command = step(publisher, "Commit exact-source result")
+    source_sha, new_sha, stale_sha = "a" * 40, "c" * 40, "b" * 40
+    fake_git = """#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+root = Path(os.environ["FAKE_GIT_STATE"])
+with (root / "calls").open("a", encoding="utf-8") as log:
+    log.write(" ".join(args) + "\\n")
+if args == ["fetch", "origin", "so"]:
+    count = int((root / "fetches").read_text()) + 1
+    (root / "fetches").write_text(str(count))
+    if count == 2 and os.environ["FAKE_RACE"] == "1":
+        (root / "remote").write_text("b" * 40)
+elif args == ["rev-parse", "HEAD"]:
+    print((root / "head").read_text())
+elif args == ["rev-parse", "origin/so"]:
+    print((root / "remote").read_text())
+elif args == ["diff", "--cached", "--quiet"]:
+    sys.exit(0 if os.environ["FAKE_NOOP"] == "1" else 1)
+elif args[:2] == ["commit", "-m"]:
+    (root / "head").write_text("c" * 40)
+elif args[0] in ("config", "add", "push"):
+    pass
+else:
+    sys.exit(92)
+"""
+    cases = (
+        ("noop", source_sha, source_sha, True, False, 0, 0, 0, source_sha),
+        ("success", source_sha, source_sha, False, False, 0, 1, 1, new_sha),
+        ("stale-remote", stale_sha, source_sha, False, False, 75, 0, 0, None),
+        ("missing-remote", "", source_sha, False, False, 75, 0, 0, None),
+        ("stale-local", source_sha, stale_sha, False, False, 75, 0, 0, None),
+        ("race-after-commit", source_sha, source_sha, False, True, 75, 0, 1, new_sha),
+    )
+    for label, remote, local, noop, race, expected_exit, expected_push, expected_commit, expected_result in cases:
+        with tempfile.TemporaryDirectory(prefix="prefence-result-cas-") as temp:
+            root = Path(temp)
+            git = root / "git"
+            git.write_text(fake_git, encoding="utf-8")
+            git.chmod(0o755)
+            for name, value in (("head", local), ("remote", remote), ("fetches", "0"), ("calls", "")):
+                (root / name).write_text(value, encoding="utf-8")
+            env_file = root / "github-env"
+            env_file.write_text("", encoding="utf-8")
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       SOURCE_SHA=source_sha, GITHUB_ENV=str(env_file), FAKE_GIT_STATE=str(root),
+                       FAKE_NOOP="1" if noop else "0", FAKE_RACE="1" if race else "0")
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", command],
+                                    cwd=root, env=env, capture_output=True, text=True,
+                                    timeout=10, check=False)
+            calls = (root / "calls").read_text(encoding="utf-8").splitlines()
+            pushes = sum(call == "push origin HEAD:so" for call in calls)
+            commits = sum(call.startswith("commit -m ") for call in calls)
+            if (result.returncode != expected_exit or pushes != expected_push or
+                    commits != expected_commit):
+                raise AssertionError(f"pre-fence result {label} CAS/no-op drift: "
+                                     f"exit={result.returncode}, pushes={pushes}, commits={commits}")
+            expected_env = "" if expected_result is None else "RESULT_COMMIT_SHA=" + expected_result + "\n"
+            if env_file.read_text(encoding="utf-8") != expected_env:
+                raise AssertionError("pre-fence result source-binding environment drift: " + label)
+    print(f"PASS: pre-fence actual result publisher CAS/no-op shell ({len(cases)} cases)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -205,6 +277,7 @@ def main():
     policy(publisher)
     mutations(publisher)
     writer_runtime(publisher)
+    result_commit_runtime(publisher)
     print("PASS: pre-fence exact-source read-only diagnostic proof; production evidence generated: false; production decision changed: false")
 
 

@@ -156,9 +156,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json
-          git commit -m "test(deletion): record pre-fence linearization result"
-          echo "RESULT_COMMIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          git push origin HEAD:so
+          if git diff --cached --quiet; then
+            echo "Pre-fence result unchanged; skipping no-op commit."
+            echo "RESULT_COMMIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          else
+            git commit -m "test(deletion): record pre-fence linearization result"
+            echo "RESULT_COMMIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced before pre-fence result push; refusing stale evidence."
+              exit 75
+            fi
+            git push origin HEAD:so
+          fi
 
       - name: Reconcile local-only authority
         if: env.PREFENCE_PROOF_EXIT_CODE == '0'
