@@ -864,8 +864,10 @@ def exercise_deletion_load_source_io_boundary() -> None:
     require(spec is not None and spec.loader is not None, "source I/O guard import failed")
     source = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(source)
-    with tempfile.TemporaryDirectory(prefix="deletion-source-outside-") as outside_tmp, \\
-         tempfile.TemporaryDirectory(prefix=".deletion-source-io-negative-", dir=ROOT) as inside_tmp:
+    with (
+        tempfile.TemporaryDirectory(prefix="deletion-source-outside-") as outside_tmp,
+        tempfile.TemporaryDirectory(prefix=".deletion-source-io-negative-", dir=ROOT) as inside_tmp,
+    ):
         outside, inside = Path(outside_tmp), Path(inside_tmp)
         canary = outside / "canary.go"
         canary.write_text("SYNTHETIC_EXTERNAL_CANARY", encoding="utf-8")
