@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "8d21da9aca7f2230170eb01aa154cee235b3bba8"
+REVIEWED_VALIDATOR = "744bc07699f1dfbfae7a284d322b16a12701c240"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -674,6 +674,38 @@ def typed_criteria_runtime():
 
     # Exact assertion keys and final-owned-row cross-field agreement are mandatory.
     # Evidence metadata and scenario keys must not admit unreviewed coverage claims.
+    # A local result must retain reviewed scope and a valid UTC timestamp, never a gate.
+    with tempfile.TemporaryDirectory(prefix=".prefence-result-metadata-", dir=ROOT) as temp:
+        original_result = validator.RESULT_PATH
+        synthetic = Path(temp) / "result.json"
+        validator.RESULT_PATH = synthetic
+        try:
+            for label, mutate in (
+                ("timestamp missing", lambda d: d.pop("generatedAt")),
+                ("timestamp nonstring", lambda d: d.update({"generatedAt": 123})),
+                ("timestamp impossible", lambda d: d.update({"generatedAt": "2026-02-30T12:00:00Z"})),
+                ("timestamp offset", lambda d: d.update({"generatedAt": "2026-10-27T00:00:00+09:00"})),
+                ("timestamp fractional", lambda d: d.update({"generatedAt": "2026-10-27T00:00:00.123Z"})),
+                ("limitations missing", lambda d: d["limitations"].pop()),
+                ("limitations extra", lambda d: d["limitations"].append("synthetic unreviewed scope")),
+                ("limitations reordered", lambda d: d["limitations"].reverse()),
+                ("limitations nonlist", lambda d: d.update({"limitations": {"synthetic": True}})),
+                ("top-level false promotion", lambda d: d.update({"productionReady": True})),
+                ("top-level missing", lambda d: d.pop("limitations")),
+            ):
+                candidate = copy.deepcopy(canonical)
+                mutate(candidate)
+                synthetic.write_text(json.dumps(candidate), encoding="utf-8")
+                try:
+                    validator.validate_result(contract, None)
+                except validator.Fail:
+                    pass
+                else:
+                    raise AssertionError("pre-fence upload accepted result metadata " + label)
+                cases += 1
+        finally:
+            validator.RESULT_PATH = original_result
+
     with tempfile.TemporaryDirectory(prefix=".prefence-result-shape-", dir=ROOT) as temp:
         original_result = validator.RESULT_PATH
         synthetic = Path(temp) / "result.json"

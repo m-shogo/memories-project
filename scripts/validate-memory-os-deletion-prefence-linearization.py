@@ -8,6 +8,7 @@ import json
 import math
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,8 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-line
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
+EXPECTED_RESULT_KEYS = ("schemaVersion", "commitSha", "generatedAt", "environment", "scenario", "limitations",)
+EXPECTED_RESULT_LIMITATIONS = ("Preview read is the in-flight surface exercised", "one synthetic account and one deletion worker", "local PostgreSQL 16 and MinIO on a GitHub-hosted runner", "not production deletion-capacity evidence",)
 EXPECTED_ENVIRONMENT_KEYS = ("os", "arch", "goVersion", "dependencyMode", "syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "containsSecrets",)
 EXPECTED_SCENARIO_KEYS = ("scenarioId", "inFlightRequests", "authenticatedBeforeFence", "deletionRequestStatus", "deletionEpoch", "releasedAfterFence", "unauthorizedAfterFence", "unexpectedStatusCount", "transportErrors", "workerReceiptCount", "finalOwnedRowCount", "finalAccountState", "finalAccountEpoch", "assertions", "result", "integrityResult",)
 EXPECTED_ASSERTION_KEYS = ("allAuthenticatedBeforeFence", "allReleasedAfterFenceUnauthorized", "deletionWorkerCompleted", "finalOwnedRowCount", "noTransportErrors", "noUnexpectedStatuses", "productionEvidence",)
@@ -179,6 +182,19 @@ def validate_contract(contract: dict[str, Any]) -> None:
 
 def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
     result = load(RESULT_PATH)
+    require(result.keys() == set(EXPECTED_RESULT_KEYS), "result top-level key set drift")
+    require(type(result.get("limitations")) is list and
+            result["limitations"] == list(EXPECTED_RESULT_LIMITATIONS),
+            "reviewed result limitations drift")
+    generated_at = result.get("generatedAt")
+    require(type(generated_at) is str and
+            re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z", generated_at) is not None,
+            "result generatedAt must be exact UTC RFC3339 seconds")
+    try:
+        datetime.strptime(generated_at, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        raise Fail("result generatedAt calendar invalid") from None
+
     require(result.get("schemaVersion") == contract.get("resultsSchemaVersion"), "result schema mismatch")
     commit = result.get("commitSha")
     require(isinstance(commit, str) and SHA_RE.fullmatch(commit) is not None, "full commit SHA required")
