@@ -211,6 +211,35 @@ def main() -> int:
         if calls != expected_success:
             raise AssertionError(f"successful validator order drift: {calls!r} != {expected_success!r}")
 
+        # Stronger independently published local recovery authority must survive
+        # this narrower mutation-evidence reconciler. No production gate changes.
+        strong_load = json.loads(before_load)
+        strong_load["readiness"].update({
+            "deletionContainerKillRecoveryProven": True,
+            "deletionReplacementContainerRecoveryProven": True,
+            "deletionLeaseExpiryRecoverySimulationProven": True,
+            "deletionPartialObjectErasureRecoveryProven": True,
+            "primaryAccountBoundPreFenceLinearizationAggregateProven": True,
+        })
+        strong_load["deferredScenarios"][0]["reason"] = module.CONTAINER_KILL_CANONICAL_REASON
+        write_json(load_contract, strong_load)
+        module.main()
+        after_strong = json.loads(load_contract.read_text(encoding="utf-8"))
+        if after_strong["deferredScenarios"][0]["reason"] != module.CONTAINER_KILL_CANONICAL_REASON:
+            raise AssertionError("mutation reconcile downgraded independently proven container-kill deferred authority")
+        strong_load["readiness"]["deletionContainerKillRecoveryProven"] = False
+        write_json(load_contract, strong_load)
+        rejected_bytes = load_contract.read_bytes()
+        try:
+            module.main()
+        except module.Fail as exc:
+            if "container-kill deferred authority lacks" not in str(exc):
+                raise
+        else:
+            raise AssertionError("mutation reconcile accepted unsupported strong container-kill reason")
+        if load_contract.read_bytes() != rejected_bytes:
+            raise AssertionError("unsupported strong deferred authority mutated load contract")
+
         load_contract.write_bytes(before_load)
         status.write_bytes(before_status)
         calls.clear()

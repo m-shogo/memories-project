@@ -49,6 +49,19 @@ UPLOAD_COMPLETION_UNPROVEN_SUFFIX = (
 )
 
 
+CONTAINER_KILL_CANONICAL_REASON = (
+    "post-fence former-session load, all primary account-bound pre-fence surfaces, multi-account worker saturation, "
+    "lease-expiry/partial-object recovery and Docker worker-container kill/replacement pass locally; raw process-kill readiness, "
+    "physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
+)
+LEASE_RECOVERY_CANONICAL_REASON = (
+    "post-fence former-session load, all primary account-bound pre-fence surfaces, bounded multi-account worker "
+    "saturation, lease-expiry reclaim and partial-object-erasure recovery simulation now pass against local PostgreSQL "
+    "and MinIO; actual process kill, host failure, production dependency behavior and independently reviewed deletion-load "
+    "thresholds remain deferred"
+)
+
+
 class Fail(RuntimeError):
     pass
 
@@ -178,7 +191,23 @@ def main() -> int:
         None,
     )
     require(isinstance(deletion_deferred, dict), "deletion-under-load deferred record missing")
-    if upload_completion_proven:
+    existing_deferred_reason = deletion_deferred.get("reason")
+    if existing_deferred_reason == CONTAINER_KILL_CANONICAL_REASON:
+        for key in (
+            "deletionContainerKillRecoveryProven",
+            "deletionReplacementContainerRecoveryProven",
+            "deletionLeaseExpiryRecoverySimulationProven",
+            "deletionPartialObjectErasureRecoveryProven",
+            "primaryAccountBoundPreFenceLinearizationAggregateProven",
+        ):
+            require(load_readiness.get(key) is True, f"container-kill deferred authority lacks {key}")
+        require(upload_completion_proven is True, "container-kill reason requires upload-completion proof")
+        # Preserve independently published stronger local recovery coverage.
+    elif existing_deferred_reason == LEASE_RECOVERY_CANONICAL_REASON:
+        for key in ("deletionLeaseExpiryRecoverySimulationProven", "deletionPartialObjectErasureRecoveryProven"):
+            require(load_readiness.get(key) is True, f"lease-recovery deferred authority lacks {key}")
+        # Preserve independently published lease/partial-object coverage.
+    elif upload_completion_proven:
         deletion_deferred["reason"] = (
             "post-fence former-session load, Preview requests authenticated before the fence, Apply and upload-authorization requests authenticated before the fence with zero pre-worker durable mutation, upload-completion requests paused after real MinIO HEAD and rejected after the epoch-2 fence, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; "
             "host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
