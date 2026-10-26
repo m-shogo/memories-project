@@ -491,6 +491,67 @@ def run_inline_ramp_diagnostic_negatives() -> None:
     print("PASS: repeatability ramp actual inline diagnostic writer redaction/atomic runtime (20 cases)")
 
 
+
+def run_repeatability_source_identity_negatives() -> None:
+    workflow = (ROOT / ".github/workflows/controlled-saturation-repeatability.yml").read_text(encoding="utf-8")
+    checkout = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+    setup_python = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+    setup_go = "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"
+    if (workflow.count(checkout) != 2 or workflow.count(setup_python) != 2
+        or workflow.count(setup_go) != 1
+        or any(floating in workflow for floating in ("checkout@v4", "setup-python@v5", "setup-go@v5"))):
+        raise RuntimeError("repeatability immutable Actions source drift")
+    def extract(name: str) -> str:
+        marker = "      - name: " + name + "\n"
+        if workflow.count(marker) != 1:
+            raise RuntimeError("repeatability source gate missing or duplicated")
+        start = workflow.index("        run: |\n", workflow.index(marker)) + len("        run: |\n")
+        end = workflow.find("\n      - name:", start)
+        lines = workflow[start:end if end >= 0 else len(workflow)].splitlines()
+        if not lines or any(line and not line.startswith("          ") for line in lines):
+            raise RuntimeError("repeatability source gate indentation drift")
+        return "\n".join(line[10:] if line else "" for line in lines) + "\n"
+    for name in ("Require trusted repeatability ramp source", "Require trusted repeatability aggregate source"):
+        script = extract(name)
+        for required in ('set -euo pipefail', 'GITHUB_EVENT_NAME', 'GITHUB_REF', 'refs/heads/so',
+                         'GITHUB_SHA', 'git rev-parse HEAD', 'git status --porcelain'):
+            if required not in script:
+                raise RuntimeError("repeatability source gate missing: " + required)
+        with tempfile.TemporaryDirectory(prefix="repeatability-source-identity-") as temp:
+            root = Path(temp)
+            git = root / "git"
+            sha = "a" * 40
+            git.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1\" = \"rev-parse\" ]; then printf '" + sha + "\\n'; exit 0; fi\n"
+                "if [ \"$1\" = \"status\" ]; then if [ \"$DIRTY\" = \"1\" ]; then echo ' M dirty'; fi; exit 0; fi\n"
+                "if [ \"$1\" = \"fetch\" ]; then exit 0; fi\n"
+                "exit 1\n", encoding="utf-8",
+            )
+            git.chmod(0o755)
+            cases = (
+                ("push", "refs/heads/so", sha, "0", True),
+                ("workflow_dispatch", "refs/heads/so", sha, "0", True),
+                ("push", "refs/heads/main", sha, "0", False),
+                ("workflow_dispatch", "refs/heads/main", sha, "0", False),
+                ("pull_request", "refs/heads/so", sha, "0", False),
+                ("push", "refs/heads/so", "A" * 40, "0", False),
+                ("push", "refs/heads/so", "", "0", False),
+                ("push", "refs/heads/so", "b" * 40, "0", name.endswith("aggregate source")),
+                ("push", "refs/heads/so", sha, "1", False),
+            )
+            for event, ref, event_sha, dirty, allowed in cases:
+                env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                           GITHUB_EVENT_NAME=event, GITHUB_REF=ref, GITHUB_SHA=event_sha, DIRTY=dirty)
+                result = subprocess.run(
+                    ["bash", "-e", "-u", "-o", "pipefail", "-c", script], cwd=root,
+                    env=env, capture_output=True, text=True, timeout=10, check=False,
+                )
+                if (result.returncode == 0) != allowed:
+                    raise RuntimeError(f"repeatability source identity regression: {name}/{event}/{ref}")
+    print("PASS: repeatability ramp and aggregate immutable source identity shell runtime (18 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
@@ -503,6 +564,7 @@ def main() -> int:
     run_stronger_readiness_negatives(module)
     run_inline_diagnostic_writer_negatives()
     run_inline_ramp_diagnostic_negatives()
+    run_repeatability_source_identity_negatives()
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
     print("authority substitution plus pre-write/post-write/atomic failures are fail-closed")
     print("temporary authority residue: none")
