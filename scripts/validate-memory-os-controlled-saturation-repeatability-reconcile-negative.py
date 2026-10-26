@@ -1142,7 +1142,7 @@ def run_load_validator_json_negatives() -> None:
                 b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
                 b'{"a":1,"a":2}', b'{"outer":{"a":1,"a":2}}',
                 b'{"value":' + b'9' * 5000 + b'}',
-                b'{"' + secret.encode() + b'":', b'\\xff\\xfe',
+                b'{"' + secret.encode() + b'":', b'\xff\xfe',
                 b'[1,2,3]',
             ):
                 target.write_bytes(raw)
@@ -1180,7 +1180,7 @@ def run_load_validator_json_negatives() -> None:
             raise RuntimeError("load validator unexpected-error diagnostic leaked source")
     finally:
         module.load = original_load
-    print("PASS: load validator strict JSON, path and unexpected-error privacy negatives (14 cases)")
+    print("PASS: load validator strict JSON, path and unexpected-error privacy negatives (15 cases)")
 
 
 def run_repeatability_nonfinite_negatives() -> None:
