@@ -18,6 +18,7 @@ CONTROLLER_PATH = ROOT / "services/import-api/cmd/deletion-container-drill/main.
 HELPER_PATH = ROOT / "services/import-api/cmd/deletion-container-drill-helper/main.go"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 MAX_JSON_BYTES = 1024 * 1024
+MAX_GO_SOURCE_BYTES = 1024 * 1024
 
 
 class Fail(RuntimeError):
@@ -70,6 +71,24 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def read_go_source(path: Path) -> str:
+    require(isinstance(path, Path), "container-kill Go source path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "container-kill Go source symlink rejected")
+    require(path.is_file(), "container-kill Go source missing or unsafe")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise Fail("container-kill Go source path escaped repository") from None
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_GO_SOURCE_BYTES + 1)
+        require(len(raw) <= MAX_GO_SOURCE_BYTES, "container-kill Go source exceeds reviewed read limit")
+        return raw.decode("utf-8")
+    except (OSError, UnicodeError):
+        raise Fail("container-kill Go source unreadable or invalid") from None
+
+
 def validate_contract(contract: dict[str, Any]) -> None:
     require(contract.get("schemaVersion") == "memory-os-deletion-worker-container-kill-recovery.v1", "contract schema drift")
     require(contract.get("resultsSchemaVersion") == "memory-os-deletion-worker-container-kill-recovery-results.v1", "result schema drift")
@@ -103,8 +122,8 @@ def validate_contract(contract: dict[str, Any]) -> None:
     ):
         require(fragment in limitations, f"limitation missing: {fragment}")
 
-    helper = HELPER_PATH.read_text(encoding="utf-8")
-    controller = CONTROLLER_PATH.read_text(encoding="utf-8")
+    helper = read_go_source(HELPER_PATH)
+    controller = read_go_source(CONTROLLER_PATH)
     for fragment in (
         'currentUser != "memory_app_login" || superuser || bypassRLS',
         "control.Claim(ctx, testLeaseSeconds)",

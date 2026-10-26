@@ -24,6 +24,8 @@ def main() -> int:
     validator.validate_contract(contract)
     validator.validate_result(contract, None)
     canonical = validator.load(validator.RESULT_PATH)
+    if not validator.read_go_source(validator.HELPER_PATH) or not validator.read_go_source(validator.CONTROLLER_PATH):
+        raise RuntimeError("container-kill canonical Go source positive failed")
 
     with tempfile.TemporaryDirectory(prefix="container-kill-reader-outside-") as outside_temp, \
          tempfile.TemporaryDirectory(prefix=".container-kill-reader-", dir=ROOT) as inside_temp:
@@ -96,6 +98,51 @@ def main() -> int:
                 pass
             else:
                 raise RuntimeError(f"container-kill JSON accepted {label}")
+
+        go_good = inside / "good.go"
+        go_good.write_text("package main\n", encoding="utf-8")
+        if validator.read_go_source(go_good) != "package main\n":
+            raise RuntimeError("container-kill Go reader positive failed")
+        go_oversized = inside / "oversized.go"
+        go_oversized.write_bytes(b"x" * (validator.MAX_GO_SOURCE_BYTES + 1))
+        go_invalid = inside / "invalid.go"
+        go_invalid.write_bytes(b"package main\n" + bytes([255]))
+        go_directory = inside / "directory.go"
+        go_directory.mkdir()
+        go_link = inside / "linked.go"
+        go_link.symlink_to(canary)
+        go_parent = inside / "linked-go-parent"
+        go_parent.symlink_to(outside, target_is_directory=True)
+        go_cases = (
+            ("oversized", go_oversized, "exceeds reviewed read limit"),
+            ("invalid UTF-8", go_invalid, "unreadable or invalid"),
+            ("external", canary, "escaped repository"),
+            ("symlink", go_link, "symlink rejected"),
+            ("symlink ancestor", go_parent / "canary.json", "symlink rejected"),
+            ("directory", go_directory, "missing or unsafe"),
+            ("missing", inside / "missing.go", "missing or unsafe"),
+        )
+        for label, unsafe, expected in go_cases:
+            try:
+                validator.read_go_source(unsafe)
+            except validator.Fail as exc:
+                if expected not in str(exc) or "SYNTHETIC_SECRET" in str(exc):
+                    raise RuntimeError("container-kill Go " + label + " wrong rejection") from None
+            else:
+                raise RuntimeError("container-kill Go reader accepted " + label)
+        for attr in ("HELPER_PATH", "CONTROLLER_PATH"):
+            old = getattr(validator, attr)
+            setattr(validator, attr, go_oversized)
+            try:
+                try:
+                    validator.validate_contract(contract)
+                except validator.Fail as exc:
+                    if "exceeds reviewed read limit" not in str(exc):
+                        raise RuntimeError("container-kill contract " + attr + " wrong source gate") from None
+                else:
+                    raise RuntimeError("container-kill contract accepted oversized " + attr)
+            finally:
+                setattr(validator, attr, old)
 
         original_result = validator.RESULT_PATH
         synthetic = inside / "synthetic-result.json"
