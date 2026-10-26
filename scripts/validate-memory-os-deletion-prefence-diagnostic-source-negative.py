@@ -66,6 +66,10 @@ def policy(value):
             raise AssertionError("Pre-fence diagnostic source policy missing: " + marker[:70])
     if value.count("git fetch origin so") != 7:
         raise AssertionError("Pre-fence CAS fetch multiplicity drift")
+    if value.count('if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then') != 2:
+        raise AssertionError("Pre-fence post-commit CAS guard multiplicity drift")
+    if value.count("git diff --cached --quiet") != 3:
+        raise AssertionError("Pre-fence staged no-op guard multiplicity drift")
     if value.count(CHECKOUT) != 1 or value.count(SETUP) != 1 or value.count(SETUP_GO) != 1:
         raise AssertionError("Pre-fence immutable Actions source drift")
     if any(marker in value for marker in ("checkout@v4", "setup-go@v5", "setup-python@v5",
