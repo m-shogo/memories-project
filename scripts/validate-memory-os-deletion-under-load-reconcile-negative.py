@@ -492,10 +492,77 @@ def exercise_transaction_primary_failure_redaction(module: ModuleType) -> None:
     require_modes_unchanged(modes)
 
 
+
+def exercise_reconciler_json_reader(module: ModuleType) -> None:
+    require(isinstance(module.load(module.CANONICAL_CONTRACT_PATH), dict),
+            "canonical deletion load contract reader positive failed")
+    require(isinstance(module.load(module.CANONICAL_STATUS_PATH), dict),
+            "canonical deletion load status reader positive failed")
+    with (
+        tempfile.TemporaryDirectory(prefix="deletion-reconcile-outside-") as outside_tmp,
+        tempfile.TemporaryDirectory(prefix=".deletion-reconcile-json-negative-", dir=ROOT) as inside_tmp,
+    ):
+        outside, inside = Path(outside_tmp), Path(inside_tmp)
+        canary = outside / "canary.json"
+        canary.write_bytes(b'{"external":true}')
+        good = inside / "good.json"
+        good.write_text('{"safe":true}', encoding="utf-8")
+        require(module.load(good) == {"safe": True}, "reconciler JSON positive failed")
+        boundary = inside / "boundary.json"
+        boundary.write_bytes(b'{"padding":"' + b"x" * (module.MAX_JSON_BYTES - 14) + b'"}')
+        require(module.load(boundary)["padding"], "reconciler bounded JSON positive failed")
+        cases: list[tuple[str, Path, str]] = []
+        oversized = inside / "oversized.json"
+        oversized.write_bytes(b'{"padding":"' + b"x" * module.MAX_JSON_BYTES + b'"}')
+        cases.append(("oversized", oversized, "exceeds reviewed read limit"))
+        cases.append(("outside", canary, "escaped repository"))
+        duplicate = inside / "duplicate.json"
+        duplicate.write_text('{"outer":{"key":1,"key":2}}', encoding="utf-8")
+        cases.append(("nested duplicate", duplicate, "duplicate"))
+        for label, raw, expected in (
+            ("NaN", b'{"value":NaN}', "non-finite"),
+            ("float overflow", b'{"value":1e999}', "non-finite"),
+            ("invalid UTF-8", b'{"value":"' + bytes([255]) + b'"}', "unreadable or invalid"),
+            ("malformed secret", b'{"SYNTHETIC_SECRET_DO_NOT_LOG":', "unreadable or invalid"),
+            ("huge integer", b'{"value":' + b"9" * 5000 + b"}", "unreadable or invalid"),
+        ):
+            path = inside / (label.replace(" ", "-") + ".json")
+            path.write_bytes(raw)
+            cases.append((label, path, expected))
+        linked = inside / "linked.json"
+        linked.symlink_to(canary)
+        cases.append(("direct symlink", linked, "symlink rejected"))
+        parent_link = inside / "linked-parent"
+        parent_link.symlink_to(outside, target_is_directory=True)
+        cases.append(("ancestor symlink", parent_link / "canary.json", "symlink rejected"))
+        directory = inside / "directory.json"
+        directory.mkdir()
+        cases.append(("directory", directory, "missing or unsafe"))
+        cases.append(("missing", inside / "missing.json", "missing or unsafe"))
+        for label, path, expected in cases:
+            try:
+                module.load(path)
+            except module.ReconcileFailure as exc:
+                require(expected in str(exc) and "SYNTHETIC_SECRET_DO_NOT_LOG" not in str(exc),
+                        f"reconciler JSON wrong rejection: {label}")
+            else:
+                raise RuntimeError(f"reconciler JSON accepted {label}")
+        try:
+            module.load("not-a-path")
+        except module.ReconcileFailure:
+            pass
+        else:
+            raise RuntimeError("reconciler JSON accepted non-Path input")
+        require(canary.read_bytes() == b'{"external":true}',
+                "reconciler JSON changed outside canary")
+    print("PASS: deletion-under-load reconciler bounded strict JSON and path negatives")
+
+
 def main() -> int:
     exercise_deletion_load_json_reader()
     exercise_deletion_load_reviewed_schema()
     module = load_target()
+    exercise_reconciler_json_reader(module)
     module.enforce_runtime_authorities()
     module.enforce_atomic_writer_authority()
 

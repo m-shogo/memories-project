@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import os
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 CANONICAL_ROOT = Path(__file__).resolve().parents[1]
+MAX_JSON_BYTES = 1024 * 1024
 ROOT = CANONICAL_ROOT
 CANONICAL_CONTRACT_PATH = CANONICAL_ROOT / "contracts/operations/deletion-under-load-contract.v1.json"
 CANONICAL_LOAD_PATH = CANONICAL_ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
@@ -93,14 +95,44 @@ def enforce_runtime_authorities(
         require_exact_authority(path, expected, label)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise ReconcileFailure("non-finite deletion load reconcile JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite deletion load reconcile JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate deletion load reconcile JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
+    require(isinstance(path, Path), "deletion load reconcile JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "deletion load reconcile JSON symlink rejected")
+    require(path.is_file(), "deletion load reconcile JSON file missing or unsafe")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise ReconcileFailure(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+        path.resolve(strict=True).relative_to(CANONICAL_ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise ReconcileFailure("deletion load reconcile JSON path escaped repository") from None
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "deletion load reconcile JSON exceeds reviewed read limit")
+        value = json.loads(raw.decode("utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise ReconcileFailure("deletion load reconcile JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "deletion load reconcile JSON root must be object")
     return value
 
 
