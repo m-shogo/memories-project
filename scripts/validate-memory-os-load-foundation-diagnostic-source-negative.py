@@ -134,14 +134,14 @@ def writer_runtime(source: str) -> None:
 
 def capture_shell_runtime(source: str) -> None:
     for title, output_name, expected_line in (
-        ("Reconcile available bounded results read-only", "GITHUB_OUTPUT", "exit_code=17\\n"),
-        ("Reconcile available bounded results with stage capture", "GITHUB_ENV", "FOUNDATION_EXIT_CODE=17\\n"),
+        ("Reconcile available bounded results read-only", "GITHUB_OUTPUT", "exit_code=17\n"),
+        ("Reconcile available bounded results with stage capture", "GITHUB_ENV", "FOUNDATION_EXIT_CODE=17\n"),
     ):
         shell = step(source, title)
         with tempfile.TemporaryDirectory(prefix="load-foundation-capture-") as temp:
             root = Path(temp)
             stub = root / "python"
-            stub.write_text("#!/bin/sh\\necho SYNTHETIC_SECRET_CANARY\\nexit 17\\n", encoding="utf-8")
+            stub.write_text("#!/bin/sh\necho SYNTHETIC_SECRET_CANARY\nexit 17\n", encoding="utf-8")
             stub.chmod(0o755)
             output = root / "result"
             env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
