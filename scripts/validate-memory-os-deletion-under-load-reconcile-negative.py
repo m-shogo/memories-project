@@ -1188,8 +1188,12 @@ def main() -> int:
 
     expect_rejection(module, "repository root", lambda: swap_attr(module, "ROOT", module.CANONICAL_ROOT / "scripts"))
     expect_rejection(module, "deletion contract", lambda: swap_attr(module, "CONTRACT_PATH", module.CANONICAL_LOAD_PATH))
+    expect_rejection(module, "load contract", lambda: swap_attr(module, "LOAD_PATH", module.CANONICAL_CONTRACT_PATH))
     expect_rejection(module, "production status", lambda: swap_attr(module, "STATUS_PATH", module.CANONICAL_LOAD_PATH))
+    expect_rejection(module, "result path", lambda: swap_attr(module, "RESULT_PATH", module.CANONICAL_CONTRACT_PATH))
     expect_rejection(module, "deletion validator", lambda: swap_attr(module, "DELETION_VALIDATOR", module.CANONICAL_LOAD_VALIDATOR))
+    expect_rejection(module, "load validator", lambda: swap_attr(module, "LOAD_VALIDATOR", module.CANONICAL_DELETION_VALIDATOR))
+    expect_rejection(module, "operability validator", lambda: swap_attr(module, "OPERABILITY_VALIDATOR", module.CANONICAL_LOAD_VALIDATOR))
 
     fake_run = lambda *args, **kwargs: None
     expect_rejection(module, "subprocess transport", lambda: swap_attr(module.subprocess, "run", fake_run))
