@@ -1046,6 +1046,80 @@ def prove_source_order_bounded_current_blob(module) -> None:
     print("PASS: source-order current review bytes bounded and private with oversized/directory negatives")
 
 
+
+def prove_source_order_bounded_commit_checks(module) -> None:
+    """Exercise actual source-order commit/ancestry subprocess failure classes."""
+    source_order = module.load_review_source_order_validator()
+    original_run = source_order.subprocess.run
+    ancestor, descendant = "a" * 40, "b" * 40
+    field = "syntheticReview"
+    marker = "PRIVATE_COMMIT_GIT_MARKER_DO_NOT_LOG"
+    state = {"returncode": 0, "error": None}
+    calls = []
+
+    def fake_git(args, **kwargs):
+        require(args in (
+            ["git", "cat-file", "-e", ancestor + "^{commit}"],
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        ), "source-order commit Git command drift")
+        require(kwargs.get("cwd") == source_order.ROOT
+                and kwargs.get("stdout") is subprocess.DEVNULL
+                and kwargs.get("stderr") is subprocess.DEVNULL
+                and kwargs.get("timeout") == 20 and kwargs.get("check") is False,
+                "source-order commit Git privacy/timeout drift")
+        calls.append(args[1])
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(args, state["returncode"],
+                                           stdout=marker, stderr=marker)
+
+    source_order.subprocess.run = fake_git
+    try:
+        source_order.commit_exists(ancestor, field)
+        require(source_order.is_ancestor(ancestor, descendant) is True,
+                "source-order ancestor positive control failed")
+        state["returncode"] = 1
+        require(source_order.is_ancestor(ancestor, descendant) is False,
+                "source-order non-ancestor positive control failed")
+        for label, changes, expected in (
+            ("commit-nonzero", {"returncode": 1}, f"{field} sourceCommitSha must resolve to a commit"),
+            ("commit-bool", {"returncode": True}, f"{field} sourceCommitSha must resolve to a commit"),
+            ("commit-timeout", {"error": subprocess.TimeoutExpired(["git", "cat-file"], 20, stderr=marker)},
+             f"{field} sourceCommitSha must resolve to a commit"),
+            ("commit-unavailable", {"error": OSError(marker)}, f"{field} sourceCommitSha must resolve to a commit"),
+            ("ancestor-other", {"returncode": 2}, "cannot compare review/source commit ancestry"),
+            ("ancestor-bool", {"returncode": True}, "cannot compare review/source commit ancestry"),
+            ("ancestor-timeout", {"error": subprocess.TimeoutExpired(["git", "merge-base"], 20, stderr=marker)},
+             "cannot compare review/source commit ancestry"),
+            ("ancestor-unavailable", {"error": OSError(marker)}, "cannot compare review/source commit ancestry"),
+        ):
+            state.update({"returncode": 0, "error": None})
+            state.update(changes)
+            try:
+                if label.startswith("commit-"):
+                    source_order.commit_exists(ancestor, field)
+                else:
+                    source_order.is_ancestor(ancestor, descendant)
+            except source_order.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"source-order {label} wrong/private diagnostic")
+            else:
+                raise Fail(f"source-order {label} unexpectedly accepted")
+        require(len(calls) == 11, "source-order commit Git transport multiplicity drift")
+        before = len(calls)
+        try:
+            source_order.commit_exists("INVALID_SHA", field)
+        except source_order.Fail as exc:
+            require(str(exc) == f"{field} sourceCommitSha invalid",
+                    "source-order invalid SHA wrong boundary")
+        else:
+            raise Fail("source-order invalid SHA unexpectedly accepted")
+        require(len(calls) == before, "source-order invalid SHA reached Git")
+    finally:
+        source_order.subprocess.run = original_run
+    print("PASS: source-order commit existence and ancestry bounded/private with nine negatives")
+
+
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
@@ -1054,6 +1128,7 @@ def main() -> int:
     prove_source_order_bounded_git_output(module)
     prove_source_order_bounded_creation_blob(module)
     prove_source_order_bounded_current_blob(module)
+    prove_source_order_bounded_commit_checks(module)
     prove_independent_review_json_reader(module)
     expect_source_order_execution(module)
 

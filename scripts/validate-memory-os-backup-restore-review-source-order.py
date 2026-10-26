@@ -204,9 +204,17 @@ def require_creation_blob_immutable(current: bytes, created: bytes, field: str) 
 
 
 def commit_exists(commit_sha: str, field: str) -> None:
-    completed = subprocess.run(["git", "cat-file", "-e", f"{commit_sha}^{{commit}}"], cwd=ROOT,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"{field} sourceCommitSha must resolve to a commit")
+    require(isinstance(commit_sha, str) and SHA40.fullmatch(commit_sha) is not None,
+            f"{field} sourceCommitSha invalid")
+    try:
+        completed = subprocess.run(
+            ["git", "cat-file", "-e", f"{commit_sha}^{{commit}}"], cwd=ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"{field} sourceCommitSha must resolve to a commit") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"{field} sourceCommitSha must resolve to a commit")
 
 
 def commit_time(commit_sha: str, field: str) -> datetime:
@@ -230,11 +238,19 @@ def review_time(value: Any, field: str) -> datetime:
 
 
 def is_ancestor(ancestor: str, descendant: str) -> bool:
-    completed = subprocess.run(["git", "merge-base", "--is-ancestor", ancestor, descendant], cwd=ROOT,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    if completed.returncode == 0:
+    require(isinstance(ancestor, str) and SHA40.fullmatch(ancestor) is not None
+            and isinstance(descendant, str) and SHA40.fullmatch(descendant) is not None,
+            "cannot compare review/source commit ancestry")
+    try:
+        completed = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant], cwd=ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("cannot compare review/source commit ancestry") from None
+    if type(completed.returncode) is int and completed.returncode == 0:
         return True
-    if completed.returncode == 1:
+    if type(completed.returncode) is int and completed.returncode == 1:
         return False
     raise Fail("cannot compare review/source commit ancestry")
 
