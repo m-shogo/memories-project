@@ -19,7 +19,11 @@ PERMISSION = ".github/workflows/deletion-worker-host-failure-permission-negative
 PERMISSION_VALIDATOR = "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
 SELF = "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
 REVIEWED_PUBLISHER = "01f3c5116119e5bc49b6b4431196dce39795be99"
-REVIEWED_INDEPENDENT = "0250231a5b1ef21b4423f9e7c0b97d3af5552a37"
+REVIEWED_INDEPENDENT = "a410def9bc0053daff373ee3fcb48ec5f2fc6a97"
+RECONCILER = "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py"
+REVIEWED_RECONCILER = "af7b23666c2828a365cf15cdf6f6294270c7dedb"
+REVIEWED_RECONCILE_NEGATIVE = "f105e1da5aefa1a5026d544d20b9068197807790"
 REVIEWED_PERMISSION = "c2549cdc7a939dcaa7c91720724e61d31ee9d685"
 REVIEWED_PERMISSION_VALIDATOR = "f145162df13bb60d64ae457cc86f4ca59e1a8d2e"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -416,6 +420,10 @@ def predicate_runtime(independent: str) -> None:
 
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
+    if blob(source(RECONCILER)) != REVIEWED_RECONCILER or blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
+        raise SystemExit("host-failure reconciler/negative complete Git blob unreviewed")
+    if independent.count(RECONCILER) != 2 or independent.count(RECONCILE_NEGATIVE) != 3:
+        raise SystemExit("host-failure reconcile negative PR/push trigger and execution reachability drift")
     permission = source(PERMISSION)
     permission_validator = source(PERMISSION_VALIDATOR)
     validate(publisher, independent)

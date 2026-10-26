@@ -121,8 +121,10 @@ def expect_rollback_failure_exhaustive(module: ModuleType) -> None:
                     f"primary host-failure validation diagnostic was lost: {diagnostic}")
             require("rollback incomplete" in diagnostic,
                     f"host-failure rollback incompleteness was not diagnosed: {diagnostic}")
-            require("synthetic host-failure contract rollback failure" in diagnostic,
-                    f"host-failure rollback diagnostic was lost: {diagnostic}")
+            require("host-failure contract: OSError" in diagnostic,
+                    "host-failure rollback exception class was lost")
+            require("synthetic" not in diagnostic and exc.__suppress_context__,
+                    "host-failure leaked untrusted primary/rollback exception text")
         else:
             raise RuntimeError("host-failure rollback failure was accepted")
 
@@ -229,7 +231,7 @@ def main() -> int:
 
     expect_rollback_failure_exhaustive(module)
     assert_unchanged(snapshots(module))
-    print("PASS: host-failure reconcile authority transaction, mode preservation, and exhaustive rollback diagnostics are fail-closed")
+    print("PASS: host-failure reconcile authority transaction, mode preservation, and secret-free exhaustive rollback diagnostics are fail-closed")
     return 0
 
 

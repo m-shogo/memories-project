@@ -10,6 +10,8 @@ on:
       - ".github/workflows/deletion-worker-host-failure-source-negative.yml"
       - "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
+      - "scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py"
   push:
     branches:
       - so
@@ -19,6 +21,8 @@ on:
       - ".github/workflows/deletion-worker-host-failure-source-negative.yml"
       - "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
+      - "scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py"
 
 permissions:
   contents: read
@@ -61,6 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py
+          python scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
