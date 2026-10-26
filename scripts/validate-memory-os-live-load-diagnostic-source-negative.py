@@ -60,6 +60,8 @@ def policy(source: str) -> None:
             raise AssertionError("live load policy missing: " + marker[:70])
     if source.count(CHECKOUT) != 1 or source.count(SETUP) != 1:
         raise AssertionError("live load immutable Actions drift")
+    if source.count("git fetch origin so") != 4:
+        raise AssertionError("live load CAS fetch multiplicity drift")
     for forbidden in ("read_text(\n              encoding='utf-8', errors='replace'", "output = re.sub(", "[-10000:]", "actions/checkout@v4", "actions/setup-python@v5"):
         if forbidden in source:
             raise AssertionError("live load raw diagnostic/floating Action regression")
