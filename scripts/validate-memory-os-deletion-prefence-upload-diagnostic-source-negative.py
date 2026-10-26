@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "b326662cab23295926503e1e763291cf561b5605"
+REVIEWED_VALIDATOR = "740168af0bcf89d15426becb2ca21bbeed700aaa"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -467,6 +467,80 @@ def strict_validator_runtime():
     print(f"PASS: pre-fence upload actual strict JSON/path/mixed-case runtime ({cases} negative cases)")
 
 
+def typed_criteria_runtime():
+    """Reject upload-completion criteria drift and bool/float count aliases."""
+    spec = importlib.util.spec_from_file_location("prefence_upload_typed_validator", ROOT / VALIDATOR)
+    if spec is None or spec.loader is None:
+        raise AssertionError("pre-fence upload typed validator loader missing")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    contract = validator.load(validator.CONTRACT_PATH)
+    validator.validate_contract(contract)
+    validator.validate_result(contract, None)
+    canonical = validator.load(validator.RESULT_PATH)
+    cases = 0
+
+    for key, expected in validator.EXPECTED_CRITERIA.items():
+        candidate = copy.deepcopy(contract)
+        candidate["successCriteria"][key] = (
+            float(expected) if type(expected) is int else
+            0 if type(expected) is bool else expected.upper()
+        )
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence upload accepted contract criterion: " + key)
+        cases += 1
+
+    for label, mutate in (
+        ("missing criterion", lambda c: c["successCriteria"].pop("unexpectedStatusCount")),
+        ("extra criterion", lambda c: c["successCriteria"].update({"synthetic": True})),
+        ("float completion count", lambda c: c.update({"inFlightCompletionRequests": 16.0})),
+        ("bool completion count", lambda c: c.update({"inFlightCompletionRequests": True})),
+    ):
+        candidate = copy.deepcopy(contract)
+        mutate(candidate)
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence upload accepted " + label)
+        cases += 1
+
+    with tempfile.TemporaryDirectory(prefix=".prefence-upload-typed-", dir=ROOT) as temp:
+        synthetic = Path(temp) / "result.json"
+        original = validator.RESULT_PATH
+        validator.RESULT_PATH = synthetic
+        try:
+            for label, key, value in (
+                ("float issued", "issuedAndUploadedBeforeFence", 16.0),
+                ("bool zero", "unexpectedStatusCount", False),
+                ("float epoch", "deletionEpoch", 2.0),
+                ("float real head", "realHeadCompletedBeforeFence", 16.0),
+                ("changed state", "finalAccountState", "DELETED"),
+                ("missing criterion", "workerReceiptCount", None),
+            ):
+                candidate = copy.deepcopy(canonical)
+                if value is None:
+                    candidate["scenario"].pop(key)
+                else:
+                    candidate["scenario"][key] = value
+                synthetic.write_text(json.dumps(candidate), encoding="utf-8")
+                try:
+                    validator.validate_result(contract, None)
+                except validator.Fail:
+                    pass
+                else:
+                    raise AssertionError("pre-fence upload accepted typed result: " + label)
+                cases += 1
+        finally:
+            validator.RESULT_PATH = original
+    print(f"PASS: pre-fence upload actual typed contract/result criteria runtime ({cases} negative cases)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -494,6 +568,7 @@ def main():
     result_commit_runtime(publisher)
     authority_reconcile_runtime(publisher)
     strict_validator_runtime()
+    typed_criteria_runtime()
     subprocess.run([sys.executable, str(ROOT / RECONCILE_NEGATIVE)],
                    cwd=ROOT, check=True, timeout=30)
     print("PASS: pre-fence upload exact-source read-only diagnostic proof; production evidence generated: false; production decision changed: false")

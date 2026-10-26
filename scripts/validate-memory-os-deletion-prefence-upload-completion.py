@@ -17,6 +17,25 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-uplo
 RUNNER_PATH = ROOT / "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+EXPECTED_CRITERIA: dict[str, Any] = {
+    "issuedAndUploadedBeforeFence": 16,
+    "realHeadCompletedBeforeFence": 16,
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "completionUnauthorizedAfterFence": 16,
+    "unexpectedStatusCount": 0,
+    "transportErrors": 0,
+    "preWorkerIssuedAuthorizationRows": 16,
+    "preWorkerConsumedAuthorizationRows": 0,
+    "preWorkerQuarantineRows": 0,
+    "workerReceiptCount": 1,
+    "erasedObjectVersions": 16,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "productionEvidence": False,
+}
+
 
 class Fail(RuntimeError):
     pass
@@ -71,9 +90,18 @@ def validate_contract(contract: dict[str, Any]) -> None:
     require(contract.get("resultsSchemaVersion") == "memory-os-deletion-prefence-upload-completion-results.v1", "result schema drift")
     require(contract.get("scenarioId") == "account-deletion-prefence-upload-completion-local-dependencies", "scenario drift")
     require(contract.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "dependency mode drift")
-    require(contract.get("inFlightCompletionRequests") == 16, "completion request count drift")
+    require(type(contract.get("inFlightCompletionRequests")) is int
+            and contract["inFlightCompletionRequests"] == 16, "completion request count drift")
     require(contract.get("surface") == "POST /v1/upload-authorizations/{authorizationId}/complete", "surface drift")
     require(contract.get("pausePoint") == "AFTER_REAL_MINIO_HEAD_BEFORE_POST_HEAD_EPOCH_CHECK", "pause-point drift")
+
+    criteria = contract.get("successCriteria")
+    require(isinstance(criteria, dict) and criteria.keys() == EXPECTED_CRITERIA.keys(),
+            "success criteria key set drift")
+    for key, expected in EXPECTED_CRITERIA.items():
+        actual = criteria[key]
+        require(type(actual) is type(expected) and actual == expected,
+                f"success criterion type/value drift: {key}")
 
     rules = contract.get("validationRules")
     require(isinstance(rules, dict), "validationRules must be object")
@@ -162,7 +190,8 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
         "finalAccountState",
         "finalAccountEpoch",
     ):
-        require(scenario.get(key) == criteria.get(key), f"result criterion mismatch: {key}")
+        require(key in scenario and type(scenario[key]) is type(criteria[key])
+                and scenario[key] == criteria[key], f"result criterion mismatch: {key}")
     require(scenario.get("result") == "PASS", "result must PASS")
     require(scenario.get("integrityResult") == "PASS", "integrity must PASS")
 
