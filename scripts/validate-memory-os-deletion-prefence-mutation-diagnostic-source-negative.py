@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exact-source, read-only runtime negatives for SIGKILL failure diagnostics."""
+import copy
 import hashlib
+import importlib.util
 import json
 import os
 import stat
@@ -15,12 +17,14 @@ INDEPENDENT = ".github/workflows/deletion-prefence-mutation-diagnostic-source-ne
 SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-source-negative.py"
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
+VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
+REVIEWED_VALIDATOR = "062dd4395d363ee7101fc23077e2fcc8c6b1580c"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
 REVIEWED_RECONCILE_NEGATIVE = "c50b9b5065361bd79fd719b4aefc13f4ae145242"
 REVIEWED = "5d1ea78dc70d721f50f4ef9750bf7fc32aa28acc"
-REVIEWED_INDEPENDENT = "aedf80b0a71470acbf8044d51bd1f1061ddaaa3b"
+REVIEWED_INDEPENDENT = "b1c603f1d95c9054169161284a9e1917a6014173"
 TARGET = "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -342,11 +346,139 @@ exit 0
     print(f"PASS: pre-fence mutation actual authority reconcile CAS/no-op/validator shell ({len(cases)} cases)")
 
 
+def strict_validator_runtime():
+    """Execute the real pre-fence mutation evidence consumer against disposable JSON/path mutations."""
+    spec = importlib.util.spec_from_file_location("prefence_mutation_strict_validator", ROOT / VALIDATOR)
+    if spec is None or spec.loader is None:
+        raise AssertionError("pre-fence mutation validator loader missing")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    contract = validator.load(validator.CONTRACT_PATH)
+    validator.validate_contract(contract)
+    validator.validate_result(contract, None)
+    canonical = validator.load(validator.RESULT_PATH)
+    cases = 0
+
+    with tempfile.TemporaryDirectory(prefix="prefence-reader-outside-") as outside_temp, \
+         tempfile.TemporaryDirectory(prefix=".prefence-reader-", dir=ROOT) as inside_temp:
+        outside, inside = Path(outside_temp), Path(inside_temp)
+        canary = outside / "canary.json"
+        canary.write_bytes(b'{"synthetic":true}')
+        good = inside / "good.json"
+        good.write_text('{"safe":true}', encoding="utf-8")
+        if validator.load(good) != {"safe": True}:
+            raise AssertionError("pre-fence mutation JSON positive control failed")
+
+        for label, raw in (
+            ("nested duplicate", '{"outer":{"key":1,"key":2}}'),
+            ("NaN", '{"value":NaN}'),
+            ("infinite exponent", '{"value":1e999}'),
+            ("huge integer", '{"value":' + "9" * 5000 + '}'),
+            ("nonobject root", '["safe"]'),
+            ("synthetic secret malformed", '{"SYNTHETIC_PREFENCE_SECRET":'),
+        ):
+            path = inside / (label.replace(" ", "-") + ".json")
+            path.write_text(raw, encoding="utf-8")
+            try:
+                validator.load(path)
+            except validator.Fail as exc:
+                if "SYNTHETIC_PREFENCE_SECRET" in str(exc):
+                    raise AssertionError("pre-fence mutation JSON diagnostic reflected untrusted material") from None
+            else:
+                raise AssertionError("pre-fence mutation JSON accepted " + label)
+            cases += 1
+
+        invalid_utf8 = inside / "invalid-utf8.json"
+        invalid_utf8.write_bytes(b'{"value":"' + bytes([255]) + b'"}')
+        try:
+            validator.load(invalid_utf8)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence mutation JSON accepted invalid UTF-8")
+        cases += 1
+
+        linked = inside / "linked.json"
+        linked.symlink_to(canary)
+        linked_parent = inside / "linked-parent"
+        linked_parent.symlink_to(outside, target_is_directory=True)
+        directory = inside / "directory.json"
+        directory.mkdir()
+        for label, unsafe in (
+            ("outside", canary),
+            ("symlink", linked),
+            ("ancestor symlink", linked_parent / "canary.json"),
+            ("directory", directory),
+            ("missing", inside / "missing.json"),
+        ):
+            try:
+                validator.load(unsafe)
+            except validator.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence mutation JSON accepted " + label)
+            cases += 1
+
+        original_result = validator.RESULT_PATH
+        synthetic = inside / "synthetic-result.json"
+        validator.RESULT_PATH = synthetic
+        try:
+            for label, marker in (
+                ("postgres", "PoStGrEs://synthetic.invalid"),
+                ("minio", "MiNiOaDmIn"),
+                ("bearer", "bEaReR SYNTHETIC"),
+                ("amz credential", "x-aMz-cRedenTial=SYNTHETIC"),
+                ("account", "AcCt_SYNTHETIC"),
+                ("job", "JoB_SYNTHETIC"),
+                ("preview", "PrEvIeW_SYNTHETIC"),
+                ("idempotency", "IdEm-SYNTHETIC"),
+                ("quarantine", "QuArAnTiNe/SYNTHETIC"),
+            ):
+                mutated = copy.deepcopy(canonical)
+                mutated["environment"]["syntheticNegativeMarker"] = marker
+                synthetic.write_text(json.dumps(mutated), encoding="utf-8")
+                try:
+                    validator.validate_result(contract, None)
+                except validator.Fail as exc:
+                    if "forbidden runtime material" not in str(exc) or marker in str(exc):
+                        raise AssertionError("pre-fence mutation marker wrong rejection: " + label) from None
+                else:
+                    raise AssertionError("pre-fence mutation accepted mixed-case marker: " + label)
+                cases += 1
+
+            dangling = inside / "dangling-result.json"
+            dangling.symlink_to(outside / "absent.json")
+            validator.RESULT_PATH = dangling
+            old_argv = sys.argv
+            sys.argv = [old_argv[0]]
+            try:
+                try:
+                    validator.main()
+                except validator.Fail as exc:
+                    if "result symlink rejected" not in str(exc):
+                        raise AssertionError("pre-fence mutation optional symlink wrong rejection") from None
+                else:
+                    raise AssertionError("pre-fence mutation optional dangling symlink accepted")
+            finally:
+                sys.argv = old_argv
+            cases += 1
+        finally:
+            validator.RESULT_PATH = original_result
+
+        if canary.read_bytes() != b'{"synthetic":true}':
+            raise AssertionError("pre-fence mutation JSON consumer mutated outside canary")
+    print(f"PASS: pre-fence mutation actual strict JSON/path/mixed-case runtime ({cases} negative cases)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
         raise SystemExit("SIGKILL publisher complete Git blob unreviewed")
+    if blob(source(VALIDATOR)) != REVIEWED_VALIDATOR:
+        raise SystemExit("pre-fence mutation validator complete Git blob unreviewed")
     independent = source(INDEPENDENT)
+    if independent.count('      - "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"') != 2:
+        raise AssertionError("pre-fence mutation validator CI trigger reachability drift")
     for marker in (PUBLISHER, INDEPENDENT, SCRIPT, RECONCILER, RECONCILE_NEGATIVE, SECONDARY_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
@@ -366,6 +498,7 @@ def main():
     writer_runtime(publisher)
     result_commit_runtime(publisher)
     authority_reconcile_runtime(publisher)
+    strict_validator_runtime()
     subprocess.run([sys.executable, str(ROOT / RECONCILE_NEGATIVE)],
                    cwd=ROOT, check=True, timeout=30)
     subprocess.run([sys.executable, str(ROOT / SECONDARY_NEGATIVE)],
