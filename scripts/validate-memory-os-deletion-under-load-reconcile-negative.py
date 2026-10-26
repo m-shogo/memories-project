@@ -434,6 +434,18 @@ def exercise_deletion_load_reviewed_schema() -> None:
         ("criteria float alias", lambda d: d["successCriteria"].__setitem__("deletionEpoch", 2.0)),
         ("criteria missing", lambda d: d["successCriteria"].pop("workerCompleted")),
         ("criteria extra", lambda d: d["successCriteria"].__setitem__("productionReady", True)),
+        ("contract top-level injection", lambda d: d.__setitem__("humanPromotionApproved", True)),
+        ("contract missing description", lambda d: d.pop("description")),
+        ("workload float alias", lambda d: d.__setitem__("preFenceRequests", 120.0)),
+        ("scenario redirect", lambda d: d.__setitem__("scenarioId", "unreviewed")),
+        ("boundary extra", lambda d: d["evidenceBoundary"].__setitem__("humanPromotionApproved", True)),
+        ("boundary boolean alias", lambda d: d["evidenceBoundary"].__setitem__("productionEvidence", 0)),
+        ("sequence altered", lambda d: d["requiredSequence"].__setitem__(0, "skip account creation")),
+        ("abort missing", lambda d: d["abortCriteria"].pop()),
+        ("limitations extra", lambda d: d["limitations"].append("production ready")),
+        ("readiness extra", lambda d: d["readiness"].__setitem__("humanPromotionApproved", True)),
+        ("readiness boolean alias", lambda d: d["readiness"].__setitem__("postFenceLoadExecuted", 1)),
+        ("readiness promotion", lambda d: d["readiness"].__setitem__("productionReady", True)),
     )
     result_cases = (
         ("root readiness injection", lambda d: d.__setitem__("productionReady", True)),
@@ -477,7 +489,7 @@ def exercise_deletion_load_reviewed_schema() -> None:
             pass
         else:
             raise RuntimeError(f"deletion load result accepted {label}")
-    print("PASS: deletion-under-load reviewed schema positive, 32 schema negatives and 8 mixed-case marker negatives")
+    print("PASS: deletion-under-load reviewed schema positive, 44 schema negatives and 8 mixed-case marker negatives")
 
 
 

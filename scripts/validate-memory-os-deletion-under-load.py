@@ -178,6 +178,48 @@ REVIEWED_CRITERIA = {
 }
 
 
+REVIEWED_SEQUENCE = (
+    "create one synthetic account, active session, import job and committed Preview",
+    "prove pre-fence authenticated Preview reads are all 2xx",
+    "DELETE /v1/account returns 202 with deletion epoch 2",
+    "after the 202 response, start former-session Preview reads and one leased deletion worker concurrently",
+    "all post-fence requests return exactly 401 with no 5xx or transport errors",
+    "the worker completes exactly one deletion receipt for the fenced account",
+    "all account-owned rows are absent and the deleted tombstone remains at epoch 2",
+)
+REVIEWED_ABORT = (
+    "DELETE does not return 202 before the post-fence load begins",
+    "any post-fence request returns 2xx, 3xx, 403, 404, 409, 429 or 5xx rather than 401",
+    "any post-fence transport error occurs",
+    "the deletion worker processes zero or more than one account",
+    "any owned row survives after the worker finishes",
+    "the tombstone is absent, not deleted or has an unexpected epoch",
+    "result would contain a token, account, job, Preview, object key or database URL",
+)
+REVIEWED_LIMITATIONS = (
+    "only requests started after the durable 202 fence are asserted",
+    "one account and one worker",
+    "authenticated Preview read path only",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "no production network, TLS, scoped object credentials or independent worker deployment",
+    "not production deletion capacity evidence",
+)
+REVIEWED_BOUNDARY = {
+    "syntheticDataOnly": True, "productionTraffic": False,
+    "productionCredentials": False, "productionEvidence": False,
+    "productionEquivalentDependencies": False,
+    "requestsStartedBeforeFenceCovered": False, "hostFailureCovered": False,
+    "productionReady": False,
+}
+REVIEWED_READINESS_FIXED = {
+    "contractDefined": True, "runnerImplemented": True,
+    "validatorImplemented": True, "automaticWorkflowImplemented": True,
+    "preFenceInFlightLinearizationProven": False,
+    "productionDependenciesTested": False,
+    "independentReviewCompleted": False, "productionReady": False,
+}
+
+
 def exact_keys(value: Any, keys: set[str], label: str) -> dict[str, Any]:
     require(isinstance(value, dict) and set(value) == keys,
             f"{label} missing or unreviewed fields")
@@ -199,8 +241,41 @@ def validate_reviewed_contract(contract: dict[str, Any]) -> None:
     for key, reviewed in REVIEWED_SOURCES.items():
         require(contract.get(key) == reviewed,
                 f"deletion-under-load {key} source authority drift")
+    exact_keys(contract, {
+        "contractId", "schemaVersion", "resultsSchemaVersion", "description",
+        "scenarioId", "dependencyMode", "preFenceRequests", "postFenceRequests",
+        "concurrency", "resultPath", "runner", "validator", "reconcile",
+        "workflow", "requiredSequence", "successCriteria", "abortCriteria",
+        "evidenceBoundary", "readiness", "limitations",
+    }, "deletion-under-load contract")
+    require(isinstance(contract.get("description"), str) and
+            bool(contract["description"].strip()),
+            "deletion-under-load contract description missing")
+    require(contract.get("scenarioId") == "account-deletion-post-fence-load-local-dependencies",
+            "deletion-under-load reviewed scenario identity drift")
+    for field, reviewed in (("preFenceRequests", 120), ("postFenceRequests", 400),
+                            ("concurrency", 32)):
+        require(type(contract.get(field)) is int and contract[field] == reviewed,
+                f"deletion-under-load {field} reviewed type/value drift")
     reviewed_values(contract.get("successCriteria"), REVIEWED_CRITERIA,
                     "deletion-under-load successCriteria")
+    reviewed_values(contract.get("evidenceBoundary"), REVIEWED_BOUNDARY,
+                    "deletion-under-load evidenceBoundary")
+    for field, reviewed in (("requiredSequence", REVIEWED_SEQUENCE),
+                            ("abortCriteria", REVIEWED_ABORT),
+                            ("limitations", REVIEWED_LIMITATIONS)):
+        require(type(contract.get(field)) is list and contract[field] == list(reviewed),
+                f"deletion-under-load reviewed {field} drift")
+    readiness = exact_keys(contract.get("readiness"),
+                           set(REVIEWED_READINESS_FIXED) |
+                           {"exactSourceResultCommitted", "postFenceLoadExecuted"},
+                           "deletion-under-load readiness")
+    for field in ("exactSourceResultCommitted", "postFenceLoadExecuted"):
+        require(type(readiness[field]) is bool,
+                f"deletion-under-load readiness.{field} must be boolean")
+    for field, reviewed in REVIEWED_READINESS_FIXED.items():
+        require(type(readiness[field]) is bool and readiness[field] is reviewed,
+                f"deletion-under-load readiness.{field} reviewed drift")
 
 
 def validate_result_shape(result: dict[str, Any]) -> None:
