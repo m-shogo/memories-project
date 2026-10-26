@@ -17,6 +17,7 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-muta
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
+EXPECTED_LIMITATIONS = ("covers Apply and upload authorization but not upload completion already in flight", "one synthetic account and one deletion worker", "local PostgreSQL 16 and MinIO on a GitHub-hosted runner", "does not prove host/process failure behavior", "not production deletion-capacity evidence",)
 EXPECTED_BOUNDARY_KEYS = ("syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "applySurfaceCovered", "uploadAuthorizationSurfaceCovered", "uploadCompletionSurfaceCovered", "hostFailureCovered", "productionReady",)
 EXPECTED_READINESS_KEYS = ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented", "exactSourceResultCommitted", "preFenceMutationLinearizationProven", "productionDependenciesTested", "independentReviewCompleted", "productionReady",)
 
@@ -182,6 +183,10 @@ def validate_contract(contract: dict[str, Any]) -> None:
         "productionReady",
     ):
         require(boundary.get(key) is False, f"local mutation proof cannot enable {key}")
+
+    require(type(contract.get("limitations")) is list and
+            contract["limitations"] == list(EXPECTED_LIMITATIONS),
+            "reviewed limitations list drift")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be object")

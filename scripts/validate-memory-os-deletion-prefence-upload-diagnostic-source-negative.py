@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "6a75b7d515a5289bf34c450b720ca25e4d261ea8"
+REVIEWED_VALIDATOR = "e22795e7f872dcecf8e863a24572b11a1b6b5184"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -555,6 +555,26 @@ def typed_criteria_runtime():
             pass
         else:
             raise AssertionError("pre-fence upload accepted readiness type " + key)
+        cases += 1
+
+    # Reviewed scope limitations are ordered planning authority, not optional prose.
+    reviewed_limitations = contract["limitations"]
+    for label, value in (
+        ("missing", reviewed_limitations[1:]),
+        ("extra", reviewed_limitations + ["synthetic unreviewed scope"]),
+        ("reordered", list(reversed(reviewed_limitations))),
+        ("altered", ["synthetic unreviewed scope"] + reviewed_limitations[1:]),
+        ("nested", [reviewed_limitations[:1]] + reviewed_limitations[1:]),
+        ("non-list", {"synthetic": True}),
+    ):
+        candidate = copy.deepcopy(contract)
+        candidate["limitations"] = value
+        try:
+            validator.validate_contract(candidate)
+        except validator.Fail:
+            pass
+        else:
+            raise AssertionError("pre-fence upload accepted limitations " + label)
         cases += 1
 
     for key, expected in validator.EXPECTED_CRITERIA.items():

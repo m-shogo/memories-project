@@ -17,6 +17,7 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-uplo
 RUNNER_PATH = ROOT / "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+EXPECTED_LIMITATIONS = ("one synthetic account and 16 completion requests", "local PostgreSQL 16 and MinIO on a GitHub-hosted runner", "proves the post-HEAD completion fence but not process/host failure during deletion worker erasure", "not production deletion-capacity evidence",)
 EXPECTED_BOUNDARY_KEYS = ("syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "realMinioHeadCovered", "postHeadFenceCovered", "hostFailureCovered", "productionReady",)
 EXPECTED_READINESS_KEYS = ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented", "exactSourceResultCommitted", "preFenceUploadCompletionLinearizationProven", "productionDependenciesTested", "independentReviewCompleted", "productionReady",)
 
@@ -209,6 +210,10 @@ def validate_contract(contract: dict[str, Any]) -> None:
         "productionReady",
     ):
         require(boundary.get(key) is False, f"local completion proof cannot enable {key}")
+
+    require(type(contract.get("limitations")) is list and
+            contract["limitations"] == list(EXPECTED_LIMITATIONS),
+            "reviewed limitations list drift")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be object")

@@ -17,6 +17,7 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-line
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
+EXPECTED_LIMITATIONS = ("Preview read is the first in-flight surface proven", "one account and one deletion worker", "local PostgreSQL 16 and MinIO on a GitHub-hosted runner", "does not prove host-failure behavior or multi-account worker saturation", "not production deletion-capacity evidence",)
 EXPECTED_BOUNDARY_KEYS = ("syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "previewReadSurfaceOnly", "hostFailureCovered", "multiAccountWorkerSaturationCovered", "productionReady",)
 EXPECTED_READINESS_KEYS = ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented", "exactSourceResultCommitted", "preFenceInFlightLinearizationProven", "productionDependenciesTested", "independentReviewCompleted", "productionReady",)
 
@@ -157,6 +158,10 @@ def validate_contract(contract: dict[str, Any]) -> None:
     ):
         require(boundary.get(key) is False, f"local checkpoint cannot enable {key}")
     require(boundary.get("previewReadSurfaceOnly") is True, "Preview-only limitation must remain explicit")
+
+    require(type(contract.get("limitations")) is list and
+            contract["limitations"] == list(EXPECTED_LIMITATIONS),
+            "reviewed limitations list drift")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be object")
