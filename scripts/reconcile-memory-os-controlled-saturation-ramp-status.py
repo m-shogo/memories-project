@@ -50,8 +50,13 @@ def require(condition: bool, message: str) -> None:
 
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
+    for candidate in (canonical, *canonical.parents):
+        require(not candidate.is_symlink(), f"canonical {label} symlink path rejected")
     require(canonical.is_file(), f"canonical {label} missing")
-    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        canonical.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise SystemExit(f"canonical {label} escaped repository") from None
 
 
 def enforce_runtime_authorities() -> None:
@@ -77,9 +82,17 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, payload: bytes, mode: int | None = None) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if mode is None and path.exists():
-        mode = stat.S_IMODE(path.stat().st_mode)
+    require(path.parent.is_dir(), "controlled saturation authority parent missing")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "controlled saturation authority symlink path rejected")
+    require(not path.is_dir(), "controlled saturation authority directory target rejected")
+    try:
+        path.parent.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise SystemExit("controlled saturation authority path escaped repository") from None
+    require(not path.exists() or path.is_file(), "controlled saturation authority target is not a file")
+    if mode is None:
+        mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(

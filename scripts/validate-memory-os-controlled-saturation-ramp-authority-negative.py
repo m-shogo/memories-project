@@ -84,6 +84,63 @@ def verify_atomic_replace_failure(module) -> None:
                 module.atomic_write_bytes(path, payload)
 
 
+def verify_atomic_path_negatives(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="controlled-saturation-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_bytes(b"SYNTHETIC_CONTROLLED_SATURATION_CANARY")
+        with tempfile.TemporaryDirectory(prefix=".controlled-saturation-atomic-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            target = inside / "authority.json"
+            target.write_bytes(b"original")
+            target.chmod(0o640)
+            module.atomic_write_bytes(target, b"updated")
+            if target.read_bytes() != b"updated" or module.stat.S_IMODE(target.stat().st_mode) != 0o640:
+                raise RuntimeError("controlled saturation atomic mode preservation failed")
+            new = inside / "new.json"
+            module.atomic_write_bytes(new, b"new")
+            if new.read_bytes() != b"new" or module.stat.S_IMODE(new.stat().st_mode) != 0o644:
+                raise RuntimeError("controlled saturation atomic new-file mode drift")
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            directory = inside / "directory"
+            directory.mkdir()
+            for unsafe in (linked_file, linked_parent / "canary.json", directory,
+                           inside / "missing-parent" / "file.json", canary):
+                try:
+                    module.atomic_write_bytes(unsafe, b"FORBIDDEN")
+                except SystemExit:
+                    pass
+                else:
+                    raise RuntimeError("controlled saturation atomic writer accepted unsafe path")
+            for unsafe in (linked_file, linked_parent / "canary.json", canary):
+                try:
+                    module.require_exact_authority(unsafe, unsafe, "synthetic")
+                except SystemExit:
+                    pass
+                else:
+                    raise RuntimeError("controlled saturation authority reader accepted unsafe path")
+            for operation in ("replace", "fsync"):
+                original = getattr(module.os, operation)
+                setattr(module.os, operation, lambda *args: (_ for _ in ()).throw(OSError("synthetic atomic failure")))
+                try:
+                    try:
+                        module.atomic_write_bytes(target, b"FORBIDDEN")
+                    except OSError:
+                        pass
+                    else:
+                        raise RuntimeError("controlled saturation atomic failure unexpectedly accepted")
+                finally:
+                    setattr(module.os, operation, original)
+                if target.read_bytes() != b"updated" or list(inside.glob(".authority.json.*.tmp")):
+                    raise RuntimeError("controlled saturation atomic rollback or residue drift")
+        if canary.read_bytes() != b"SYNTHETIC_CONTROLLED_SATURATION_CANARY":
+            raise RuntimeError("controlled saturation atomic writer modified outside canary")
+    print("PASS: controlled saturation atomic path, mode, rollback and canary negatives")
+
+
 def verify_nonfinite_ramp_measurements() -> None:
     validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
     spec = importlib.util.spec_from_file_location("controlled_saturation_numeric_validator", validator_path)
@@ -302,6 +359,7 @@ def main() -> int:
         expect_rejection(module, attr, replacement)
     module.enforce_runtime_authorities()
     verify_atomic_replace_failure(module)
+    verify_atomic_path_negatives(module)
     print("PASS: controlled saturation direct reconcile source authorities are canonical and atomic")
     print("atomic replacement failure: rejected without authority mutation")
     print("temporary authority residue: none")
