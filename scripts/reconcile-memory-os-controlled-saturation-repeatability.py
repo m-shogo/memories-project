@@ -55,8 +55,13 @@ def require(condition: bool, message: str) -> None:
 
 def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
+    for candidate in (canonical, *canonical.parents):
+        require(not candidate.is_symlink(), f"canonical {label} symlink path rejected")
     require(canonical.is_file(), f"canonical {label} missing")
-    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        canonical.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise Fail(f"canonical {label} escaped repository") from None
 
 
 def enforce_runtime_authorities() -> None:
