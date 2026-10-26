@@ -14,6 +14,7 @@ SELF = "scripts/validate-memory-os-observability-access-source-negative.py"
 CHECKOUT = "uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_PUBLISHER = "21753278254d4152e29519125f19db03eef6f5cf"
+REVIEWED_INDEPENDENT = "fba513e1a0a8fe10d20fa5b08c589b70f43c38e8"
 
 def read(path: str) -> str:
     p = ROOT / path
@@ -157,6 +158,10 @@ def main() -> None:
             raise AssertionError("observability-access independent CI reachability missing: " + marker)
     if blob(source) != REVIEWED_PUBLISHER:
         raise AssertionError("observability-access complete publisher Git blob drift")
+    if blob(independent) != REVIEWED_INDEPENDENT:
+        raise AssertionError("observability-access complete independent CI Git blob drift")
+    if blob(independent + "\n# synthetic whole-source drift\n") == REVIEWED_INDEPENDENT:
+        raise AssertionError("observability-access independent CI mutation accepted")
     if blob(source + "\n# synthetic whole-source drift\n") == REVIEWED_PUBLISHER:
         raise AssertionError("observability-access whole-source mutation accepted")
     policy(source)
