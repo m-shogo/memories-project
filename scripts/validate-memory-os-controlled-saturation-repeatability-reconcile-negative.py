@@ -824,7 +824,25 @@ def run_repeatability_matrix_boundary_negatives() -> None:
                     raise RuntimeError(f"repeatability matrix boundary accepted: {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability matrix run/attempt/ordinal/synthetic/integrity negatives (11 cases)")
+    for label, field, value in (
+        ("a", "kind", "ACTUAL_FAILURE_SIGNAL"),
+        ("a", "throughputGainFromPrevious", 0.0),
+        ("b", "p95LatencyRatioFromPrevious", 9.0),
+    ):
+        fixture = copy.deepcopy(result)
+        fixture["signals"][label][field] = value
+        validator.load = lambda path: fixture if path == validator.RESULT else original_load(path)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    validator.main()
+                except validator.Fail:
+                    pass
+                else:
+                    raise RuntimeError("repeatability validator accepted tampered analyzer signal")
+        finally:
+            validator.load = original_load
+    print("PASS: repeatability matrix provenance/integrity and signal recomputation negatives (14 cases)")
 
 
 
