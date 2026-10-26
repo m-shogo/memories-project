@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import stat
 import subprocess
@@ -77,12 +78,30 @@ def validate_projected_load_authority() -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
+    def reject_constant(_token: str) -> None:
+        raise Fail("local long-soak JSON non-finite constant rejected")
+
+    def finite_float(token: str) -> float:
+        value = float(token)
+        require(math.isfinite(value), "local long-soak JSON non-finite number rejected")
+        return value
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            require(key not in value, "local long-soak JSON duplicate key rejected")
+            value[key] = item
+        return value
+
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_constant,
+                           parse_float=finite_float,
+                           object_pairs_hook=unique_object)
+    except FileNotFoundError:
+        raise Fail(f"missing file: {path.relative_to(ROOT)}") from None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}") from None
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
 
@@ -244,7 +263,7 @@ def main() -> int:
     original_load_bytes = LOAD_PATH.read_bytes()
     original_load_mode = stat.S_IMODE(LOAD_PATH.stat().st_mode)
     try:
-        atomic_replace_bytes(LOAD_PATH, (json.dumps(load_contract, indent=2) + "\n").encode("utf-8"))
+        atomic_replace_bytes(LOAD_PATH, (json.dumps(load_contract, indent=2, allow_nan=False) + "\n").encode("utf-8"))
         validate_projected_load_authority()
     except BaseException as primary_error:
         try:

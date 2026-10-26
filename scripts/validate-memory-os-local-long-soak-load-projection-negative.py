@@ -181,6 +181,32 @@ def transaction_rollback_rejected() -> None:
 
 
 
+
+def strict_json_parser_negative() -> None:
+    with tempfile.TemporaryDirectory(prefix=".local-long-soak-json-", dir=ROOT) as temp:
+        path = Path(temp) / "input.json"
+        path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+        if module.load(path) != {"outer": {"a": 1, "b": 2}}:
+            raise AssertionError("local long-soak strict JSON positive control failed")
+        for label, raw in (
+            ("Infinity", '{"value": Infinity}'),
+            ("NaN", '{"value": NaN}'),
+            ("overflow", '{"value": 1e999}'),
+            ("duplicate", '{"a":1,"a":2}'),
+            ("nested duplicate", '{"outer":{"a":1,"a":2}}'),
+            ("malformed", '{"broken":'),
+            ("array root", '[1,2]'),
+        ):
+            path.write_text(raw, encoding="utf-8")
+            try:
+                module.load(path)
+            except module.Fail:
+                pass
+            else:
+                raise AssertionError("local long-soak accepted " + label)
+    print("PASS: local long-soak strict JSON positive and seven parser negatives")
+
+
 def atomic_path_containment_negative() -> None:
     secret = b"SYNTHETIC_LOCAL_LONG_SOAK_OUTSIDE_CANARY"
     with tempfile.TemporaryDirectory(prefix="local-long-soak-outside-") as outside_temp, \
@@ -368,6 +394,7 @@ def main() -> int:
     transaction_rollback_rejected()
     validator_output_and_rollback_redaction_negative()
     atomic_path_containment_negative()
+    strict_json_parser_negative()
     delegated_local_soak_negatives_pass()
 
     print("Memory OS local long-soak load projection negative suite PASS")
