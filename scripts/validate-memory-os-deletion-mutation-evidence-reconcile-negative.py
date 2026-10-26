@@ -80,6 +80,39 @@ def expect_atomic_replace_failure(module) -> None:
             raise AssertionError("successful atomic replacement changed authority mode")
 
 
+def expect_substituted_atomic_paths_rejected(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-mutation-atomic-symlink-") as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "authority.json"
+        canary.write_bytes(b"SYNTHETIC_MUTATION_CANARY")
+        direct = root / "direct.json"
+        direct.symlink_to(canary)
+        ancestor = root / "linked"
+        ancestor.symlink_to(outside, target_is_directory=True)
+        directory = root / "directory.json"
+        directory.mkdir()
+        for target, expected in (
+            (direct, "deletion mutation atomic symlink target/ancestor refused"),
+            (ancestor / "authority.json", "deletion mutation atomic symlink target/ancestor refused"),
+            (directory, "deletion mutation atomic target must be a regular file"),
+        ):
+            try:
+                module.atomic_write_bytes(target, b"synthetic overwrite")
+            except module.Fail as exc:
+                if expected not in str(exc):
+                    raise AssertionError(f"mutation atomic unexpected target rejection: {exc}") from exc
+            else:
+                raise AssertionError(f"mutation atomic accepted substituted target: {target}")
+            if canary.read_bytes() != b"SYNTHETIC_MUTATION_CANARY":
+                raise AssertionError("mutation atomic writer escaped to external canary")
+        if not direct.is_symlink() or not ancestor.is_symlink() or not directory.is_dir():
+            raise AssertionError("mutation atomic writer replaced substituted target")
+        if list(root.rglob(".*.tmp")):
+            raise AssertionError("mutation substituted atomic target left temp residue")
+
+
 def main() -> int:
     module = load_module()
     substitutions = {
@@ -96,6 +129,7 @@ def main() -> int:
         expect_authority_rejection(module, attr, replacement)
     module.enforce_runtime_authorities()
     expect_atomic_replace_failure(module)
+    expect_substituted_atomic_paths_rejected(module)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-mutation-reconcile-") as tmp:
         root = Path(tmp)

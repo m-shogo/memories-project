@@ -128,6 +128,11 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
+    # Reject substituted authority paths before creating a temporary file.
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise Fail("deletion mutation atomic symlink target/ancestor refused")
+    if path.exists() and not path.is_file():
+        raise Fail("deletion mutation atomic target must be a regular file")
     existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
