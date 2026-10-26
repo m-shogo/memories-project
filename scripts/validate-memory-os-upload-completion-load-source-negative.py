@@ -25,8 +25,9 @@ def step(source: str, title: str) -> str:
     if source.count(marker) != 1:
         raise AssertionError("upload completion step missing: " + title)
     start = source.index("        run: |\n", source.index(marker)) + len("        run: |\n")
-    end = source.find("\n      - name:", start)
-    lines = source[start:end if end >= 0 else len(source)].splitlines()
+    boundaries = [source.find(marker, start) for marker in ("\n      - name:", "\n  reconcile:", "\n  validate-pr:")]
+    end = min((index for index in boundaries if index >= 0), default=len(source))
+    lines = source[start:end].splitlines()
     if any(line and not line.startswith("          ") for line in lines):
         raise AssertionError("upload completion indentation drift")
     return "\n".join(line[10:] if line else "" for line in lines) + "\n"
