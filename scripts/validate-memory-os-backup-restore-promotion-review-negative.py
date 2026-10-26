@@ -226,6 +226,8 @@ def prove_promotion_reader() -> None:
 def prove_promotion_writer_reader() -> None:
     """Exercise the actual promotion writer JSON reader, never production evidence."""
     writer = load_module(WRITER, "memory_os_promotion_review_json_reader_negative")
+    require(Path(writer.__file__).resolve() == WRITER.resolve(),
+            "promotion writer reader module identity drift")
     positive = b'{"schemaVersion":"synthetic","nested":{"ok":true}}\n'
     with tempfile.TemporaryDirectory(prefix="promotion-writer-reader-negative-") as tmp:
         root = Path(tmp)
@@ -284,7 +286,7 @@ def prove_promotion_writer_reader() -> None:
         path.write_bytes(positive)
         require(writer.load(path) == {"schemaVersion": "synthetic", "nested": {"ok": True}},
                 "promotion writer reader restored positive control failed")
-    print(f"PASS: actual promotion review JSON reader positive and {len(cases) + 2} fail-closed negatives")
+    print(f"PASS: actual promotion writer JSON reader positive and {len(cases) + 2} fail-closed negatives")
 
 
 def prove_private_negative_suite_transport() -> None:
