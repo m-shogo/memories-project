@@ -570,6 +570,58 @@ def prove_typed_transport_guard_reachability() -> None:
     print("PASS reject: sixteen external typed transport guard reachability substitutions")
 
 
+def prove_typed_json_reader(validator: Any) -> None:
+    """Exercise the real typed admission reader without changing reviewed authorities."""
+    protected = (CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-typed-json-reader-", TMP_PARENT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}}, "typed JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "typed admission JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "typed admission JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "typed admission JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "typed admission JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "typed admission JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "typed admission JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "typed admission JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * validator.MAX_JSON_BYTES + b'"}', "typed admission JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "typed admission JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"synthetic-secret",', "typed admission JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "typed admission JSON root must be object"),
+        )
+        def rejected(candidate: Any, expected: str, label: str) -> None:
+            try:
+                validator.load(candidate)
+            except validator.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong typed JSON rejection boundary")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe typed JSON accepted")
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "typed admission JSON path unsafe", "symlink")
+        rejected(Path(directory), "typed admission JSON path unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "typed admission JSON path missing or outside repository", "missing")
+        rejected("candidate.json", "typed admission JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-typed-json-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "escaped.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "typed admission JSON path missing or outside repository", "external symlink")
+            require(canary.read_bytes() == positive, "typed JSON reader mutated external canary")
+        require(path.read_bytes() == positive, "typed JSON reader mutated positive fixture")
+    require((CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes()) == protected,
+            "typed JSON reader negative mutated protected authorities")
+    print("PASS: actual typed admission JSON reader positive and 16 fail-closed negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -597,6 +649,7 @@ def main() -> int:
     prove_typed_transport_guard_reachability()
     writer = load_module(WRITER, "memory_os_typed_non_resurrection_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_typed_non_resurrection_load_negative")
+    prove_typed_json_reader(validator)
     require(writer.canonical_repo_file(WRITER, "typed evidence writer") == WRITER, "canonical typed writer path rejected")
 
     prove_reconcile_runtime_authorities()

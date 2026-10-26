@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -70,13 +71,55 @@ def canonical_repo_file_ref(value: Any, field: str) -> Path:
     require(repo_relative(path) == relative and path.is_file(), f"{field} artifact missing or escapes repository: {value}")
     return path
 
+MAX_JSON_BYTES = 1024 * 1024
+
+
 def load(path: Path) -> dict[str, Any]:
-    relative = repo_relative(path)
+    """Read typed non-resurrection authority JSON without ambiguity or private diagnostics."""
+    require(isinstance(path, Path) and path.is_absolute(), "typed admission JSON path invalid")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("typed admission JSON path missing or outside repository") from None
+    require(
+        relative == resolved and path.is_file() and not path.is_symlink(),
+        "typed admission JSON path unsafe",
+    )
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "typed admission JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("typed admission JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "typed admission JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "typed admission JSON integer too large")
+        return int(value)
+
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "typed admission JSON size limit exceeded")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("typed admission JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "typed admission JSON root must be object")
     return value
 
 def load_module(path: Path, name: str):
