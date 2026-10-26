@@ -431,6 +431,13 @@ def exercise_deletion_load_reviewed_schema() -> None:
         ("assertion float alias", lambda d: d["scenario"]["assertions"].__setitem__("deletionEpoch", 2.0)),
         ("assertion overclaim", lambda d: d["scenario"]["assertions"].__setitem__("productionEvidence", True)),
         ("limitations object", lambda d: d.__setitem__("limitations", {"productionReady": True})),
+        ("scenario status float alias", lambda d: d["scenario"].__setitem__("deletionRequestStatus", 202.0)),
+        ("scenario epoch float alias", lambda d: d["scenario"].__setitem__("deletionEpoch", 2.0)),
+        ("scenario receipt boolean alias", lambda d: d["scenario"].__setitem__("workerReceiptCount", True)),
+        ("scenario row boolean alias", lambda d: d["scenario"].__setitem__("finalOwnedRowCount", False)),
+        ("scenario final epoch float alias", lambda d: d["scenario"].__setitem__("finalAccountEpoch", 2.0)),
+        ("pre concurrency drift", lambda d: d["scenario"]["preFence"]["summary"].__setitem__("concurrency", 32)),
+        ("post concurrency float alias", lambda d: d["scenario"]["postFence"]["summary"].__setitem__("concurrency", 32.0)),
     )
     for label, mutate in contract_cases:
         altered = copy.deepcopy(contract)
@@ -450,7 +457,7 @@ def exercise_deletion_load_reviewed_schema() -> None:
             pass
         else:
             raise RuntimeError(f"deletion load result accepted {label}")
-    print("PASS: deletion-under-load reviewed schema positive and 25 negative cases")
+    print("PASS: deletion-under-load reviewed schema positive and 32 negative cases")
 
 
 

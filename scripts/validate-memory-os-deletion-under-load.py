@@ -222,14 +222,25 @@ def validate_result_shape(result: dict[str, Any]) -> None:
         "finalOwnedRowCount", "finalAccountState", "finalAccountEpoch",
         "assertions", "result", "integrityResult",
     }, "deletion-under-load scenario")
-    for name in ("preFence", "postFence"):
+    for field, reviewed in {
+        "deletionRequestStatus": 202, "deletionEpoch": 2,
+        "workerReceiptCount": 1, "finalOwnedRowCount": 0,
+        "finalAccountState": "deleted", "finalAccountEpoch": 2,
+        "result": "PASS", "integrityResult": "PASS",
+    }.items():
+        require(type(scenario.get(field)) is type(reviewed) and
+                scenario[field] == reviewed,
+                f"deletion-under-load scenario.{field} reviewed type/value drift")
+    for name, concurrency in (("preFence", 16), ("postFence", 32)):
         batch = exact_keys(scenario.get(name), {"summary", "statusCodeCounts"},
                            f"deletion-under-load {name}")
-        exact_keys(batch.get("summary"), {
+        summary = exact_keys(batch.get("summary"), {
             "requests", "concurrency", "successes", "failures",
             "statusClassCounts", "durationSeconds", "throughput",
             "latencyP50Ms", "latencyP95Ms", "latencyP99Ms",
         }, f"deletion-under-load {name}.summary")
+        require(integer(summary.get("concurrency"), f"{name}.concurrency", 1) == concurrency,
+                f"deletion-under-load {name} concurrency drift")
     reviewed_values(scenario.get("assertions"), REVIEWED_CRITERIA,
                     "deletion-under-load assertions")
     limitations = result.get("limitations")
@@ -367,8 +378,8 @@ def main() -> int:
                 readiness.get("postFenceLoadExecuted") is True,
                 "deletion-under-load result is not reconciled")
     else:
-        require(readiness.get("exactSourceResultCommitted") in (False, True) and
-                readiness.get("postFenceLoadExecuted") in (False, True),
+        require(type(readiness.get("exactSourceResultCommitted")) is bool and
+                type(readiness.get("postFenceLoadExecuted")) is bool,
                 "deletion-under-load readiness fields must be boolean")
 
     print("Memory OS deletion-under-load validation PASS")
