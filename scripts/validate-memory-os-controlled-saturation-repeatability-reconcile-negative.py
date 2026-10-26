@@ -992,6 +992,53 @@ def run_repeatability_matrix_boundary_negatives() -> None:
 
 
 
+def run_repeatability_reconciler_json_negatives(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="repeatability-json-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_text('{"safe":true}', encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".repeatability-json-negative-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            path = inside / "input.json"
+            path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+            if module.load(path) != {"outer": {"a": 1, "b": 2}}:
+                raise RuntimeError("repeatability reconciler JSON positive control failed")
+            for raw in ('{"value": Infinity}', '{"value": 1e999}',
+                        '{"a":1,"a":2}', '{"outer":{"a":1,"a":2}}',
+                        '{"broken":', '[1,2]'):
+                path.write_text(raw, encoding="utf-8")
+                try:
+                    module.load(path)
+                except module.Fail:
+                    pass
+                else:
+                    raise RuntimeError("repeatability reconciler accepted ambiguous/nonfinite JSON")
+            path.write_text('{"safe":true}', encoding="utf-8")
+            original = path.read_bytes()
+            try:
+                module.write(path, {"unsafe": float("inf")})
+            except ValueError:
+                pass
+            else:
+                raise RuntimeError("repeatability reconciler accepted nonfinite JSON output")
+            if path.read_bytes() != original:
+                raise RuntimeError("repeatability reconciler nonfinite write mutated existing file")
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            for unsafe in (linked_file, linked_parent / "canary.json", canary, inside / "missing.json"):
+                try:
+                    module.load(unsafe)
+                except module.Fail:
+                    pass
+                else:
+                    raise RuntimeError("repeatability reconciler JSON reader accepted unsafe path")
+        if canary.read_text(encoding="utf-8") != '{"safe":true}':
+            raise RuntimeError("repeatability reconciler JSON reader changed external canary")
+    print("PASS: repeatability reconciler JSON parser, path and output negatives (11 cases)")
+
+
 def run_repeatability_nonfinite_negatives() -> None:
     workflow = (ROOT / ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml").read_text(encoding="utf-8")
     for path in ("scripts/analyze-memory-os-controlled-saturation-repeatability.py",
@@ -1362,6 +1409,7 @@ def main() -> int:
     run_repeatability_matrix_boundary_negatives()
     run_repeatability_contract_policy_negatives()
     run_repeatability_nonfinite_negatives()
+    run_repeatability_reconciler_json_negatives(module)
     run_repeatability_analyzer_matrix_producer_negatives()
     run_repeatability_analyzer_path_atomic_negatives()
     run_prewrite_failure(module)
