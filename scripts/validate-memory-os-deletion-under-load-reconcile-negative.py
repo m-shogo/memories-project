@@ -664,6 +664,55 @@ def exercise_transaction_primary_failure_redaction(module: ModuleType) -> None:
 
 
 
+def exercise_evidence_reference_path_admission(module: ModuleType) -> None:
+    """Run the actual source-reference guard against disposable filesystem nodes."""
+    with tempfile.TemporaryDirectory(prefix=".deletion-load-evidence-negative-", dir=ROOT) as tmp:
+        fixture = Path(tmp)
+        regular = fixture / "regular.json"
+        regular.write_text("SYNTHETIC_CANARY", encoding="utf-8")
+        relative = lambda path: str(path.relative_to(ROOT))
+        module.require_reviewed_evidence_file(relative(regular))
+
+        def reject(label: str, ref: object) -> None:
+            try:
+                module.require_reviewed_evidence_file(ref)
+            except module.ReconcileFailure as exc:
+                require("SYNTHETIC_CANARY" not in str(exc),
+                        f"evidence reference leaked canary: {label}")
+            else:
+                raise RuntimeError(f"unsafe deletion-load evidence reference accepted: {label}")
+
+        direct = fixture / "direct-link"
+        direct.symlink_to(regular)
+        reject("direct symlink", relative(direct))
+        direct.unlink()
+        dangling = fixture / "dangling-link"
+        dangling.symlink_to(fixture / "missing-target")
+        reject("dangling symlink", relative(dangling))
+        dangling.unlink()
+        actual = fixture / "actual"
+        actual.mkdir()
+        (actual / "file").write_text("synthetic", encoding="utf-8")
+        alias = fixture / "alias"
+        alias.symlink_to(actual, target_is_directory=True)
+        reject("ancestor symlink", relative(alias / "file"))
+        alias.unlink()
+        directory = fixture / "directory"
+        directory.mkdir()
+        reject("directory", relative(directory))
+        fifo = fixture / "fifo"
+        os.mkfifo(fifo)
+        reject("FIFO", relative(fifo))
+        reject("missing", relative(fixture / "missing"))
+        reject("absolute", str(regular))
+        reject("traversal", "../outside.json")
+        reject("empty", "")
+        reject("non-string", 42)
+        require(regular.read_text(encoding="utf-8") == "SYNTHETIC_CANARY",
+                "synthetic evidence canary was changed")
+    print("PASS: deletion-under-load evidence reference positive and 10 unsafe-path negatives")
+
+
 def exercise_reconciler_json_reader(module: ModuleType) -> None:
     require(isinstance(module.load(module.CANONICAL_CONTRACT_PATH), dict),
             "canonical deletion load contract reader positive failed")
@@ -861,6 +910,7 @@ def main() -> int:
     exercise_reconciler_json_reader(module)
     module.enforce_runtime_authorities()
     module.enforce_atomic_writer_authority()
+    exercise_evidence_reference_path_admission(module)
 
     expect_rejection(module, "repository root", lambda: swap_attr(module, "ROOT", module.CANONICAL_ROOT / "scripts"))
     expect_rejection(module, "deletion contract", lambda: swap_attr(module, "CONTRACT_PATH", module.CANONICAL_LOAD_PATH))
