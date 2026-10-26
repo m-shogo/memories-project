@@ -1142,7 +1142,7 @@ def run_load_validator_json_negatives() -> None:
                 b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
                 b'{"a":1,"a":2}', b'{"outer":{"a":1,"a":2}}',
                 b'{"value":' + b'9' * 5000 + b'}',
-                b'{"' + secret.encode() + b'":', b'\xff\xfe',
+                b'{"' + secret.encode() + b'":', bytes((0xFF, 0xFE)),
                 b'[1,2,3]',
             ):
                 target.write_bytes(raw)
