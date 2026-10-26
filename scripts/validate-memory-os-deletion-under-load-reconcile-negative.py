@@ -403,6 +403,26 @@ def exercise_deletion_load_reviewed_schema() -> None:
     result = validator.load(ROOT / validator.REVIEWED_RESULT_PATH)
     validator.validate_reviewed_contract(copy.deepcopy(contract))
     validator.validate_result_shape(copy.deepcopy(result))
+    validator.validate_forbidden_result_markers(copy.deepcopy(result))
+    for label, marker in (
+        ("postgres", "PoStGrEs://synthetic"),
+        ("postgresql", "POSTGRESQL://synthetic"),
+        ("bearer", "bEaReR SYNTHETIC_SECRET_DO_NOT_LOG"),
+        ("password", "PASSWORD=SYNTHETIC_SECRET_DO_NOT_LOG"),
+        ("minio", "MiNiOaDmIn"),
+        ("object key", "OBJECT_KEY"),
+        ("account prefix", "AcCt_"),
+        ("idempotency", "IdEm-synthetic"),
+    ):
+        altered = copy.deepcopy(result)
+        altered["limitations"].append(marker)
+        try:
+            validator.validate_forbidden_result_markers(altered)
+        except validator.ValidationFailure as exc:
+            require("SYNTHETIC_SECRET_DO_NOT_LOG" not in str(exc),
+                    f"forbidden marker leaked raw synthetic secret: {label}")
+        else:
+            raise RuntimeError(f"deletion load accepted mixed-case forbidden marker: {label}")
     contract_cases = (
         ("result redirect", lambda d: d.__setitem__("resultPath", "contracts/operations/production-operability-status.json")),
         ("result traversal", lambda d: d.__setitem__("resultPath", "../outside.json")),
@@ -457,7 +477,7 @@ def exercise_deletion_load_reviewed_schema() -> None:
             pass
         else:
             raise RuntimeError(f"deletion load result accepted {label}")
-    print("PASS: deletion-under-load reviewed schema positive and 32 negative cases")
+    print("PASS: deletion-under-load reviewed schema positive, 32 schema negatives and 8 mixed-case marker negatives")
 
 
 

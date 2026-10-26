@@ -249,6 +249,16 @@ def validate_result_shape(result: dict[str, Any]) -> None:
             "deletion-under-load limitations must be nonempty strings")
 
 
+def validate_forbidden_result_markers(result: dict[str, Any]) -> None:
+    serialized = json.dumps(result, ensure_ascii=False).casefold()
+    for forbidden in (
+        "postgres://", "postgresql://", "Bearer ", "password=", "minioadmin",
+        "acct_", "job_", "prv_", "spl_", "upl_", "idem-", "object_key",
+    ):
+        require(forbidden.casefold() not in serialized,
+                f"deletion-under-load result contains forbidden content: {forbidden}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-commit-sha", default=os.getenv("EXPECTED_COMMIT_SHA", ""))
@@ -365,13 +375,7 @@ def main() -> int:
     require(isinstance(assertions, dict), "deletion-under-load assertions missing")
     reviewed_values(assertions, REVIEWED_CRITERIA, "deletion-under-load assertions")
 
-    serialized = json.dumps(result, ensure_ascii=False)
-    for forbidden in (
-        "postgres://", "postgresql://", "Bearer ", "password=", "minioadmin",
-        "acct_", "job_", "prv_", "spl_", "upl_", "idem-", "object_key",
-    ):
-        require(forbidden not in serialized,
-                f"deletion-under-load result contains forbidden content: {forbidden}")
+    validate_forbidden_result_markers(result)
 
     if args.require_reconciled:
         require(readiness.get("exactSourceResultCommitted") is True and
