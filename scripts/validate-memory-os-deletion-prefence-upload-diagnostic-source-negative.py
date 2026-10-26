@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "e22795e7f872dcecf8e863a24572b11a1b6b5184"
+REVIEWED_VALIDATOR = "b02e9cd6a45a5b1d539e39b818102b62434c90a4"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -671,6 +671,36 @@ def typed_criteria_runtime():
             else:
                 raise AssertionError("pre-fence upload accepted contract path " + label + ": " + key)
             cases += 1
+
+    # Exact assertion keys and final-owned-row cross-field agreement are mandatory.
+    with tempfile.TemporaryDirectory(prefix=".prefence-assertions-", dir=ROOT) as temp:
+        original_result = validator.RESULT_PATH
+        synthetic = Path(temp) / "result.json"
+        validator.RESULT_PATH = synthetic
+        try:
+            for label, key, value in (
+                ("missing", "finalOwnedRowCount", None),
+                ("extra", "syntheticUnreviewed", True),
+                ("false promotion", "productionReady", True),
+                ("mismatch", "finalOwnedRowCount", 1),
+                ("bool alias", "finalOwnedRowCount", False),
+                ("string alias", "finalOwnedRowCount", "0"),
+            ):
+                candidate = copy.deepcopy(canonical)
+                if value is None:
+                    candidate["scenario"]["assertions"].pop(key)
+                else:
+                    candidate["scenario"]["assertions"][key] = value
+                synthetic.write_text(json.dumps(candidate), encoding="utf-8")
+                try:
+                    validator.validate_result(contract, None)
+                except validator.Fail:
+                    pass
+                else:
+                    raise AssertionError("pre-fence upload accepted assertion " + label)
+                cases += 1
+        finally:
+            validator.RESULT_PATH = original_result
 
     with tempfile.TemporaryDirectory(prefix=".prefence-upload-typed-", dir=ROOT) as temp:
         synthetic = Path(temp) / "result.json"

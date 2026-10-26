@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-sourc
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-REVIEWED_VALIDATOR = "3210722df3bd1c3ff50d988f8d4cfbce8be10cd2"
+REVIEWED_VALIDATOR = "0b611bb9c635cd44d01ce63ea667a866e5300f68"
 SECONDARY_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py"
 REVIEWED_SECONDARY_NEGATIVE = "38bedaf9968ee31879961390540f68f52d4eb938"
 REVIEWED_RECONCILER = "86fb3bb11b893a74ab6d01a4151253b56997c62b"
@@ -665,6 +665,36 @@ def typed_criteria_runtime():
             else:
                 raise AssertionError("pre-fence mutation accepted contract path " + label + ": " + key)
             cases += 1
+
+    # Exact assertion keys and final-owned-row cross-field agreement are mandatory.
+    with tempfile.TemporaryDirectory(prefix=".prefence-assertions-", dir=ROOT) as temp:
+        original_result = validator.RESULT_PATH
+        synthetic = Path(temp) / "result.json"
+        validator.RESULT_PATH = synthetic
+        try:
+            for label, key, value in (
+                ("missing", "finalOwnedRowCount", None),
+                ("extra", "syntheticUnreviewed", True),
+                ("false promotion", "productionReady", True),
+                ("mismatch", "finalOwnedRowCount", 1),
+                ("bool alias", "finalOwnedRowCount", False),
+                ("string alias", "finalOwnedRowCount", "0"),
+            ):
+                candidate = copy.deepcopy(canonical)
+                if value is None:
+                    candidate["scenario"]["assertions"].pop(key)
+                else:
+                    candidate["scenario"]["assertions"][key] = value
+                synthetic.write_text(json.dumps(candidate), encoding="utf-8")
+                try:
+                    validator.validate_result(contract, None)
+                except validator.Fail:
+                    pass
+                else:
+                    raise AssertionError("pre-fence mutation accepted assertion " + label)
+                cases += 1
+        finally:
+            validator.RESULT_PATH = original_result
 
     with tempfile.TemporaryDirectory(prefix=".prefence-mutation-typed-", dir=ROOT) as temp:
         synthetic = Path(temp) / "result.json"

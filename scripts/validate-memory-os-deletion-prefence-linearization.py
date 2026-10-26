@@ -17,6 +17,7 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-line
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
+EXPECTED_ASSERTION_KEYS = ("allAuthenticatedBeforeFence", "allReleasedAfterFenceUnauthorized", "deletionWorkerCompleted", "finalOwnedRowCount", "noTransportErrors", "noUnexpectedStatuses", "productionEvidence",)
 EXPECTED_LIMITATIONS = ("Preview read is the first in-flight surface proven", "one account and one deletion worker", "local PostgreSQL 16 and MinIO on a GitHub-hosted runner", "does not prove host-failure behavior or multi-account worker saturation", "not production deletion-capacity evidence",)
 EXPECTED_BOUNDARY_KEYS = ("syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "previewReadSurfaceOnly", "hostFailureCovered", "multiAccountWorkerSaturationCovered", "productionReady",)
 EXPECTED_READINESS_KEYS = ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented", "exactSourceResultCommitted", "preFenceInFlightLinearizationProven", "productionDependenciesTested", "independentReviewCompleted", "productionReady",)
@@ -221,6 +222,10 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
     require(scenario.get("integrityResult") == "PASS", "integrity must PASS")
     assertions = scenario.get("assertions")
     require(isinstance(assertions, dict), "assertions required")
+    require(assertions.keys() == set(EXPECTED_ASSERTION_KEYS), "assertion key set drift")
+    require(type(assertions["finalOwnedRowCount"]) is int and
+            assertions["finalOwnedRowCount"] == scenario["finalOwnedRowCount"],
+            "assertion final owned row count drift")
     for key in (
         "allAuthenticatedBeforeFence",
         "allReleasedAfterFenceUnauthorized",
