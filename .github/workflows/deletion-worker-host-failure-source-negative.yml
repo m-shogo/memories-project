@@ -65,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py
-          python scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py
+          # The source validator executes the reconciler negative in a disposable fixture.
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"
