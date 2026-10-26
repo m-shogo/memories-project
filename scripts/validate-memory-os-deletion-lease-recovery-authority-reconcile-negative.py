@@ -122,8 +122,12 @@ def expect_post_write_rollback(module) -> None:
         rejected = False
         try:
             module.main()
-        except BaseException:
+        except RuntimeError as exc:
             rejected = True
+            if ("lease-recovery post-write authority validation failed:" not in str(exc)
+                    or "synthetic post-write operability failure" in str(exc)
+                    or not exc.__suppress_context__):
+                raise AssertionError("lease-recovery leaked primary post-write exception text") from exc
         if not rejected:
             raise AssertionError("lease-recovery reconcile accepted synthetic post-write validation failure")
         if LOAD_CONTRACT.read_bytes() != original_load:
@@ -178,12 +182,14 @@ def expect_rollback_failure_is_exhaustive(module) -> None:
         if caught is None:
             raise AssertionError("lease-recovery reconcile accepted synthetic rollback failure")
         text = str(caught)
-        if "synthetic lease primary post-write validation failure" not in text:
-            raise AssertionError(f"lease rollback failure masked primary diagnostic: {text}")
-        if "rollback incomplete" not in text:
-            raise AssertionError(f"lease rollback failure omitted incomplete diagnostic: {text}")
-        if "synthetic lease rollback replacement failure" not in text:
-            raise AssertionError(f"lease rollback failure omitted rollback diagnostic: {text}")
+        if not isinstance(caught, RuntimeError):
+            raise AssertionError("lease rollback did not raise bounded domain error")
+        if "lease-recovery post-write authority validation failed: SystemExit" not in text:
+            raise AssertionError("lease rollback lost primary exception class")
+        if "rollback incomplete" not in text or "load authority: OSError" not in text:
+            raise AssertionError("lease rollback lost incomplete status/class")
+        if "synthetic" in text or not caught.__suppress_context__:
+            raise AssertionError("lease rollback leaked untrusted exception text")
         if rollback_replace_calls != 2:
             raise AssertionError(
                 f"lease rollback stopped before restoring every authority: replace calls={rollback_replace_calls}"
@@ -295,7 +301,7 @@ def main() -> int:
     expect_rollback_failure_is_exhaustive(module)
     module.require_canonical_authorities()
 
-    print("PASS: lease-recovery authority pins canonical data/execution paths, atomic publication, mode and exhaustive rollback")
+    print("PASS: lease-recovery authority pins canonical paths, atomic publication, secret-free diagnostics and exhaustive rollback")
     return 0
 
 

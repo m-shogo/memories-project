@@ -14,7 +14,7 @@ REVIEWED_INDEPENDENT = "1df630c6cb93013d0d0592b46ec2c49374e92882"
 SOURCES = {
     "scripts/reconcile-memory-os-deletion-mutation-evidence.py": "9c54f24dce5049c4a383c90179c30da48aeeb3f5",
     "scripts/reconcile-memory-os-deletion-advanced-evidence.py": "4a1358636f0b4e199d37155dfd2ee1c47fba03cd",
-    "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py": "e57a2e8827208bcbcbec3aad583671727554dc71",
+    "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py": "0d04c6728c0d208d9334cb57ca8e5539f93e74a2",
     "scripts/reconcile-memory-os-load-readiness-note.py": "8012804fe785223250921e5fcf0b8657489caf59",
     "scripts/reconcile-memory-os-deletion-container-kill-authority.py": "8ebb43ea9b39bfbb5c287d0e61b87e2334ab6867",
 }

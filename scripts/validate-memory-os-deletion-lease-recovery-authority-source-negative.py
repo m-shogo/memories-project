@@ -15,7 +15,13 @@ SELF = "scripts/validate-memory-os-deletion-lease-recovery-authority-source-nega
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_PUBLISHER = "ecb7b9858fdb3b203f07205454836c0a6c6af149"
-REVIEWED_INDEPENDENT = "ee47cf61046b716b2357f28c50befdb114d3d832"
+REVIEWED_INDEPENDENT = "67cad76cab58313a92bf4993b707a9123c4150a6"
+RECONCILER = "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py"
+CROSS_NEGATIVE = "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
+REVIEWED_RECONCILER = "0d04c6728c0d208d9334cb57ca8e5539f93e74a2"
+REVIEWED_RECONCILE_NEGATIVE = "45274a621d1964f7ece7a203a857daa71972fbdf"
+REVIEWED_CROSS_NEGATIVE = "0a6217af102ab01273df28516d856ba2b87d8654"
 
 def blob(content: str) -> str:
     data = content.encode("utf-8")
@@ -204,12 +210,20 @@ else:
 
 def main() -> None:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SELF, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, INDEPENDENT, SELF, RECONCILER, RECONCILE_NEGATIVE, CROSS_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    'test "$(git rev-parse HEAD)" = "$expected"',
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("lease-recovery independent CI reachability drift: " + marker)
+    for path, expected in ((RECONCILER, REVIEWED_RECONCILER),
+                           (RECONCILE_NEGATIVE, REVIEWED_RECONCILE_NEGATIVE),
+                           (CROSS_NEGATIVE, REVIEWED_CROSS_NEGATIVE)):
+        reviewed_source(read(path), expected, path)
+    if (independent.count(RECONCILER) != 2
+            or independent.count(RECONCILE_NEGATIVE) != 3
+            or independent.count(CROSS_NEGATIVE) != 2):
+        raise AssertionError("lease authority transitive negative CI reachability drift")
     reviewed_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)

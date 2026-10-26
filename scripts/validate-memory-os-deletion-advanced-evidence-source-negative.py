@@ -21,7 +21,7 @@ RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-advanced-evidence-reco
 CROSS_NEGATIVE = "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
 REVIEWED_RECONCILER = "4a1358636f0b4e199d37155dfd2ee1c47fba03cd"
 REVIEWED_RECONCILE_NEGATIVE = "44819f1750fb162dd39b1461e19b1618aef35fe8"
-REVIEWED_CROSS_NEGATIVE = "e223b480edd404d0e3b3ef9f5699e7b46ff073b6"
+REVIEWED_CROSS_NEGATIVE = "0a6217af102ab01273df28516d856ba2b87d8654"
 
 def blob(content: str) -> str:
     data = content.encode("utf-8")
