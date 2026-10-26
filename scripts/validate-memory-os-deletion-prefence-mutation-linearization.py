@@ -33,6 +33,31 @@ EXPECTED_RULES = (
 )
 
 
+EXPECTED_SEQUENCE = (
+    "create one synthetic active account, one committed Preview and 16 upload-target import jobs",
+    "start 16 Apply and 16 upload-authorization HTTP requests",
+    "prove all 32 session resolutions complete successfully at account epoch 1",
+    "pause all 32 before their fenced services execute",
+    "DELETE /v1/account returns 202 with durable deletion epoch 2",
+    "release the already-authenticated old-epoch requests",
+    "all 16 Apply and all 16 upload-authorization requests return exactly 401",
+    "before deletion worker erasure, apply_confirmation, memory_item, upload_authorization and quarantine_object mutation counts attributable to the paused requests remain zero",
+    "leased deletion worker completes exactly one receipt and all account-owned rows converge to zero",
+)
+
+
+EXPECTED_ABORT = (
+    "any request reaches its fenced service before all 32 old-epoch sessions are paused",
+    "DELETE does not return 202 with epoch 2",
+    "any released Apply or upload-authorization request returns anything other than 401",
+    "any released request has a transport error",
+    "any Apply or upload durable mutation appears before worker erasure",
+    "deletion worker processes zero or more than one account",
+    "any account-owned row survives worker completion",
+    "result contains bearer token, account id, job id, Preview id, object key, idempotency key, endpoint credential or database URL",
+)
+
+
 EXPECTED_CRITERIA: dict[str, Any] = {
     "authenticatedBeforeFence": 32,
     "deletionRequestStatus": 202,
@@ -131,6 +156,11 @@ def validate_contract(contract: dict[str, Any]) -> None:
             "validation rule key set drift")
     for key in EXPECTED_RULES:
         require(rules[key] is True, f"validation rule must remain true: {key}")
+
+    for key, expected in (("requiredSequence", EXPECTED_SEQUENCE), ("abortCriteria", EXPECTED_ABORT)):
+        actual = contract.get(key)
+        require(type(actual) is list and actual == list(expected),
+                f"reviewed {key} list drift")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")
