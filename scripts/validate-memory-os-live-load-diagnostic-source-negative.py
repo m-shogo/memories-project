@@ -19,6 +19,7 @@ SELF = "scripts/validate-memory-os-live-load-diagnostic-source-negative.py"
 TARGET = "docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+REVIEWED_PUBLISHER = "e83eb41e981e42499cba5c30861c67320d3e804b"
 REVIEWED_PR = "2a02dd661662a1ed60676c7b20f2b3e53e2f8cdf"
 REVIEWED_INDEPENDENT = "dc50ba77b412001552410c2ec1e1f1a5f0b401de"
 
@@ -30,10 +31,12 @@ def require_reviewed_source(content: str, expected: str, label: str) -> None:
     if blob(content) != expected:
         raise AssertionError("live load " + label + " complete Git blob drift")
 
-def reviewed_blob_negatives(pr: str, independent: str) -> None:
+def reviewed_blob_negatives(publisher: str, pr: str, independent: str) -> None:
+    require_reviewed_source(publisher, REVIEWED_PUBLISHER, "publisher")
     require_reviewed_source(pr, REVIEWED_PR, "PR")
     require_reviewed_source(independent, REVIEWED_INDEPENDENT, "independent CI")
     for label, original, expected in (
+        ("publisher", publisher, REVIEWED_PUBLISHER),
         ("PR", pr, REVIEWED_PR),
         ("independent CI", independent, REVIEWED_INDEPENDENT),
     ):
@@ -42,7 +45,7 @@ def reviewed_blob_negatives(pr: str, independent: str) -> None:
         except AssertionError:
             continue
         raise AssertionError("live load reviewed Git blob accepted synthetic source drift: " + label)
-    print("PASS: live load PR and independent CI complete Git blob source negatives (2 cases)")
+    print("PASS: live load publisher, PR and independent CI complete Git blob source negatives (3 cases)")
 
 def read(path: str) -> str:
     target = ROOT / path
@@ -300,7 +303,7 @@ def main() -> None:
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("independent live load source guard reachability missing: " + marker)
-    reviewed_blob_negatives(pr, independent)
+    reviewed_blob_negatives(publisher, pr, independent)
     independent_identity_runtime(independent)
     policy(publisher)
     mutations(publisher)
