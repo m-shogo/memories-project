@@ -141,15 +141,23 @@ def find_scenario(values: list[Any], scenario_id: str) -> dict[str, Any] | None:
     return None
 
 
+def run_validator_command(command: list[str], env: dict[str, str], label: str) -> None:
+    try:
+        subprocess.run(command, cwd=ROOT, env=env, check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(f"{label} failed (exit {exc.returncode}); raw output withheld") from None
+    except OSError as exc:
+        raise SystemExit(f"{label} execution failed: {type(exc).__name__}") from None
+
+
 def validate_source_authority(expected_sha: str) -> None:
     enforce_runtime_authorities()
     env = os.environ.copy()
     env["EXPECTED_COMMIT_SHA"] = expected_sha
-    subprocess.run(
+    run_validator_command(
         [sys.executable, str(CONTROLLED_VALIDATOR), "--expected-commit-sha", expected_sha],
-        cwd=ROOT,
-        env=env,
-        check=True,
+        env, "controlled saturation source validator",
     )
 
 
@@ -164,7 +172,7 @@ def validate_post_write(expected_sha: str) -> None:
     env = os.environ.copy()
     env["EXPECTED_COMMIT_SHA"] = expected_sha
     for command in commands:
-        subprocess.run(command, cwd=ROOT, env=env, check=True)
+        run_validator_command(command, env, "controlled saturation post-write validator")
 
 
 def write_transactionally(
@@ -189,7 +197,7 @@ def write_transactionally(
                 if rollback_error is None:
                     rollback_error = exc
         if rollback_error is not None:
-            raise RuntimeError(f"controlled saturation authority rollback failed: {rollback_error}") from rollback_error
+            raise RuntimeError(f"controlled saturation authority rollback failed: {type(rollback_error).__name__}") from None
         raise
 
 

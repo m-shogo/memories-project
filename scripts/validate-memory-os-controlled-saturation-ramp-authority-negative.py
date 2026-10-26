@@ -141,6 +141,49 @@ def verify_atomic_path_negatives(module) -> None:
     print("PASS: controlled saturation atomic path, mode, rollback and canary negatives")
 
 
+def verify_validator_output_negative(module) -> None:
+    marker = "SYNTHETIC_CONTROLLED_SATURATION_SECRET_MARKER"
+    original_run = module.subprocess.run
+    calls = []
+
+    def failed_validator(command, **kwargs):
+        if kwargs.get("stdout") != module.subprocess.DEVNULL or kwargs.get("stderr") != module.subprocess.DEVNULL:
+            raise RuntimeError("controlled saturation validator output must be suppressed")
+        if kwargs.get("check") is not True:
+            raise RuntimeError("controlled saturation validator must fail closed")
+        calls.append(command)
+        raise module.subprocess.CalledProcessError(17, command, output=marker, stderr=marker)
+
+    try:
+        module.subprocess.run = failed_validator
+        for validate in (module.validate_source_authority, module.validate_post_write):
+            try:
+                validate("0" * 40)
+            except SystemExit as exc:
+                if marker in str(exc) or "exit 17" not in str(exc) or not exc.__suppress_context__:
+                    raise RuntimeError("controlled saturation validator failure leaked output or lost exit code") from None
+            else:
+                raise RuntimeError("controlled saturation accepted failing validator")
+        if len(calls) != 2:
+            raise RuntimeError("controlled saturation validator test did not reach both call paths")
+
+        def missing_validator(command, **kwargs):
+            raise OSError(marker)
+
+        module.subprocess.run = missing_validator
+        for validate in (module.validate_source_authority, module.validate_post_write):
+            try:
+                validate("0" * 40)
+            except SystemExit as exc:
+                if marker in str(exc) or "OSError" not in str(exc) or not exc.__suppress_context__:
+                    raise RuntimeError("controlled saturation validator execution error leaked raw exception") from None
+            else:
+                raise RuntimeError("controlled saturation accepted missing validator")
+    finally:
+        module.subprocess.run = original_run
+    print("PASS: controlled saturation prewrite/postwrite validator output and exception redaction (4 cases)")
+
+
 def verify_nonfinite_ramp_measurements() -> None:
     validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
     spec = importlib.util.spec_from_file_location("controlled_saturation_numeric_validator", validator_path)
@@ -360,6 +403,7 @@ def main() -> int:
     module.enforce_runtime_authorities()
     verify_atomic_replace_failure(module)
     verify_atomic_path_negatives(module)
+    verify_validator_output_negative(module)
     print("PASS: controlled saturation direct reconcile source authorities are canonical and atomic")
     print("atomic replacement failure: rejected without authority mutation")
     print("temporary authority residue: none")
