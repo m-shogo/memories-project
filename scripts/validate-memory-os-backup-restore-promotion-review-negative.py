@@ -477,10 +477,15 @@ def main() -> int:
             temp_registry.write_bytes(before)
             temp_registry.chmod(before_mode)
             writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic post-append validation failure"))
-            expect_rejected(
-                "promotion registry post-append validation rollback",
-                lambda: writer.write_registry_transactionally(candidate),
-            )
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review registry append validation failed; rollback completed"
+                        and exc.__suppress_context__,
+                        f"promotion rollback success exposed raw private diagnostics: {exc}")
+                print("PASS reject: promotion registry post-append validation rollback is private")
+            else:
+                raise Fail("promotion registry post-append validation rollback unexpectedly accepted")
             require(temp_registry.read_bytes() == before, "promotion registry bytes changed after rejected transactional append")
             require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "promotion registry mode changed after rejected transactional append")
             require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")), "promotion registry rollback left temporary residue")
@@ -494,10 +499,13 @@ def main() -> int:
                 writer.write_registry_transactionally(candidate)
             except writer.Fail as exc:
                 message = str(exc)
-                require("synthetic post-append promotion validation failure" in message, "promotion append rollback failure erased primary validation diagnostic")
-                require("rollback incomplete" in message, "promotion append rollback failure marker missing")
-                require("synthetic promotion rollback restore rejection" in message, "promotion append rollback failure diagnostic missing")
-                print("PASS diagnostics: promotion append preserves primary validation and rollback failure diagnostics")
+                require(message == "promotion review registry append validation failed; rollback incomplete"
+                        and exc.__suppress_context__,
+                        "promotion append rollback failure exposed raw private diagnostics")
+                require("synthetic post-append" not in message
+                        and "synthetic promotion rollback" not in message,
+                        "promotion append rollback failure leaked private error markers")
+                print("PASS diagnostics: promotion append rollback failure retains fixed class without private errors")
             else:
                 raise Fail("promotion append validation plus rollback failure unexpectedly succeeded")
             finally:
