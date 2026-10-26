@@ -35,6 +35,11 @@ EXCEPTION_CLASSES = {
     "NegativeFailure", "ReconcileFailure", "Fail", "AssertionError",
     "RuntimeError", "SystemExit", "OSError", "KeyError", "ValueError",
 }
+VALIDATOR_STAGES = {
+    "short stability result validation", "sustained local soak authority reconcile",
+    "post-write short stability validator", "post-write load validator",
+    "post-write operability validator",
+}
 
 def snapshot() -> dict[str, tuple[str, int]]:
     result = {}
@@ -45,15 +50,17 @@ def snapshot() -> dict[str, tuple[str, int]]:
         result[name] = (hashlib.sha256(path.read_bytes()).hexdigest(), stat.S_IMODE(path.stat().st_mode))
     return result
 
-def make_report(stage: str, exception_class: str, drift: bool) -> dict[str, object]:
+def make_report(stage: str, exception_class: str, drift: bool, validator_stage: str = "unknown") -> dict[str, object]:
     allowed = {row[0] for row in CASES}
     stage = stage if stage in allowed else "unknown"
     exception_class = exception_class if exception_class in EXCEPTION_CLASSES else "UNKNOWN"
+    validator_stage = validator_stage if validator_stage in VALIDATOR_STAGES else "unknown"
     return {
         "schemaVersion": "memory-os-load-foundation-ordering-diagnostic.v1",
         "classification": "LOCAL_SYNTHETIC_DIAGNOSTIC",
         "subcase": stage,
         "exceptionClass": exception_class,
+        "validatorStage": validator_stage,
         "protectedDrift": drift,
         "result": "FAIL" if stage != "unknown" or drift else "PASS",
         "diagnosticOnly": True,
@@ -99,26 +106,41 @@ def run_diagnostic() -> int:
     }
     for label, key, method in CASES:
         failure = None
-        with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as sink:
-            with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
-                try:
-                    getattr(negative, method)(modules[key])
-                except BaseException as exc:
-                    failure = type(exc).__name__
+        validator_stage = "unknown"
+        original_runner = None
+        if label == "short-preservation":
+            original_runner = modules["short"].run_validator
+
+            def tracked_runner(path: Path, stage: str, *args: str) -> None:
+                nonlocal validator_stage
+                validator_stage = stage if stage in VALIDATOR_STAGES else "unknown"
+                return original_runner(path, stage, *args)
+
+            modules["short"].run_validator = tracked_runner
+        try:
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as sink:
+                with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+                    try:
+                        getattr(negative, method)(modules[key])
+                    except BaseException as exc:
+                        failure = type(exc).__name__
+        finally:
+            if original_runner is not None:
+                modules["short"].run_validator = original_runner
         try:
             drift = snapshot() != before
         except Exception:
             drift = True
         if failure is not None or drift:
-            write_report(make_report(label, failure or "RuntimeError", drift))
+            write_report(make_report(label, failure or "RuntimeError", drift, validator_stage))
             return 1
     write_report(make_report("unknown", "UNKNOWN", False))
     return 0
 
 def self_test() -> None:
-    failure = make_report("short-preservation", "SYNTHETIC_SECRET_CANARY", False)
+    failure = make_report("short-preservation", "SYNTHETIC_SECRET_CANARY", False, "SYNTHETIC_SECRET_CANARY")
     if (failure["subcase"] != "short-preservation" or failure["exceptionClass"] != "UNKNOWN"
-            or failure["result"] != "FAIL" or "SYNTHETIC_SECRET_CANARY" in json.dumps(failure)):
+            or failure["result"] != "FAIL" or failure["validatorStage"] != "unknown" or "SYNTHETIC_SECRET_CANARY" in json.dumps(failure)):
         raise AssertionError("diagnostic report allowlist drift")
     positive = make_report("unknown", "UNKNOWN", False)
     if positive["result"] != "PASS" or positive["productionDecision"] != "NO_GO":

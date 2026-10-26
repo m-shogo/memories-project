@@ -79,10 +79,16 @@ jobs:
               "UNKNOWN", "NegativeFailure", "ReconcileFailure", "Fail",
               "AssertionError", "RuntimeError", "SystemExit", "OSError", "KeyError", "ValueError",
           }
+          validator_stages = {
+              "unknown", "short stability result validation", "sustained local soak authority reconcile",
+              "post-write short stability validator", "post-write load validator",
+              "post-write operability validator",
+          }
           if (report.get("schemaVersion") != "memory-os-load-foundation-ordering-diagnostic.v1"
                   or report.get("classification") != "LOCAL_SYNTHETIC_DIAGNOSTIC"
                   or report.get("subcase") not in stages
                   or report.get("exceptionClass") not in classes
+                  or report.get("validatorStage") not in validator_stages
                   or report.get("diagnosticOnly") is not True
                   or report.get("productionEvidence") is not False
                   or report.get("productionReady") is not False
@@ -94,6 +100,7 @@ jobs:
           if report.get("result") != expected:
               raise SystemExit("bounded ordering diagnostic exit/result mismatch")
           print("LOCAL_ONLY ordering diagnostic: " + report["subcase"] + " / " + report["exceptionClass"])
+          print("allowlisted nested validator stage: " + report["validatorStage"])
           print("protected authority drift: " + str(report["protectedDrift"]).lower())
           PY
           git diff --check
