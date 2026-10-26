@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -118,9 +119,46 @@ def verify_capacity_numeric_boundary() -> None:
     print("PASS: capacity numeric positive and 6 nonfinite/invalid negatives")
 
 
+
+def verify_capacity_timestamp_semantics() -> None:
+    """Validate a canonical UTC positive and seven timestamp negatives."""
+    validator_path = ROOT / "scripts/validate-memory-os-capacity-ramp.py"
+    spec = importlib.util.spec_from_file_location("capacity_timestamp_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("capacity timestamp validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    result_path = ROOT / "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"
+    canonical = validator.load(result_path)
+    validator.validate_capacity_timestamps(copy.deepcopy(canonical))
+    cases = (
+        ("impossible day", ("scenario", "startedAt"), "2026-02-30T21:38:38Z"),
+        ("timezone offset", ("scenario", "startedAt"), "2026-09-22T21:38:38+00:00"),
+        ("missing seconds", ("scenario", "startedAt"), "2026-09-22T21:38Z"),
+        ("invalid fraction", ("scenario", "startedAt"), "2026-09-22T21:38:38.Z"),
+        ("nonstrings", ("scenario", "startedAt"), None),
+        ("completion before start", ("scenario", "completedAt"), "2026-09-22T21:38:37Z"),
+        ("generation before completion", ("generatedAt",), "2026-09-22T21:38:40Z"),
+    )
+    for label, keys, value in cases:
+        mutated = copy.deepcopy(canonical)
+        cursor = mutated
+        for key in keys[:-1]:
+            cursor = cursor[key]
+        cursor[keys[-1]] = value
+        try:
+            validator.validate_capacity_timestamps(mutated)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"capacity timestamp validator accepted {label}")
+    print("PASS: capacity UTC timestamp positive and 7 negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_capacity_numeric_boundary()
+    verify_capacity_timestamp_semantics()
     substitutions = {
         "CONTRACT_PATH": module.LOAD_PATH,
         "LOAD_PATH": module.CONTRACT_PATH,
