@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import json
 import importlib.util
 import io
 import os
 import stat
+import sys
 import subprocess
 import tempfile
 from pathlib import Path
@@ -328,6 +330,87 @@ def run_stronger_readiness_negatives(module) -> None:
     assert_unchanged(protected, before, "stronger readiness and signal downgrade negatives")
 
 
+
+def run_inline_diagnostic_writer_negatives() -> None:
+    workflow = (ROOT / ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml").read_text(encoding="utf-8")
+    if '          cat "$log"' in workflow or "text[-12000:]" in workflow:
+        raise RuntimeError("repeatability workflow disclosed raw validator log")
+    marker = "      - name: Record privacy-safe repeatability diagnostic\\n"
+    if workflow.count(marker.replace("\\n", "\n")) != 1:
+        raise RuntimeError("repeatability diagnostic step drift")
+    step = workflow.index(marker.replace("\\n", "\n"))
+    opener = "          python - <<'PY'\\n".replace("\\n", "\n")
+    closer = "          PY\\n".replace("\\n", "\n")
+    start = workflow.index(opener, step) + len(opener)
+    end = workflow.index(closer, start)
+    lines = workflow[start:end].splitlines()
+    if not lines or any(line and not line.startswith("          ") for line in lines):
+        raise RuntimeError("repeatability inline writer indentation drift")
+    code = "\n".join(line[10:] for line in lines) + "\n"
+    compile(code, "<repeatability-inline-diagnostic>", "exec")
+    cases = ("existing", "new", "replace", "fsync", "symlink", "parent", "directory", "missing", "bad-sha")
+    target_rel = "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-authority-diagnostic.last.json"
+    secret = "SYNTHETIC_REPEATABILITY_DIAGNOSTIC_SECRET"
+    for case in cases:
+        with tempfile.TemporaryDirectory(prefix="repeatability-diagnostic-negative-") as temp:
+            root = Path(temp)
+            parent = root / "docs/fixtures/memory-os-operability"
+            parent.mkdir(parents=True)
+            target = root / target_rel
+            outside = root / "outside"
+            outside.mkdir()
+            canary = outside / "canary"
+            canary.write_bytes(secret.encode())
+            (root / "untrusted.log").write_text(secret, encoding="utf-8")
+            if case in ("existing", "replace", "fsync"):
+                target.write_bytes(b"before")
+                target.chmod(0o640)
+            if case == "symlink":
+                target.symlink_to(canary)
+            if case == "parent":
+                parent.rmdir()
+                parent.symlink_to(outside, target_is_directory=True)
+            if case == "directory":
+                target.mkdir()
+            if case == "missing":
+                parent.rmdir()
+            inject = ""
+            if case in ("replace", "fsync"):
+                inject = "import os\ndef deny(*args): raise OSError('synthetic atomic failure')\nos." + case + " = deny\n"
+            env = dict(os.environ, SOURCE_SHA=("invalid" if case == "bad-sha" else "a" * 40),
+                       AUTHORITY_EXIT_CODE="23", FAILURE_STAGE="compile")
+            result = subprocess.run(
+                [sys.executable, "-c", inject + code], cwd=root, env=env,
+                capture_output=True, text=True, timeout=10, check=False,
+            )
+            accepted = case in ("existing", "new")
+            if (result.returncode == 0) != accepted:
+                raise RuntimeError(f"repeatability inline diagnostic acceptance drift: {case}")
+            if secret in result.stdout + result.stderr or canary.read_bytes() != secret.encode():
+                raise RuntimeError("repeatability diagnostic leaked secret or changed canary")
+            if accepted:
+                value = json.loads(target.read_text(encoding="utf-8"))
+                if (value.get("output") != "Repeatability authority validation failed; raw validator output withheld."
+                    or value.get("containsSecrets") is not False
+                    or value.get("productionEvidence") is not False
+                    or value.get("productionReady") is not False
+                    or value.get("capacityBoundaryEstablished") is not False
+                    or value.get("operationalThresholdApproved") is not False
+                    or value.get("sourceCommitSha") != "a" * 40
+                    or value.get("exitCode") != 23):
+                    raise RuntimeError("repeatability diagnostic evidence boundary drift")
+                if stat.S_IMODE(target.stat().st_mode) != (0o640 if case == "existing" else 0o600):
+                    raise RuntimeError("repeatability diagnostic mode drift")
+                if secret in target.read_text(encoding="utf-8"):
+                    raise RuntimeError("repeatability diagnostic persisted synthetic secret")
+            if case in ("replace", "fsync"):
+                if target.read_bytes() != b"before" or stat.S_IMODE(target.stat().st_mode) != 0o640:
+                    raise RuntimeError("repeatability diagnostic rollback drift")
+            if parent.is_dir() and list(parent.glob(".*.tmp")):
+                raise RuntimeError("repeatability diagnostic temp residue")
+    print("PASS: repeatability actual inline diagnostic writer redaction/atomic runtime (9 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
@@ -338,6 +421,7 @@ def main() -> int:
     run_atomic_path_negative(module)
     run_rollback_secret_negative(module)
     run_stronger_readiness_negatives(module)
+    run_inline_diagnostic_writer_negatives()
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
     print("authority substitution plus pre-write/post-write/atomic failures are fail-closed")
     print("temporary authority residue: none")
