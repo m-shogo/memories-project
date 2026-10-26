@@ -1172,6 +1172,65 @@ def run_load_index_json_negatives() -> None:
     print("PASS: load evidence index strict JSON and path negatives (14 cases)")
 
 
+def run_load_index_reference_negatives() -> None:
+    """Reject external, symlink and malformed evidence references at admission."""
+    path = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
+    spec = importlib.util.spec_from_file_location("repeatability_load_index_ref_negative", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("load index reference negative import failed")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    safe = "contracts/operations/load-test-scenario-contract.v1.json"
+    if not module.safe_repo_ref(safe):
+        raise RuntimeError("load index canonical reference rejected")
+    module.validate_evidence_refs([safe])
+    with tempfile.TemporaryDirectory(prefix="load-index-ref-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary"
+        canary.write_bytes(b"SYNTHETIC_LOAD_INDEX_REF_CANARY")
+        with tempfile.TemporaryDirectory(prefix=".load-index-ref-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            linked = inside / "linked"
+            linked.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            directory = inside / "directory"
+            directory.mkdir()
+            unsafe = (
+                linked.relative_to(ROOT).as_posix(),
+                (linked_parent / "canary").relative_to(ROOT).as_posix(),
+                str(canary),
+                "../external-evidence",
+                directory.relative_to(ROOT).as_posix(),
+                (inside / "missing").relative_to(ROOT).as_posix(),
+                "contracts/../contracts/operations/load-test-scenario-contract.v1.json",
+            )
+            for ref in unsafe:
+                if module.safe_repo_ref(ref):
+                    raise RuntimeError("load index accepted unsafe evidence reference")
+                try:
+                    module.validate_evidence_refs([ref])
+                except module.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError("load index evidence admission accepted unsafe reference")
+            for malformed in (None, {}, [safe, safe], [safe, {}], [True]):
+                try:
+                    module.validate_evidence_refs(malformed)
+                except module.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError("load index evidence admission accepted malformed list")
+        if canary.read_bytes() != b"SYNTHETIC_LOAD_INDEX_REF_CANARY":
+            raise RuntimeError("load index evidence reference changed external canary")
+    source = path.read_text(encoding="utf-8")
+    for binding in ("require(safe_repo_ref(contract_ref)", "require(safe_repo_ref(validator_ref)",
+                    "result_presence = {ref: safe_repo_ref(ref)", "validate_evidence_refs(contract.get"):
+        if binding not in source:
+            raise RuntimeError("load index evidence reference source binding drift")
+    print("PASS: load index canonical evidence reference, traversal, symlink and malformed list negatives (12 cases)")
+
+
 def run_load_validator_json_negatives() -> None:
     """Exercise the actual load validator's JSON and diagnostic boundaries."""
     path = ROOT / "scripts/validate-memory-os-load.py"
@@ -1695,6 +1754,7 @@ def main() -> int:
     run_repeatability_contract_policy_negatives()
     run_load_validator_json_negatives()
     run_load_index_json_negatives()
+    run_load_index_reference_negatives()
     run_repeatability_nonfinite_negatives()
     run_repeatability_reconciler_json_negatives(module)
     run_repeatability_analyzer_matrix_producer_negatives()

@@ -134,6 +134,33 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def safe_repo_ref(value: Any) -> bool:
+    """Admit only regular, unsymlinked repository-relative evidence files."""
+    if not isinstance(value, str) or not value:
+        return False
+    relative = Path(value)
+    if relative.is_absolute() or ".." in relative.parts:
+        return False
+    path = ROOT / relative
+    if any(candidate.is_symlink() for candidate in (path, *path.parents)):
+        return False
+    if not path.is_file():
+        return False
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def validate_evidence_refs(refs: Any) -> None:
+    require(isinstance(refs, list) and all(isinstance(ref, str) for ref in refs),
+            "evidenceRefs must be a list of strings")
+    require(len(refs) == len(set(refs)), "evidenceRefs must be unique")
+    for ref in refs:
+        require(safe_repo_ref(ref), "contract evidence path missing or unsafe")
+
+
 def unique_scenario_map(items: Any, field: str) -> dict[str, dict[str, Any]]:
     require(isinstance(items, list), f"{field} must be a list")
     result: dict[str, dict[str, Any]] = {}
@@ -240,8 +267,8 @@ def main() -> int:
         require(item.get("productionEvidence") is False, f"{scenario_id}: local scenario cannot claim production evidence")
         require(item.get("contractRef") == contract_ref, f"{scenario_id}: contractRef drift")
         require(item.get("validatorRef") == validator_ref, f"{scenario_id}: validatorRef drift")
-        require((ROOT / contract_ref).is_file(), f"{scenario_id}: contractRef missing")
-        require((ROOT / validator_ref).is_file(), f"{scenario_id}: validatorRef missing")
+        require(safe_repo_ref(contract_ref), f"{scenario_id}: contractRef missing or unsafe")
+        require(safe_repo_ref(validator_ref), f"{scenario_id}: validatorRef missing or unsafe")
 
     capacity = external["authenticated-preview-capacity-ramp-local-postgres"]
     require(capacity.get("capacityBoundaryEstablished") is False, "bounded local capacity ramp cannot establish the capacity boundary")
@@ -333,16 +360,13 @@ def main() -> int:
 
     results_committed = readiness.get("exactHeadLiveResultsCommitted")
     require(isinstance(results_committed, bool), "readiness.exactHeadLiveResultsCommitted must be boolean")
-    result_presence = {ref: (ROOT / ref).is_file() for ref in LIVE_RESULT_REFS}
+    result_presence = {ref: safe_repo_ref(ref) for ref in LIVE_RESULT_REFS}
     if results_committed:
         require(all(result_presence.values()), f"live results marked committed but files are missing: {result_presence}")
     elif any(result_presence.values()):
         require(all(result_presence.values()), f"partial live result pair exists: {result_presence}")
 
-    evidence_refs = contract.get("evidenceRefs")
-    require(isinstance(evidence_refs, list) and len(evidence_refs) == len(set(evidence_refs)), "evidenceRefs must be a unique list")
-    for ref in evidence_refs:
-        require(isinstance(ref, str) and (ROOT / ref).is_file(), f"contract evidence path missing: {ref}")
+    validate_evidence_refs(contract.get("evidenceRefs"))
 
     print("Memory OS load evidence index PASS")
     print(f"mock executed: {len(executed)}")
