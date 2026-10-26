@@ -17,6 +17,8 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-muta
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
+EXPECTED_ENVIRONMENT_KEYS = ("os", "arch", "goVersion", "dependencyMode", "syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "containsSecrets",)
+EXPECTED_SCENARIO_KEYS = ("scenarioId", "applyRequests", "uploadAuthorizationRequests", "authenticatedBeforeFence", "deletionRequestStatus", "deletionEpoch", "applyUnauthorizedAfterFence", "uploadAuthorizationUnauthorizedAfterFence", "unexpectedStatusCount", "transportErrors", "preWorkerApplyConfirmationRows", "preWorkerMemoryItemRows", "preWorkerUploadAuthorizationRows", "preWorkerQuarantineRows", "workerReceiptCount", "finalOwnedRowCount", "finalAccountState", "finalAccountEpoch", "assertions", "result", "integrityResult",)
 EXPECTED_ASSERTION_KEYS = ("allApplyUnauthorizedAfterFence", "allAuthenticatedBeforeFence", "allUploadAuthorizationUnauthorizedAfterFence", "deletionWorkerCompleted", "finalOwnedRowCount", "noPreWorkerMutation", "noTransportErrors", "noUnexpectedStatuses", "productionEvidence",)
 EXPECTED_LIMITATIONS = ("covers Apply and upload authorization but not upload completion already in flight", "one synthetic account and one deletion worker", "local PostgreSQL 16 and MinIO on a GitHub-hosted runner", "does not prove host/process failure behavior", "not production deletion-capacity evidence",)
 EXPECTED_BOUNDARY_KEYS = ("syntheticDataOnly", "productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "applySurfaceCovered", "uploadAuthorizationSurfaceCovered", "uploadCompletionSurfaceCovered", "hostFailureCovered", "productionReady",)
@@ -210,6 +212,10 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
 
     environment = result.get("environment")
     require(isinstance(environment, dict), "environment required")
+    require(environment.keys() == set(EXPECTED_ENVIRONMENT_KEYS), "environment key set drift")
+    for key in ("os", "arch", "goVersion"):
+        require(type(environment.get(key)) is str and bool(environment[key].strip()),
+                f"environment.{key} metadata must be nonempty string")
     require(environment.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "result dependency mode drift")
     require(environment.get("syntheticDataOnly") is True, "result must remain synthetic-only")
     for key in (
@@ -223,6 +229,7 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
 
     scenario = result.get("scenario")
     require(isinstance(scenario, dict), "scenario required")
+    require(scenario.keys() == set(EXPECTED_SCENARIO_KEYS), "scenario key set drift")
     require(scenario.get("scenarioId") == contract.get("scenarioId"), "result scenario drift")
     criteria = contract.get("successCriteria")
     require(isinstance(criteria, dict), "success criteria missing")
