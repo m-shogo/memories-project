@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -25,14 +26,41 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise Fail("non-finite lease recovery JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite lease recovery JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate lease recovery JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
+    require(isinstance(path, Path), "lease recovery JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "lease recovery JSON symlink rejected")
+    require(path.is_file(), "lease recovery JSON file missing or unsafe")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise Fail("lease recovery JSON path escaped repository") from None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+        raise Fail("lease recovery JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "lease recovery JSON root must be object")
     return value
 
 
@@ -183,13 +211,13 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
     require(assertions.get("actualHostFailureCovered") is False, "simulation cannot claim host failure")
     require(assertions.get("productionEvidence") is False, "simulation cannot claim production evidence")
 
-    serialized = json.dumps(result, ensure_ascii=False)
+    serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
         "postgres://",
         "postgresql://",
         "minioadmin",
-        "Bearer ",
-        "X-Amz-Credential",
+        "bearer ",
+        "x-amz-credential",
         "acct_",
         "job_",
         "upl_",
@@ -206,6 +234,8 @@ def main() -> int:
 
     contract = load(CONTRACT_PATH)
     validate_contract(contract)
+    for candidate in (RESULT_PATH, *RESULT_PATH.parents):
+        require(not candidate.is_symlink(), "lease recovery result symlink rejected")
     result_exists = RESULT_PATH.is_file()
     if args.require_result:
         require(result_exists, "exact-source result is required")

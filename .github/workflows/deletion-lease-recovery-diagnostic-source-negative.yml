@@ -10,6 +10,8 @@ on:
       - "scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py"
       - "scripts/reconcile-memory-os-deletion-lease-recovery.py"
       - "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery-result-negative.py"
   push:
     branches:
       - so
@@ -19,6 +21,8 @@ on:
       - "scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py"
       - "scripts/reconcile-memory-os-deletion-lease-recovery.py"
       - "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery-result-negative.py"
 
 permissions:
   contents: read
@@ -62,6 +66,7 @@ jobs:
           set -euo pipefail
           python scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py
           python scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py
+          python -B scripts/validate-memory-os-deletion-lease-recovery-result-negative.py
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain)"

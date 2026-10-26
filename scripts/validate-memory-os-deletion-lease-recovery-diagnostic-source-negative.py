@@ -15,10 +15,14 @@ INDEPENDENT = ".github/workflows/deletion-lease-recovery-diagnostic-source-negat
 SCRIPT = "scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py"
 RECONCILER = "scripts/reconcile-memory-os-deletion-lease-recovery.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py"
+RESULT_VALIDATOR = "scripts/validate-memory-os-deletion-lease-recovery.py"
+RESULT_NEGATIVE = "scripts/validate-memory-os-deletion-lease-recovery-result-negative.py"
 REVIEWED_RECONCILER = "a6c6e35e113db4909c1dfbd1b931eb087f8ad010"
 REVIEWED_RECONCILE_NEGATIVE = "8800f7ddec39606f9529c109bb9c62a2210f53c1"
 REVIEWED = "12129252904c15d5a9c335fd0b529319d1f0b71a"
-REVIEWED_INDEPENDENT = "ff9f04cc11d6efa93dd1bb08141444c33dcd854a"
+REVIEWED_RESULT_VALIDATOR = "8e1852a708461059c78f3aac5f5eef6fc4b4161d"
+REVIEWED_RESULT_NEGATIVE = "0f1b340e1f091c63e18592a02f9ba4ffd3d40933"
+REVIEWED_INDEPENDENT = "f76d9a92924355358d005d5b49c73d30c4be4b3b"
 TARGET = "docs/fixtures/memory-os-operability/deletion-lease-recovery-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -205,6 +209,14 @@ def main():
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
+    for path, reviewed in ((RESULT_VALIDATOR, REVIEWED_RESULT_VALIDATOR),
+                           (RESULT_NEGATIVE, REVIEWED_RESULT_NEGATIVE)):
+        if blob(source(path)) != reviewed:
+            raise AssertionError("lease strict result source drift: " + path)
+        if independent.count('      - "' + path + '"') != 2:
+            raise AssertionError("lease strict result CI trigger drift: " + path)
+    if "python -B " + RESULT_NEGATIVE not in independent:
+        raise AssertionError("lease strict result negative not executed")
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
     if blob(source(RECONCILER)) != REVIEWED_RECONCILER:
