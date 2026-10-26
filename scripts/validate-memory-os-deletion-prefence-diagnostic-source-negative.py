@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-diagnostic-source-negativ
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-linearization.py"
-REVIEWED_VALIDATOR = "9b1cbb8aed09a9b519073ab6eff437630c30965c"
+REVIEWED_VALIDATOR = "88943a8283522d46c2ca0c8aa70ed6cd4b6cfae2"
 REVIEWED_RECONCILER = "75c848b6d45f0fa1f51a187ac67344339bcc05d9"
 REVIEWED_RECONCILE_NEGATIVE = "623c4b0bd3ceffbc034de9ae0639013327b2b252"
 REVIEWED = "fdcc951be6c589518f1f48bcb363b5dcd0b88602"
@@ -508,6 +508,21 @@ def typed_criteria_runtime():
         else:
             raise AssertionError("pre-fence accepted " + label)
         cases += 1
+
+    for key, expected in validator.EXPECTED_PATHS.items():
+        for label, value in (("substitute", "synthetic/unreviewed-" + key), ("missing", None)):
+            candidate = copy.deepcopy(contract)
+            if value is None:
+                candidate.pop(key)
+            else:
+                candidate[key] = value
+            try:
+                validator.validate_contract(candidate)
+            except validator.Fail:
+                pass
+            else:
+                raise AssertionError("pre-fence accepted contract path " + label + ": " + key)
+            cases += 1
 
     with tempfile.TemporaryDirectory(prefix=".prefence-typed-", dir=ROOT) as temp:
         synthetic = Path(temp) / "result.json"
