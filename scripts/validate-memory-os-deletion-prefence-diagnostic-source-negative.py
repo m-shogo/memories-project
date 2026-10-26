@@ -34,7 +34,7 @@ def blob(value):
 
 
 REQUIRED = (
-    "  push:\\n    branches:\\n      - so\\n",
+    "  push:\n    branches:\n      - so\n",
     "  workflow_dispatch:",
     '[[ "${GITHUB_EVENT_NAME:-}" == "push" || "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]',
     'test "${GITHUB_REF:-}" = "refs/heads/so"',
@@ -52,7 +52,6 @@ REQUIRED = (
     "os.fsync(handle.fileno())",
     "os.replace(tmp, path)",
     "tmp.unlink()",
-    "git fetch origin so",
 )
 
 
@@ -60,6 +59,8 @@ def policy(value):
     for marker in REQUIRED:
         if marker not in value:
             raise AssertionError("Pre-fence diagnostic source policy missing: " + marker[:70])
+    if value.count("git fetch origin so") != 6:
+        raise AssertionError("Pre-fence CAS fetch multiplicity drift")
     if value.count(CHECKOUT) != 1 or value.count(SETUP) != 1 or value.count(SETUP_GO) != 1:
         raise AssertionError("Pre-fence immutable Actions source drift")
     if any(marker in value for marker in ("checkout@v4", "setup-go@v5", "setup-python@v5",
