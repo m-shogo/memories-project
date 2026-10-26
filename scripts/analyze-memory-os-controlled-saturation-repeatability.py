@@ -181,6 +181,8 @@ def signal_for(result: dict[str, Any]) -> dict[str, Any]:
             continue
         gain = (current_tp - prev_tp) / prev_tp
         p95_ratio = current_p95 / prev_p95
+        require(math.isfinite(gain) and math.isfinite(p95_ratio),
+                "derived repeatability signal ratios must be finite")
         contention = current["poolDelta"]["emptyAcquireCount"] > 0
         if contention and gain <= 0.05 and p95_ratio >= 1.25:
             return {
@@ -241,7 +243,7 @@ def main() -> int:
         "limitations": contract.get("limitations", []),
     }
     require(OUTPUT == CANONICAL_OUTPUT, "repeatability output authority drift")
-    atomic_write_bytes(OUTPUT, (json.dumps(document, indent=2) + "\n").encode("utf-8"))
+    atomic_write_bytes(OUTPUT, (json.dumps(document, indent=2, allow_nan=False) + "\n").encode("utf-8"))
     print("Memory OS controlled saturation repeatability analysis complete")
     print(f"signal a: {signal_a}")
     print(f"signal b: {signal_b}")
