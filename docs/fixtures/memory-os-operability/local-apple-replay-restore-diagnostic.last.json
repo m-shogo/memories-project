@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "local-apple-replay-restore",
-  "sourceCommitSha": "5140f7ca9474286f434f5f0af5431ba318f0bd79",
+  "sourceCommitSha": "6168fe4fd60c28065589e557bbad3bebd71da724",
   "result": "PASS",
   "exitCode": 0,
   "output": "REDACTED: local Apple replay restore output withheld",
