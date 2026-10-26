@@ -61,6 +61,22 @@ def main() -> int:
             raise RuntimeError("database outage workflow diagnostic source binding missing")
     if "completed.stdout[-4000:]" in source or "diagnostic_path.write_text(" in source:
         raise RuntimeError("database outage workflow persists raw or non-atomic diagnostic")
+    pr_source = source.split("  validate-pr:", 1)[1].split("  execute:", 1)[0]
+    execute_source = source.split("  execute:", 1)[1]
+    if "permissions:\\n      contents: read" not in pr_source or "persist-credentials: false" not in pr_source:
+        raise RuntimeError("database outage PR job write-permission boundary drift")
+    if "permissions:\\n      contents: write" not in execute_source:
+        raise RuntimeError("database outage publisher write-permission boundary drift")
+    if "github.ref == 'refs/heads/so'" not in execute_source or 'test "${GITHUB_REF:-}" = "refs/heads/so"' not in execute_source:
+        raise RuntimeError("database outage execute source-branch admission missing")
+    for action, expected in (
+        ("actions/checkout@", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"),
+        ("actions/setup-go@", "actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"),
+        ("actions/setup-python@", "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"),
+    ):
+        if source.count(action) != 2 or source.count(expected) != 2:
+            raise RuntimeError("database outage immutable action source binding drift")
+
     with tempfile.TemporaryDirectory(prefix="database-outage-diagnostic-", dir=ROOT) as temp:
         root = Path(temp)
         path = root / module.RELATIVE_PATH
