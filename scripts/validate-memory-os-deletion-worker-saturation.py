@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/deletion-worker-saturation-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 
 class Fail(RuntimeError):
@@ -25,15 +28,51 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise Fail("non-finite worker saturation JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite worker saturation JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate worker saturation JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
+    require(isinstance(path, Path), "worker saturation JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "worker saturation JSON symlink rejected")
+    require(path.is_file(), "worker saturation JSON file missing or unsafe")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise Fail("worker saturation JSON path escaped repository") from None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+        raise Fail("worker saturation JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "worker saturation JSON root must be object")
     return value
+
+
+def strict_utc_timestamp(value: Any) -> None:
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            "worker saturation generatedAt must be RFC3339 UTC")
+    try:
+        datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        raise Fail("worker saturation generatedAt calendar invalid") from None
 
 
 def validate_contract(contract: dict[str, Any]) -> None:
@@ -77,6 +116,7 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
     require(isinstance(commit, str) and SHA_RE.fullmatch(commit) is not None, "full commit SHA required")
     if expected_sha is not None:
         require(commit == expected_sha, f"result source {commit} != expected {expected_sha}")
+    strict_utc_timestamp(result.get("generatedAt"))
 
     environment = result.get("environment")
     require(isinstance(environment, dict), "environment required")
@@ -111,12 +151,15 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
         "finalOwnedRowCount",
         "allDeletionTombstonesEpoch2",
     ):
-        require(scenario.get(key) == criteria.get(key), f"result criterion mismatch: {key}")
-    require(scenario.get("deletingAccounts") == contract.get("deletingAccounts"), "deleting account count mismatch")
-    require(scenario.get("workerCount") == contract.get("workerCount"), "worker count mismatch")
-    require(scenario.get("maxAccountsPerWorker") == contract.get("maxAccountsPerWorker"), "worker claim bound mismatch")
-    require(scenario.get("controlPreviewRequests") == contract.get("controlPreviewRequests"), "control request count mismatch")
-    require(scenario.get("controlPreviewConcurrency") == contract.get("controlPreviewConcurrency"), "control concurrency mismatch")
+        expected = criteria.get(key)
+        actual = scenario.get(key)
+        require(type(actual) is type(expected) and actual == expected,
+                f"result criterion mismatch: {key}")
+    require(type(scenario.get("deletingAccounts")) is int and scenario.get("deletingAccounts") == contract.get("deletingAccounts"), "deleting account count mismatch")
+    require(type(scenario.get("workerCount")) is int and scenario.get("workerCount") == contract.get("workerCount"), "worker count mismatch")
+    require(type(scenario.get("maxAccountsPerWorker")) is int and scenario.get("maxAccountsPerWorker") == contract.get("maxAccountsPerWorker"), "worker claim bound mismatch")
+    require(type(scenario.get("controlPreviewRequests")) is int and scenario.get("controlPreviewRequests") == contract.get("controlPreviewRequests"), "control request count mismatch")
+    require(type(scenario.get("controlPreviewConcurrency")) is int and scenario.get("controlPreviewConcurrency") == contract.get("controlPreviewConcurrency"), "control concurrency mismatch")
     require(scenario.get("result") == "PASS", "result must PASS")
     require(scenario.get("integrityResult") == "PASS", "integrity must PASS")
 
@@ -134,13 +177,13 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
     for key in ("capacityBoundaryEstablished", "operationalThresholdApproved", "productionEvidence"):
         require(assertions.get(key) is False, f"local result cannot enable assertion {key}")
 
-    serialized = json.dumps(result, ensure_ascii=False)
+    serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
         "postgres://",
         "postgresql://",
         "minioadmin",
-        "Bearer ",
-        "X-Amz-Credential",
+        "bearer ",
+        "x-amz-credential",
         "acct_",
         "job_",
     ):
@@ -155,6 +198,8 @@ def main() -> int:
 
     contract = load(CONTRACT_PATH)
     validate_contract(contract)
+    for candidate in (RESULT_PATH, *RESULT_PATH.parents):
+        require(not candidate.is_symlink(), "worker saturation result symlink rejected")
     result_exists = RESULT_PATH.is_file()
     if args.require_result:
         require(result_exists, "exact-source result is required")
