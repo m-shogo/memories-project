@@ -929,6 +929,80 @@ def run_repeatability_nonfinite_negatives() -> None:
 
 
 
+def run_repeatability_analyzer_matrix_producer_negatives() -> None:
+    analyzer_path = ROOT / "scripts/analyze-memory-os-controlled-saturation-repeatability.py"
+    spec = importlib.util.spec_from_file_location("repeatability_matrix_producer_negative", analyzer_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("repeatability matrix producer import failed")
+    analyzer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(analyzer)
+    result = json.loads(analyzer.OUTPUT.read_text(encoding="utf-8"))
+    a_ref, b_ref = result["runRefs"]
+    a_path, b_path = ROOT / a_ref, ROOT / b_ref
+    analyzer.require_matrix_pair(a_path, b_path)
+    for label, first, second in (
+        ("reversed ordinals", b_path, a_path),
+        ("same ordinal", a_path, a_path),
+        ("different run", a_path, ROOT / b_ref.replace("repeat-31157504019-", "repeat-999999-")),
+        ("different attempt", a_path, ROOT / b_ref.replace("-1-b.v1.json", "-2-b.v1.json")),
+        ("arbitrary filename", a_path, ROOT / "docs/fixtures/memory-os-operability/unrelated.json"),
+    ):
+        try:
+            analyzer.require_matrix_pair(first, second)
+        except analyzer.Fail:
+            pass
+        else:
+            raise RuntimeError(f"repeatability analyzer accepted {label}")
+    original_load = analyzer.load
+    original_write = analyzer.atomic_write_bytes
+    original_argv = sys.argv
+    run_a, run_b = original_load(a_path), original_load(b_path)
+    captured = []
+    current = {"a": run_a, "b": run_b}
+
+    def fixture_load(path):
+        if path == a_path:
+            return copy.deepcopy(current["a"])
+        if path == b_path:
+            return copy.deepcopy(current["b"])
+        return original_load(path)
+
+    analyzer.load = fixture_load
+    analyzer.atomic_write_bytes = lambda path, payload: captured.append((path, payload))
+    sys.argv = [str(analyzer_path), "--run-a", a_ref, "--run-b", b_ref]
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            if analyzer.main() != 0:
+                raise RuntimeError("repeatability analyzer matrix positive control failed")
+        if len(captured) != 1 or captured[0][0] != analyzer.CANONICAL_OUTPUT:
+            raise RuntimeError("repeatability analyzer positive output binding drift")
+        for label, bad_sha in (
+            ("nonhex SHA", "g" * 40),
+            ("uppercase SHA", "A" * 40),
+            ("short SHA", "a" * 39),
+            ("nonstring SHA", True),
+        ):
+            current["a"] = copy.deepcopy(run_a)
+            current["b"] = copy.deepcopy(run_b)
+            current["a"]["commitSha"] = bad_sha
+            current["b"]["commitSha"] = bad_sha
+            captured.clear()
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    analyzer.main()
+                except analyzer.Fail:
+                    pass
+                else:
+                    raise RuntimeError(f"repeatability analyzer accepted {label}")
+            if captured:
+                raise RuntimeError("repeatability analyzer wrote result after invalid source SHA")
+    finally:
+        analyzer.load = original_load
+        analyzer.atomic_write_bytes = original_write
+        sys.argv = original_argv
+    print("PASS: repeatability analyzer matrix producer and source SHA negatives (9 cases)")
+
+
 def run_repeatability_analyzer_path_atomic_negatives() -> None:
     analyzer_path = ROOT / "scripts/analyze-memory-os-controlled-saturation-repeatability.py"
     spec = importlib.util.spec_from_file_location("repeatability_analyzer_atomic_negative", analyzer_path)
@@ -1068,6 +1142,7 @@ def main() -> int:
     run_repeatability_matrix_boundary_negatives()
     run_repeatability_contract_policy_negatives()
     run_repeatability_nonfinite_negatives()
+    run_repeatability_analyzer_matrix_producer_negatives()
     run_repeatability_analyzer_path_atomic_negatives()
     run_prewrite_failure(module)
     run_postwrite_failure(module)
