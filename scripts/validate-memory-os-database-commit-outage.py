@@ -8,6 +8,7 @@ import math
 import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ CONTRACT_PATH = ROOT / "contracts/operations/database-commit-outage-contract.v1.
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 
 class ValidationFailure(RuntimeError):
@@ -65,6 +67,15 @@ def load(path: Path) -> dict[str, Any]:
     require(isinstance(value, dict), "database outage JSON root must be an object")
     return value
 
+def strict_utc_timestamp(value: Any) -> None:
+    require(isinstance(value, str) and UTC_TIMESTAMP_RE.fullmatch(value) is not None,
+            "database outage generatedAt must be RFC3339 UTC")
+    try:
+        datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        raise ValidationFailure("database outage generatedAt calendar invalid") from None
+
+
 def strings(value: Any, field: str, minimum: int = 0) -> list[str]:
     require(isinstance(value, list), f"{field} must be a list")
     require(len(value) >= minimum, f"{field} requires at least {minimum} entries")
@@ -80,6 +91,7 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> str:
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA_RE.fullmatch(commit_sha) is not None,
             "database outage result commitSha must be a full SHA")
+    strict_utc_timestamp(result.get("generatedAt"))
     if expected_sha:
         require(commit_sha == expected_sha,
                 f"database outage result SHA {commit_sha} != expected {expected_sha}")

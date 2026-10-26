@@ -82,6 +82,20 @@ def verify_local_result_atomic_writer(module) -> None:
                     raise RuntimeError("database outage result leaked synthetic marker") from None
             else:
                 raise RuntimeError(f"database outage result accepted {label}")
+        for label, timestamp in (
+            ("invalid calendar day", "2026-02-30T12:30:00Z"),
+            ("timezone offset", "2026-09-22T21:38:41+00:00"),
+            ("missing seconds", "2026-09-22T21:38Z"),
+            ("fraction without digits", "2026-09-22T21:38:41.Z"),
+            ("nonstrings", None),
+        ):
+            try:
+                module.write_local_result(path, dict(value, generatedAt=timestamp), root)
+            except module.DiagnosticWriteFailure as exc:
+                if "timestamp" not in str(exc):
+                    raise RuntimeError(f"database outage result {label} rejected by wrong gate") from None
+            else:
+                raise RuntimeError(f"database outage result accepted {label} timestamp")
         previous_replace = module.os.replace
         try:
             def reject_replace(*args):

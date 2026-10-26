@@ -9,6 +9,7 @@ import os
 import re
 import stat
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +105,10 @@ def write_local_result(path: Path, value: dict[str, Any], repo_root: Path) -> No
             re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z",
                          value["generatedAt"]) is not None,
             "database outage result timestamp invalid")
+    try:
+        datetime.fromisoformat(value["generatedAt"][:-1] + "+00:00")
+    except ValueError:
+        raise DiagnosticWriteFailure("database outage result timestamp calendar invalid") from None
     require(value["result"] == "PASS" and value["integrityResult"] == "PASS" and
             type(value["exitCode"]) is int and value["exitCode"] == 0,
             "database outage result success claim drift")

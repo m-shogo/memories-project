@@ -96,6 +96,22 @@ def verify_database_outage_strict_json_and_duration() -> None:
                 raise RuntimeError(f"database outage {label} rejected by wrong gate") from None
         else:
             raise RuntimeError(f"database outage accepted {label} duration")
+    for label, timestamp in (
+        ("invalid calendar day", "2026-02-30T12:30:00Z"),
+        ("timezone offset", "2026-09-22T21:38:41+00:00"),
+        ("missing seconds", "2026-09-22T21:38Z"),
+        ("fraction without digits", "2026-09-22T21:38:41.Z"),
+        ("nonstrings", None),
+    ):
+        mutated = copy.deepcopy(canonical)
+        mutated["generatedAt"] = timestamp
+        try:
+            validator.validate_result(mutated, None)
+        except validator.ValidationFailure as exc:
+            if "generatedAt" not in str(exc):
+                raise RuntimeError(f"database outage {label} rejected by wrong gate") from None
+        else:
+            raise RuntimeError(f"database outage accepted {label} generatedAt")
     with tempfile.TemporaryDirectory(prefix="database-outage-reader-outside-") as outside_temp:
         outside = Path(outside_temp)
         canary = outside / "canary.json"
