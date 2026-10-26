@@ -86,6 +86,15 @@ def main() -> int:
             pass
         else:
             raise AssertionError("advanced deletion accepted unsupported stronger reason")
+    normalized_flags = {key: True for key in module.NORMALIZED_REQUIRED_TRUE}
+    if module.preserve_stronger_deferred_reason(module.NORMALIZED_CANONICAL_REASON, normalized_flags) is not True:
+        raise AssertionError("advanced deletion downgraded canonical normalized local coverage")
+    try:
+        module.preserve_stronger_deferred_reason(module.NORMALIZED_CANONICAL_REASON, {})
+    except module.Fail:
+        pass
+    else:
+        raise AssertionError("advanced deletion accepted unsupported normalized local coverage")
     if module.preserve_stronger_deferred_reason("synthetic weaker reason", strong_flags):
         raise AssertionError("advanced deletion treated unrelated reason as stronger")
     atomic_writer_is_fail_closed(module)
