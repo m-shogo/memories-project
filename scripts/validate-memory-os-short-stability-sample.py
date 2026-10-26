@@ -275,18 +275,28 @@ def main() -> int:
             series.append(integer(observation.get(name), f"observation[{index}].{name}", 1))
         batch = observation.get("batch")
         require(isinstance(batch, dict), f"observation {index} batch missing")
-        require(batch.get("requests") == requests_per_window and
-                batch.get("concurrency") == concurrency and
-                batch.get("successes") == requests_per_window and
-                batch.get("failures") == 0,
+        require(integer(batch.get("requests"), f"observation[{index}].requests", 1) == requests_per_window and
+                integer(batch.get("concurrency"), f"observation[{index}].concurrency", 1) == concurrency and
+                integer(batch.get("successes"), f"observation[{index}].successes") == requests_per_window and
+                integer(batch.get("failures"), f"observation[{index}].failures") == 0,
                 f"observation {index} batch accounting drift")
         counts = batch.get("statusClassCounts")
-        require(isinstance(counts, dict) and counts.get("2xx") == requests_per_window and
-                counts.get("5xx", 0) == 0 and counts.get("transport_error", 0) == 0,
-                f"observation {index} status boundary failed")
-        positive_number(batch.get("durationSeconds"),
-                        f"observation[{index}].durationSeconds")
-        positive_number(batch.get("throughput"), f"observation[{index}].throughput")
+        require(isinstance(counts, dict), f"observation {index} status counts missing")
+        require(set(counts).issubset({"2xx", "3xx", "4xx", "5xx", "transport_error"}),
+                f"observation {index} unknown status class")
+        require(integer(counts.get("2xx"), f"observation[{index}].statusClassCounts.2xx") == requests_per_window,
+                f"observation {index} 2xx accounting drift")
+        for status_class in ("3xx", "4xx", "5xx", "transport_error"):
+            require(integer(counts.get(status_class, 0),
+                            f"observation[{index}].statusClassCounts.{status_class}") == 0,
+                    f"observation {index} contains non-2xx or infrastructure failure")
+        duration = positive_number(batch.get("durationSeconds"),
+                                   f"observation[{index}].durationSeconds")
+        throughput = positive_number(batch.get("throughput"), f"observation[{index}].throughput")
+        derived_throughput = requests_per_window / duration
+        require(math.isfinite(derived_throughput) and
+                math.isclose(throughput, derived_throughput, rel_tol=1e-6, abs_tol=1e-6),
+                f"observation {index} throughput does not match measured requests and duration")
         p50 = positive_number(batch.get("latencyP50Ms"),
                               f"observation[{index}].latencyP50Ms")
         p95 = positive_number(batch.get("latencyP95Ms"),
