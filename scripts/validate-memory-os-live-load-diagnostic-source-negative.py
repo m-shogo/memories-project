@@ -24,7 +24,7 @@ REVIEWED_INDEPENDENT = "dc50ba77b412001552410c2ec1e1f1a5f0b401de"
 
 def blob(content: str) -> str:
     data = content.encode("utf-8")
-    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\\0" + data).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
 
 def require_reviewed_source(content: str, expected: str, label: str) -> None:
     if blob(content) != expected:
@@ -38,7 +38,7 @@ def reviewed_blob_negatives(pr: str, independent: str) -> None:
         ("independent CI", independent, REVIEWED_INDEPENDENT),
     ):
         try:
-            require_reviewed_source(original + "\\n# synthetic source drift\\n", expected, label)
+            require_reviewed_source(original + "\n# synthetic source drift\n", expected, label)
         except AssertionError:
             continue
         raise AssertionError("live load reviewed Git blob accepted synthetic source drift: " + label)
