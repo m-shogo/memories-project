@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import tempfile
 from pathlib import Path
 
@@ -155,10 +156,61 @@ def verify_capacity_timestamp_semantics() -> None:
     print("PASS: capacity UTC timestamp positive and 7 negatives")
 
 
+
+def verify_capacity_batch_accounting() -> None:
+    """Exercise the canonical full validator on disposable status and throughput mutations."""
+    validator_path = ROOT / "scripts/validate-memory-os-capacity-ramp.py"
+    spec = importlib.util.spec_from_file_location("capacity_batch_validator", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("capacity batch validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical_contract = validator.load(validator.CONTRACT_PATH)
+    canonical_result = validator.load(ROOT / canonical_contract["resultPath"])
+    cases = (
+        ("float 2xx count", ("statusClassCounts", "2xx"), 240.0),
+        ("boolean 5xx count", ("statusClassCounts", "5xx"), False),
+        ("negative transport count", ("statusClassCounts", "transport_error"), -1),
+        ("unknown status class", ("statusClassCounts", "6xx"), 1),
+        ("unreported 3xx", ("statusClassCounts", "3xx"), 1),
+        ("invented low throughput", ("throughput",), 0.001),
+        ("derived throughput overflow", ("durationSeconds",), 5e-324),
+    )
+    original_contract = validator.CONTRACT_PATH
+    with tempfile.TemporaryDirectory(prefix=".capacity-accounting-negative-", dir=ROOT) as tmp:
+        contract_path = Path(tmp) / "contract.json"
+        result_path = Path(tmp) / "result.json"
+        contract = copy.deepcopy(canonical_contract)
+        contract["resultPath"] = str(result_path.relative_to(ROOT))
+        contract_path.write_text(json.dumps(contract), encoding="utf-8")
+        validator.CONTRACT_PATH = contract_path
+        try:
+            result_path.write_text(json.dumps(canonical_result), encoding="utf-8")
+            if validator.main() != 0:
+                raise RuntimeError("capacity batch positive control failed")
+            for label, keys, value in cases:
+                mutated = copy.deepcopy(canonical_result)
+                cursor = mutated["scenario"]["steps"][0]["batch"]
+                for key in keys[:-1]:
+                    cursor = cursor[key]
+                cursor[keys[-1]] = value
+                result_path.write_text(json.dumps(mutated), encoding="utf-8")
+                try:
+                    validator.main()
+                except validator.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError(f"capacity batch validator accepted {label}")
+        finally:
+            validator.CONTRACT_PATH = original_contract
+    print("PASS: capacity batch positive and 7 status/throughput negatives")
+
+
 def main() -> int:
     module = load_module()
     verify_capacity_numeric_boundary()
     verify_capacity_timestamp_semantics()
+    verify_capacity_batch_accounting()
     substitutions = {
         "CONTRACT_PATH": module.LOAD_PATH,
         "LOAD_PATH": module.CONTRACT_PATH,

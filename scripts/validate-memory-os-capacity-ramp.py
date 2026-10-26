@@ -220,16 +220,23 @@ def main() -> int:
         require(successes == requests and failures == 0,
                 f"step[{index}] was not all-success")
         counts = batch.get("statusClassCounts")
-        require(isinstance(counts, dict) and counts.get("2xx") == requests,
+        require(isinstance(counts, dict), f"step[{index}] status counts missing")
+        require(set(counts).issubset({"2xx", "3xx", "4xx", "5xx", "transport_error"}),
+                f"step[{index}] unknown status class")
+        require(integer(counts.get("2xx"), f"step[{index}].statusClassCounts.2xx") == requests,
                 f"step[{index}] must be exactly all 2xx")
-        require(counts.get("5xx", 0) == 0 and counts.get("transport_error", 0) == 0,
-                f"step[{index}] contains infrastructure failure")
+        for status_class in ("3xx", "4xx", "5xx", "transport_error"):
+            require(integer(counts.get(status_class, 0),
+                            f"step[{index}].statusClassCounts.{status_class}") == 0,
+                    f"step[{index}] contains non-2xx or infrastructure failure")
         duration = positive_number(batch.get("durationSeconds"),
                                    f"step[{index}].durationSeconds")
         throughput = positive_number(batch.get("throughput"),
                                      f"step[{index}].throughput")
-        require(throughput <= requests / duration * 1.01,
-                f"step[{index}] throughput accounting is impossible")
+        derived_throughput = requests / duration
+        require(math.isfinite(derived_throughput) and
+                math.isclose(throughput, derived_throughput, rel_tol=1e-6, abs_tol=1e-6),
+                f"step[{index}] throughput does not match measured requests and duration")
         p50 = positive_number(batch.get("latencyP50Ms"), f"step[{index}].latencyP50Ms")
         p95 = positive_number(batch.get("latencyP95Ms"), f"step[{index}].latencyP95Ms")
         p99 = positive_number(batch.get("latencyP99Ms"), f"step[{index}].latencyP99Ms")
