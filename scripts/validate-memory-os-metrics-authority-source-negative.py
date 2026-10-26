@@ -17,6 +17,7 @@ SETUP_GO = "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"
 SETUP_PY = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_WRITER = "bf2be5f5c50f2193b91e3f46be86ac7d783e58bd"
 REVIEWED_PR = "6977ffa544aa2c2df762e76fd7c7e8c263b4795e"
+REVIEWED_INDEPENDENT = "dbef991d6c20a405c05ad65e1d64e7dde9b04b96"
 
 def read(path: str) -> str:
     target = ROOT / path
@@ -168,6 +169,10 @@ def main() -> None:
                    'test -z "$(git status --porcelain)"'):
         if marker not in independent:
             raise AssertionError("metrics independent CI reachability missing: " + marker)
+    if blob(independent) != REVIEWED_INDEPENDENT:
+        raise AssertionError("metrics complete independent CI Git blob drift")
+    if blob(independent + "\n# synthetic whole-source drift\n") == REVIEWED_INDEPENDENT:
+        raise AssertionError("metrics independent CI mutation accepted")
     for label, source, expected in (("writer", writer, REVIEWED_WRITER), ("PR", pr, REVIEWED_PR)):
         if blob(source) != expected:
             raise AssertionError("metrics " + label + " complete reviewed Git blob drift")
