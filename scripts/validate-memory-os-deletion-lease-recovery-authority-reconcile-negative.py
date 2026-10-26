@@ -190,6 +190,15 @@ def main() -> int:
         pass
     else:
         raise AssertionError("lease-recovery accepted unsupported strong container-kill reason")
+    normalized_flags = {key: True for key in module.NORMALIZED_REQUIRED_TRUE}
+    if module.preserve_container_deferred_reason(module.NORMALIZED_CANONICAL_REASON, normalized_flags) is not True:
+        raise AssertionError("lease-recovery downgraded canonical normalized local coverage")
+    try:
+        module.preserve_container_deferred_reason(module.NORMALIZED_CANONICAL_REASON, {})
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("lease-recovery accepted unsupported normalized local coverage")
     if module.preserve_container_deferred_reason("weaker synthetic reason", strong):
         raise AssertionError("lease-recovery misclassified weaker reason")
     module.require_unproven_process_host({

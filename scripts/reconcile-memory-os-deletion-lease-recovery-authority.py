@@ -142,7 +142,32 @@ CONTAINER_KILL_CANONICAL_REASON = (
     "physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
 )
 
+NORMALIZED_CANONICAL_REASON = (
+        "post-fence former-session load, primary Preview/Apply/upload-authorization/upload-completion pre-fence linearization, "
+        "bounded multi-account worker saturation, lease-expiry recovery and Docker container kill/replacement recovery are "
+        "proven against local dependencies; raw process-kill readiness, physical host/node/AZ loss, production-equivalent "
+        "multi-instance topology and dependency behavior, capacity boundary and independently reviewed operating thresholds remain deferred"
+    )
+NORMALIZED_REQUIRED_TRUE = (
+    "previewPreFenceInFlightLinearizationProven",
+    "applyPreFenceInFlightLinearizationProven",
+    "uploadAuthorizationPreFenceInFlightLinearizationProven",
+    "uploadCompletionPreFenceInFlightLinearizationProven",
+    "primaryAccountBoundPreFenceLinearizationAggregateProven",
+    "multiAccountDeletionWorkerSaturationProven",
+    "deletionLeaseExpiryRecoverySimulationProven",
+    "deletionPartialObjectErasureRecoveryProven",
+    "deletionContainerKillRecoveryProven",
+    "deletionReplacementContainerRecoveryProven",
+    "localSustainedSoakEvidence",
+)
+
 def preserve_container_deferred_reason(reason, readiness: dict) -> bool:
+    if reason == NORMALIZED_CANONICAL_REASON:
+        for key in NORMALIZED_REQUIRED_TRUE:
+            if readiness.get(key) is not True:
+                raise SystemExit(f"lease-recovery cannot preserve unsupported normalized reason: {key}")
+        return True
     if reason != CONTAINER_KILL_CANONICAL_REASON:
         return False
     for key in (
