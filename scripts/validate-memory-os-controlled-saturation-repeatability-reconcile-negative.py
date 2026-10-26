@@ -899,6 +899,94 @@ def run_repeatability_nonfinite_negatives() -> None:
     print("PASS: repeatability analyzer/validator nonfinite and signal consistency negatives (11 cases)")
 
 
+
+def run_repeatability_analyzer_path_atomic_negatives() -> None:
+    analyzer_path = ROOT / "scripts/analyze-memory-os-controlled-saturation-repeatability.py"
+    spec = importlib.util.spec_from_file_location("repeatability_analyzer_atomic_negative", analyzer_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("repeatability analyzer atomic import failed")
+    analyzer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(analyzer)
+    result = json.loads(analyzer.OUTPUT.read_text(encoding="utf-8"))
+    a_ref, b_ref = result["runRefs"]
+    if analyzer.safe_run_path(a_ref) != ROOT / a_ref:
+        raise RuntimeError("repeatability analyzer rejected canonical run")
+    with tempfile.TemporaryDirectory(prefix="repeatability-analyzer-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_bytes(b"SYNTHETIC_ANALYZER_CANARY")
+        with tempfile.TemporaryDirectory(prefix=".repeatability-analyzer-negative-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            linked = inside / "linked.json"
+            linked.symlink_to(canary)
+            parent_link = inside / "parent-link"
+            parent_link.symlink_to(outside, target_is_directory=True)
+            for ref in (
+                linked.relative_to(ROOT).as_posix(),
+                (parent_link / "canary.json").relative_to(ROOT).as_posix(),
+                str(canary),
+                "../outside.json",
+                (inside / "missing.json").relative_to(ROOT).as_posix(),
+            ):
+                try:
+                    analyzer.safe_run_path(ref)
+                except analyzer.Fail:
+                    pass
+                else:
+                    raise RuntimeError("repeatability analyzer accepted unsafe run path")
+            target = inside / "result.json"
+            target.write_bytes(b"original")
+            target.chmod(0o640)
+            analyzer.atomic_write_bytes(target, b"updated")
+            if target.read_bytes() != b"updated" or stat.S_IMODE(target.stat().st_mode) != 0o640:
+                raise RuntimeError("repeatability analyzer existing atomic mode drift")
+            new = inside / "new.json"
+            analyzer.atomic_write_bytes(new, b"new")
+            if new.read_bytes() != b"new" or stat.S_IMODE(new.stat().st_mode) != 0o644:
+                raise RuntimeError("repeatability analyzer new atomic mode drift")
+            directory = inside / "directory"
+            directory.mkdir()
+            for unsafe in (linked, parent_link / "write.json", directory, inside / "missing" / "write.json", canary):
+                try:
+                    analyzer.atomic_write_bytes(unsafe, b"forbidden")
+                except analyzer.Fail:
+                    pass
+                else:
+                    raise RuntimeError("repeatability analyzer accepted unsafe atomic path")
+            for operation in ("replace", "fsync"):
+                original = getattr(analyzer.os, operation)
+                setattr(analyzer.os, operation, lambda *args: (_ for _ in ()).throw(OSError("synthetic failure")))
+                try:
+                    try:
+                        analyzer.atomic_write_bytes(target, b"forbidden")
+                    except OSError:
+                        pass
+                    else:
+                        raise RuntimeError("repeatability analyzer accepted atomic failure")
+                finally:
+                    setattr(analyzer.os, operation, original)
+                if target.read_bytes() != b"updated" or list(inside.glob(".result.json.*.tmp")):
+                    raise RuntimeError("repeatability analyzer atomic rollback/residue drift")
+            original_output = analyzer.OUTPUT
+            original_argv = sys.argv
+            analyzer.OUTPUT = canary
+            sys.argv = [str(analyzer_path), "--run-a", a_ref, "--run-b", b_ref]
+            try:
+                try:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        analyzer.main()
+                except analyzer.Fail:
+                    pass
+                else:
+                    raise RuntimeError("repeatability analyzer accepted output authority substitution")
+            finally:
+                analyzer.OUTPUT = original_output
+                sys.argv = original_argv
+        if canary.read_bytes() != b"SYNTHETIC_ANALYZER_CANARY":
+            raise RuntimeError("repeatability analyzer changed outside canary")
+    print("PASS: repeatability analyzer run-path/atomic/output authority negatives (14 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
@@ -906,6 +994,7 @@ def main() -> int:
     run_repeatability_runref_path_negatives()
     run_repeatability_matrix_boundary_negatives()
     run_repeatability_nonfinite_negatives()
+    run_repeatability_analyzer_path_atomic_negatives()
     run_prewrite_failure(module)
     run_postwrite_failure(module)
     run_atomic_replace_failure(module)
