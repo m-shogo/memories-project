@@ -700,9 +700,33 @@ def run_repeatability_rebase_cas_negatives() -> None:
     print("PASS: repeatability post-rebase critical source CAS and negative mutations (5 cases)")
 
 
+
+def run_authority_path_negatives(module) -> None:
+    module.require_exact_authority(module.CONTRACT, module.CONTRACT, "repeatability contract")
+    with tempfile.TemporaryDirectory(prefix="repeatability-authority-path-") as temp:
+        root = Path(temp)
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "canary.json"
+        canary.write_bytes(b"SYNTHETIC_AUTHORITY_CANARY")
+        linked = root / "linked"
+        linked.symlink_to(outside, target_is_directory=True)
+        for candidate in (linked / "canary.json", canary, root / "missing.json"):
+            try:
+                module.require_exact_authority(candidate, candidate, "synthetic")
+            except module.Fail:
+                pass
+            else:
+                raise RuntimeError("repeatability authority accepted symlink/escape/missing path")
+        if canary.read_bytes() != b"SYNTHETIC_AUTHORITY_CANARY":
+            raise RuntimeError("repeatability authority path negative changed canary")
+    print("PASS: repeatability authority ancestor symlink/repository escape negatives (3 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
+    run_authority_path_negatives(module)
     run_prewrite_failure(module)
     run_postwrite_failure(module)
     run_atomic_replace_failure(module)
