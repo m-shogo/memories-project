@@ -13,8 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/deletion-worker-container-kill-recovery.yml"
 INDEPENDENT = ".github/workflows/deletion-worker-container-kill-recovery-diagnostic-source-negative.yml"
 SCRIPT = "scripts/validate-memory-os-deletion-worker-container-kill-recovery-diagnostic-source-negative.py"
+RECONCILER = "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py"
+RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-worker-container-kill-recovery-reconcile-negative.py"
+REVIEWED_RECONCILER = "33f960052c51773c28adf8ca9dc6cbafbbc4eb29"
+REVIEWED_RECONCILE_NEGATIVE = "545ef11bd63a3fade3b55af65c30eb0ba2df1f8d"
 REVIEWED = "fd01bf06241cdb476cc592e507339914346038e8"
-REVIEWED_INDEPENDENT = "7baa0071cf393d0d41ba45f9d74aa7c5f8a2bd26"
+REVIEWED_INDEPENDENT = "a5bab7414781de1700674e11b56f30201b8ddb11"
 TARGET = "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -196,13 +200,17 @@ def main():
     if blob(publisher) != REVIEWED:
         raise SystemExit("SIGKILL publisher complete Git blob unreviewed")
     independent = source(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, INDEPENDENT, SCRIPT, RECONCILER, RECONCILE_NEGATIVE, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
+    if blob(source(RECONCILER)) != REVIEWED_RECONCILER:
+        raise SystemExit("container-kill reconciler complete Git blob unreviewed")
+    if blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
+        raise SystemExit("container-kill reconcile negative complete Git blob unreviewed")
     identity_runtime(independent, "Require exact clean worker container kill recovery diagnostic source")
     policy(publisher)
     mutations(publisher)
