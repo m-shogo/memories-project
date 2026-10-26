@@ -186,9 +186,23 @@ def load_writer():
 
 
 def run_negative() -> None:
+    """Execute negative admission without retaining or echoing private validator output."""
     require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "recovery objective negative validator")
-    completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"recovery objective negative admission suite failed:\n{completed.stdout[-6000:]}{completed.stderr[-6000:]}")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(NEGATIVE)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("recovery objective negative admission unavailable or timed out (raw output withheld)") from None
+    require(
+        type(completed.returncode) is int and completed.returncode == 0,
+        "recovery objective negative admission suite failed (raw output withheld)",
+    )
 
 
 def main() -> int:

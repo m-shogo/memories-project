@@ -151,12 +151,62 @@ def prove_recovery_objective_json_reader(validator) -> None:
     print("PASS: actual recovery objective JSON reader positive and 16 fail-closed negatives")
 
 
+def prove_negative_subprocess_redaction(validator) -> None:
+    """Prove failure classes remain fixed without exposing private subprocess output."""
+    original_run = validator.subprocess.run
+    calls = []
+    marker = "synthetic-secret-in-private-negative-log"
+
+    def make_runner(exit_code: int):
+        def fake_run(argv, **kwargs):
+            require(argv == [validator.sys.executable, str(validator.NEGATIVE)], "objective negative subprocess target drift")
+            require(kwargs.get("cwd") == validator.ROOT, "objective negative subprocess cwd drift")
+            require(kwargs.get("stdout") == validator.subprocess.DEVNULL
+                    and kwargs.get("stderr") == validator.subprocess.DEVNULL,
+                    "objective negative subprocess captured private output")
+            require(kwargs.get("check") is False and kwargs.get("timeout") == 120,
+                    "objective negative subprocess execution budget drift")
+            calls.append(exit_code)
+            return validator.subprocess.CompletedProcess(argv, exit_code, stdout=marker, stderr=marker)
+        return fake_run
+
+    try:
+        validator.subprocess.run = make_runner(0)
+        validator.run_negative()
+        validator.subprocess.run = make_runner(1)
+        try:
+            validator.run_negative()
+        except validator.Fail as exc:
+            require(str(exc) == "recovery objective negative admission suite failed (raw output withheld)",
+                    "objective negative failure disclosed private output or lost fixed class")
+            require(marker not in str(exc), "objective negative failure disclosed private marker")
+        else:
+            raise Fail("objective negative subprocess failure was accepted")
+        for exception in (OSError(marker), validator.subprocess.TimeoutExpired(cmd=["synthetic"], timeout=120)):
+            def raise_failure(*_args, **_kwargs):
+                raise exception
+            validator.subprocess.run = raise_failure
+            try:
+                validator.run_negative()
+            except validator.Fail as exc:
+                require(str(exc) == "recovery objective negative admission unavailable or timed out (raw output withheld)",
+                        "objective negative unavailable/timeout disclosed private output")
+                require(marker not in str(exc), "objective negative exception disclosed private marker")
+            else:
+                raise Fail("objective negative subprocess unavailable/timeout accepted")
+    finally:
+        validator.subprocess.run = original_run
+    require(calls == [0, 1], "objective negative subprocess positive/failure controls not executed")
+    print("PASS: objective negative subprocess fail-closed redaction and bounded execution")
+
+
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
     writer = load_writer()
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
     prove_recovery_objective_json_reader(validator)
+    prove_negative_subprocess_redaction(validator)
 
     canonical_lock = writer.LOCK
     writer.LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
