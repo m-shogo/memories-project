@@ -68,8 +68,9 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
 def require_reviewed_evidence_file(ref: str) -> None:
     """Evidence references must be regular repository files, never symlink aliases."""
     require(type(ref) is str and bool(ref) and
-            not Path(ref).is_absolute() and ".." not in Path(ref).parts,
-            "deletion-under-load evidence reference must be repository relative")
+            not Path(ref).is_absolute() and ".." not in Path(ref).parts and
+            "\\" not in ref and ref == Path(ref).as_posix(),
+            "deletion-under-load evidence reference must be canonical repository relative")
     path = CANONICAL_ROOT / ref
     for candidate in (path, *path.parents):
         require(not candidate.is_symlink(),

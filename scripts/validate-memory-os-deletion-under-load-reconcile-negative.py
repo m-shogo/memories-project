@@ -706,11 +706,15 @@ def exercise_evidence_reference_path_admission(module: ModuleType) -> None:
         reject("missing", relative(fixture / "missing"))
         reject("absolute", str(regular))
         reject("traversal", "../outside.json")
+        reject("dot segment", relative(regular).replace("/regular.json", "/./regular.json"))
+        reject("duplicate separator", relative(regular).replace("/regular.json", "//regular.json"))
+        reject("trailing separator", relative(regular) + "/")
+        reject("backslash alias", relative(regular).replace("/", "\\"))
         reject("empty", "")
         reject("non-string", 42)
         require(regular.read_text(encoding="utf-8") == "SYNTHETIC_CANARY",
                 "synthetic evidence canary was changed")
-    print("PASS: deletion-under-load evidence reference positive and 10 unsafe-path negatives")
+    print("PASS: deletion-under-load evidence reference positive and 14 unsafe-path negatives")
 
 
 def exercise_reconciler_json_reader(module: ModuleType) -> None:
