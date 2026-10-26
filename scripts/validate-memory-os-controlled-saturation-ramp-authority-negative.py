@@ -145,6 +145,60 @@ def verify_transaction_secret_redaction(module) -> None:
 
 
 
+
+def verify_ramp_publisher_ancestry_negative() -> None:
+    workflow = (ROOT / ".github/workflows/controlled-saturation-ramp.yml").read_text(encoding="utf-8")
+    guard = 'git merge-base --is-ancestor "${SOURCE_SHA}" origin/so'
+    for name in ("Publish exact-source result", "Reconcile controlled saturation authority"):
+        marker = "      - name: " + name + "\n"
+        if workflow.count(marker) != 1:
+            raise RuntimeError("controlled saturation publisher step drift: " + name)
+        start = workflow.index("        run: |\n", workflow.index(marker)) + len("        run: |\n")
+        end = workflow.find("\n      - name:", start)
+        if end < 0:
+            raise RuntimeError("controlled saturation publisher next-step boundary missing")
+        script = workflow[start:end]
+        if (script.count(guard) != 1 or script.count("git diff --quiet") != 1
+                or not (script.index("git fetch origin so") < script.index(guard)
+                        < script.index("git diff --quiet"))):
+            raise RuntimeError("controlled saturation publisher ancestry/order guard drift")
+        if "git push --force" in script or "git push -f" in script:
+            raise RuntimeError("controlled saturation publisher force-push drift")
+        weakened = script.replace(guard, "true", 1)
+        if weakened.count(guard) == 1:
+            raise RuntimeError("controlled saturation publisher ancestry mutation ineffective")
+        if guard in weakened:
+            raise RuntimeError("controlled saturation publisher ancestry removal negative failed")
+    with tempfile.TemporaryDirectory(prefix="controlled-saturation-ancestry-") as temp:
+        root = Path(temp)
+        def git(*args):
+            return subprocess.run(["git", *args], cwd=root, check=True,
+                                  capture_output=True, text=True).stdout.strip()
+        git("init", "-q")
+        git("config", "user.name", "Synthetic")
+        git("config", "user.email", "synthetic@example.invalid")
+        (root / "file.txt").write_text("base\n", encoding="utf-8")
+        git("add", "file.txt")
+        git("commit", "-qm", "base")
+        base = git("rev-parse", "HEAD")
+        branch = git("branch", "--show-current")
+        git("checkout", "-qb", "divergent")
+        (root / "file.txt").write_text("divergent\n", encoding="utf-8")
+        git("commit", "-qam", "divergent")
+        divergent = git("rev-parse", "HEAD")
+        git("checkout", "-q", branch)
+        (root / "file.txt").write_text("noncritical append\n", encoding="utf-8")
+        git("commit", "-qam", "noncritical")
+        git("update-ref", "refs/remotes/origin/so", git("rev-parse", "HEAD"))
+        for sha, accepted in ((base, True), (divergent, False)):
+            env = dict(os.environ, SOURCE_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", guard],
+                                    cwd=root, env=env, capture_output=True, text=True, check=False)
+            if (result.returncode == 0) != accepted:
+                raise RuntimeError("controlled saturation publisher ancestry real-git regression")
+    print("PASS: controlled saturation publisher two-step ancestry guards and real-git divergent negative")
+
+
 def verify_ramp_source_identity_negative() -> None:
     workflow = (ROOT / ".github/workflows/controlled-saturation-ramp.yml").read_text(encoding="utf-8")
     for action in ("checkout@11d5960a326750d5838078e36cf38b85af677262",
@@ -696,6 +750,7 @@ def main() -> int:
     verify_transaction_secret_redaction(module)
     verify_inline_ramp_diagnostic_negative()
     verify_ramp_source_identity_negative()
+    verify_ramp_publisher_ancestry_negative()
     verify_atomic_path_negatives(module)
     verify_validator_output_negative(module)
     verify_reconciler_json_parser_negatives(module)

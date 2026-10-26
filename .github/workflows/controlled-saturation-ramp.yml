@@ -181,6 +181,10 @@ jobs:
           published=false
           for attempt in 1 2 3; do
             git fetch origin so
+            if ! git merge-base --is-ancestor "${SOURCE_SHA}" origin/so; then
+              echo "Controlled saturation source is not an ancestor of current so; refusing divergent evidence."
+              exit 75
+            fi
             if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
               .github/workflows/controlled-saturation-ramp.yml \
               services/import-api/internal/httpserver \
@@ -227,6 +231,10 @@ jobs:
           reconciled=false
           for attempt in 1 2 3; do
             git fetch origin so
+            if ! git merge-base --is-ancestor "${SOURCE_SHA}" origin/so; then
+              echo "Controlled saturation source is not an ancestor of current so; refusing divergent evidence."
+              exit 75
+            fi
             if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
               .github/workflows/controlled-saturation-ramp.yml \
               services/import-api/internal/httpserver \
