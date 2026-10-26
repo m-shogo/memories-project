@@ -15,10 +15,14 @@ INDEPENDENT = ".github/workflows/deletion-worker-container-kill-recovery-diagnos
 SCRIPT = "scripts/validate-memory-os-deletion-worker-container-kill-recovery-diagnostic-source-negative.py"
 RECONCILER = "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-worker-container-kill-recovery-reconcile-negative.py"
+RESULT_VALIDATOR = "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py"
+RESULT_NEGATIVE = "scripts/validate-memory-os-deletion-worker-container-kill-recovery-result-negative.py"
 REVIEWED_RECONCILER = "d1cab60937032c2d81f1c621309558073861089a"
 REVIEWED_RECONCILE_NEGATIVE = "328a8cd104766231d457047229b6f3afd1291ade"
 REVIEWED = "fd01bf06241cdb476cc592e507339914346038e8"
-REVIEWED_INDEPENDENT = "a5bab7414781de1700674e11b56f30201b8ddb11"
+REVIEWED_RESULT_VALIDATOR = "00656287425320a76b145f7ba80c9bdfaffa1c31"
+REVIEWED_RESULT_NEGATIVE = "33573e03d1f46bcbaaf7abb9dc2ce902d821efc9"
+REVIEWED_INDEPENDENT = "a35951e20d70d93700048bea78d33a2c6ac33293"
 TARGET = "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -205,6 +209,14 @@ def main():
                    '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'):
         if marker not in independent:
             raise AssertionError("SIGKILL independent CI reachability/source drift: " + marker)
+    for path, reviewed in ((RESULT_VALIDATOR, REVIEWED_RESULT_VALIDATOR),
+                           (RESULT_NEGATIVE, REVIEWED_RESULT_NEGATIVE)):
+        if blob(source(path)) != reviewed:
+            raise AssertionError("container-kill strict result source drift: " + path)
+        if independent.count('      - "' + path + '"') != 2:
+            raise AssertionError("container-kill strict result CI trigger drift: " + path)
+    if "python -B " + RESULT_NEGATIVE not in independent:
+        raise AssertionError("container-kill strict result negative not executed")
     if blob(independent) != REVIEWED_INDEPENDENT:
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
     if blob(source(RECONCILER)) != REVIEWED_RECONCILER:

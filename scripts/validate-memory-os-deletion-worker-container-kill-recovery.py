@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -27,14 +28,41 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise Fail("non-finite container-kill JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite container-kill JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate container-kill JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
+    require(isinstance(path, Path), "container-kill JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "container-kill JSON symlink rejected")
+    require(path.is_file(), "container-kill JSON file missing or unsafe")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise Fail("container-kill JSON path escaped repository") from None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+        raise Fail("container-kill JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "container-kill JSON root must be object")
     return value
 
 
@@ -155,7 +183,7 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
     for key in ("actualHostFailureCovered", "availabilityZoneFailureCovered", "productionEvidence"):
         require(assertions.get(key) is False, f"assertion must remain false: {key}")
 
-    serialized = json.dumps(result, ensure_ascii=False)
+    serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
         "postgres://",
         "postgresql://",
@@ -165,7 +193,7 @@ def validate_result(contract: dict[str, Any], expected_sha: str | None) -> None:
         "job_",
         "upl_",
         "quarantine/",
-        "MEMORY_OS_CONTAINER_DRILL_DATABASE_URL",
+        "memory_os_container_drill_database_url",
     ):
         require(forbidden not in serialized, f"forbidden runtime material in result: {forbidden}")
 
@@ -178,6 +206,8 @@ def main() -> int:
 
     contract = load(CONTRACT_PATH)
     validate_contract(contract)
+    for candidate in (RESULT_PATH, *RESULT_PATH.parents):
+        require(not candidate.is_symlink(), "container-kill result symlink rejected")
     result_exists = RESULT_PATH.is_file()
     if args.require_result:
         require(result_exists, "exact-source container-kill result is required")
