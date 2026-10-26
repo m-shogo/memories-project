@@ -48,6 +48,13 @@ def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def load(path: Path) -> dict[str, Any]:
+    require(path.is_file(), "repeatability JSON file missing")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "repeatability JSON symlink rejected")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise Fail("repeatability JSON path escaped repository") from None
     value = json.loads(
         path.read_text(encoding="utf-8"),
         parse_constant=reject_nonfinite_constant,

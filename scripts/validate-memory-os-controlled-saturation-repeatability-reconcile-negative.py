@@ -1065,6 +1065,26 @@ def run_repeatability_nonfinite_negatives() -> None:
                     pass
                 else:
                     raise RuntimeError("repeatability parser accepted ambiguous/nonfinite JSON")
+    with tempfile.TemporaryDirectory(prefix="repeatability-json-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_text('{"safe":true}', encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".repeatability-json-path-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            for unsafe in (linked_file, linked_parent / "canary.json", canary, inside / "missing.json"):
+                for module in (analyzer, validator):
+                    try:
+                        module.load(unsafe)
+                    except module.Fail:
+                        pass
+                    else:
+                        raise RuntimeError("repeatability JSON parser accepted unsafe path")
+        if canary.read_text(encoding="utf-8") != '{"safe":true}':
+            raise RuntimeError("repeatability JSON path negative changed external canary")
     original_load = validator.load
     for label, mutate in (
         ("infinite throughput gain", lambda doc: doc["signals"]["a"].update({"throughputGainFromPrevious": float("inf")})),
@@ -1084,7 +1104,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator nonfinite, integrity and signal negatives (24 cases)")
+    print("PASS: repeatability analyzer/validator nonfinite, integrity, path and signal negatives (32 cases)")
 
 
 
