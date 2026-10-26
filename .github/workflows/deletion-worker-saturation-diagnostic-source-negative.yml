@@ -8,6 +8,8 @@ on:
       - ".github/workflows/deletion-worker-saturation.yml"
       - ".github/workflows/deletion-worker-saturation-diagnostic-source-negative.yml"
       - "scripts/validate-memory-os-deletion-worker-saturation-diagnostic-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-worker-saturation.py"
+      - "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py"
   push:
     branches:
       - so
@@ -15,6 +17,8 @@ on:
       - ".github/workflows/deletion-worker-saturation.yml"
       - ".github/workflows/deletion-worker-saturation-diagnostic-source-negative.yml"
       - "scripts/validate-memory-os-deletion-worker-saturation-diagnostic-source-negative.py"
+      - "scripts/reconcile-memory-os-deletion-worker-saturation.py"
+      - "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py"
 
 permissions:
   contents: read
