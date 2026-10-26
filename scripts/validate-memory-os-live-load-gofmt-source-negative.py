@@ -14,6 +14,7 @@ SELF = "scripts/validate-memory-os-live-load-gofmt-source-negative.py"
 CHECKOUT = "uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
 SETUP_GO = "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"
 REVIEWED_PUBLISHER = "0dab671f968cf5bb7033a89f19a8e851363979dc"
+REVIEWED_INDEPENDENT = "e9a41bf00b8ccb6bfba02b32e56f7b2ae5b079e2"
 
 def read(path: str) -> str:
     target = ROOT / path
@@ -104,6 +105,10 @@ def main() -> None:
             raise AssertionError("gofmt independent CI reachability missing: " + marker)
     if blob(source) != REVIEWED_PUBLISHER:
         raise AssertionError("gofmt complete publisher Git blob drift")
+    if blob(independent) != REVIEWED_INDEPENDENT:
+        raise AssertionError("gofmt complete independent CI Git blob drift")
+    if blob(independent + "\n# synthetic whole-source drift\n") == REVIEWED_INDEPENDENT:
+        raise AssertionError("gofmt independent CI whole-source mutation accepted")
     if blob(source + "\n# synthetic whole-source drift\n") == REVIEWED_PUBLISHER:
         raise AssertionError("gofmt whole-source mutation accepted")
     policy(source)
