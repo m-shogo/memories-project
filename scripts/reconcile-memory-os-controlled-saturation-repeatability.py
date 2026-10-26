@@ -90,6 +90,11 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     for candidate in (path, *path.parents):
         require(not candidate.is_symlink(), "repeatability authority symlink path rejected")
     require(not path.is_dir(), "repeatability authority directory target rejected")
+    try:
+        path.parent.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise Fail("repeatability authority path escaped repository") from None
+    require(not path.exists() or path.is_file(), "repeatability authority target is not a file")
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     tmp_path: Path | None = None
     try:

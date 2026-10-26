@@ -189,8 +189,11 @@ def run_validator_output_negative(module) -> None:
 
 
 def run_atomic_path_negative(module) -> None:
-    with tempfile.TemporaryDirectory(prefix="repeatability-atomic-negative-") as temp:
+    with tempfile.TemporaryDirectory(prefix="repeatability-atomic-outside-") as outside_temp, \
+         tempfile.TemporaryDirectory(prefix=".repeatability-atomic-negative-", dir=ROOT) as temp:
         root = Path(temp)
+        external = Path(outside_temp) / "external-canary.json"
+        external.write_bytes(b"external")
         target = root / "authority.json"
         target.write_bytes(b"original")
         target.chmod(0o640)
@@ -210,31 +213,35 @@ def run_atomic_path_negative(module) -> None:
         directory.mkdir()
         linked_parent = root / "linked-parent"
         linked_parent.symlink_to(directory, target_is_directory=True)
-        for unsafe in (link, linked_parent / "inside.json", directory, root / "missing" / "inside.json"):
+        external_parent = root / "external-parent"
+        external_parent.symlink_to(Path(outside_temp), target_is_directory=True)
+        for unsafe in (link, linked_parent / "inside.json", external_parent / "new.json",
+                       directory, root / "missing" / "inside.json", external):
             try:
                 module.atomic_write_bytes(unsafe, b"forbidden")
             except module.Fail:
                 pass
             else:
                 raise RuntimeError(f"unsafe repeatability path accepted: {unsafe.name}")
-        if outside.read_bytes() != b"outside" or list(directory.iterdir()):
+        if (outside.read_bytes() != b"outside" or external.read_bytes() != b"external"
+                or list(directory.iterdir()) or sorted(Path(outside_temp).iterdir()) != [external]):
             raise RuntimeError("unsafe path changed outside canary or linked directory")
 
-        original_replace = module.os.replace
-        def fail_replace(*args):
-            raise OSError("SYNTHETIC_REPEATABILITY_REPLACE_SECRET")
-        module.os.replace = fail_replace
-        try:
+        for operation in ("replace", "fsync"):
+            original = getattr(module.os, operation)
+            setattr(module.os, operation, lambda *args: (_ for _ in ()).throw(OSError("SYNTHETIC_REPEATABILITY_ATOMIC_SECRET")))
             try:
-                module.atomic_write_bytes(target, b"forbidden")
-            except OSError:
-                pass
-            else:
-                raise RuntimeError("atomic replace failure unexpectedly accepted")
-        finally:
-            module.os.replace = original_replace
-        if target.read_bytes() != b"updated" or list(root.glob(".authority.json.*.tmp")):
-            raise RuntimeError("atomic replace failure changed authority or left residue")
+                try:
+                    module.atomic_write_bytes(target, b"forbidden")
+                except OSError:
+                    pass
+                else:
+                    raise RuntimeError("atomic failure unexpectedly accepted")
+            finally:
+                setattr(module.os, operation, original)
+            if target.read_bytes() != b"updated" or list(root.glob(".authority.json.*.tmp")):
+                raise RuntimeError("atomic failure changed authority or left residue")
+    print("PASS: repeatability atomic writer containment, symlink, mode and rollback negatives")
 
 
 def run_rollback_secret_negative(module) -> None:
