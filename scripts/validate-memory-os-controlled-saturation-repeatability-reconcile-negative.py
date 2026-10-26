@@ -110,9 +110,10 @@ def run_postwrite_failure(module) -> None:
     try:
         try:
             module.write_transactionally(contract, load_contract, status)
-        except RuntimeError as exc:
-            if str(exc) != "synthetic post-write repeatability validation failure":
-                raise
+        except module.Fail as exc:
+            if ("transaction failed: RuntimeError" not in str(exc)
+                    or "synthetic post-write" in str(exc) or not exc.__suppress_context__):
+                raise RuntimeError("post-write rejection disclosed primary exception") from None
         else:
             raise RuntimeError("reconciler unexpectedly accepted post-write validation failure")
     finally:
@@ -144,10 +145,12 @@ def run_atomic_replace_failure(module) -> None:
                 module.load(module.LOAD),
                 module.load(module.STATUS),
             )
-        except BaseException as exc:
+        except module.Fail as exc:
             rejected = True
-            if "synthetic repeatability atomic replacement failure" not in str(exc):
-                raise RuntimeError(f"unexpected atomic rejection: {exc}") from exc
+            if ("transaction failed: OSError" not in str(exc)
+                    or "synthetic repeatability atomic replacement failure" in str(exc)
+                    or not exc.__suppress_context__):
+                raise RuntimeError("atomic failure disclosed primary exception") from None
         if not rejected:
             raise RuntimeError("repeatability reconciler accepted synthetic atomic replacement failure")
         assert_unchanged(protected, before, "atomic replacement failure")
@@ -186,6 +189,23 @@ def run_validator_output_negative(module) -> None:
         module.subprocess.run = original_run
     if marker in stdout.getvalue() + stderr.getvalue():
         raise RuntimeError("validator output reached CI streams")
+
+    def missing_validator(*args, **kwargs):
+        if kwargs.get("stdout") != subprocess.DEVNULL or kwargs.get("stderr") != subprocess.DEVNULL:
+            raise RuntimeError("validator streams must be suppressed")
+        raise OSError(marker)
+
+    module.subprocess.run = missing_validator
+    try:
+        try:
+            module.run_validator(module.VALIDATOR)
+        except module.Fail as exc:
+            if marker in str(exc) or "execution failed: OSError" not in str(exc) or not exc.__suppress_context__:
+                raise RuntimeError("validator OSError disclosed raw output") from None
+        else:
+            raise RuntimeError("validator OSError unexpectedly accepted")
+    finally:
+        module.subprocess.run = original_run
 
 
 def run_atomic_path_negative(module) -> None:
@@ -264,7 +284,8 @@ def run_rollback_secret_negative(module) -> None:
                 module.load(module.STATUS),
             )
         except module.Fail as exc:
-            if marker in str(exc) or "OSError" not in str(exc) or not exc.__suppress_context__:
+            if (marker in str(exc) or "rollback incomplete: OSError" not in str(exc)
+                    or "primary RuntimeError" not in str(exc) or not exc.__suppress_context__):
                 raise RuntimeError("repeatability rollback disclosed secret or suppressed failure") from None
         else:
             raise RuntimeError("failed repeatability rollback unexpectedly accepted")
@@ -273,6 +294,44 @@ def run_rollback_secret_negative(module) -> None:
         module.atomic_write_bytes = original_atomic
         module.run_post_write_validators = original_validators
 
+
+
+def run_primary_secret_negative(module) -> None:
+    marker = "SYNTHETIC_REPEATABILITY_PRIMARY_SECRET"
+    original_write = module.write
+    original_atomic = module.atomic_write_bytes
+    original_validators = module.run_post_write_validators
+    protected = (module.CONTRACT, module.LOAD, module.STATUS)
+    before = {path: path.read_bytes() for path in protected}
+    rollbacks = []
+
+    def noisy_validation():
+        raise RuntimeError(marker)
+
+    module.write = lambda *args: None
+    module.atomic_write_bytes = lambda path, payload: rollbacks.append((path, payload))
+    module.run_post_write_validators = noisy_validation
+    try:
+        try:
+            module.write_transactionally(
+                module.load(module.CONTRACT),
+                module.load(module.LOAD),
+                module.load(module.STATUS),
+            )
+        except module.Fail as exc:
+            if (marker in str(exc) or "transaction failed: RuntimeError" not in str(exc)
+                    or not exc.__suppress_context__):
+                raise RuntimeError("repeatability primary exception leaked") from None
+        else:
+            raise RuntimeError("repeatability accepted synthetic primary failure")
+    finally:
+        module.write = original_write
+        module.atomic_write_bytes = original_atomic
+        module.run_post_write_validators = original_validators
+    if rollbacks != list(before.items()):
+        raise RuntimeError("repeatability did not attempt all three primary-failure rollbacks")
+    assert_unchanged(protected, before, "secret-bearing primary exception")
+    print("PASS: repeatability primary exception redaction and rollback-all")
 
 
 def run_stronger_readiness_negatives(module) -> None:
@@ -1418,6 +1477,7 @@ def main() -> int:
     run_validator_output_negative(module)
     run_atomic_path_negative(module)
     run_rollback_secret_negative(module)
+    run_primary_secret_negative(module)
     run_stronger_readiness_negatives(module)
     run_inline_diagnostic_writer_negatives()
     run_inline_ramp_diagnostic_negatives()

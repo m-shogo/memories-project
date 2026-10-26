@@ -181,6 +181,8 @@ def run_validator(validator: Path) -> None:
         )
     except subprocess.CalledProcessError as exc:
         raise Fail(f"repeatability validator failed: {validator.name} (exit {exc.returncode})") from None
+    except OSError as exc:
+        raise Fail(f"repeatability validator execution failed: {type(exc).__name__}") from None
 
 
 def run_post_write_validators() -> None:
@@ -197,7 +199,7 @@ def write_transactionally(contract: dict[str, Any], load_contract: dict[str, Any
         write(LOAD, load_contract)
         write(STATUS, status)
         run_post_write_validators()
-    except BaseException:
+    except BaseException as primary_error:
         rollback_error: BaseException | None = None
         for path, content in originals.items():
             try:
@@ -206,8 +208,13 @@ def write_transactionally(contract: dict[str, Any], load_contract: dict[str, Any
                 if rollback_error is None:
                     rollback_error = exc
         if rollback_error is not None:
-            raise Fail(f"controlled saturation repeatability rollback failed: {type(rollback_error).__name__}") from None
-        raise
+            raise Fail(
+                "controlled saturation repeatability rollback incomplete: "
+                f"{type(rollback_error).__name__}; primary {type(primary_error).__name__}"
+            ) from None
+        raise Fail(
+            f"controlled saturation repeatability transaction failed: {type(primary_error).__name__}"
+        ) from None
 
 
 def main() -> int:
