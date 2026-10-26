@@ -857,6 +857,111 @@ def exercise_deletion_load_batch_accounting() -> None:
     print("PASS: deletion-under-load batch 2 positives and 9 accounting negatives")
 
 
+def exercise_deletion_load_source_io_boundary() -> None:
+    """The source reconciler must not follow aliases or truncate authority on failed writes."""
+    path = ROOT / "scripts/reconcile-memory-os-deletion-under-load-source.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_source_io_negative", path)
+    require(spec is not None and spec.loader is not None, "source I/O guard import failed")
+    source = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(source)
+    with tempfile.TemporaryDirectory(prefix="deletion-source-outside-") as outside_tmp, \\
+         tempfile.TemporaryDirectory(prefix=".deletion-source-io-negative-", dir=ROOT) as inside_tmp:
+        outside, inside = Path(outside_tmp), Path(inside_tmp)
+        canary = outside / "canary.go"
+        canary.write_text("SYNTHETIC_EXTERNAL_CANARY", encoding="utf-8")
+        regular = inside / "source.go"
+        regular.write_text("BEFORE", encoding="utf-8")
+        os.chmod(regular, 0o640)
+        require(source.read_source(regular) == "BEFORE", "source read positive failed")
+        source.write_source(regular, "AFTER")
+        require(regular.read_text(encoding="utf-8") == "AFTER", "source atomic write positive failed")
+        require(stat.S_IMODE(regular.stat().st_mode) == 0o640, "source write mode changed")
+        require(not list(inside.glob("*.tmp")), "source positive left temporary residue")
+
+        def reject(label: str, target: Path) -> None:
+            for operation in (source.read_source, lambda p: source.write_source(p, "UNSAFE")):
+                try:
+                    operation(target)
+                except RuntimeError as exc:
+                    require("SYNTHETIC_EXTERNAL_CANARY" not in str(exc),
+                            f"source I/O leaked external canary: {label}")
+                else:
+                    raise RuntimeError(f"source I/O accepted {label}")
+
+        reject("outside", canary)
+        direct = inside / "direct.go"
+        direct.symlink_to(canary)
+        reject("direct symlink", direct)
+        dangling = inside / "dangling.go"
+        dangling.symlink_to(inside / "missing-target")
+        reject("dangling symlink", dangling)
+        alias = inside / "alias"
+        alias.symlink_to(outside, target_is_directory=True)
+        reject("ancestor symlink", alias / "canary.go")
+        directory = inside / "directory.go"
+        directory.mkdir()
+        reject("directory", directory)
+        fifo = inside / "fifo.go"
+        os.mkfifo(fifo)
+        reject("FIFO", fifo)
+        reject("missing", inside / "missing.go")
+        oversized = inside / "oversized.go"
+        oversized.write_bytes(b"x" * (source.MAX_SOURCE_BYTES + 1))
+        try:
+            source.read_source(oversized)
+        except RuntimeError as exc:
+            require("exceeds reviewed read limit" in str(exc), "oversized source wrong rejection")
+        else:
+            raise RuntimeError("oversized source accepted")
+        invalid = inside / "invalid.go"
+        invalid.write_bytes(bytes([255]))
+        try:
+            source.read_source(invalid)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("invalid UTF-8 source accepted")
+        try:
+            source.write_source(regular, b"NOT_TEXT")
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("non-text source payload accepted")
+        original_target = source.PATH
+        source.PATH = regular
+        try:
+            try:
+                source.main()
+            except RuntimeError as exc:
+                require("unreviewed deletion load source target" in str(exc),
+                        "source main wrong target rejection")
+            else:
+                raise RuntimeError("source main accepted substituted target")
+        finally:
+            source.PATH = original_target
+        original_replace = source.os.replace
+        def failed_replace(*args: object, **kwargs: object) -> None:
+            raise OSError("SYNTHETIC_REPLACE_SECRET_DO_NOT_LOG")
+        source.os.replace = failed_replace
+        try:
+            try:
+                source.write_source(regular, "NEW")
+            except RuntimeError as exc:
+                require("atomic write failed (OSError)" in str(exc) and
+                        "SYNTHETIC_REPLACE_SECRET_DO_NOT_LOG" not in str(exc),
+                        "source replace failure leaked or misclassified")
+            else:
+                raise RuntimeError("source replace failure was accepted")
+        finally:
+            source.os.replace = original_replace
+        require(regular.read_text(encoding="utf-8") == "AFTER", "source rollback changed bytes")
+        require(stat.S_IMODE(regular.stat().st_mode) == 0o640, "source rollback changed mode")
+        require(canary.read_text(encoding="utf-8") == "SYNTHETIC_EXTERNAL_CANARY",
+                "source I/O changed external canary")
+        require(not list(inside.glob("*.tmp")), "source I/O left temporary residue")
+    print("PASS: deletion-load source bounded atomic I/O, 7 unsafe nodes, and rollback negatives")
+
+
 def exercise_deletion_load_source_replace_once() -> None:
     """The source reconciler must not mistake mixed stale and reviewed code for success."""
     path = ROOT / "scripts/reconcile-memory-os-deletion-under-load-source.py"
@@ -988,6 +1093,7 @@ def main() -> int:
     exercise_deletion_load_batch_accounting()
     exercise_deletion_load_git_ancestry_boundary()
     exercise_deletion_load_source_replace_once()
+    exercise_deletion_load_source_io_boundary()
     exercise_deletion_load_reviewed_schema()
     module = load_target()
     exercise_reconciler_json_reader(module)

@@ -3,11 +3,70 @@
 
 from __future__ import annotations
 
+import os
+import stat
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "services/import-api/internal/httpserver/deletion_under_load_test.go"
+
+
+MAX_SOURCE_BYTES = 1024 * 1024
+
+
+def require_safe_source(path: Path) -> None:
+    if not isinstance(path, Path) or not path.is_absolute():
+        raise RuntimeError("deletion load source path must be absolute")
+    if any(candidate.is_symlink() for candidate in (path, *path.parents)):
+        raise RuntimeError("deletion load source symlink refused")
+    if not path.is_file():
+        raise RuntimeError("deletion load source missing or unsafe")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise RuntimeError("deletion load source escaped repository") from None
+
+
+def read_source(path: Path) -> str:
+    require_safe_source(path)
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_SOURCE_BYTES + 1)
+        if len(raw) > MAX_SOURCE_BYTES:
+            raise RuntimeError("deletion load source exceeds reviewed read limit")
+        return raw.decode("utf-8")
+    except (OSError, UnicodeError):
+        raise RuntimeError("deletion load source unreadable or invalid") from None
+
+
+def write_source(path: Path, text: str) -> None:
+    require_safe_source(path)
+    if type(text) is not str:
+        raise RuntimeError("deletion load source payload must be text")
+    temporary: Path | None = None
+    try:
+        existing_mode = stat.S_IMODE(path.stat().st_mode)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, existing_mode)
+        os.replace(temporary, path)
+        temporary = None
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError(f"deletion load source atomic write failed ({type(exc).__name__})") from None
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> tuple[str, bool]:
@@ -21,7 +80,9 @@ def replace_once(text: str, old: str, new: str, label: str) -> tuple[str, bool]:
 
 
 def main() -> int:
-    text = PATH.read_text(encoding="utf-8")
+    if PATH != ROOT / "services/import-api/internal/httpserver/deletion_under_load_test.go":
+        raise RuntimeError("unreviewed deletion load source target refused")
+    text = read_source(PATH)
     changed = False
 
     text, replaced = replace_once(
@@ -131,7 +192,7 @@ func summarizeDeletionHTTPSamples(samples []liveHTTPSample, concurrency int, ela
     if not changed:
         print("Deletion-under-load source already reconciled")
         return 0
-    PATH.write_text(text, encoding="utf-8")
+    write_source(PATH, text)
     print("Reconciled deletion-under-load source, HTTP reuse and local aggregation")
     return 0
 
