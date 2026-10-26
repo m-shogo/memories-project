@@ -573,6 +573,59 @@ def exercise_reconciler_rollback_diagnostics(reconciler) -> None:
     print("PASS diagnostics: generation evidence reconcile preserves primary validator + rollback failure")
 
 
+def prove_generation_evidence_json_reader(validator) -> None:
+    """Exercise the real generation recovery reader with disposable evidence fixtures."""
+    protected_paths = (validator.CONTRACT, validator.REGISTRY, validator.GEN_REGISTRY,
+                       validator.OBJECTIVES_REGISTRY, validator.DRILL_REGISTRY)
+    before = tuple(path.read_bytes() for path in protected_paths)
+    with guarded_temporary_directory(prefix=".tmp-generation-json-reader-", parent=TMP_PARENT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}}, "generation recovery JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "generation recovery JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "generation recovery JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "generation recovery JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "generation recovery JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "generation recovery JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "generation recovery JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}", "generation recovery JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * validator.MAX_JSON_BYTES + b'"}', "generation recovery JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}', "generation recovery JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"synthetic-secret",', "generation recovery JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "generation recovery JSON root must be object"),
+        )
+        def rejected(candidate, expected: str, label: str) -> None:
+            try:
+                validator.load(candidate)
+            except validator.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong generation recovery JSON rejection boundary")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe generation recovery JSON accepted")
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "generation recovery JSON path unsafe", "symlink")
+        rejected(Path(directory), "generation recovery JSON path unsafe", "directory")
+        rejected(Path(directory) / "missing.json", "generation recovery JSON path missing or outside repository", "missing")
+        rejected("candidate.json", "generation recovery JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-generation-recovery-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            escaped = Path(directory) / "escaped.json"
+            escaped.symlink_to(canary)
+            rejected(escaped, "generation recovery JSON path missing or outside repository", "external symlink")
+            require(canary.read_bytes() == positive, "generation recovery JSON modified external canary")
+        require(path.read_bytes() == positive, "generation recovery JSON mutated positive fixture")
+    require(tuple(path.read_bytes() for path in protected_paths) == before, "generation recovery JSON mutated protected authorities")
+    print("PASS: actual generation recovery JSON reader positive and 16 fail-closed negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
     require(VALIDATOR.is_file(), "generation evidence validator missing")
@@ -600,6 +653,7 @@ def main() -> int:
     prove_helper_ancestor_swap_during_fd_walk_rejected()
     writer = load_module(WRITER, "memory_os_generation_evidence_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_generation_evidence_validator_load_negative")
+    prove_generation_evidence_json_reader(validator)
     reconciler = load_module(RECONCILER, "memory_os_generation_evidence_reconciler_load_negative")
 
     require(writer.canonical_repo_file(WRITER, "generation evidence writer") == WRITER, "canonical writer path rejected")
