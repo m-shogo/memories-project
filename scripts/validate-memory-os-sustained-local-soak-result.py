@@ -25,14 +25,35 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def reject_nonfinite_constant(_token: str) -> None:
+    raise Fail("sustained local-soak result non-finite JSON constant rejected")
+
+
+def parse_finite_float(token: str) -> float:
+    value = float(token)
+    require(math.isfinite(value), "sustained local-soak result non-finite JSON number rejected")
+    return value
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "sustained local-soak result duplicate JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
+    # Result paths may be supplied by the local runner; bound parsing without
+    # changing the existing explicit CLI result-path contract.
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path}")
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        raise Fail("sustained local-soak result JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "sustained local-soak result root must be object")
     return value
 
 

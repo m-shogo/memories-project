@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import stat
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -204,7 +205,41 @@ def validate_second_replace_transaction_rollback(module, paths: tuple[Path, ...]
             raise AssertionError(f"second-replace rollback leaked temporary authority: {path.relative_to(ROOT)}")
 
 
+def validate_result_json_parser_negatives() -> None:
+    """Exercise actual result reader with ambiguous, nonfinite and malformed JSON."""
+    validator = load_module(
+        ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py",
+        "memory_os_sustained_local_soak_result_json_negative",
+    )
+    with tempfile.TemporaryDirectory(prefix=".sustained-local-soak-result-json-", dir=ROOT) as temp:
+        path = Path(temp) / "result.json"
+        path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+        if validator.load(path) != {"outer": {"a": 1, "b": 2}}:
+            raise AssertionError("sustained local-soak result JSON positive control failed")
+        cases = (
+            b'{"value":Infinity}',
+            b'{"value":NaN}',
+            b'{"value":1e999}',
+            b'{"a":1,"a":2}',
+            b'{"outer":{"a":1,"a":2}}',
+            b'{"SYNTHETIC_SECRET_CANARY":',
+            b'{"huge":' + b"9" * 5000 + b"}",
+            b"\xff\xfe",
+        )
+        for payload in cases:
+            path.write_bytes(payload)
+            try:
+                validator.load(path)
+            except validator.Fail as exc:
+                if "SYNTHETIC_SECRET_CANARY" in str(exc):
+                    raise AssertionError("sustained local-soak result JSON diagnostic leaked source")
+            else:
+                raise AssertionError("sustained local-soak result parser accepted malformed JSON")
+    print("PASS: sustained local-soak result JSON positive and 8 parser negatives")
+
+
 def main() -> int:
+    validate_result_json_parser_negatives()
     module = load_reconciler()
     updater = load_aggregate_updater()
     reviewer = load_trend_reviewer()
