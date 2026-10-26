@@ -1119,6 +1119,70 @@ def run_repeatability_reconciler_json_negatives(module) -> None:
     print("PASS: repeatability reconciler JSON parser, path and output negatives (11 cases)")
 
 
+def run_load_validator_json_negatives() -> None:
+    """Exercise the actual load validator's JSON and diagnostic boundaries."""
+    path = ROOT / "scripts/validate-memory-os-load.py"
+    spec = importlib.util.spec_from_file_location("repeatability_load_json_negative", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("load validator JSON negative import failed")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    secret = "SYNTHETIC_LOAD_VALIDATOR_SECRET"
+    with tempfile.TemporaryDirectory(prefix="load-validator-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_text('{"canary":true}', encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".load-validator-json-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            target = inside / "input.json"
+            target.write_text('{"outer":{"ok":true}}', encoding="utf-8")
+            if module.load(target) != {"outer": {"ok": True}}:
+                raise RuntimeError("load validator JSON positive control failed")
+            for raw in (
+                b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
+                b'{"a":1,"a":2}', b'{"outer":{"a":1,"a":2}}',
+                b'{"value":' + b'9' * 5000 + b'}',
+                b'{"' + secret.encode() + b'":', b'\\xff\\xfe',
+                b'[1,2,3]',
+            ):
+                target.write_bytes(raw)
+                try:
+                    module.load(target)
+                except module.Fail as exc:
+                    if secret in str(exc):
+                        raise RuntimeError("load validator JSON error leaked synthetic secret")
+                else:
+                    raise RuntimeError("load validator accepted invalid or ambiguous JSON")
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            directory = inside / "directory"
+            directory.mkdir()
+            for unsafe in (linked_file, linked_parent / "canary.json", canary,
+                           inside / "missing.json", directory):
+                try:
+                    module.load(unsafe)
+                except module.Fail:
+                    pass
+                else:
+                    raise RuntimeError("load validator accepted unsafe JSON path")
+        if canary.read_text(encoding="utf-8") != '{"canary":true}':
+            raise RuntimeError("load validator changed external JSON canary")
+    original_load = module.load
+    module.load = lambda _: (_ for _ in ()).throw(RuntimeError(secret))
+    try:
+        output = io.StringIO()
+        with contextlib.redirect_stderr(output):
+            if module.main() != 2:
+                raise RuntimeError("load validator unexpected-error exit code drift")
+        if secret in output.getvalue() or "RuntimeError" not in output.getvalue():
+            raise RuntimeError("load validator unexpected-error diagnostic leaked source")
+    finally:
+        module.load = original_load
+    print("PASS: load validator strict JSON, path and unexpected-error privacy negatives (14 cases)")
+
+
 def run_repeatability_nonfinite_negatives() -> None:
     workflow = (ROOT / ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml").read_text(encoding="utf-8")
     for path in ("scripts/analyze-memory-os-controlled-saturation-repeatability.py",
@@ -1576,6 +1640,7 @@ def main() -> int:
     run_repeatability_runref_path_negatives()
     run_repeatability_matrix_boundary_negatives()
     run_repeatability_contract_policy_negatives()
+    run_load_validator_json_negatives()
     run_repeatability_nonfinite_negatives()
     run_repeatability_reconciler_json_negatives(module)
     run_repeatability_analyzer_matrix_producer_negatives()

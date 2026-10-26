@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -48,13 +49,50 @@ class Fail(RuntimeError):
     pass
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise Fail("non-finite load JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise Fail("non-finite load JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict:
+    document = {}
+    for key, value in pairs:
+        if key in document:
+            raise Fail("duplicate load JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict:
+    if not isinstance(path, Path):
+        raise Fail("load JSON path must be Path")
+    for candidate in (path, *path.parents):
+        if candidate.is_symlink():
+            raise Fail("load JSON symlink path rejected")
+    if not path.is_file():
+        raise Fail("load JSON file missing or unsafe")
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path}: {exc}") from exc
+        path.resolve(strict=True).relative_to(REPO.resolve(strict=True))
+    except (OSError, ValueError):
+        raise Fail("load JSON path escaped repository") from None
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonfinite_constant,
+            parse_float=parse_finite_float,
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+        raise Fail("load JSON unreadable or invalid") from None
+    if not isinstance(value, dict):
+        raise Fail("load JSON root must be object")
+    return value
 
 
 def check_results(
@@ -279,7 +317,7 @@ def main() -> int:
         print(f"LOAD VALIDATION FAILED: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:  # noqa: BLE001
-        print(f"LOAD VALIDATION FAILED (unexpected): {exc}", file=sys.stderr)
+        print(f"LOAD VALIDATION FAILED (unexpected): {type(exc).__name__}", file=sys.stderr)
         return 2
 
     print("Memory OS load-test validation PASS")
