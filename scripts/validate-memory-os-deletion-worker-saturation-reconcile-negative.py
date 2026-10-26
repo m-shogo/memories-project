@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import stat
@@ -162,14 +164,19 @@ def main() -> int:
     expected = "0" * 40
     reconciler.RESULT_PATH.write_text(json.dumps(synthetic_result(contract, expected), indent=2) + "\n", encoding="utf-8")
 
-    failing_validator = '''class Fail(RuntimeError):\n    pass\n\n_contract_calls = 0\n\ndef validate_contract(candidate):\n    global _contract_calls\n    _contract_calls += 1\n    if _contract_calls == 2:\n        raise Fail("SYNTHETIC_SECRET_VALIDATOR_FAILURE")\n\ndef validate_result(candidate, expected_sha):\n    return None\n'''
+    failing_validator = '''import sys
+print("SYNTHETIC_SECRET_IMPORT_STDOUT")
+print("SYNTHETIC_SECRET_IMPORT_STDERR", file=sys.stderr)
+class Fail(RuntimeError):\n    pass\n\n_contract_calls = 0\n\ndef validate_contract(candidate):\n    print("SYNTHETIC_SECRET_VALIDATE_STDOUT")\n    print("SYNTHETIC_SECRET_VALIDATE_STDERR", file=sys.stderr)\n    global _contract_calls\n    _contract_calls += 1\n    if _contract_calls == 2:\n        raise Fail("SYNTHETIC_SECRET_VALIDATOR_FAILURE")\n\ndef validate_result(candidate, expected_sha):\n    print("SYNTHETIC_SECRET_RESULT_STDOUT")\n    print("SYNTHETIC_SECRET_RESULT_STDERR", file=sys.stderr)\n    return None\n'''
     reconciler.VALIDATOR_PATH.write_text(failing_validator, encoding="utf-8")
 
     old_expected = os.environ.get("EXPECTED_COMMIT_SHA")
     os.environ["EXPECTED_COMMIT_SHA"] = expected
     try:
+        captured_stdout, captured_stderr = io.StringIO(), io.StringIO()
         try:
-            reconciler.main()
+            with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):
+                reconciler.main()
         except reconciler.Fail as exc:
             if ("post-write validation failed: Fail" not in str(exc)
                     or "SYNTHETIC_SECRET" in str(exc)
@@ -178,6 +185,8 @@ def main() -> int:
         else:
             raise AssertionError("reconciler accepted synthetic post-write validator failure")
 
+        if "SYNTHETIC_SECRET" in captured_stdout.getvalue() + captured_stderr.getvalue():
+            raise AssertionError("validator import or execution emitted untrusted Python output")
         if reconciler.CONTRACT_PATH.read_bytes() != original_contract:
             raise AssertionError("reconciler failed to restore contract bytes after post-write validation failure")
         if stat.S_IMODE(reconciler.CONTRACT_PATH.stat().st_mode) != original_contract_mode:
@@ -197,8 +206,10 @@ def main() -> int:
 
         reconciler.os.fsync = reject_rollback_fsync
         try:
+            captured_stdout, captured_stderr = io.StringIO(), io.StringIO()
             try:
-                reconciler.main()
+                with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):
+                    reconciler.main()
             except reconciler.Fail as exc:
                 diagnostic = str(exc)
                 if ("post-write validation failed: Fail" not in diagnostic
@@ -208,6 +219,8 @@ def main() -> int:
                     raise AssertionError("rollback failure leaked raw exception or lost incompleteness") from None
             else:
                 raise AssertionError("reconciler accepted synthetic rollback failure")
+            if "SYNTHETIC_SECRET" in captured_stdout.getvalue() + captured_stderr.getvalue():
+                raise AssertionError("rollback validator emitted untrusted Python output")
         finally:
             reconciler.os.fsync = original_fsync
 
@@ -349,7 +362,7 @@ def main() -> int:
             if list(Path(tmp).rglob(".*.tmp")):
                 raise AssertionError("unsafe atomic writer left temp residue: " + label)
 
-    print("PASS: deletion-worker saturation authority, secret-free validator/rollback diagnostics, stronger-readiness prewrite, mode-preserving atomic publication, path rejection and rollback are fail-closed")
+    print("PASS: deletion-worker saturation authority, secret-free validator output/import/rollback diagnostics, stronger-readiness prewrite, mode-preserving atomic publication, path rejection and rollback are fail-closed")
     return 0
 
 
