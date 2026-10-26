@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -23,8 +24,31 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise Fail("non-finite JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite JSON number rejected")
+    return parsed
+
+
+def finite_nonnegative(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value)) and value >= 0
+    except (OverflowError, ValueError):
+        return False
+
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        parse_constant=reject_nonfinite_constant,
+        parse_float=parse_finite_float,
+    )
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
 
@@ -49,9 +73,9 @@ def signal_for(result: dict[str, Any]) -> dict[str, Any]:
         delta = row.get("poolDelta")
         require(isinstance(batch, dict) and isinstance(delta, dict), f"source step {index} measurements missing")
         require(batch.get("requests") == 64, f"source step {index} request count drift")
-        require(isinstance(batch.get("throughput"), (int, float)) and batch["throughput"] >= 0, f"source step {index} throughput invalid")
-        require(isinstance(batch.get("latencyP95Ms"), (int, float)) and batch["latencyP95Ms"] >= 0, f"source step {index} p95 invalid")
-        require(isinstance(delta.get("emptyAcquireCount"), int) and delta["emptyAcquireCount"] >= 0, f"source step {index} contention invalid")
+        require(finite_nonnegative(batch.get("throughput")), f"source step {index} throughput invalid")
+        require(finite_nonnegative(batch.get("latencyP95Ms")), f"source step {index} p95 invalid")
+        require(type(delta.get("emptyAcquireCount")) is int and delta["emptyAcquireCount"] >= 0, f"source step {index} contention invalid")
     actual = scenario.get("firstSaturationSignal")
     if actual is not None:
         require(actual in STEPS, "actual saturation signal outside configured steps")
