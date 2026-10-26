@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import importlib.util
+import io
+import json
+import sys
 import os
 import tempfile
 import os
@@ -440,6 +444,89 @@ def exercise_deletion_load_json_reader() -> None:
 
 
 
+def exercise_deletion_load_optional_result_path() -> None:
+    """Missing evidence is optional, but unsafe nodes must never become absence."""
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_optional_result", validator_path)
+    require(spec is not None and spec.loader is not None, "optional-result validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    contract = validator.load(ROOT / "contracts/operations/deletion-under-load-contract.v1.json")
+    contract["readiness"]["exactSourceResultCommitted"] = False
+    contract["readiness"]["postFenceLoadExecuted"] = False
+
+    with tempfile.TemporaryDirectory(prefix=".deletion-load-optional-negative-", dir=ROOT) as tmp:
+        fixture_root = Path(tmp)
+        result_path = fixture_root / validator.REVIEWED_RESULT_PATH
+        result_path.parent.mkdir(parents=True)
+        contract_path = fixture_root / "contracts/operations/deletion-under-load-contract.v1.json"
+        contract_path.parent.mkdir(parents=True)
+        contract_path.write_text(json.dumps(contract), encoding="utf-8")
+        outside_canary = fixture_root / "outside-canary.txt"
+        outside_canary.write_text("SYNTHETIC_OUTSIDE_CANARY", encoding="utf-8")
+        original_root, original_contract, original_argv = validator.ROOT, validator.CONTRACT_PATH, sys.argv
+        validator.ROOT, validator.CONTRACT_PATH = fixture_root, contract_path
+        sys.argv = ["deletion-load-negative", "--expected-commit-sha", ""]
+        try:
+            require(validator.optional_result_present(result_path) is False,
+                    "missing canonical result must remain optional")
+            with contextlib.redirect_stdout(io.StringIO()):
+                require(validator.main() == 0, "missing-result static positive failed")
+            result_path.write_text("{}", encoding="utf-8")
+            require(validator.optional_result_present(result_path) is True,
+                    "regular canonical result was not detected")
+            result_path.unlink()
+
+            def reject(label: str) -> None:
+                try:
+                    validator.optional_result_present(result_path)
+                except validator.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError(f"unsafe optional deletion result accepted: {label}")
+
+            result_path.symlink_to(outside_canary)
+            reject("direct existing symlink")
+            result_path.unlink()
+            result_path.symlink_to(fixture_root / "missing-target")
+            reject("dangling symlink")
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    validator.main()
+            except validator.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError("main accepted dangling optional result as missing")
+            result_path.unlink()
+            result_path.mkdir()
+            reject("directory")
+            result_path.rmdir()
+            os.mkfifo(result_path)
+            reject("FIFO")
+            result_path.unlink()
+            result_path.parent.rmdir()
+            reject("missing parent")
+            (fixture_root / "docs/fixtures").rmdir()
+            alternate = fixture_root / "alternate-fixtures/memory-os-operability"
+            alternate.mkdir(parents=True)
+            (fixture_root / "docs/fixtures").symlink_to(alternate.parent, target_is_directory=True)
+            reject("symlinked ancestor")
+            (fixture_root / "docs/fixtures").unlink()
+            try:
+                validator.optional_result_present(fixture_root / "unreviewed-result.json")
+            except validator.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError("optional deletion result accepted unreviewed path")
+            require(outside_canary.read_text(encoding="utf-8") == "SYNTHETIC_OUTSIDE_CANARY",
+                    "external synthetic canary changed")
+        finally:
+            validator.ROOT, validator.CONTRACT_PATH, sys.argv = (
+                original_root, original_contract, original_argv
+            )
+    print("PASS: deletion-under-load optional-result 2 positives and 7 unsafe-path negatives")
+
+
 def exercise_deletion_load_reviewed_schema() -> None:
     validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
     spec = importlib.util.spec_from_file_location("deletion_load_reviewed_schema", validator_path)
@@ -766,6 +853,7 @@ def exercise_validator_command_authority(module: ModuleType) -> None:
 
 def main() -> int:
     exercise_deletion_load_json_reader()
+    exercise_deletion_load_optional_result_path()
     exercise_deletion_load_utc_seconds_boundary()
     exercise_deletion_load_git_ancestry_boundary()
     exercise_deletion_load_reviewed_schema()
