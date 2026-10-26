@@ -6,6 +6,7 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-live-load-authority-v2.yml"
+      - ".github/workflows/reconcile-live-load-authority-v2-pr.yml"
       - ".github/workflows/live-load-authority-diagnostic-source-negative.yml"
       - "scripts/validate-memory-os-live-load-diagnostic-source-negative.py"
   push:
@@ -13,6 +14,7 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-live-load-authority-v2.yml"
+      - ".github/workflows/reconcile-live-load-authority-v2-pr.yml"
       - ".github/workflows/live-load-authority-diagnostic-source-negative.yml"
       - "scripts/validate-memory-os-live-load-diagnostic-source-negative.py"
 

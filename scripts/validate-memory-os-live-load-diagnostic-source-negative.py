@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/reconcile-live-load-authority-v2.yml"
 INDEPENDENT = ".github/workflows/live-load-authority-diagnostic-source-negative.yml"
+PR = ".github/workflows/reconcile-live-load-authority-v2-pr.yml"
 SELF = "scripts/validate-memory-os-live-load-diagnostic-source-negative.py"
 TARGET = "docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -157,10 +158,81 @@ def validator_shell_runtime(source: str) -> None:
                 raise AssertionError("live load validator shell temp residue")
     print("PASS: live load first/second validator exit and secret-free shell runtime (4 cases)")
 
+def pr_policy(source: str) -> None:
+    required = (
+        "if: github.event_name == 'pull_request' && github.base_ref == 'so'",
+        "permissions:\\n      contents: read",
+        "persist-credentials: false",
+        'test "${GITHUB_EVENT_NAME:-}" = "pull_request"',
+        'test "${GITHUB_BASE_REF:-}" = "so"',
+        '[[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"',
+        'test -z "$(git status --porcelain)"',
+    )
+    for marker in required:
+        if marker.replace("\\n", "\n") not in source:
+            raise AssertionError("live load PR source policy missing: " + marker)
+    if source.count(CHECKOUT) != 1 or source.count(SETUP) != 1:
+        raise AssertionError("live load PR immutable Actions drift")
+    if "actions/checkout@v4" in source or "actions/setup-python@v5" in source:
+        raise AssertionError("live load PR floating Action regression")
+
+def pr_mutations(source: str) -> None:
+    required = (
+        "if: github.event_name == 'pull_request' && github.base_ref == 'so'",
+        "persist-credentials: false",
+        'test "${GITHUB_EVENT_NAME:-}" = "pull_request"',
+        'test "${GITHUB_BASE_REF:-}" = "so"',
+        '[[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"',
+        'test -z "$(git status --porcelain)"',
+        CHECKOUT,
+        SETUP,
+    )
+    for index, marker in enumerate(required):
+        changed = source.replace(marker, "REMOVED_BY_NEGATIVE_TEST", 1)
+        if changed == source:
+            raise AssertionError("live load PR mutation unreachable: " + str(index))
+        try:
+            pr_policy(changed)
+        except AssertionError:
+            continue
+        raise AssertionError("live load PR mutation accepted: " + str(index))
+    print(f"PASS: live load PR source mutations ({len(required)} cases)")
+
+def pr_identity_runtime(source: str) -> None:
+    shell = step(source, "Verify exact clean PR source")
+    head = "a" * 40
+    cases = (
+        ("pull_request", "so", head, True),
+        ("pull_request", "main", head, False),
+        ("push", "so", head, False),
+        ("pull_request", "so", "b" * 40, False),
+        ("pull_request", "so", "A" * 40, False),
+        ("pull_request", "so", "a" * 39, False),
+    )
+    with tempfile.TemporaryDirectory(prefix="live-load-pr-identity-") as temp:
+        root = Path(temp)
+        stub = root / "git"
+        stub.write_text("#!/bin/sh\n"
+                        "if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then printf '" + head + "\\n'; exit 0; fi\n"
+                        "if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then exit 0; fi\n"
+                        "exit 1\n", encoding="utf-8")
+        stub.chmod(0o755)
+        for event, base, sha, accepted in cases:
+            env = dict(os.environ, PATH=str(root) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                       GITHUB_EVENT_NAME=event, GITHUB_BASE_REF=base, PR_HEAD_SHA=sha)
+            result = subprocess.run(["bash", "-e", "-u", "-o", "pipefail", "-c", shell],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10, check=False)
+            if (result.returncode == 0) != accepted:
+                raise AssertionError("live load PR identity shell drift: " + str((event, base, sha, result.returncode)))
+    print("PASS: live load PR event/base/head SHA shell runtime (6 cases)")
+
 def main() -> None:
     publisher = read(PUBLISHER)
+    pr = read(PR)
     independent = read(INDEPENDENT)
-    for marker in (PUBLISHER, INDEPENDENT, SELF, CHECKOUT, SETUP,
+    for marker in (PUBLISHER, PR, INDEPENDENT, SELF, CHECKOUT, SETUP,
                    "persist-credentials: false", "contents: read",
                    'test "$(git rev-parse HEAD)" = "$expected"',
                    'test -z "$(git status --porcelain)"'):
@@ -170,6 +242,9 @@ def main() -> None:
     mutations(publisher)
     writer_runtime(publisher)
     validator_shell_runtime(publisher)
+    pr_policy(pr)
+    pr_mutations(pr)
+    pr_identity_runtime(pr)
     print("PASS: live load diagnostic exact-source read-only proof; production evidence generated: false")
 
 if __name__ == "__main__":
