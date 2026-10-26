@@ -132,6 +132,23 @@ def load(path: Path) -> dict[str, Any]:
     require(isinstance(value, dict), "pre-fence upload JSON root must be object")
     return value
 
+def read_runner() -> str:
+    """Read only a regular in-repository Go runner without following symlinks."""
+    path = RUNNER_PATH
+    require(isinstance(path, Path), "upload runner path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "upload runner symlink rejected")
+    require(path.is_file(), "upload runner missing or unsafe")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError, RuntimeError):
+        raise Fail("upload runner escaped repository") from None
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError, ValueError):
+        raise Fail("upload runner unreadable or invalid") from None
+
+
 def validate_contract(contract: dict[str, Any]) -> None:
     require(contract.get("contractId") == "memory-os.operability.deletion-prefence-upload-completion.v1", "contract identity drift")
     require(contract.get("schemaVersion") == "memory-os-deletion-prefence-upload-completion.v1", "contract schema drift")
@@ -160,7 +177,7 @@ def validate_contract(contract: dict[str, Any]) -> None:
     for key in EXPECTED_RULES:
         require(rules[key] is True, f"validation rule must remain true: {key}")
 
-    runner = RUNNER_PATH.read_text(encoding="utf-8")
+    runner = read_runner()
     helper_start = runner.find("func issueAndPutPrefenceUpload")
     helper_end = runner.find("func TestAccountDeletionPrefenceUploadCompletionLocalDependencies")
     require(helper_start >= 0 and helper_end > helper_start, "upload proof helper not found")

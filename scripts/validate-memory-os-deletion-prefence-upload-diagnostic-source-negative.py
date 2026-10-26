@@ -18,7 +18,7 @@ SCRIPT = "scripts/validate-memory-os-deletion-prefence-upload-diagnostic-source-
 RECONCILER = "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
 VALIDATOR = "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-REVIEWED_VALIDATOR = "0ddf668c14f689b94c8e12c3d43d289d05f4e060"
+REVIEWED_VALIDATOR = "60e39ed59eda0f24b959370ed1013efc22abed58"
 REVIEWED_RECONCILER = "66f71361957c4a1e8a208a25dc0a6fd3566fb2da"
 REVIEWED_RECONCILE_NEGATIVE = "5179f6ad49809e4ba727506df0351754e6f6abff"
 REVIEWED = "7111cf9d4217c46c4ce973e65d4712c42f4c9552"
@@ -461,6 +461,40 @@ def strict_validator_runtime():
             cases += 1
         finally:
             validator.RESULT_PATH = original_result
+
+        # Execute the actual Go runner reader against disposable path/encoding negatives.
+        canonical_runner = validator.read_runner()
+        if "func issueAndPutPrefenceUpload" not in canonical_runner:
+            raise AssertionError("canonical upload runner positive control failed")
+        original_runner = validator.RUNNER_PATH
+        runner_good = inside / "runner-good.go"
+        runner_good.write_text("package httpserver\\n", encoding="utf-8")
+        runner_invalid = inside / "runner-invalid.go"
+        runner_invalid.write_bytes(bytes([255]))
+        try:
+            validator.RUNNER_PATH = runner_good
+            if validator.read_runner() != "package httpserver\\n":
+                raise AssertionError("disposable upload runner positive control failed")
+            for label, unsafe in (
+                ("outside", canary),
+                ("symlink", linked),
+                ("ancestor symlink", linked_parent / "canary.json"),
+                ("directory", directory),
+                ("missing", inside / "missing-runner.go"),
+                ("invalid utf8", runner_invalid),
+                ("non-path", "synthetic-invalid-runner"),
+            ):
+                validator.RUNNER_PATH = unsafe
+                try:
+                    validator.read_runner()
+                except validator.Fail as exc:
+                    if "synthetic-invalid-runner" in str(exc):
+                        raise AssertionError("upload runner diagnostic exposed untrusted path") from None
+                else:
+                    raise AssertionError("upload runner reader accepted " + label)
+                cases += 1
+        finally:
+            validator.RUNNER_PATH = original_runner
 
         if canary.read_bytes() != b'{"synthetic":true}':
             raise AssertionError("pre-fence upload JSON consumer mutated outside canary")
