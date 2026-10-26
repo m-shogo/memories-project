@@ -129,8 +129,8 @@ def utc_timestamp(value: Any, field: str) -> datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
-    except ValueError as exc:
-        raise Fail(f"{field} must be valid RFC3339: {value}") from exc
+    except ValueError:
+        raise Fail(f"{field} must be valid RFC3339") from None
     require(parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed),
             f"{field} must resolve to UTC")
     return parsed
@@ -146,7 +146,7 @@ def summarize_run(path: Path) -> tuple[datetime, dict[str, Any]]:
         text=True,
     )
     require(completed.returncode == 0,
-            f"single-run validator rejected {path.name}: {(completed.stdout + completed.stderr)[-2000:]}")
+            f"single-run validator rejected (exit {completed.returncode})")
     value = load(path)
     scenario = value.get("scenario")
     require(isinstance(scenario, dict), f"{path.name}: scenario missing")

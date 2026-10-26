@@ -555,7 +555,50 @@ def validate_reconcile_diagnostic_runtime() -> None:
     print("PASS: sustained soak diagnostic fixed-output, mode, rollback and symlink runtime negatives")
 
 
+def validate_trend_child_output_privacy() -> None:
+    """Reject secret-bearing child output and malformed timestamps at both trend boundaries."""
+    producer = load_trend_reviewer()
+    consumer = load_module(
+        ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py",
+        "memory_os_sustained_local_soak_trend_privacy_negative",
+    )
+
+    class SyntheticChildResult:
+        returncode = 19
+        stdout = "SYNTHETIC_SECRET_CANARY"
+        stderr = "SYNTHETIC_SECRET_CANARY"
+
+    for module, method in (
+        (producer, producer.summarize_run),
+        (consumer, consumer.validate_run),
+    ):
+        original_run = module.subprocess.run
+        try:
+            module.subprocess.run = lambda *args, **kwargs: SyntheticChildResult()
+            try:
+                method(ROOT / "docs/fixtures/memory-os-operability/synthetic-run.json")
+            except module.Fail as exc:
+                if "SYNTHETIC_SECRET_CANARY" in str(exc) or "exit 19" not in str(exc):
+                    raise AssertionError("trend child output leaked or lost exit code")
+            else:
+                raise AssertionError("trend child failure accepted")
+        finally:
+            module.subprocess.run = original_run
+        positive = module.utc_timestamp("2026-10-26T11:00:00Z", "positive")
+        if positive.year != 2026:
+            raise AssertionError("trend UTC timestamp positive control failed")
+        try:
+            module.utc_timestamp("SYNTHETIC_SECRET_CANARYZ", "synthetic")
+        except module.Fail as exc:
+            if "SYNTHETIC_SECRET_CANARY" in str(exc):
+                raise AssertionError("trend timestamp diagnostic leaked raw value")
+        else:
+            raise AssertionError("trend malformed timestamp accepted")
+    print("PASS: trend producer/consumer child-output and timestamp privacy negatives")
+
+
 def main() -> int:
+    validate_trend_child_output_privacy()
     validate_reconcile_diagnostic_runtime()
     validate_aggregate_updater_admission_negatives()
     validate_aggregate_admission_negatives()
