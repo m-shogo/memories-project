@@ -50,7 +50,7 @@ def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
             raise AssertionError("gofmt source marker missing: " + marker)
-    if source.count('test -z "$(git status --porcelain)"') != 3:
+    if source.count('test -z "$(git status --porcelain)"') != 4:
         raise AssertionError("gofmt clean source/final multiplicity drift")
 
 def step(source: str, name: str) -> str:
