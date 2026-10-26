@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -26,16 +27,43 @@ def require(condition: bool, message: str) -> None:
         raise ValidationFailure(message)
 
 
-def load(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ValidationFailure(f"missing file: {path.relative_to(ROOT)}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValidationFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
-    return value
+def reject_nonfinite_constant(value: str) -> None:
+    raise ValidationFailure("non-finite database outage JSON constant rejected")
 
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite database outage JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate database outage JSON key rejected")
+        document[key] = value
+    return document
+
+
+def load(path: Path) -> dict[str, Any]:
+    """Admit only regular, unambiguous JSON inside the repository."""
+    require(isinstance(path, Path), "database outage JSON path must be Path")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "database outage JSON symlink rejected")
+    require(path.is_file(), "database outage JSON file missing or unsafe")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, ValueError):
+        raise ValidationFailure("database outage JSON path escaped repository") from None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+        raise ValidationFailure("database outage JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "database outage JSON root must be an object")
+    return value
 
 def strings(value: Any, field: str, minimum: int = 0) -> list[str]:
     require(isinstance(value, list), f"{field} must be a list")
@@ -70,9 +98,14 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> str:
     require(result.get("integrityResult") == "PASS",
             "database outage drill integrity is not PASS")
     require(result.get("exitCode") == 0, "database outage drill exitCode is not zero")
-    require(isinstance(result.get("durationSeconds"), (int, float)) and
-            result["durationSeconds"] >= 0,
+    duration = result.get("durationSeconds")
+    require(isinstance(duration, (int, float)) and not isinstance(duration, bool),
             "database outage duration is invalid")
+    try:
+        finite_duration = math.isfinite(float(duration))
+    except (OverflowError, ValueError):
+        finite_duration = False
+    require(finite_duration and duration >= 0, "database outage duration is invalid")
     assertions = result.get("assertions")
     require(isinstance(assertions, dict), "database outage assertions missing")
 
@@ -208,6 +241,8 @@ def main() -> int:
                 "EXPECTED_COMMIT_SHA must be a full SHA")
         require(RESULT_PATH.is_file(), "exact-source database outage result is missing")
     generation = "ABSENT"
+    for candidate in (RESULT_PATH, *RESULT_PATH.parents):
+        require(not candidate.is_symlink(), "database outage result symlink rejected")
     if RESULT_PATH.is_file():
         generation = validate_result(load(RESULT_PATH), expected_sha)
     status = load(STATUS_PATH)

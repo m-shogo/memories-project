@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import tempfile
@@ -71,7 +72,90 @@ def stale_status_bytes(module) -> bytes:
     return json.dumps(status, indent=2).encode("utf-8") + b"\n"
 
 
+
+def verify_database_outage_strict_json_and_duration() -> None:
+    """Exercise real database outage reader and full-result duration validation."""
+    path = ROOT / "scripts/validate-memory-os-database-commit-outage.py"
+    spec = importlib.util.spec_from_file_location("database_outage_strict_validator", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("database outage strict validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    canonical = validator.load(validator.RESULT_PATH)
+    validator.validate_result(copy.deepcopy(canonical), None)
+    for label, duration in (
+        ("boolean", True), ("NaN", float("nan")), ("infinity", float("inf")),
+        ("negative", -1), ("huge integer", 10 ** 500),
+    ):
+        mutated = copy.deepcopy(canonical)
+        mutated["durationSeconds"] = duration
+        try:
+            validator.validate_result(mutated, None)
+        except validator.ValidationFailure as exc:
+            if str(exc) != "database outage duration is invalid":
+                raise RuntimeError(f"database outage {label} rejected by wrong gate") from None
+        else:
+            raise RuntimeError(f"database outage accepted {label} duration")
+    with tempfile.TemporaryDirectory(prefix="database-outage-reader-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_text('{"synthetic":true}', encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".database-outage-reader-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            good = inside / "good.json"
+            good.write_text('{"safe":true}', encoding="utf-8")
+            if validator.load(good) != {"safe": True}:
+                raise RuntimeError("database outage JSON positive read failed")
+            malformed = (
+                ("nested duplicate", '{"a":{"key":1,"key":2}}'),
+                ("nonfinite constant", '{"value":NaN}'),
+                ("nonfinite exponent", '{"value":1e999}'),
+                ("oversized integer", '{"value":' + "9" * 5000 + '}'),
+                ("nonobject root", '["safe"]'),
+                ("synthetic secret malformed", '{"SYNTHETIC_OUTAGE_SECRET":'),
+            )
+            for label, raw in malformed:
+                document = inside / (label.replace(" ", "-") + ".json")
+                document.write_text(raw, encoding="utf-8")
+                try:
+                    validator.load(document)
+                except validator.ValidationFailure as exc:
+                    if "SYNTHETIC_OUTAGE_SECRET" in str(exc):
+                        raise RuntimeError("database outage reader reflected synthetic secret") from None
+                else:
+                    raise RuntimeError(f"database outage reader accepted {label}")
+            invalid_utf8 = inside / "invalid-utf8.json"
+            invalid_utf8.write_bytes(b'{"value":"\\xff"}'.replace(b'\\xff', bytes([255])))
+            try:
+                validator.load(invalid_utf8)
+            except validator.ValidationFailure:
+                pass
+            else:
+                raise RuntimeError("database outage reader accepted invalid UTF-8")
+            linked = inside / "linked.json"
+            linked.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            directory = inside / "directory.json"
+            directory.mkdir()
+            for label, unsafe in (
+                ("external file", canary), ("direct symlink", linked),
+                ("symlinked ancestor", linked_parent / "canary.json"),
+                ("directory", directory), ("missing file", inside / "missing.json"),
+            ):
+                try:
+                    validator.load(unsafe)
+                except validator.ValidationFailure:
+                    pass
+                else:
+                    raise RuntimeError(f"database outage reader accepted {label}")
+        if canary.read_text(encoding="utf-8") != '{"synthetic":true}':
+            raise RuntimeError("database outage reader changed external canary")
+    print("PASS: database outage JSON/path positive, 12 reader and 5 duration negatives")
+
+
 def main() -> int:
+    verify_database_outage_strict_json_and_duration()
     module = load_module()
     original_status = module.STATUS_PATH.read_bytes()
 
