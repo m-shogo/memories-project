@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import os
 import tempfile
@@ -389,8 +390,70 @@ def exercise_deletion_load_json_reader() -> None:
     print("PASS: deletion-under-load bounded strict JSON and path negatives")
 
 
+
+def exercise_deletion_load_reviewed_schema() -> None:
+    validator_path = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+    spec = importlib.util.spec_from_file_location("deletion_load_reviewed_schema", validator_path)
+    require(spec is not None and spec.loader is not None, "reviewed schema import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    contract = validator.load(ROOT / "contracts/operations/deletion-under-load-contract.v1.json")
+    result = validator.load(ROOT / validator.REVIEWED_RESULT_PATH)
+    validator.validate_reviewed_contract(copy.deepcopy(contract))
+    validator.validate_result_shape(copy.deepcopy(result))
+    contract_cases = (
+        ("result redirect", lambda d: d.__setitem__("resultPath", "contracts/operations/production-operability-status.json")),
+        ("result traversal", lambda d: d.__setitem__("resultPath", "../outside.json")),
+        ("runner redirect", lambda d: d.__setitem__("runner", "scripts/validate-memory-os-load.py")),
+        ("missing validator", lambda d: d.pop("validator")),
+        ("contract identity", lambda d: d.__setitem__("contractId", "unreviewed")),
+        ("criteria overclaim", lambda d: d["successCriteria"].__setitem__("productionEvidence", True)),
+        ("criteria boolean alias", lambda d: d["successCriteria"].__setitem__("productionEvidence", 0)),
+        ("criteria float alias", lambda d: d["successCriteria"].__setitem__("deletionEpoch", 2.0)),
+        ("criteria missing", lambda d: d["successCriteria"].pop("workerCompleted")),
+        ("criteria extra", lambda d: d["successCriteria"].__setitem__("productionReady", True)),
+    )
+    result_cases = (
+        ("root readiness injection", lambda d: d.__setitem__("productionReady", True)),
+        ("missing root field", lambda d: d.pop("limitations")),
+        ("environment readiness injection", lambda d: d["environment"].__setitem__("productionReady", True)),
+        ("environment missing boundary", lambda d: d["environment"].pop("productionCredentials")),
+        ("environment cpu boolean", lambda d: d["environment"].__setitem__("numCpu", True)),
+        ("scenario readiness injection", lambda d: d["scenario"].__setitem__("productionReady", True)),
+        ("scenario missing field", lambda d: d["scenario"].pop("workerReceiptCount")),
+        ("pre summary injection", lambda d: d["scenario"]["preFence"]["summary"].__setitem__("productionEvidence", True)),
+        ("post batch injection", lambda d: d["scenario"]["postFence"].__setitem__("productionReady", True)),
+        ("assertion extra", lambda d: d["scenario"]["assertions"].__setitem__("productionReady", True)),
+        ("assertion missing", lambda d: d["scenario"]["assertions"].pop("workerCompleted")),
+        ("assertion boolean alias", lambda d: d["scenario"]["assertions"].__setitem__("finalOwnedRowCount", False)),
+        ("assertion float alias", lambda d: d["scenario"]["assertions"].__setitem__("deletionEpoch", 2.0)),
+        ("assertion overclaim", lambda d: d["scenario"]["assertions"].__setitem__("productionEvidence", True)),
+        ("limitations object", lambda d: d.__setitem__("limitations", {"productionReady": True})),
+    )
+    for label, mutate in contract_cases:
+        altered = copy.deepcopy(contract)
+        mutate(altered)
+        try:
+            validator.validate_reviewed_contract(altered)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"deletion load contract accepted {label}")
+    for label, mutate in result_cases:
+        altered = copy.deepcopy(result)
+        mutate(altered)
+        try:
+            validator.validate_result_shape(altered)
+        except validator.ValidationFailure:
+            pass
+        else:
+            raise RuntimeError(f"deletion load result accepted {label}")
+    print("PASS: deletion-under-load reviewed schema positive and 25 negative cases")
+
+
 def main() -> int:
     exercise_deletion_load_json_reader()
+    exercise_deletion_load_reviewed_schema()
     module = load_target()
     module.enforce_runtime_authorities()
     module.enforce_atomic_writer_authority()

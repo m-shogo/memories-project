@@ -160,6 +160,84 @@ def validate_deletion_timestamps(result: dict[str, Any]) -> None:
     require(started <= completed <= generated, "deletion load timestamps must be chronological")
 
 
+
+REVIEWED_RESULT_PATH = "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
+REVIEWED_SOURCES = {
+    "runner": "services/import-api/internal/httpserver/deletion_under_load_test.go",
+    "validator": "scripts/validate-memory-os-deletion-under-load.py",
+    "reconcile": "scripts/reconcile-memory-os-deletion-under-load-status.py",
+    "workflow": ".github/workflows/deletion-under-load.yml",
+}
+REVIEWED_CRITERIA = {
+    "preFenceAll2xx": True, "deletionRequestStatus": 202, "deletionEpoch": 2,
+    "postFenceAllUnauthorized": True, "postFenceUnauthorizedCount": 400,
+    "postFenceNo5xx": True, "postFenceNoTransportErrors": True,
+    "workerCompleted": True, "workerReceiptCount": 1, "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted", "finalAccountEpoch": 2,
+    "productionEvidence": False,
+}
+
+
+def exact_keys(value: Any, keys: set[str], label: str) -> dict[str, Any]:
+    require(isinstance(value, dict) and set(value) == keys,
+            f"{label} missing or unreviewed fields")
+    return value
+
+
+def reviewed_values(value: Any, expected: dict[str, Any], label: str) -> None:
+    actual = exact_keys(value, set(expected), label)
+    for key, reviewed in expected.items():
+        require(type(actual[key]) is type(reviewed) and actual[key] == reviewed,
+                f"{label}.{key} reviewed type/value drift")
+
+
+def validate_reviewed_contract(contract: dict[str, Any]) -> None:
+    require(contract.get("contractId") == "memory-os.operability.deletion-under-load.v1",
+            "deletion-under-load contract identity drift")
+    require(contract.get("resultPath") == REVIEWED_RESULT_PATH,
+            "deletion-under-load result path authority drift")
+    for key, reviewed in REVIEWED_SOURCES.items():
+        require(contract.get(key) == reviewed,
+                f"deletion-under-load {key} source authority drift")
+    reviewed_values(contract.get("successCriteria"), REVIEWED_CRITERIA,
+                    "deletion-under-load successCriteria")
+
+
+def validate_result_shape(result: dict[str, Any]) -> None:
+    exact_keys(result, {"schemaVersion", "commitSha", "generatedAt",
+                        "environment", "scenario", "limitations"},
+               "deletion-under-load result")
+    environment = exact_keys(result.get("environment"), {
+        "os", "arch", "numCpu", "goVersion", "dependencyMode",
+        "syntheticDataOnly", "productionTraffic", "productionCredentials",
+        "productionEvidence", "productionEquivalentDependencies", "containsSecrets",
+    }, "deletion-under-load environment")
+    require(environment["os"] == "linux" and environment["arch"] == "amd64" and
+            isinstance(environment["goVersion"], str) and bool(environment["goVersion"].strip()),
+            "deletion-under-load environment platform drift")
+    integer(environment["numCpu"], "environment.numCpu", 1)
+    scenario = exact_keys(result.get("scenario"), {
+        "scenarioId", "startedAt", "completedAt", "preFence", "deletionRequestStatus",
+        "deletionEpoch", "postFence", "workerDurationSeconds", "workerReceiptCount",
+        "finalOwnedRowCount", "finalAccountState", "finalAccountEpoch",
+        "assertions", "result", "integrityResult",
+    }, "deletion-under-load scenario")
+    for name in ("preFence", "postFence"):
+        batch = exact_keys(scenario.get(name), {"summary", "statusCodeCounts"},
+                           f"deletion-under-load {name}")
+        exact_keys(batch.get("summary"), {
+            "requests", "concurrency", "successes", "failures",
+            "statusClassCounts", "durationSeconds", "throughput",
+            "latencyP50Ms", "latencyP95Ms", "latencyP99Ms",
+        }, f"deletion-under-load {name}.summary")
+    reviewed_values(scenario.get("assertions"), REVIEWED_CRITERIA,
+                    "deletion-under-load assertions")
+    limitations = result.get("limitations")
+    require(isinstance(limitations, list) and bool(limitations) and
+            all(isinstance(x, str) and bool(x.strip()) for x in limitations),
+            "deletion-under-load limitations must be nonempty strings")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-commit-sha", default=os.getenv("EXPECTED_COMMIT_SHA", ""))
@@ -211,7 +289,8 @@ def main() -> int:
         require(readiness.get(field) is False,
                 f"unproven readiness cannot be true: {field}")
 
-    result_path = ROOT / contract["resultPath"]
+    validate_reviewed_contract(contract)
+    result_path = ROOT / REVIEWED_RESULT_PATH
     if not result_path.is_file():
         require(readiness.get("exactSourceResultCommitted") is False and
                 readiness.get("postFenceLoadExecuted") is False,
@@ -225,6 +304,7 @@ def main() -> int:
         return 0
 
     result = load(result_path)
+    validate_result_shape(result)
     require(result.get("schemaVersion") == contract["resultsSchemaVersion"],
             "deletion-under-load result schema drift")
     commit_sha = result.get("commitSha")
@@ -272,9 +352,7 @@ def main() -> int:
 
     assertions = scenario.get("assertions")
     require(isinstance(assertions, dict), "deletion-under-load assertions missing")
-    for field, expected in contract["successCriteria"].items():
-        require(assertions.get(field) == expected,
-                f"deletion-under-load assertion mismatch: {field}")
+    reviewed_values(assertions, REVIEWED_CRITERIA, "deletion-under-load assertions")
 
     serialized = json.dumps(result, ensure_ascii=False)
     for forbidden in (
