@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
 import stat
 import tempfile
 from pathlib import Path
@@ -145,6 +146,22 @@ def self_test() -> None:
     positive = make_report("unknown", "UNKNOWN", False)
     if positive["result"] != "PASS" or positive["productionDecision"] != "NO_GO":
         raise AssertionError("diagnostic positive/nonpromotion drift")
+    # The short-stability validator checks a historical source commit with
+    # git merge-base. A shallow checkout creates a false short-preservation
+    # failure before the real ordering case can be diagnosed.
+    workflow = (ROOT / ".github/workflows/load-foundation-ordering-diagnostic.yml").read_text(encoding="utf-8")
+    if workflow.count("fetch-depth: 0") != 1 or "fetch-depth: 1" in workflow:
+        raise AssertionError("ordering diagnostic must fetch full Git ancestry")
+    sample = json.loads((ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json").read_text(encoding="utf-8"))
+    source = sample.get("commitSha")
+    if not isinstance(source, str) or len(source) != 40 or any(char not in "0123456789abcdef" for char in source):
+        raise AssertionError("ordering diagnostic short sample source SHA invalid")
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source, "HEAD"], cwd=ROOT,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+    )
+    if ancestor.returncode != 0:
+        raise AssertionError("ordering diagnostic lacks short sample Git ancestry")
 
 def main() -> int:
     parser = argparse.ArgumentParser()
