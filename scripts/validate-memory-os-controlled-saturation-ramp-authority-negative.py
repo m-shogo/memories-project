@@ -184,6 +184,53 @@ def verify_validator_output_negative(module) -> None:
     print("PASS: controlled saturation prewrite/postwrite validator output and exception redaction (4 cases)")
 
 
+def verify_reconciler_json_parser_negatives(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="controlled-saturation-json-outside-") as outside_temp:
+        outside = Path(outside_temp)
+        canary = outside / "canary.json"
+        canary.write_text('{"safe":true}', encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".controlled-saturation-json-", dir=ROOT) as inside_temp:
+            inside = Path(inside_temp)
+            path = inside / "input.json"
+            path.write_text('{"outer":{"a":1,"b":2}}', encoding="utf-8")
+            if module.load(path) != {"outer": {"a": 1, "b": 2}}:
+                raise RuntimeError("controlled saturation JSON parser positive control failed")
+            for raw in ('{"value": Infinity}', '{"value": 1e999}',
+                        '{"a":1,"a":2}', '{"outer":{"a":1,"a":2}}',
+                        '{"broken":', '[1,2]'):
+                path.write_text(raw, encoding="utf-8")
+                try:
+                    module.load(path)
+                except SystemExit:
+                    pass
+                else:
+                    raise RuntimeError("controlled saturation JSON parser accepted malformed or ambiguous input")
+            path.write_text('{"safe":true}', encoding="utf-8")
+            original = path.read_bytes()
+            try:
+                module.write(path, {"unsafe": float("inf")})
+            except ValueError:
+                pass
+            else:
+                raise RuntimeError("controlled saturation JSON writer accepted nonfinite output")
+            if path.read_bytes() != original:
+                raise RuntimeError("controlled saturation nonfinite JSON write mutated existing file")
+            linked_file = inside / "linked.json"
+            linked_file.symlink_to(canary)
+            linked_parent = inside / "linked-parent"
+            linked_parent.symlink_to(outside, target_is_directory=True)
+            for unsafe in (linked_file, linked_parent / "canary.json", canary, inside / "missing.json"):
+                try:
+                    module.load(unsafe)
+                except SystemExit:
+                    pass
+                else:
+                    raise RuntimeError("controlled saturation JSON parser accepted unsafe path")
+        if canary.read_text(encoding="utf-8") != '{"safe":true}':
+            raise RuntimeError("controlled saturation JSON parser changed external canary")
+    print("PASS: controlled saturation JSON positive, malformed, duplicate, nonfinite and path negatives (11 cases)")
+
+
 def verify_nonfinite_ramp_measurements() -> None:
     validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
     spec = importlib.util.spec_from_file_location("controlled_saturation_numeric_validator", validator_path)
@@ -404,6 +451,7 @@ def main() -> int:
     verify_atomic_replace_failure(module)
     verify_atomic_path_negatives(module)
     verify_validator_output_negative(module)
+    verify_reconciler_json_parser_negatives(module)
     print("PASS: controlled saturation direct reconcile source authorities are canonical and atomic")
     print("atomic replacement failure: rejected without authority mutation")
     print("temporary authority residue: none")

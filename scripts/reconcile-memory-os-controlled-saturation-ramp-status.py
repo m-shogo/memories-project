@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import stat
 import subprocess
@@ -74,10 +75,40 @@ def enforce_runtime_authorities() -> None:
         require_exact_authority(path, canonical, label)
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise SystemExit("non-finite controlled saturation JSON constant rejected")
+
+
+def parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite controlled saturation JSON number rejected")
+    return parsed
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in document, "duplicate controlled saturation JSON key rejected")
+        document[key] = value
+    return document
+
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise SystemExit(f"{path.relative_to(ROOT)} root must be object")
+    require(path.is_file(), "controlled saturation JSON file missing")
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), "controlled saturation JSON symlink path rejected")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise SystemExit("controlled saturation JSON path escaped repository") from None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=reject_nonfinite_constant,
+                           parse_float=parse_finite_float,
+                           object_pairs_hook=reject_duplicate_json_keys)
+    except json.JSONDecodeError:
+        raise SystemExit("invalid controlled saturation JSON") from None
+    require(isinstance(value, dict), "controlled saturation JSON root must be object")
     return value
 
 
@@ -119,7 +150,7 @@ def atomic_write_bytes(path: Path, payload: bytes, mode: int | None = None) -> N
 
 
 def write(path: Path, value: dict[str, Any]) -> None:
-    atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
+    atomic_write_bytes(path, (json.dumps(value, indent=2, allow_nan=False) + "\n").encode("utf-8"))
 
 
 def append_unique(values: list[Any], item: Any) -> None:
