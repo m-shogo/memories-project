@@ -1093,6 +1093,20 @@ def run_repeatability_reconciler_json_negatives(module) -> None:
                     pass
                 else:
                     raise RuntimeError("repeatability reconciler accepted ambiguous/nonfinite JSON")
+            for label, raw in (
+                ("invalid utf8", bytes((255, 254))),
+                ("oversized integer", b'{"value":' + b'9' * 5000 + b'}'),
+                ("synthetic secret malformed", b'{"SYNTHETIC_REPEATABILITY_SECRET":'),
+                ("oversized document", b'{"pad":"' + b'x' * (module.MAX_JSON_BYTES + 1) + b'"}'),
+            ):
+                path.write_bytes(raw)
+                try:
+                    module.load(path)
+                except module.Fail as exc:
+                    if "SYNTHETIC_REPEATABILITY_SECRET" in str(exc):
+                        raise RuntimeError("repeatability JSON diagnostic disclosed synthetic secret") from None
+                else:
+                    raise RuntimeError("repeatability reconciler accepted " + label)
             path.write_text('{"safe":true}', encoding="utf-8")
             original = path.read_bytes()
             try:
@@ -1107,7 +1121,9 @@ def run_repeatability_reconciler_json_negatives(module) -> None:
             linked_file.symlink_to(canary)
             linked_parent = inside / "linked-parent"
             linked_parent.symlink_to(outside, target_is_directory=True)
-            for unsafe in (linked_file, linked_parent / "canary.json", canary, inside / "missing.json"):
+            directory = inside / "directory"
+            directory.mkdir()
+            for unsafe in (linked_file, linked_parent / "canary.json", canary, inside / "missing.json", directory, "synthetic-nonpath"):
                 try:
                     module.load(unsafe)
                 except module.Fail:
@@ -1116,7 +1132,7 @@ def run_repeatability_reconciler_json_negatives(module) -> None:
                     raise RuntimeError("repeatability reconciler JSON reader accepted unsafe path")
         if canary.read_text(encoding="utf-8") != '{"safe":true}':
             raise RuntimeError("repeatability reconciler JSON reader changed external canary")
-    print("PASS: repeatability reconciler JSON parser, path and output negatives (11 cases)")
+    print("PASS: repeatability reconciler JSON parser, path and output negatives (17 cases)")
 
 
 def run_load_index_json_negatives() -> None:
