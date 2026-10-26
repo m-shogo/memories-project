@@ -184,6 +184,52 @@ def rejected_operability_validator_rolls_back(module, original: bytes) -> None:
         module.atomic_write_bytes(CANONICAL_LOAD, original)
 
 
+def incomplete_rollback_reports_primary_cause(module, original: bytes) -> None:
+    original_load_validate = module.validate_canonical_load
+    original_operability_validate = module.validate_canonical_operability
+    original_writer = module.atomic_write_bytes
+    calls: list[Path] = []
+
+    def allow_load_validation() -> None:
+        return
+
+    def fail_post_write_operability() -> None:
+        raise RuntimeError("synthetic readiness post-write operability failure")
+
+    def reject_second_write(path: Path, payload: bytes) -> None:
+        calls.append(path)
+        if len(calls) == 2:
+            raise OSError("synthetic readiness rollback denied")
+        original_writer(path, payload)
+
+    module.validate_canonical_load = allow_load_validation
+    module.validate_canonical_operability = fail_post_write_operability
+    module.atomic_write_bytes = reject_second_write
+    try:
+        try:
+            module.main()
+        except RuntimeError as exc:
+            if "rollback incomplete: OSError" not in str(exc):
+                raise RuntimeError(f"readiness rollback failure not explicit: {exc}") from exc
+            if not isinstance(exc.__cause__, RuntimeError) or (
+                "synthetic readiness post-write operability failure" not in str(exc.__cause__)
+            ):
+                raise RuntimeError("readiness rollback failure masked primary cause") from exc
+        else:
+            raise RuntimeError("readiness incomplete rollback was accepted")
+        if calls != [module.LOAD_PATH, module.LOAD_PATH]:
+            raise RuntimeError(f"readiness writer/rollback ordering drift: {calls}")
+    finally:
+        module.validate_canonical_load = original_load_validate
+        module.validate_canonical_operability = original_operability_validate
+        module.atomic_write_bytes = original_writer
+        original_writer(CANONICAL_LOAD, original)
+    if CANONICAL_LOAD.read_bytes() != original:
+        raise RuntimeError("readiness synthetic rollback failure left canonical data changed")
+    if list(CANONICAL_LOAD.parent.glob(f".{CANONICAL_LOAD.name}.*.tmp")):
+        raise RuntimeError("readiness synthetic rollback failure left temporary files")
+
+
 def main() -> int:
     module = load_module()
     original = CANONICAL_LOAD.read_bytes()
@@ -193,6 +239,7 @@ def main() -> int:
     symlink_and_directory_targets_are_fail_closed(module)
     rejected_load_validator_rolls_back(module, original)
     rejected_operability_validator_rolls_back(module, original)
+    incomplete_rollback_reports_primary_cause(module, original)
 
     if CANONICAL_LOAD.read_bytes() != original:
         raise RuntimeError("canonical load authority was not restored")

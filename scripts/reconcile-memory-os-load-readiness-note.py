@@ -157,8 +157,14 @@ def main() -> int:
     try:
         validate_canonical_load()
         validate_canonical_operability()
-    except BaseException:
-        atomic_write_bytes(LOAD_PATH, original_bytes)
+    except BaseException as primary:
+        try:
+            atomic_write_bytes(LOAD_PATH, original_bytes)
+        except BaseException as rollback:
+            raise RuntimeError(
+                "load readiness note post-write validation failed; rollback incomplete: "
+                + type(rollback).__name__
+            ) from primary
         raise
 
     print("Memory OS load readiness summary reconciliation PASS")

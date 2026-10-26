@@ -14,7 +14,7 @@ SOURCES = {
     "scripts/reconcile-memory-os-deletion-mutation-evidence.py": "97e1409aabc1742b3418819e1d4c1c9d086cf023",
     "scripts/reconcile-memory-os-deletion-advanced-evidence.py": "edf3a505c993405ba0830d3c2e90f7b5ceff3ba2",
     "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py": "1359e7c0ae28418a56d35bc5d1a1b55e3c121b4b",
-    "scripts/reconcile-memory-os-load-readiness-note.py": "f084b337a746201be43b050b9b5f70b37098c9f4",
+    "scripts/reconcile-memory-os-load-readiness-note.py": "8012804fe785223250921e5fcf0b8657489caf59",
     "scripts/reconcile-memory-os-deletion-container-kill-authority.py": "a80a0222479bdba82ad3a1890215ac8f962b6160",
 }
 
