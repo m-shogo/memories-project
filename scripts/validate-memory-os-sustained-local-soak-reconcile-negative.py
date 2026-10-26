@@ -686,11 +686,13 @@ def validate_trend_run_path_negatives() -> None:
                 module.require_local_run_path(good)
                 bad_link = directory / "link.json"
                 bad_link.symlink_to(outside)
+                bad_directory = directory / "folder.json"
+                bad_directory.mkdir()
                 for label, path in (
                     ("symlink target", bad_link),
                     ("wrong parent", outside),
                     ("missing", directory / "missing.json"),
-                    ("directory target", directory),
+                    ("directory target", bad_directory),
                 ):
                     try:
                         module.require_local_run_path(path)
