@@ -87,6 +87,9 @@ def verify_deletion_timestamp_semantics() -> None:
         ("timezone offset", ("scenario", "startedAt"), "2026-09-23T22:17:18+00:00"),
         ("missing seconds", ("scenario", "startedAt"), "2026-09-23T22:17Z"),
         ("fraction without digits", ("scenario", "startedAt"), "2026-09-23T22:17:18.Z"),
+        ("fractional startedAt", ("scenario", "startedAt"), "2026-09-23T22:17:18.123Z"),
+        ("fractional completedAt", ("scenario", "completedAt"), "2026-09-23T22:17:18.500Z"),
+        ("fractional generatedAt", ("generatedAt",), "2026-09-23T22:17:19.123Z"),
         ("nonstring", ("scenario", "startedAt"), None),
         ("completion before start", ("scenario", "completedAt"), "2026-09-23T22:17:17Z"),
         ("generation before completion", ("generatedAt",), "2026-09-23T22:17:18Z"),
@@ -103,7 +106,7 @@ def verify_deletion_timestamp_semantics() -> None:
             pass
         else:
             raise RuntimeError(f"deletion load timestamp validator accepted {label}")
-    print("PASS: deletion load UTC positive and 7 timestamp negatives")
+    print("PASS: deletion load UTC positive and 10 timestamp negatives")
 
 
 
