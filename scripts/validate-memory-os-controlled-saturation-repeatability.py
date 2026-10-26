@@ -119,6 +119,8 @@ def main() -> int:
         scenario = run.get("scenario")
         require(isinstance(scenario, dict), f"run scenario missing: {ref}")
         require(scenario.get("scenarioId") == source_ramp.get("scenarioId"), f"run scenario binding mismatch: {ref}")
+        require(scenario.get("result") == "PASS" and scenario.get("integrityResult") == "PASS",
+                f"run result and integrity must both PASS: {ref}")
         require(scenario.get("workloadType") == source_ramp.get("workloadType") == "CONTROLLED_RAMP", f"run workload type mismatch: {ref}")
         require(scenario.get("requestsPerStep") == source_ramp.get("requestsPerStep"), f"run requestsPerStep mismatch: {ref}")
     require(result.get("independentRunCount") == 2, "independentRunCount drift")
