@@ -1245,6 +1245,53 @@ def exercise_deletion_load_workflow_diagnostic() -> None:
 
 
 
+
+def exercise_deletion_load_authority_gate_source() -> None:
+    """Guard read-only CI checkout identity, immutable actions and runner reachability."""
+    path = ROOT / ".github/workflows/deletion-under-load-authority-pr.yml"
+    source = path.read_text(encoding="utf-8")
+    required = (
+        "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        "permissions:" + chr(10) + "  contents: read",
+        "ref: " + chr(36) + "{{ github.event.pull_request.head.sha || github.sha }}",
+        'test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"',
+        'test -z "$(git status --porcelain)"',
+        '      - "services/import-api/internal/httpserver/deletion_under_load_test.go"',
+        "python scripts/validate-memory-os-deletion-under-load-reconcile-negative.py",
+    )
+    def policy(value: str) -> None:
+        for marker in required:
+            require(marker in value, "deletion-load read-only gate source drift: " + marker[:70])
+        require(value.count("uses: actions/checkout@") == 1 and
+                value.count("uses: actions/setup-python@") == 1,
+                "deletion-load read-only gate has duplicate or substituted Actions")
+        require(value.count(required[6]) == 2,
+                "deletion-load Go runner not in both CI path filters")
+        require(value.count("    branches:" + chr(10) + "      - so") == 2,
+                "deletion-load CI branch scope drift")
+        require("checkout@v4" not in value and "setup-python@v5" not in value,
+                "deletion-load read-only gate uses floating Actions")
+    policy(source)
+    for marker in required:
+        mutated = source.replace(marker, "SYNTHETIC_UNREVIEWED", 1)
+        require(mutated != source, "deletion-load gate negative mutation unreachable")
+        try:
+            policy(mutated)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("deletion-load gate accepted missing authority")
+    for addition in ("uses: actions/checkout@v4", "uses: actions/setup-python@v5"):
+        try:
+            policy(source + chr(10) + addition)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("deletion-load gate accepted duplicate Action")
+    print("PASS: deletion-load read-only gate immutable Actions and 10 source negatives")
+
+
 def exercise_deletion_load_runner_source_binding() -> None:
     """Bind the complete Go proof runner to a reviewed Git blob and CI path."""
     reviewed_path = "services/import-api/internal/httpserver/deletion_under_load_test.go"
@@ -1281,6 +1328,7 @@ def exercise_deletion_load_runner_source_binding() -> None:
 
 
 def main() -> int:
+    exercise_deletion_load_authority_gate_source()
     exercise_deletion_load_runner_source_binding()
     exercise_deletion_load_workflow_diagnostic()
     exercise_deletion_load_json_reader()
