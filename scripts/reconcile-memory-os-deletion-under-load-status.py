@@ -247,6 +247,15 @@ def main() -> int:
     changed_contract = False
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "deletion-under-load readiness missing")
+    # A local post-fence proof may not erase later, stronger lifecycle authority.
+    for field in (
+        "preFenceInFlightLinearizationProven",
+        "productionDependenciesTested",
+        "independentReviewCompleted",
+        "productionReady",
+    ):
+        require(readiness.get(field) is False,
+                f"deletion-under-load cannot downgrade stronger readiness: {field}")
     for field, value in {
         "exactSourceResultCommitted": True,
         "postFenceLoadExecuted": True,

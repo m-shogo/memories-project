@@ -234,6 +234,53 @@ def exercise_validator_output_redaction(module: ModuleType) -> None:
         module.enforce_runtime_authorities = original_guard
 
 
+
+def exercise_stronger_readiness_prewrite_rejection(module: ModuleType) -> None:
+    original_load = module.load
+    original_run_validator = module.run_validator
+    original_transaction = module.write_and_validate_transactionally
+    previous_expected = os.environ.get("EXPECTED_COMMIT_SHA")
+    snapshots = canonical_snapshots(module)
+    os.environ["EXPECTED_COMMIT_SHA"] = "1" * 40
+    try:
+        for field in (
+            "preFenceInFlightLinearizationProven",
+            "productionDependenciesTested",
+            "independentReviewCompleted",
+            "productionReady",
+        ):
+            for injected in (True, None, 0):
+                def synthetic_load(path: Path):
+                    document = original_load(path)
+                    if path == module.CONTRACT_PATH:
+                        document["readiness"][field] = injected
+                    return document
+
+                def forbidden_transaction(*args: object, **kwargs: object) -> None:
+                    raise RuntimeError("prewrite readiness rejection was bypassed")
+
+                module.load = synthetic_load
+                module.run_validator = lambda *args, **kwargs: None
+                module.write_and_validate_transactionally = forbidden_transaction
+                try:
+                    module.main()
+                except module.ReconcileFailure as exc:
+                    require(f"cannot downgrade stronger readiness: {field}" in str(exc),
+                            f"{field}={injected!r}: wrong rejection")
+                else:
+                    raise RuntimeError(f"{field}={injected!r}: stronger readiness accepted")
+                require_snapshots_unchanged(snapshots)
+    finally:
+        module.load = original_load
+        module.run_validator = original_run_validator
+        module.write_and_validate_transactionally = original_transaction
+        if previous_expected is None:
+            os.environ.pop("EXPECTED_COMMIT_SHA", None)
+        else:
+            os.environ["EXPECTED_COMMIT_SHA"] = previous_expected
+    require_snapshots_unchanged(snapshots)
+
+
 def main() -> int:
     module = load_target()
     module.enforce_runtime_authorities()
@@ -310,6 +357,7 @@ def main() -> int:
         require(stat.S_IMODE(path.stat().st_mode) == 0o640, "atomic writer changed existing file mode")
         require(not list(path.parent.glob(f".{path.name}.*.tmp")), "atomic writer left temporary residue")
 
+    exercise_stronger_readiness_prewrite_rejection(module)
     exercise_validator_output_redaction(module)
     exercise_atomic_path_substitution_rejection(module)
     exercise_rollback_failure(module)
