@@ -342,11 +342,75 @@ def prove_private_negative_suite_transport() -> None:
     print("PASS: actual promotion negative-suite subprocess bounded/private with four negatives")
 
 
+def prove_bounded_promotion_payload_digest() -> None:
+    """Exercise actual write-side review digest admission without protected writes."""
+    writer = load_module(WRITER, "memory_os_promotion_digest_negative")
+    require(Path(writer.__file__).resolve() == WRITER.resolve(),
+            "promotion digest writer module identity drift")
+    original_root = writer.ROOT
+    with tempfile.TemporaryDirectory(prefix="promotion-digest-negative-") as tmp:
+        root = Path(tmp)
+        path = root / "review.json"
+        payload = b'{"reviewResult":"APPROVED"}\n'
+        path.write_bytes(payload)
+        writer.ROOT = root
+        try:
+            require(writer.payload_sha256("review.json") == hashlib.sha256(payload).hexdigest(),
+                    "promotion digest positive control failed")
+            for ref in ("../outside.json", "/tmp/outside.json", "review.json/../review.json"):
+                try:
+                    writer.payload_sha256(ref)
+                except writer.Fail as exc:
+                    require(str(exc) == "promotion review digest ref invalid",
+                            f"promotion digest traversal rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail(f"promotion digest unsafe ref accepted: {ref}")
+            path.write_bytes(b"x" * (writer.MAX_JSON_BYTES + 1))
+            try:
+                writer.payload_sha256("review.json")
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review digest size limit exceeded",
+                        f"promotion digest oversize wrong rejection: {exc}")
+            else:
+                raise Fail("promotion digest oversized payload accepted")
+            marker = "PRIVATE_PROMOTION_DIGEST_CANARY_DO_NOT_LOG"
+            canary = root / "external-canary.json"
+            canary.write_text(marker, encoding="utf-8")
+            alias = root / "alias.json"
+            alias.symlink_to(canary)
+            try:
+                writer.payload_sha256("alias.json")
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review digest path unsafe",
+                        f"promotion digest symlink wrong rejection: {exc}")
+            else:
+                raise Fail("promotion digest symlink accepted")
+            require(canary.read_text(encoding="utf-8") == marker,
+                    "promotion digest external canary mutated")
+            path.unlink()
+            path.mkdir()
+            try:
+                writer.payload_sha256("review.json")
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review digest path unsafe",
+                        f"promotion digest directory wrong rejection: {exc}")
+            else:
+                raise Fail("promotion digest directory accepted")
+            path.rmdir()
+            path.write_bytes(payload)
+            require(writer.payload_sha256("review.json") == hashlib.sha256(payload).hexdigest(),
+                    "promotion digest restored positive control failed")
+        finally:
+            writer.ROOT = original_root
+    print("PASS: actual promotion writer digest positive and six fail-closed path/size negatives")
+
+
 def main() -> int:
     global EXPECTED_FAILURE
     require(WRITER.is_file() and VALIDATOR.is_file(), "promotion review authority scripts missing")
     prove_promotion_reader()
     prove_promotion_writer_reader()
+    prove_bounded_promotion_payload_digest()
     prove_private_negative_suite_transport()
     writer = load_module(WRITER, "memory_os_promotion_review_writer_negative")
     validator = load_module(VALIDATOR, "memory_os_promotion_review_validator_negative")

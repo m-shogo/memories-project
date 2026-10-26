@@ -176,7 +176,20 @@ def promotion_evidence_ref(value: Any, field: str) -> str:
 
 
 def payload_sha256(ref: str) -> str:
-    return hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+    """Hash only a bounded, canonical regular review payload; never disclose file errors."""
+    require(isinstance(ref, str) and bool(ref), "promotion review digest ref invalid")
+    relative = Path(ref)
+    require(not relative.is_absolute() and ".." not in relative.parts
+            and relative.as_posix() == ref, "promotion review digest ref invalid")
+    path = ROOT / relative
+    require(path.is_file() and not path.is_symlink(), "promotion review digest path unsafe")
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+    except OSError:
+        raise Fail("promotion review digest unreadable") from None
+    require(len(raw) <= MAX_JSON_BYTES, "promotion review digest size limit exceeded")
+    return hashlib.sha256(raw).hexdigest()
 
 
 def require_payload_digest(record: dict[str, Any], ref_field: str, digest_field: str) -> str:
