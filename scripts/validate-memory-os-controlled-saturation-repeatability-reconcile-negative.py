@@ -766,11 +766,71 @@ def run_repeatability_runref_path_negatives() -> None:
     print("PASS: repeatability runRef symlink/ancestor/traversal/absolute/missing negatives (5 cases)")
 
 
+
+def run_repeatability_matrix_boundary_negatives() -> None:
+    validator_path = ROOT / "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+    spec = importlib.util.spec_from_file_location("repeatability_matrix_negative", validator_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("repeatability matrix validator import failed")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    original_load = validator.load
+    result = original_load(validator.RESULT)
+    a_ref, b_ref = result["runRefs"]
+    run_a = original_load(ROOT / a_ref)
+    run_b = original_load(ROOT / b_ref)
+    with contextlib.redirect_stdout(io.StringIO()):
+        if validator.main() != 0:
+            raise RuntimeError("canonical repeatability matrix positive control failed")
+    cases = (
+        ("swapped ordinals", {"runRefs": [b_ref, a_ref]}, None),
+        ("different run id", {"runRefs": [a_ref, b_ref.replace("repeat-31157504019-", "repeat-999999-")]}, None),
+        ("different attempt", {"runRefs": [a_ref, b_ref.replace("-1-b.v1.json", "-2-b.v1.json")]}, None),
+        ("invalid path", {"runRefs": [a_ref, "docs/fixtures/memory-os-operability/invalid.json"]}, None),
+        ("non-string ref", {"runRefs": [a_ref, {"path": b_ref}]}, None),
+        ("non-synthetic run", {}, ("environment", "syntheticDataOnly", False)),
+        ("non-loopback run", {}, ("environment", "loopbackDependenciesOnly", False)),
+        ("secret-bearing run", {}, ("environment", "containsSecrets", True)),
+        ("run schema drift", {}, ("schemaVersion", None, "invalid")),
+    )
+    for label, result_override, run_override in cases:
+        fixture_result = copy.deepcopy(result)
+        fixture_result.update(result_override)
+        fixture_b = copy.deepcopy(run_b)
+        if run_override is not None:
+            section, field, value = run_override
+            if field is None:
+                fixture_b[section] = value
+            else:
+                fixture_b[section][field] = value
+        def fake_load(path):
+            if path == validator.RESULT:
+                return fixture_result
+            if path == ROOT / a_ref:
+                return copy.deepcopy(run_a)
+            if path == ROOT / b_ref:
+                return fixture_b
+            return original_load(path)
+        validator.load = fake_load
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    validator.main()
+                except validator.Fail:
+                    pass
+                else:
+                    raise RuntimeError(f"repeatability matrix boundary accepted: {label}")
+        finally:
+            validator.load = original_load
+    print("PASS: repeatability matrix run/attempt/ordinal/synthetic boundary negatives (9 cases)")
+
+
 def main() -> int:
     module = load_module()
     run_authority_substitutions(module)
     run_authority_path_negatives(module)
     run_repeatability_runref_path_negatives()
+    run_repeatability_matrix_boundary_negatives()
     run_prewrite_failure(module)
     run_postwrite_failure(module)
     run_atomic_replace_failure(module)
