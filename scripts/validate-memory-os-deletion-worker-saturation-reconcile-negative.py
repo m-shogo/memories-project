@@ -161,7 +161,7 @@ def main() -> int:
     expected = "0" * 40
     reconciler.RESULT_PATH.write_text(json.dumps(synthetic_result(contract, expected), indent=2) + "\n", encoding="utf-8")
 
-    failing_validator = '''class Fail(RuntimeError):\n    pass\n\n_contract_calls = 0\n\ndef validate_contract(candidate):\n    global _contract_calls\n    _contract_calls += 1\n    if _contract_calls == 2:\n        raise Fail("synthetic post-write validation failure")\n\ndef validate_result(candidate, expected_sha):\n    return None\n'''
+    failing_validator = '''class Fail(RuntimeError):\n    pass\n\n_contract_calls = 0\n\ndef validate_contract(candidate):\n    global _contract_calls\n    _contract_calls += 1\n    if _contract_calls == 2:\n        raise Fail("SYNTHETIC_SECRET_VALIDATOR_FAILURE")\n\ndef validate_result(candidate, expected_sha):\n    return None\n'''
     reconciler.VALIDATOR_PATH.write_text(failing_validator, encoding="utf-8")
 
     old_expected = os.environ.get("EXPECTED_COMMIT_SHA")
@@ -169,9 +169,11 @@ def main() -> int:
     try:
         try:
             reconciler.main()
-        except RuntimeError as exc:
-            if "synthetic post-write validation failure" not in str(exc):
-                raise AssertionError(f"unexpected reconcile rejection: {exc}") from exc
+        except reconciler.Fail as exc:
+            if ("post-write validation failed: Fail" not in str(exc)
+                    or "SYNTHETIC_SECRET" in str(exc)
+                    or not exc.__suppress_context__):
+                raise AssertionError("reconciler leaked validator exception or lost fail-closed diagnostic") from None
         else:
             raise AssertionError("reconciler accepted synthetic post-write validator failure")
 
@@ -181,6 +183,37 @@ def main() -> int:
             raise AssertionError("reconciler changed contract mode during failed publication and rollback")
         if list(reconciler.CONTRACT_PATH.parent.glob(f".{reconciler.CONTRACT_PATH.name}.*.tmp")):
             raise AssertionError("reconciler left atomic temp authority after rollback")
+
+        original_fsync = reconciler.os.fsync
+        fsync_calls = 0
+
+        def reject_rollback_fsync(fd):
+            nonlocal fsync_calls
+            fsync_calls += 1
+            if fsync_calls == 2:
+                raise OSError("SYNTHETIC_SECRET_ROLLBACK_FAILURE")
+            return original_fsync(fd)
+
+        reconciler.os.fsync = reject_rollback_fsync
+        try:
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                diagnostic = str(exc)
+                if ("post-write validation failed: Fail" not in diagnostic
+                        or "rollback incomplete: OSError" not in diagnostic
+                        or "SYNTHETIC_SECRET" in diagnostic
+                        or not exc.__suppress_context__):
+                    raise AssertionError("rollback failure leaked raw exception or lost incompleteness") from None
+            else:
+                raise AssertionError("reconciler accepted synthetic rollback failure")
+        finally:
+            reconciler.os.fsync = original_fsync
+
+        if fsync_calls != 2:
+            raise AssertionError(f"rollback failure injection was not exercised: {fsync_calls}")
+        if list(reconciler.CONTRACT_PATH.parent.glob(f".{reconciler.CONTRACT_PATH.name}.*.tmp")):
+            raise AssertionError("rollback failure left atomic temporary authority")
     finally:
         reconciler.atomic_write_bytes(reconciler.CONTRACT_PATH, original_contract)
         reconciler.VALIDATOR_PATH.write_bytes(original_validator)
@@ -255,7 +288,7 @@ def main() -> int:
         if list(target.parent.glob(f".{target.name}.*.tmp")):
             raise AssertionError("bound atomic writer left a temp file")
 
-    print("PASS: deletion-worker saturation authority, loader transport, mode-preserving atomic publication and rollback are fail-closed")
+    print("PASS: deletion-worker saturation authority, secret-free validator/rollback diagnostics, mode-preserving atomic publication and rollback are fail-closed")
     return 0
 
 
