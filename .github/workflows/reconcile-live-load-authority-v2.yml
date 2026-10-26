@@ -77,15 +77,17 @@ jobs:
       - name: Validate committed live evidence
         id: validation
         run: |
-          set +e
-          {
-            echo 'STAGE: validate-live-postgresql-load'
-            python scripts/validate-memory-os-live-load.py
-            echo 'STAGE: validate-live-object-load'
-            python scripts/validate-memory-os-live-object-load.py
-          } > /tmp/live-load-authority.log 2>&1
-          code=$?
-          set -e
+          set -euo pipefail
+          log="$(mktemp)"
+          trap 'rm -f "$log"' EXIT
+          postgres_code=0
+          object_code=0
+          python scripts/validate-memory-os-live-load.py >"$log" 2>&1 || postgres_code=$?
+          python scripts/validate-memory-os-live-object-load.py >>"$log" 2>&1 || object_code=$?
+          code="$postgres_code"
+          if [ "$code" -eq 0 ]; then
+            code="$object_code"
+          fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           VALIDATION_EXIT_CODE="$code" python - <<'PY'
           import json
@@ -94,45 +96,56 @@ jobs:
           import tempfile
           from pathlib import Path
 
-          output = Path('/tmp/live-load-authority.log').read_text(
-              encoding='utf-8', errors='replace'
-          )[-10000:]
-          for pattern, replacement in (
-              (r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>'),
-              (r'Bearer\s+[^\s]+', 'Bearer <redacted>'),
-              (r'password=[^\s]+', 'password=<redacted>'),
-              (r'minioadmin', '<redacted-local-credential>'),
-              (r'(?:acct|job|prv|spl|upl)_[A-Za-z0-9._:-]+', '<redacted-synthetic-id>'),
-          ):
-              output = re.sub(pattern, replacement, output, flags=re.IGNORECASE)
+          sha = os.environ['SOURCE_SHA']
+          raw_code = os.environ['VALIDATION_EXIT_CODE']
+          if re.fullmatch(r'[0-9a-f]{40}', sha) is None:
+              raise RuntimeError('invalid diagnostic source SHA')
+          if re.fullmatch(r'(?:0|[1-9][0-9]{0,2})', raw_code) is None or int(raw_code) > 255:
+              raise RuntimeError('invalid diagnostic exit code')
           diagnostic = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'reconcile-live-load-authority-v2',
-              'sourceCommitSha': os.environ['SOURCE_SHA'],
-              'result': 'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL',
-              'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
-              'output': output,
+              'sourceCommitSha': sha,
+              'result': 'PASS' if raw_code == '0' else 'FAIL',
+              'exitCode': int(raw_code),
+              'output': 'Live load validation completed; raw validator output withheld.',
               'containsSecrets': False,
               'productionEvidence': False,
+              'productionReady': False,
+              'productionDecision': 'NO_GO',
           }
-          path = Path('docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json')
-          path.parent.mkdir(parents=True, exist_ok=True)
-          payload = json.dumps(diagnostic, indent=2) + '\n'
-          temp_path = None
+          repo = Path.cwd().resolve(strict=True)
+          path = repo / 'docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json'
+          candidate = repo
+          for component in path.relative_to(repo).parts:
+              candidate = candidate / component
+              if candidate.is_symlink():
+                  raise RuntimeError('live load diagnostic symlink refused')
+          if not path.parent.is_dir():
+              raise RuntimeError('live load diagnostic parent missing')
           try:
-              with tempfile.NamedTemporaryFile(
-                  mode='w', encoding='utf-8', dir=path.parent,
-                  prefix=f'.{path.name}.', suffix='.tmp', delete=False,
-              ) as handle:
-                  temp_path = Path(handle.name)
-                  handle.write(payload)
+              path.parent.resolve(strict=True).relative_to(repo)
+          except ValueError as exc:
+              raise RuntimeError('live load diagnostic parent escaped repository') from exc
+          if path.exists() and not path.is_file():
+              raise RuntimeError('live load diagnostic target must be regular')
+          mode = path.stat().st_mode & 0o7777 if path.exists() else None
+          data = (json.dumps(diagnostic, indent=2) + '\n').encode('utf-8')
+          fd, name = tempfile.mkstemp(
+              prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent
+          )
+          temp_path = Path(name)
+          try:
+              if mode is not None:
+                  os.fchmod(fd, mode)
+              with os.fdopen(fd, 'wb') as handle:
+                  handle.write(data)
                   handle.flush()
                   os.fsync(handle.fileno())
               os.replace(temp_path, path)
-              temp_path = None
           finally:
-              if temp_path is not None:
-                  temp_path.unlink(missing_ok=True)
+              if temp_path.exists():
+                  temp_path.unlink()
           PY
 
       - name: Commit bounded diagnostic
