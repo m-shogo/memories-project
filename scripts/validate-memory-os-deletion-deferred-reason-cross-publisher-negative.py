@@ -16,7 +16,7 @@ SOURCES = {
     "scripts/reconcile-memory-os-deletion-advanced-evidence.py": "08ff93fbb1c9e688bf3ea4754786ce8408280aaf",
     "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py": "e57a2e8827208bcbcbec3aad583671727554dc71",
     "scripts/reconcile-memory-os-load-readiness-note.py": "8012804fe785223250921e5fcf0b8657489caf59",
-    "scripts/reconcile-memory-os-deletion-container-kill-authority.py": "d7bf712befc65e95844cdbd0f617d7f425aa657a",
+    "scripts/reconcile-memory-os-deletion-container-kill-authority.py": "8ebb43ea9b39bfbb5c287d0e61b87e2334ab6867",
 }
 
 def blob(content: str) -> str:
