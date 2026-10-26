@@ -36,7 +36,13 @@ def safe_repo_ref(value: Any, field: str) -> Path:
     relative = Path(value)
     require(not relative.is_absolute() and ".." not in relative.parts, f"{field} must be repository-relative")
     path = ROOT / relative
+    for candidate in (path, *path.parents):
+        require(not candidate.is_symlink(), f"{field} symlink path rejected")
     require(path.is_file(), f"{field} artifact missing: {value}")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except ValueError:
+        raise Fail(f"{field} artifact escaped repository") from None
     return path
 
 
@@ -74,10 +80,11 @@ def main() -> int:
     source = result.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source) is not None, "sourceCommitSha invalid")
     refs = result.get("runRefs")
-    require(isinstance(refs, list) and len(refs) == 2 and len(set(refs)) == 2, "two unique runRefs required")
+    require(isinstance(refs, list) and len(refs) == 2 and all(isinstance(ref, str) for ref in refs)
+            and len(set(refs)) == 2, "two unique runRefs required")
     for ref in refs:
-        require(isinstance(ref, str) and not Path(ref).is_absolute() and ".." not in Path(ref).parts and (ROOT / ref).is_file(), f"runRef invalid: {ref}")
-        run = load(ROOT / ref)
+        run_path = safe_repo_ref(ref, "runRef")
+        run = load(run_path)
         require(run.get("commitSha") == source, f"run source mismatch: {ref}")
         environment = run.get("environment")
         require(isinstance(environment, dict), f"run environment missing: {ref}")
