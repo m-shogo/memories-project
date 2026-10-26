@@ -65,6 +65,11 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
+    # Enforce path safety even when invoked outside the canonical main path.
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise SystemExit("lease-recovery atomic symlink target/ancestor refused")
+    if path.exists() and not path.is_file():
+        raise SystemExit("lease-recovery atomic target must be a regular file")
     existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)

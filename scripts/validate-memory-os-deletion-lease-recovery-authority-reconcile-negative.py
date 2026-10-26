@@ -75,6 +75,39 @@ def expect_atomic_failure(module) -> None:
             raise AssertionError("successful lease atomic replacement changed authority mode")
 
 
+def expect_substituted_atomic_paths_rejected(module) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-lease-atomic-symlink-") as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        canary = outside / "authority.json"
+        canary.write_bytes(b"SYNTHETIC_LEASE_RECOVERY_CANARY")
+        direct = root / "direct.json"
+        direct.symlink_to(canary)
+        ancestor = root / "linked"
+        ancestor.symlink_to(outside, target_is_directory=True)
+        directory = root / "directory.json"
+        directory.mkdir()
+        for target, expected in (
+            (direct, "lease-recovery atomic symlink target/ancestor refused"),
+            (ancestor / "authority.json", "lease-recovery atomic symlink target/ancestor refused"),
+            (directory, "lease-recovery atomic target must be a regular file"),
+        ):
+            try:
+                module.CANONICAL_ATOMIC_WRITE_BYTES(target, b"synthetic overwrite")
+            except SystemExit as exc:
+                if expected not in str(exc):
+                    raise AssertionError(f"lease atomic unexpected target rejection: {exc}") from exc
+            else:
+                raise AssertionError(f"lease atomic accepted substituted target: {target}")
+            if canary.read_bytes() != b"SYNTHETIC_LEASE_RECOVERY_CANARY":
+                raise AssertionError("lease atomic writer escaped to external canary")
+        if not direct.is_symlink() or not ancestor.is_symlink() or not directory.is_dir():
+            raise AssertionError("lease atomic writer replaced substituted target")
+        if list(root.rglob(".*.tmp")):
+            raise AssertionError("lease atomic substituted target left temp residue")
+
+
 def expect_post_write_rollback(module) -> None:
     original_load = LOAD_CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
@@ -255,6 +288,7 @@ def main() -> int:
         module.atomic_write_bytes = original_writer
 
     expect_atomic_failure(module)
+    expect_substituted_atomic_paths_rejected(module)
     module.require_canonical_authorities()
     expect_post_write_rollback(module)
     module.require_canonical_authorities()
