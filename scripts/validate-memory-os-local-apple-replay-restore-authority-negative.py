@@ -134,9 +134,64 @@ def prove_workflow_diagnostic_negative() -> None:
                 raise AssertionError("Apple workflow diagnostic payload drift")
 
 
+def prove_json_reader_negative(validator) -> None:
+    """Exercise the actual Apple evidence reader on disposable files."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-apple-json-reader-", dir=ROOT) as directory:
+        path = Path(directory) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        if validator.load(path) != {"safe": True, "nested": {"count": 1}}:
+            raise AssertionError("Apple JSON reader positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "Apple replay JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "Apple replay JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "Apple replay JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "Apple replay JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "Apple replay JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "Apple replay JSON nonfinite number refused"),
+            ("oversized integer", b'{"number":' + b"9" * 5000 + b"}", "Apple replay JSON integer too large"),
+            ("oversized JSON", b'{"payload":"' + b"x" * validator.MAX_JSON_BYTES + b'"}', "Apple replay JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\\xff"}'.replace(b"\\xff", bytes([255])), "Apple replay JSON unreadable or invalid"),
+            ("malformed private input", b'{"private":"synthetic-secret",', "Apple replay JSON unreadable or invalid"),
+            ("non-object root", b"[]", "Apple replay JSON root must be object"),
+        )
+
+        def rejected(candidate, expected: str, label: str) -> None:
+            try:
+                validator.load(candidate)
+            except validator.Fail as exc:
+                if str(exc) != expected:
+                    raise AssertionError(f"{label}: rejected outside exact Apple JSON guard") from None
+            else:
+                raise AssertionError(f"{label}: unsafe Apple JSON accepted")
+
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+
+        path.write_bytes(positive)
+        alias = Path(directory) / "alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "Apple replay JSON path missing or unsafe", "symlink")
+        alias_dir = Path(directory) / "alias-dir"
+        alias_dir.symlink_to(Path(directory), target_is_directory=True)
+        rejected(alias_dir / path.name, "Apple replay JSON path missing or unsafe", "symlink ancestor")
+        rejected(Path(directory), "Apple replay JSON path missing or unsafe", "directory")
+        rejected("candidate.json", "Apple replay JSON path invalid", "non-Path")
+        with tempfile.TemporaryDirectory(prefix="memory-os-apple-json-canary-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            rejected(canary, "Apple replay JSON path missing or unsafe", "external path")
+            if canary.read_bytes() != positive:
+                raise AssertionError("Apple JSON reader modified external canary")
+        path.unlink()
+        rejected(path, "Apple replay JSON path missing or unsafe", "missing path")
+
+
 def main() -> int:
     validator = load_validator()
     prove_workflow_diagnostic_negative()
+    prove_json_reader_negative(validator)
     result_path: Path = validator.RESULT
     original_exists = result_path.exists() or result_path.is_symlink()
     original_bytes = result_path.read_bytes() if result_path.is_file() and not result_path.is_symlink() else None

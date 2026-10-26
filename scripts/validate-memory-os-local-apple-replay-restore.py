@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -15,6 +16,7 @@ from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_REAL = ROOT.resolve()
+MAX_JSON_BYTES = 1024 * 1024
 CONTRACT = ROOT / "contracts/operations/local-apple-replay-restore-contract.v1.json"
 MIGRATION = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json"
@@ -61,11 +63,51 @@ def require_repo_regular_file(path: Path, label: str) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
+    """Read bounded, unambiguous local-only evidence without reflecting private input."""
+    require(isinstance(path, Path) and path.is_absolute(), "Apple replay JSON path invalid")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        relative = path.relative_to(ROOT)
+        require_repo_regular_file(path, "Apple replay JSON")
+        require(
+            relative == path.resolve(strict=True).relative_to(ROOT_REAL),
+            "Apple replay JSON path alias refused",
+        )
+    except (Fail, FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("Apple replay JSON path missing or unsafe") from None
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "Apple replay JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("Apple replay JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "Apple replay JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "Apple replay JSON integer too large")
+        return int(value)
+
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES, "Apple replay JSON size limit exceeded")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("Apple replay JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "Apple replay JSON root must be object")
     return value
 
 
