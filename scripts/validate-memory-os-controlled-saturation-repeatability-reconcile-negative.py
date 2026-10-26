@@ -1066,11 +1066,34 @@ def run_repeatability_analyzer_matrix_producer_negatives() -> None:
                     raise RuntimeError(f"repeatability analyzer accepted {label}")
             if captured:
                 raise RuntimeError("repeatability analyzer wrote result after invalid source SHA")
+        current["a"], current["b"] = copy.deepcopy(run_a), copy.deepcopy(run_b)
+        for label, expected in (("different workflow SHA", "f" * 40),
+                                ("invalid workflow SHA", "g" * 40)):
+            sys.argv = [str(analyzer_path), "--run-a", a_ref, "--run-b", b_ref,
+                        "--expected-commit-sha", expected]
+            captured.clear()
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    analyzer.main()
+                except analyzer.Fail:
+                    pass
+                else:
+                    raise RuntimeError(f"repeatability analyzer accepted {label}")
+            if captured:
+                raise RuntimeError("repeatability analyzer wrote mismatched workflow-source result")
+        sys.argv = [str(analyzer_path), "--run-a", a_ref, "--run-b", b_ref,
+                    "--expected-commit-sha", run_a["commitSha"]]
+        captured.clear()
+        with contextlib.redirect_stdout(io.StringIO()):
+            if analyzer.main() != 0:
+                raise RuntimeError("repeatability analyzer rejected matching workflow source")
+        if len(captured) != 1:
+            raise RuntimeError("repeatability analyzer matching workflow-source output missing")
     finally:
         analyzer.load = original_load
         analyzer.atomic_write_bytes = original_write
         sys.argv = original_argv
-    print("PASS: repeatability analyzer matrix producer and source SHA negatives (9 cases)")
+    print("PASS: repeatability analyzer matrix producer and source SHA negatives (12 cases)")
 
 
 def run_repeatability_analyzer_path_atomic_negatives() -> None:
