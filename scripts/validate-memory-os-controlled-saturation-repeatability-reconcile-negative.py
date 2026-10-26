@@ -1271,6 +1271,19 @@ def run_repeatability_nonfinite_negatives() -> None:
                         raise RuntimeError("repeatability JSON parser accepted unsafe path")
         if canary.read_text(encoding="utf-8") != '{"safe":true}':
             raise RuntimeError("repeatability JSON path negative changed external canary")
+    # Malformed and undecodable JSON must produce only bounded Fail diagnostics.
+    with tempfile.TemporaryDirectory(prefix="repeatability-malformed-json-", dir=ROOT) as temp:
+        malformed = Path(temp) / "malformed.json"
+        for payload in (b'{"broken":', b'{"SYNTHETIC_SECRET_CANARY":', b"\xff\xfe"):
+            malformed.write_bytes(payload)
+            for module in (analyzer, validator):
+                try:
+                    module.load(malformed)
+                except module.Fail as exc:
+                    if "SYNTHETIC_SECRET_CANARY" in str(exc) or not exc.__suppress_context__:
+                        raise RuntimeError("repeatability malformed JSON diagnostic leaked raw data")
+                else:
+                    raise RuntimeError("repeatability parser accepted malformed/undecodable JSON")
     original_load = validator.load
     for label, mutate in (
         ("infinite throughput gain", lambda doc: doc["signals"]["a"].update({"throughputGainFromPrevious": float("inf")})),
@@ -1290,7 +1303,7 @@ def run_repeatability_nonfinite_negatives() -> None:
                     raise RuntimeError(f"repeatability validator accepted {label}")
         finally:
             validator.load = original_load
-    print("PASS: repeatability analyzer/validator canonical ramp, nonfinite, integrity, path and signal negatives (40 cases)")
+    print("PASS: repeatability analyzer/validator canonical ramp, nonfinite, malformed JSON, integrity, path and signal negatives (46 cases)")
 
 
 

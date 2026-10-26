@@ -55,12 +55,15 @@ def load(path: Path) -> dict[str, Any]:
         path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
     except ValueError:
         raise Fail("repeatability JSON path escaped repository") from None
-    value = json.loads(
-        path.read_text(encoding="utf-8"),
-        parse_constant=reject_nonfinite_constant,
-        parse_float=parse_finite_float,
-        object_pairs_hook=reject_duplicate_json_keys,
-    )
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonfinite_constant,
+            parse_float=parse_finite_float,
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise Fail("repeatability JSON unreadable or invalid") from None
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
 
