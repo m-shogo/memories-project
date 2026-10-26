@@ -95,7 +95,7 @@ def runtime(source: str, name: str, cases: tuple) -> None:
 
 def cas_runtime(source: str) -> None:
     """Execute the real blocker publisher commit/CAS shell in a disposable fake-Git sandbox."""
-    shell = step(source, "Commit canonical blocker cleanup")
+    shell = step(source, "Commit reconciled authority files")
     head = "a" * 40
     other = "b" * 40
     cases = (
