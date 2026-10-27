@@ -1100,6 +1100,60 @@ def prove_typed_reconcile_writer_ownership() -> None:
     print("PASS: typed reconcile writer oversized/symlink/fdopen/short-write private ownership negatives")
 
 
+def prove_typed_reconcile_child_validator() -> None:
+    """Child stdout/stderr, timeout and abnormal return codes never leak private data."""
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_child_validator_negative")
+    original_run = reconciler.subprocess.run
+    observed: list[str] = []
+    mode = "success"
+
+    def fake_run(args, **kwargs):
+        observed.append(mode)
+        require(args == [reconciler.sys.executable, str(reconciler.VALIDATOR)],
+                "typed reconcile child validator command drift")
+        require(kwargs.get("cwd") == ROOT
+                and kwargs.get("stdout") == reconciler.subprocess.DEVNULL
+                and kwargs.get("stderr") == reconciler.subprocess.DEVNULL
+                and kwargs.get("timeout") == 180
+                and kwargs.get("check") is False,
+                "typed reconcile child output privacy/timeout drift")
+        if mode == "timeout":
+            raise reconciler.subprocess.TimeoutExpired(args, 180)
+        if mode == "oserror":
+            raise OSError("SYNTHETIC_PRIVATE_CHILD_CANARY")
+        from types import SimpleNamespace
+        return SimpleNamespace(returncode={"success": 0, "nonzero": 1,
+                                           "bool": True, "string": "0"}[mode])
+
+    try:
+        reconciler.subprocess.run = fake_run
+        reconciler.run_post_validator(reconciler.VALIDATOR, reconciler.VALIDATOR_REL,
+                                      "typed non-resurrection validator")
+        for mode, expected in (
+            ("nonzero", "typed reconcile post-validator failed"),
+            ("bool", "typed reconcile post-validator failed"),
+            ("string", "typed reconcile post-validator failed"),
+            ("timeout", "typed reconcile post-validator unavailable"),
+            ("oserror", "typed reconcile post-validator unavailable"),
+        ):
+            try:
+                reconciler.run_post_validator(reconciler.VALIDATOR, reconciler.VALIDATOR_REL,
+                                              "typed non-resurrection validator")
+            except reconciler.Fail as exc:
+                require(str(exc) == expected and "SYNTHETIC_PRIVATE_" not in str(exc),
+                        f"typed reconcile child {mode} leaked or misclassified")
+                if mode in ("timeout", "oserror"):
+                    require(exc.__suppress_context__ and exc.__cause__ is None,
+                            f"typed reconcile child {mode} leaked exception context")
+            else:
+                raise Fail(f"typed reconcile child {mode} unexpectedly accepted")
+    finally:
+        reconciler.subprocess.run = original_run
+    require(observed == ["success", "nonzero", "bool", "string", "timeout", "oserror"],
+            "typed reconcile child failure matrix incomplete")
+    print("PASS: typed reconcile child validator bounded private subprocess and five negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -1140,6 +1194,7 @@ def main() -> int:
     prove_typed_reconcile_descriptor_faults()
     prove_typed_reconcile_platform_flags()
     prove_typed_reconcile_writer_ownership()
+    prove_typed_reconcile_child_validator()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
