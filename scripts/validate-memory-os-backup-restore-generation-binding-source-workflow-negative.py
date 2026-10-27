@@ -52,7 +52,7 @@ MAIN_REQUIRED = (
     ("root read token", "permissions:\n  contents: read\n", 1),
     ("writer write token", "      contents: write\n", 1),
     ("diagnostic fixed redaction", "              'output': 'REDACTED: generation binding validation failed; consult CI job logs',\n", 1),
-    ("raw CI log suppression", '          printf "Generation binding validation exit code: %s (raw validator log suppressed)\n" "$code"\n', 1),
+    ("raw CI log suppression", '          printf "Generation binding validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
     ("no raw diagnostic tail", "text[-12000:]", 0),
     ("no raw CI log echo", '          cat "$log"\n', 0),
 )
@@ -245,7 +245,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("unreviewed Action", "      - name: Capture exact generation binding authority source\n", "      - uses: unreviewed/action@v1\n      - name: Capture exact generation binding authority source\n"),
         ("unreviewed shell", "      - name: Capture exact generation binding authority source\n", "      - run: echo unreviewed\n      - name: Capture exact generation binding authority source\n"),
         ("raw diagnostic", "              'output': 'REDACTED: generation binding validation failed; consult CI job logs',\n", "              'output': Path('/tmp/backup-restore-generation-binding.log').read_text(),\n"),
-        ("raw CI log", '          printf "Generation binding validation exit code: %s (raw validator log suppressed)\n" "$code"\n', '          cat "$log"\n'),
+        ("raw CI log", '          printf "Generation binding validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
         ("missing redaction", "              'output': 'REDACTED: generation binding validation failed; consult CI job logs',\n", ""),
         ("symlink guard", "          if path.is_symlink():\n              raise SystemExit('generation binding diagnostic target must not be a symlink')\n", ""),
     )
