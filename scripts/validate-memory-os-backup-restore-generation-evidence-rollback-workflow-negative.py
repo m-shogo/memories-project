@@ -29,6 +29,8 @@ REQUIRED = (
     ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", 1),
     ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
     ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
+    ("read-only token", "permissions:\n  contents: read\n", 1),
+    ("no job write token", "      contents: write\n", 0),
 )
 
 
@@ -83,17 +85,22 @@ def main() -> int:
         ("PR target", REQUIRED[14][1], "  pull_request:\n    branches: [main]\n    paths:\n"),
         ("PR base environment", REQUIRED[15][1], ""),
         ("PR base assertion", REQUIRED[16][1], '            test -n "${PR_BASE_REF:-}"\n'),
+        ("read-only token", REQUIRED[17][1], "permissions:\n  contents: write\n"),
         ("injected shell", "          python scripts/validate-memory-os-backup-restore-generation-evidence-rollback-workflow-negative.py\n", "          echo UNREVIEWED\n          python scripts/validate-memory-os-backup-restore-generation-evidence-rollback-workflow-negative.py\n"),
         ("injected action", "      - name: Compile generation evidence rollback diagnostics negative\n", "      - uses: unreviewed/action@v1\n      - name: Compile generation evidence rollback diagnostics negative\n"),
         ("removed PR self-trigger", '      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-workflow-negative.py"\n', ""),
     )
     blob_only = {"injected shell", "injected action"}
-    if len(cases) != 20 or sum(label in blob_only for label, _, _ in cases) != 2:
+    if len(cases) != 21 or sum(label in blob_only for label, _, _ in cases) != 2:
         raise SystemExit("generation rollback diagnostics negative inventory drift")
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit(f"generation rollback diagnostics negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
+        semantic = any(mutated.count(token) != source.count(token)
+                       for _, token, _ in REQUIRED)
+        if semantic == (label in blob_only):
+            raise SystemExit("generation rollback diagnostics mutation classification drift: " + label)
         try:
             validate(mutated, check_blob=label in blob_only)
         except SystemExit:
