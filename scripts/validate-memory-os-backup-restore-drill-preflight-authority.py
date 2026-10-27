@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
+import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -47,13 +50,103 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     return path
 
 
+MAX_MODULE_BYTES = 1024 * 1024
+
+
 def load_module(path: Path, name: str, field: str):
-    canonical_repo_file(path, field)
-    spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {field}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        canonical_repo_file(path, field)
+        relative = path.relative_to(ROOT)
+        checked = path.lstat()
+        require(stat.S_ISREG(checked.st_mode), f"cannot load {field}")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                f"cannot load {field}")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(relative.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    f"cannot load {field}")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_MODULE_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            require(not cleanup_failed, f"cannot load {field}")
+        require(len(source) <= MAX_MODULE_BYTES, f"cannot load {field}")
+
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == name, f"cannot load {field}")
+                return compile(source, str(path), "exec")
+
+        spec = importlib.util.spec_from_file_location(
+            name, path, loader=PinnedSourceLoader(name, str(path)))
+        require(spec is not None and spec.loader is not None, f"cannot load {field}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        raise Fail(f"cannot load {field}") from None
     return module
+
+
+def prove_pinned_authority_import() -> None:
+    """Synthetic parent swap never redirects checked validator source bytes."""
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".preflight-authority-import-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "module.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "module.py"
+        source.write_text("VALUE = 'pinned'\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_PREFLIGHT_AUTHORITY_CANARY')\n", encoding="utf-8")
+        require(load_module(source, "preflight_authority_positive", "synthetic authority").VALUE == "pinned",
+                "preflight authority pinned loader positive failed")
+        swapped = False
+
+        def swap_after_read(name, location, *args, **kwargs):
+            nonlocal swapped
+            if not swapped and Path(location) == source:
+                swapped = True
+                parent.rename(parked)
+                parent.symlink_to(redirected, target_is_directory=True)
+            return original_spec(name, location, *args, **kwargs)
+
+        try:
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = load_module(source, "preflight_authority_swap", "synthetic authority")
+            require(swapped and loaded.VALUE == "pinned",
+                    "preflight authority import executed redirected parent source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_PREFLIGHT_AUTHORITY_CANARY')\n",
+                    "preflight authority import changed redirected canary")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+    print("PASS: preflight authority module import executes pinned bytes after parent swap")
 
 
 def require_module_authority(module: object, name: str, expected: Path, field: str) -> None:
@@ -205,6 +298,7 @@ def require_atomic_diagnostic_publication() -> None:
 
 
 def main() -> int:
+    prove_pinned_authority_import()
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_authority_validator", "restore drill preflight validator")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_authority_reconciler", "restore drill preflight reconciler")
 
