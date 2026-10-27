@@ -719,7 +719,9 @@ def atomic_restore(payload: bytes, mode: int) -> None:
         with os.fdopen(descriptor, "wb") as handle:
             descriptor = None
             os.fchmod(handle.fileno(), mode)
-            handle.write(payload)
+            written = handle.write(payload)
+            require(type(written) is int and written == len(payload),
+                    "generation evidence registry atomic restore failed")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
