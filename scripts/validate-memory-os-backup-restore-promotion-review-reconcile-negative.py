@@ -206,7 +206,7 @@ def prove_atomic_write_failure(reconciler: Any, original_contract: bytes, origin
     canonical_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
 
     def reject_replace(source: str | Path, destination: str | Path) -> None:
-        raise OSError("synthetic atomic replace rejection")
+        raise OSError("PRIVATE_PROMOTION_RECONCILE_ATOMIC_CANARY")
 
     with isolated_reconcile_authorities(reconciler):
         fixture_contract = reconciler.CONTRACT.read_bytes()
@@ -218,7 +218,10 @@ def prove_atomic_write_failure(reconciler: Any, original_contract: bytes, origin
             try:
                 reconciler.write_text(reconciler.CONTRACT, fixture_contract.decode("utf-8") + " ")
             except reconciler.Fail as exc:
-                require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+                require(str(exc) == "promotion reconcile authority atomic write failed"
+                        and exc.__suppress_context__
+                        and "PRIVATE_PROMOTION_RECONCILE_ATOMIC_CANARY" not in str(exc),
+                        "atomic write rejected at wrong/private boundary")
             else:
                 raise Fail("synthetic promotion-review atomic replace failure unexpectedly accepted")
 
@@ -553,6 +556,57 @@ def prove_strict_reconcile_json(reconciler: Any) -> None:
     print("PASS: actual promotion reconcile JSON reader positive and 12 fail-closed negatives")
 
 
+
+def prove_private_atomic_write_path_guards(
+    reconciler: Any, original_contract: bytes, original_registry: bytes,
+) -> None:
+    """Reject unreviewed and external targets without touching protected files."""
+    canonical_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
+    canonical_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
+    with isolated_reconcile_authorities(reconciler):
+        original = reconciler.REGISTRY.read_bytes()
+        marker = "PRIVATE_PROMOTION_RECONCILE_WRITE_CANARY"
+        with tempfile.TemporaryDirectory(prefix="promotion-reconcile-write-external-") as tmp:
+            outside = Path(tmp) / "private.json"
+            outside.write_text(marker, encoding="utf-8")
+            alias = reconciler.ROOT / "promotion-write-alias.json"
+            alias.symlink_to(outside)
+            unreviewed = reconciler.ROOT / "unreviewed.json"
+            unreviewed.write_text(marker, encoding="utf-8")
+            directory = reconciler.ROOT / "unreviewed-directory"
+            directory.mkdir()
+            cases = (
+                ("external", outside, "promotion reconcile write path unsafe"),
+                ("symlink", alias, "promotion reconcile write path unsafe"),
+                ("directory", directory, "promotion reconcile write path unsafe"),
+                ("unreviewed", unreviewed, "promotion reconcile write target unreviewed"),
+            )
+            for label, path, expected in cases:
+                try:
+                    reconciler.write_text(path, "changed")
+                except reconciler.Fail as exc:
+                    require(str(exc) == expected and marker not in str(exc),
+                            f"promotion reconcile write {label} wrong/private rejection")
+                else:
+                    raise Fail(f"promotion reconcile write {label} unexpectedly accepted")
+            require(outside.read_text(encoding="utf-8") == marker
+                    and unreviewed.read_text(encoding="utf-8") == marker,
+                    "promotion reconcile write canary changed")
+        try:
+            reconciler.write_text(reconciler.REGISTRY, "x" * (reconciler.MAX_AUTHORITY_BYTES + 1))
+        except reconciler.Fail as exc:
+            require(str(exc) == "promotion reconcile write size limit exceeded",
+                    "promotion reconcile write oversized input wrong rejection")
+        else:
+            raise Fail("promotion reconcile write oversized input accepted")
+        require(reconciler.REGISTRY.read_bytes() == original,
+                "promotion reconcile write negatives mutated isolated registry")
+    assert_canonical_unchanged(original_contract, original_registry,
+                               "promotion reconcile write path negatives",
+                               canonical_contract_mode, canonical_registry_mode)
+    print("PASS: promotion reconcile atomic write path and size guards (5 negatives)")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
@@ -570,6 +624,7 @@ def main() -> int:
     expect_authority_substitution_rejected(reconciler, "STATUS", reconciler.CONTRACT, "production operability status substitution", "production operability status authority drift", original_contract, original_registry)
 
     prove_mode_preserving_atomic_write(reconciler, original_contract, original_registry)
+    prove_private_atomic_write_path_guards(reconciler, original_contract, original_registry)
     prove_atomic_write_failure(reconciler, original_contract, original_registry)
     prove_second_replace_failure_rolls_back_transaction(reconciler, original_contract, original_registry)
     prove_rollback_attempts_all_authorities(reconciler)
