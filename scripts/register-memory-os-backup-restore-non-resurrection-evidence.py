@@ -547,11 +547,19 @@ def main() -> int:
     validate_record(record)
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError as exc:
-        raise Fail("non-resurrection admission registry lock already exists") from exc
+    except FileExistsError:
+        raise Fail("non-resurrection admission registry lock already exists") from None
+    except OSError:
+        raise Fail("typed non-resurrection registry lock acquisition failed") from None
     try:
-        os.write(lock_fd, (record["recordId"] + "\n").encode("ascii"))
-        os.fsync(lock_fd)
+        lock_payload = (record["recordId"] + "\n").encode("ascii")
+        try:
+            written = os.write(lock_fd, lock_payload)
+            require(type(written) is int and written == len(lock_payload),
+                    "typed non-resurrection registry lock initialization failed")
+            os.fsync(lock_fd)
+        except OSError:
+            raise Fail("typed non-resurrection registry lock initialization failed") from None
         registry = load(REGISTRY)
         rows = validate_registry_for_append(registry)
         require(all(row.get("recordId") != record["recordId"] for row in rows), "recordId already registered")
@@ -564,13 +572,19 @@ def main() -> int:
         registry["productionReady"] = False
         write_registry_transactionally(registry)
     finally:
+        cleanup_failed = False
         try:
             os.close(lock_fd)
-        finally:
-            try:
-                LOCK.unlink()
-            except FileNotFoundError:
-                pass
+        except OSError:
+            cleanup_failed = True
+        try:
+            LOCK.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("typed non-resurrection registry lock cleanup failed") from None
     print(f"Registered backup/restore non-resurrection evidence: {record['recordId']}")
     print(f"pre-overlay candidate covered: {str(candidate_complete(record)).lower()}")
     print("production evidence: false")
