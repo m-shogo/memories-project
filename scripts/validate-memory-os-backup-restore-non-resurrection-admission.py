@@ -173,13 +173,55 @@ def load(path: Path) -> dict[str, Any]:
     require(isinstance(value, dict), "typed admission JSON root must be object")
     return value
 
+MAX_MODULE_BYTES = 1024 * 1024
+
+
 def load_module(path: Path, name: str):
-    repo_relative(path)
+    relative = repo_relative(path)
     try:
+        require(path.relative_to(ROOT) == relative,
+                "typed admission module import unavailable")
+        checked = path.lstat()
+        require(stat.S_ISREG(checked.st_mode), "typed admission module import unavailable")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                "typed admission module import unavailable")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(relative.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    "typed admission module import unavailable")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_MODULE_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            require(not cleanup_failed, "typed admission module import unavailable")
+        require(len(source) <= MAX_MODULE_BYTES, "typed admission module import unavailable")
         spec = importlib.util.spec_from_file_location(name, path)
         require(spec is not None and spec.loader is not None, "typed admission module import unavailable")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        exec(compile(source, str(path), "exec"), module.__dict__)
     except Exception:
         raise Fail("typed admission module import unavailable") from None
     return module

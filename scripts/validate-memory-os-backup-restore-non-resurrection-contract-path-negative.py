@@ -555,6 +555,47 @@ def prove_private_typed_admission_import_errors(validator: object) -> None:
 
 
 
+def prove_pinned_typed_admission_module_import(validator: object) -> None:
+    """A replaced parent cannot redirect a module after its source FD was checked."""
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".typed-admission-import-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "module.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "module.py"
+        source.write_text("VALUE = 'pinned'\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_TYPED_MODULE_SWAP_CANARY')\n", encoding="utf-8")
+        require(validator.load_module(source, "typed_pinned_positive").VALUE == "pinned",
+                "typed module pinned import positive failed")
+        swapped = False
+
+        def swap_after_read(name, location, *args, **kwargs):
+            nonlocal swapped
+            if not swapped and Path(location) == source:
+                swapped = True
+                parent.rename(parked)
+                parent.symlink_to(redirected, target_is_directory=True)
+            return original_spec(name, location, *args, **kwargs)
+
+        try:
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = validator.load_module(source, "typed_pinned_swap")
+            require(swapped and loaded.VALUE == "pinned",
+                    "typed module import executed redirected parent source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_TYPED_MODULE_SWAP_CANARY')\n",
+                    "typed module import changed redirected canary")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+    require(callable(getattr(validator.load_module(VALIDATOR, "typed_pinned_restored"),
+                             "main", None)), "typed module import canonical restoration failed")
+    print("PASS: typed admission module import executes descriptor-pinned source after parent swap")
+
+
 def prove_private_typed_append_lock_metadata(validator: object) -> None:
     """Materialized lock metadata errors cannot disclose filesystem exception details."""
     private = "SYNTHETIC_PRIVATE_TYPED_LOCK_CANARY"
@@ -623,6 +664,7 @@ def main() -> int:
     validator = load_validator()
     prove_private_typed_admission_paths(validator)
     prove_private_typed_admission_import_errors(validator)
+    prove_pinned_typed_admission_module_import(validator)
     prove_private_typed_append_lock_metadata(validator)
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
