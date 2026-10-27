@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-from ops_independent_review_fixture_loader import load_pinned_module
 """Negative suite for typed, append-only generation candidate reviews."""
 
 from __future__ import annotations
+
+from ops_independent_review_fixture_loader import load_pinned_module
 
 import ast
 import copy
