@@ -181,6 +181,8 @@ def require_actual_cli_authorities() -> None:
 
 def parse_utc_timestamp(value: Any, field: str) -> datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
+    require(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?Z", value) is not None,
+            f"{field} must be UTC RFC3339 date-time")
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError:
