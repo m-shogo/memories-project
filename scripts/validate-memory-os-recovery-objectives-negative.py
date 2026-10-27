@@ -319,11 +319,55 @@ def prove_private_reference_failure_classes(writer) -> None:
     print("PASS: recovery objective reference privacy positive and six fail-closed negatives")
 
 
+def prove_unhashable_approval_inputs(writer) -> None:
+    """Malformed typed approval inputs must fail as domain errors, not TypeError."""
+    record = base_record()
+    approved_at = writer.parse_utc_timestamp(record["approvedAt"], "approvedAt")
+    marker = "PRIVATE_OBJECTIVE_UNHASHABLE_CANARY"
+
+    for label, refs in (
+        ("mapping ref", [{"private": marker}, record["approvalEvidenceRefs"][1]]),
+        ("list ref", [[marker], record["approvalEvidenceRefs"][1]]),
+    ):
+        try:
+            writer.evidence_refs(refs, record, approved_at)
+        except writer.Fail as exc:
+            require(str(exc) == "approvalEvidenceRefs must be non-empty strings"
+                    and marker not in str(exc),
+                    f"unhashable approval {label} rejection drift")
+        else:
+            raise Fail(f"unhashable approval {label} unexpectedly accepted")
+
+    original_load = writer.load
+    try:
+        for label, role in (
+            ("mapping role", {"private": marker}),
+            ("list role", [marker]),
+        ):
+            document = {field: None for field in writer.APPROVAL_FIELDS}
+            document["schemaVersion"] = writer.APPROVAL_SCHEMA
+            document["decision"] = "APPROVED"
+            document["reviewRole"] = role
+            writer.load = lambda _path, doc=document: doc
+            try:
+                writer.approval_document("synthetic-not-an-approval", record, approved_at)
+            except writer.Fail as exc:
+                require(str(exc) == "approval evidence reviewRole invalid"
+                        and marker not in str(exc),
+                        f"unhashable approval {label} rejection drift")
+            else:
+                raise Fail(f"unhashable approval {label} unexpectedly accepted")
+    finally:
+        writer.load = original_load
+    print("PASS: objective typed approval refs and roles reject four unhashable negatives")
+
+
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
     writer = load_writer()
     prove_private_reference_failure_classes(writer)
+    prove_unhashable_approval_inputs(writer)
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
     prove_writer_json_reader(writer)
     prove_recovery_objective_json_reader(validator)
