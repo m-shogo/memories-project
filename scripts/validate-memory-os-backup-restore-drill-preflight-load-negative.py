@@ -969,6 +969,61 @@ def prove_preflight_reconcile_repo_refs(reconciler: object) -> None:
     print("PASS: preflight reconcile canonical evidence ref and five symlink/alias negatives")
 
 
+def prove_preflight_reconcile_writer_preopen_faults(reconciler: object) -> None:
+    with guarded_temporary_directory(".tmp-preflight-write-preopen-", TMP_PARENT) as raw:
+        path = Path(raw) / "candidate.json"
+        positive = b'{"safe":true}'
+        path.write_bytes(positive)
+        path.chmod(0o640)
+        original_mkstemp, original_fchmod = tempfile.mkstemp, os.fchmod
+        for fault in ("mkstemp", "fchmod"):
+            opened: list[int] = []
+            injected = False
+
+            def fault_mkstemp(*args, **kwargs):
+                nonlocal injected
+                if fault == "mkstemp":
+                    injected = True
+                    raise OSError("SYNTHETIC_PRIVATE_MKSTEMP_CANARY")
+                descriptor, name = original_mkstemp(*args, **kwargs)
+                opened.append(descriptor)
+                return descriptor, name
+
+            def fault_fchmod(descriptor, value):
+                nonlocal injected
+                injected = True
+                raise OSError("SYNTHETIC_PRIVATE_FCHMOD_CANARY")
+
+            try:
+                tempfile.mkstemp = fault_mkstemp
+                if fault == "fchmod":
+                    os.fchmod = fault_fchmod
+                try:
+                    reconciler.write_text(path, '{"safe":false}')
+                except reconciler.Fail as exc:
+                    require(str(exc) == "preflight reconcile atomic write failed"
+                            and exc.__suppress_context__ and exc.__cause__ is None,
+                            f"preflight writer {fault} leaked private preopen exception")
+                else:
+                    raise Fail(f"preflight writer {fault} preopen fault accepted")
+            finally:
+                tempfile.mkstemp, os.fchmod = original_mkstemp, original_fchmod
+            require(injected and len(opened) == (1 if fault == "fchmod" else 0),
+                    f"preflight writer {fault} fault injection not reached")
+            for descriptor in opened:
+                try:
+                    os.fstat(descriptor)
+                except OSError:
+                    pass
+                else:
+                    raise Fail(f"preflight writer {fault} leaked descriptor")
+            require(path.read_bytes() == positive and mode(path) == 0o640,
+                    f"preflight writer {fault} changed fixture bytes/mode")
+            require(not list(path.parent.glob(".candidate.json.*.tmp")),
+                    f"preflight writer {fault} left temporary file")
+    print("PASS: preflight reconcile mkstemp/fchmod private preopen faults clean FD/temp")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -992,6 +1047,7 @@ def main() -> int:
     prove_preflight_reconcile_writer_ownership(reconciler)
     prove_preflight_reconcile_private_path_diagnostics(reconciler)
     prove_preflight_reconcile_repo_refs(reconciler)
+    prove_preflight_reconcile_writer_preopen_faults(reconciler)
 
     with guarded_temporary_directory(".tmp-preflight-load-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
