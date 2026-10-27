@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -3751,6 +3753,100 @@ for fault in ("syntax", "read"):
     return 2
 
 
+MAX_TARGET_SOURCE_BYTES = 1024 * 1024
+
+
+def read_bounded_target_source(path: Path) -> str:
+    """Read a regular tracked target through one bounded, no-follow descriptor."""
+    require(
+        type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0
+        and type(getattr(os, "O_NONBLOCK", None)) is int and os.O_NONBLOCK > 0,
+        "canonical target source safety flags unavailable",
+    )
+    fd = -1
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(stat.S_ISREG(os.fstat(fd).st_mode),
+                "canonical target source not regular")
+        with os.fdopen(fd, "rb") as stream:
+            fd = -1
+            data = stream.read(MAX_TARGET_SOURCE_BYTES + 1)
+    except GuardFailure:
+        raise
+    except (OSError, RuntimeError):
+        raise GuardFailure("canonical target source read failed") from None
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except (Exception, SystemExit):
+                raise GuardFailure("canonical target source cleanup failed") from None
+    require(len(data) <= MAX_TARGET_SOURCE_BYTES,
+            "canonical target source oversized")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise GuardFailure("canonical target source invalid utf8") from None
+
+
+def prove_bounded_target_source_negative() -> int:
+    """Reject oversized, redirected and nonregular sources without leaking FDs."""
+    with tempfile.TemporaryDirectory(prefix=".ancestor-source-read-", dir=ROOT) as raw:
+        parent = Path(raw)
+        good = parent / "valid.py"
+        good.write_text("VALUE = 1" + chr(10), encoding="utf-8")
+        require(read_bounded_target_source(good) == "VALUE = 1" + chr(10),
+                "bounded target source positive failed")
+        oversized = parent / "oversized.py"
+        oversized.write_bytes(b"x" * (MAX_TARGET_SOURCE_BYTES + 1))
+        symlink = parent / "symlink.py"
+        symlink.symlink_to(good)
+        fifo = parent / "fifo.py"
+        os.mkfifo(fifo)
+        for candidate, expected in (
+            (oversized, "canonical target source oversized"),
+            (symlink, "canonical target source read failed"),
+            (fifo, "canonical target source not regular"),
+        ):
+            try:
+                read_bounded_target_source(candidate)
+            except GuardFailure as exc:
+                require(str(exc) == expected,
+                        "bounded target source rejected at wrong boundary")
+            else:
+                raise GuardFailure("bounded target source accepted unsafe fixture")
+        original_open, original_fdopen = os.open, os.fdopen
+        tracked = {}
+        def watch_open(*args, **kwargs):
+            descriptor = original_open(*args, **kwargs)
+            tracked["fd"] = descriptor
+            return descriptor
+        def fault_fdopen(descriptor, *args, **kwargs):
+            if descriptor == tracked.get("fd"):
+                raise OSError("PRIVATE_TARGET_FDOPEN_CANARY")
+            return original_fdopen(descriptor, *args, **kwargs)
+        os.open, os.fdopen = watch_open, fault_fdopen
+        try:
+            try:
+                read_bounded_target_source(good)
+            except GuardFailure as exc:
+                require(str(exc) == "canonical target source read failed"
+                        and exc.__cause__ is None and exc.__suppress_context__,
+                        "bounded target fdopen fault not private")
+            else:
+                raise GuardFailure("bounded target fdopen fault accepted")
+        finally:
+            os.open, os.fdopen = original_open, original_fdopen
+        require("fd" in tracked, "bounded target fdopen fault not injected")
+        try:
+            os.fstat(tracked["fd"])
+        except OSError as exc:
+            require(exc.errno == 9, "bounded target fdopen fault wrong descriptor state")
+        else:
+            raise GuardFailure("bounded target fdopen failure leaked descriptor")
+    return 4
+
+
 def main() -> int:
     workflow_source = (
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
@@ -3763,13 +3859,14 @@ def main() -> int:
     validate_independent_learning_workflow(learning_workflow_source)
     total = 0
     for filename, diagnostic in TARGETS.items():
-        source = (ROOT / "scripts" / filename).read_text(encoding="utf-8")
+        source = read_bounded_target_source(ROOT / "scripts" / filename)
         validate_source(source, diagnostic)
         prove_compilation_failure_runtime(filename)
         if "--negative" in sys.argv[1:]:
             total += negative_cases(source, diagnostic)
     if "--negative" in sys.argv[1:]:
         total += prove_private_entrypoint_failures()
+        total += prove_bounded_target_source_negative()
         total += target_matrix_negative_cases(workflow_source)
         total += workflow_runtime_negative_cases(workflow_source)
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
@@ -3781,7 +3878,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 136 * len(TARGETS) + 230, "ancestor negative count mismatch")
+        require(total == 136 * len(TARGETS) + 234, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
