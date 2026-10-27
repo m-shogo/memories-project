@@ -258,6 +258,63 @@ def prove_pinned_json_race_negative_removal_rejected() -> None:
     print("PASS: preflight and typed JSON race negative invocation/injection deletion rejected")
 
 
+def require_json_descriptor_fault_negative_reachable(source: str, function_name: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("JSON descriptor fault negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target, main = functions.get(function_name), functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("JSON descriptor fault negative missing")
+    calls = [node for node in ast.walk(main)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == function_name]
+    if len(calls) != 1:
+        raise SystemExit("JSON descriptor fault negative invocation drift")
+    nested = {node.name for node in ast.walk(target) if isinstance(node, ast.FunctionDef)}
+    if not {"capture_open", "close_then_fail", "fdopen_then_fail"}.issubset(nested):
+        raise SystemExit("JSON descriptor fault injection function missing")
+    assignments = {(item.attr, node.value.id)
+                   for node in ast.walk(target) if isinstance(node, ast.Assign)
+                   and isinstance(node.value, ast.Name)
+                   for item in node.targets if isinstance(item, ast.Attribute)
+                   and isinstance(item.value, ast.Name) and item.value.id == "os"}
+    if not {("open", "capture_open"), ("close", "close_then_fail"),
+            ("fdopen", "fdopen_then_fail")}.issubset(assignments):
+        raise SystemExit("JSON descriptor fault injection not applied")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if not {"close", "fdopen"}.issubset(strings):
+        raise SystemExit("JSON descriptor fault matrix missing")
+
+
+def prove_json_descriptor_fault_negative_removal_rejected() -> None:
+    for relative, function_name in (
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
+         "expect_preflight_json_descriptor_faults"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_json_reader_descriptor_faults"),
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        require_json_descriptor_fault_negative_reachable(source, function_name)
+        for label, anchor, replacement in (
+            ("invocation", f"    {function_name}(validator)\n", "    pass\n"),
+            ("close injection", "                    os.close = close_then_fail\n", "                    pass\n"),
+            ("fdopen injection", "                    os.fdopen = fdopen_then_fail\n", "                    pass\n"),
+        ):
+            if source.count(anchor) != 1:
+                raise SystemExit("JSON descriptor fault deletion anchor drift: " + label)
+            mutated = source.replace(anchor, replacement, 1)
+            try:
+                require_json_descriptor_fault_negative_reachable(mutated, function_name)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("JSON descriptor fault negative deletion accepted: " + label)
+    print("PASS: preflight and typed JSON descriptor fault invocation/injection deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -266,6 +323,7 @@ def main() -> int:
     prove_generation_json_parent_swap_negative_removal_rejected()
     prove_generation_json_descriptor_fault_negative_deletion_rejected()
     prove_pinned_json_race_negative_removal_rejected()
+    prove_json_descriptor_fault_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
