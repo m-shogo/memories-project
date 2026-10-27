@@ -5,6 +5,7 @@ This is test infrastructure only, not production recovery evidence.
 """
 from __future__ import annotations
 
+import builtins
 import importlib.machinery
 import importlib.util
 import os
@@ -151,6 +152,26 @@ def prove_pinned_import() -> None:
         invalid.write_text("def invalid(:\n", encoding="utf-8")
         expect_rejected(root, invalid, "independent_fixture_compile")
 
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original_flag = getattr(os, flag)
+            for unsupported in (None, 0):
+                try:
+                    setattr(os, flag, unsupported)
+                    expect_rejected(root, source, "independent_fixture_unsupported_" + flag)
+                finally:
+                    setattr(os, flag, original_flag)
+
+        original_compile = builtins.compile
+        def compile_exit(payload: bytes, filename: str, mode: str, *args: Any, **kwargs: Any):
+            if filename == str(source):
+                raise SystemExit("PRIVATE_INDEPENDENT_COMPILE_CANARY")
+            return original_compile(payload, filename, mode, *args, **kwargs)
+        builtins.compile = compile_exit
+        try:
+            expect_rejected(root, source, "independent_fixture_compile_exit")
+        finally:
+            builtins.compile = original_compile
+
         before = len(os.listdir("/proc/self/fd"))
         original_fdopen = os.fdopen
         def fail_fdopen(*_args: Any, **_kwargs: Any):
@@ -178,7 +199,7 @@ def prove_pinned_import() -> None:
             os.close = original_close
         require(close_fired and len(os.listdir("/proc/self/fd")) == before)
         require(load_pinned_module(root, source, "independent_fixture_final").VALUE == 7)
-    print("PASS independent-review pinned fixture import: swap, symlink, FIFO, size, compile, fdopen, close-after-close")
+    print("PASS independent-review pinned fixture import: swap, symlink, FIFO, size, platform flags, compile/SystemExit, fdopen, close-after-close")
 
 
 if __name__ == "__main__":

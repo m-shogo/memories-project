@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-review-negative.yml"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
 HELPER = ROOT / "scripts/ops_independent_review_fixture_loader.py"
-REVIEWED_HELPER_GIT_BLOB_SHA = "f1c522f8ce54afee86ca994cd1d92bbaddb990ea"
+REVIEWED_HELPER_GIT_BLOB_SHA = "b0ea70ab9ab212444f0cbf9e5921c925bfc52bc5"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -185,6 +185,8 @@ def main() -> int:
         ("remove pinned source safety flag", b"os.O_NOFOLLOW", b"os.O_RDONLY"),
         ("remove real pinned import negative", b"    prove_pinned_import()\n", b"    pass\n"),
         ("remove after-close fault", b"independent_fixture_close_after_close", b"independent_fixture_close_skipped"),
+        ("remove unsupported flag loop", b'        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):\n', b'        for flag in ():\n'),
+        ("remove compile exit probe", b'            expect_rejected(root, source, "independent_fixture_compile_exit")\n', b'            pass\n'),
     ):
         if old not in helper_source:
             raise SystemExit("independent-review helper negative anchor missing: " + label)
