@@ -78,7 +78,7 @@ def main() -> int:
         ("unreviewed event rejection", REQUIRED[9][1], ""),
         ("source HEAD", REQUIRED[10][1], ""),
         ("clean source", REQUIRED[11][1], ""),
-        ("fixture helper compile continuation", REQUIRED[16][1], REQUIRED[16][1].replace(".py \\n", ".py\\n")),
+        ("fixture helper compile continuation", REQUIRED[16][1], REQUIRED[16][1].replace(chr(92) + chr(10), chr(10))),
         ("self-trigger", REQUIRED[12][1], ""),
         ("self-execution", REQUIRED[13][1], ""),
     )
