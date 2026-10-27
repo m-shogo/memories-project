@@ -998,6 +998,108 @@ def prove_typed_reconcile_platform_flags() -> None:
     print("PASS: typed reconcile None/zero safety flags rejected")
 
 
+def prove_typed_reconcile_writer_ownership() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_writer_ownership_negative")
+    protected = (CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-typed-write-ownership-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        path = sandbox / "candidate.json"
+        positive = b'{"safe":true}'
+        path.write_bytes(positive)
+        path.chmod(0o640)
+        for label, value, expected in (
+            ("oversized", "x" * (reconciler.MAX_AUTHORITY_BYTES + 1),
+             "typed reconcile write size limit exceeded"),
+            ("nonstring", None, "typed reconcile write payload invalid"),
+        ):
+            try:
+                reconciler.write_text(path, value)
+            except reconciler.Fail as exc:
+                require(str(exc) == expected, f"typed reconcile write {label} wrong rejection")
+            else:
+                raise Fail(f"typed reconcile write {label} accepted")
+        with tempfile.TemporaryDirectory(prefix="typed-write-outside-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            link = sandbox / "alias.json"
+            link.symlink_to(canary)
+            try:
+                reconciler.write_text(link, '{"unsafe":true}')
+            except reconciler.Fail as exc:
+                require(str(exc) == "typed reconcile write path unsafe",
+                        "typed reconcile write symlink rejected at wrong boundary")
+            else:
+                raise Fail("typed reconcile write followed symlink")
+            require(canary.read_bytes() == positive, "typed reconcile write changed external canary")
+
+        original_fdopen = os.fdopen
+        original_mkstemp = tempfile.mkstemp
+        opened: list[int] = []
+
+        def capture_mkstemp(*args, **kwargs):
+            descriptor, name = original_mkstemp(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor, name
+
+        class ShortStream:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+            def write(self, value):
+                return len(value) - 1
+
+            def flush(self):
+                self.stream.flush()
+
+            def fileno(self):
+                return self.stream.fileno()
+
+        for fault, expected in (
+            ("fdopen", "typed reconcile atomic write failed"),
+            ("short", "typed reconcile write short buffered write refused"),
+        ):
+            opened.clear()
+
+            def fault_fdopen(descriptor, *args, **kwargs):
+                if fault == "fdopen":
+                    raise OSError("SYNTHETIC_PRIVATE_FDOPEN_CANARY")
+                return ShortStream(original_fdopen(descriptor, *args, **kwargs))
+
+            try:
+                tempfile.mkstemp = capture_mkstemp
+                os.fdopen = fault_fdopen
+                try:
+                    reconciler.write_text(path, '{"safe":false}')
+                except reconciler.Fail as exc:
+                    require(str(exc) == expected and "SYNTHETIC_PRIVATE_" not in str(exc),
+                            f"typed reconcile write {fault} leaked or misclassified")
+                else:
+                    raise Fail(f"typed reconcile write {fault} fault accepted")
+            finally:
+                os.fdopen = original_fdopen
+                tempfile.mkstemp = original_mkstemp
+            require(len(opened) == 1, f"typed reconcile write {fault} descriptor injection not reached")
+            try:
+                os.fstat(opened[0])
+            except OSError:
+                pass
+            else:
+                raise Fail(f"typed reconcile write {fault} leaked descriptor")
+            require(path.read_bytes() == positive and (path.stat().st_mode & 0o7777) == 0o640,
+                    f"typed reconcile write {fault} changed fixture bytes or mode")
+            require(not list(sandbox.glob(".candidate.json.*.tmp")),
+                    f"typed reconcile write {fault} left temporary file")
+    require((CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes()) == protected,
+            "typed reconcile writer negative mutated protected authorities")
+    print("PASS: typed reconcile writer oversized/symlink/fdopen/short-write private ownership negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -1037,6 +1139,7 @@ def main() -> int:
     prove_typed_reconcile_strict_json()
     prove_typed_reconcile_descriptor_faults()
     prove_typed_reconcile_platform_flags()
+    prove_typed_reconcile_writer_ownership()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
