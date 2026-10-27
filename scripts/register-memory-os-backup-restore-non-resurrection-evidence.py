@@ -235,18 +235,18 @@ def generation_registry_rows() -> list[dict[str, Any]]:
         generation_writer = load_generation_writer()
         try:
             generation_writer.validate_upstream_authorities_for_append()
-            if GEN_EVIDENCE_REGISTRY == ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json":
-                for index, row in enumerate(rows):
-                    try:
-                        generation_writer.validate_record(row, require_current_drill_request=False)
-                    except Exception as exc:
-                        if domain_validation_failure(exc):
-                            raise Fail(f"generation evidence registry records[{index}] historical authority invalid") from None
-                        raise
         except Exception as exc:
             if domain_validation_failure(exc):
                 raise Fail("generation evidence upstream authority invalid") from None
             raise
+        if GEN_EVIDENCE_REGISTRY == ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json":
+            for index, row in enumerate(rows):
+                try:
+                    generation_writer.validate_record(row, require_current_drill_request=False)
+                except Exception as exc:
+                    if domain_validation_failure(exc):
+                        raise Fail(f"generation evidence registry records[{index}] historical authority invalid") from None
+                    raise
         bound_count = registry.get("drillRequestBoundEvidenceCount")
         backup_count = registry.get("completeGenerationBoundBackupCount")
         restore_count = registry.get("completeGenerationBoundRestoreCount")
