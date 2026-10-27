@@ -57,8 +57,10 @@ REQUIRED = (
 )
 
 
-def validate_trigger_reachability(source: str) -> None:
+def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS) -> None:
     """Require all reviewed source-order paths in push and PR independently."""
+    if len(trigger_paths) != 20 or len(set(trigger_paths)) != 20:
+        raise SystemExit("review-source-order readonly trigger inventory drift")
     push_marker = "  push:\n    branches: [so]\n    paths:\n"
     pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
     dispatch_marker = "  workflow_dispatch:\n"
@@ -68,7 +70,7 @@ def validate_trigger_reachability(source: str) -> None:
     push_block = source.split(push_marker, 1)[1].split(pr_marker, 1)[0]
     pr_block = source.split(pr_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("push", push_block), ("pull_request", pr_block)):
-        for path in TRIGGER_PATHS:
+        for path in trigger_paths:
             token = "      - '" + path + "'\n"
             if block.count(token) != 1:
                 raise SystemExit("review-source-order readonly " + event + " trigger drift: " + path)
@@ -92,7 +94,13 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("review-source-order readonly trigger negative accepted: " + event + " " + path)
-    print(f"PASS: review-source-order readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives)")
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("review-source-order readonly shortened trigger inventory accepted")
+    print(f"PASS: review-source-order readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 1 shortened inventory negative)")
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
