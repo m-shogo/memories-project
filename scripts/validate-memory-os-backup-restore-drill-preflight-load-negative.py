@@ -1148,6 +1148,46 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("preflight private path negative deletion accepted: " + label)
+    validator_source = VALIDATOR.read_text(encoding="utf-8")
+
+    def verify_pinned_loader(candidate: str) -> None:
+        try:
+            tree = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("preflight pinned loader source syntax invalid") from None
+        helpers = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == "load_eligibility_helper"]
+        require(len(helpers) == 1, "preflight pinned loader function missing")
+        helper = helpers[0]
+        body = ast.get_source_segment(candidate, helper)
+        require(isinstance(body, str), "preflight pinned loader source unavailable")
+        for token in ("class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+                      'return compile(source, str(ELIGIBILITY_HELPER), "exec")',
+                      "loader=PinnedSourceLoader(name, str(ELIGIBILITY_HELPER))",
+                      "spec.loader.exec_module(module)",
+                      "source = stream.read(MAX_JSON_BYTES + 1)",
+                      "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)"):
+            require(token in body, "preflight pinned loader source binding removed")
+        require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in {"exec", "eval"} for node in ast.walk(helper)),
+                "preflight pinned loader direct dynamic execution refused")
+
+    verify_pinned_loader(validator_source)
+    for label, old, replacement in (
+        ("loader binding", "loader=PinnedSourceLoader(name, str(ELIGIBILITY_HELPER))", "loader=None"),
+        ("pinned source code", 'return compile(source, str(ELIGIBILITY_HELPER), "exec")', "return None"),
+        ("stdlib module execution", "spec.loader.exec_module(module)", "pass"),
+        ("descriptor-relative leaf", "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)"),
+    ):
+        require(validator_source.count(old) == 1,
+                "preflight pinned loader mutation anchor drift: " + label)
+        try:
+            verify_pinned_loader(validator_source.replace(old, replacement, 1))
+        except Fail:
+            continue
+        raise Fail("preflight pinned loader source weakening accepted: " + label)
+    print("PASS: preflight pinned source loader and four weakening mutations rejected")
     print("PASS: preflight private path/import fault, context and invocation deletion rejected")
 
 
