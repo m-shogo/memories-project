@@ -35,13 +35,13 @@ REQUIRED = (
 )
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, count in REQUIRED:
         if source.count(token) != count:
             raise SystemExit("generation evidence readonly source drift: " + label)
     payload = source.encode("utf-8")
     blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
-    if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
+    if check_blob and hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
         raise SystemExit("generation evidence readonly complete source drift")
 
 
@@ -111,16 +111,26 @@ def main() -> int:
         ("injected executable action", "      - name: Prove generation evidence authorities are byte and mode immutable\n", "      - uses: unreviewed/action@v1\n      - name: Prove generation evidence authorities are byte and mode immutable\n"),
         ("removed push self-trigger", "      - \"scripts/validate-memory-os-backup-restore-generation-evidence-readonly-workflow-negative.py\"\n", ""),
     )
+    semantic_count = 0
+    blob_only_count = 0
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit("generation evidence readonly negative anchor missing: " + label)
         mutated = source.replace(old, replacement, 1)
+        if mutated == source:
+            raise SystemExit("generation evidence readonly mutation unchanged: " + label)
+        semantic = any(mutated.count(token) != source.count(token)
+                       for _, token, _ in REQUIRED)
+        semantic_count += int(semantic)
+        blob_only_count += int(not semantic)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=not semantic)
         except SystemExit:
             continue
         raise SystemExit("generation evidence readonly accepted forbidden mutation: " + label)
-    print(f"PASS: generation evidence readonly workflow source admission ({len(cases)} negatives)")
+    if (semantic_count, blob_only_count) != (len(cases) - 2, 2):
+        raise SystemExit("generation evidence readonly semantic/blob mutation coverage drift")
+    print(f"PASS: generation evidence readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
 
 
