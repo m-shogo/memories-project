@@ -386,6 +386,57 @@ def prove_typed_negative_case_authority(validator) -> None:
     print("PASS: typed negative admission case authority positive and six negatives")
 
 
+def prove_validator_private_path_errors(validator) -> None:
+    """Canonical path errors must not retain private filesystem exception context."""
+    marker = "PRIVATE_OBJECTIVE_VALIDATOR_PATH_CANARY"
+    original_root = validator.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-validator-path-privacy-") as tmp:
+        root = Path(tmp)
+        source = root / "authority.py"
+        source.write_text("# safe", encoding="utf-8")
+        directory = root / "authority-dir"
+        directory.mkdir()
+        validator.ROOT = root
+        try:
+            require(validator.require_exact_repo_file(source, Path("authority.py"), "authority") == source,
+                    "validator path positive file control failed")
+            require(validator.repo_file("authority.py", "artifact") == source,
+                    "validator path positive ref control failed")
+            require(validator.repo_directory(directory, "directory") == directory,
+                    "validator path positive directory control failed")
+            lock = root / "authority.lock"
+            require(validator.require_canonical_lock_path(lock, Path("authority.lock"), "lock") == lock,
+                    "validator path positive lock control failed")
+            cases = (
+                ("missing canonical file",
+                 lambda: validator.require_exact_repo_file(root / (marker + ".json"),
+                                                           Path(marker + ".json"), "authority"),
+                 "authority missing or escapes repository"),
+                ("missing lock parent",
+                 lambda: validator.require_canonical_lock_path(root / marker / "lock",
+                                                                Path(marker) / "lock", "lock"),
+                 "lock parent missing or escapes repository"),
+                ("missing artifact",
+                 lambda: validator.repo_file(marker + ".json", "artifact"),
+                 "contract artifact missing or escapes repository: artifact"),
+                ("external directory",
+                 lambda: validator.repo_directory(root.parent / marker, "directory"),
+                 "contract authority directory escapes repository: directory"),
+            )
+            for label, action, expected in cases:
+                try:
+                    action()
+                except validator.Fail as exc:
+                    require(str(exc) == expected and exc.__suppress_context__
+                            and marker not in str(exc),
+                            f"validator path privacy {label} rejection drift")
+                else:
+                    raise Fail(f"validator path privacy {label} unexpectedly accepted")
+        finally:
+            validator.ROOT = original_root
+    print("PASS: validator private authority path positive and four fixed negatives")
+
+
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
@@ -394,6 +445,7 @@ def main() -> int:
     prove_unhashable_approval_inputs(writer)
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
     prove_typed_negative_case_authority(validator)
+    prove_validator_private_path_errors(validator)
     prove_writer_json_reader(writer)
     prove_recovery_objective_json_reader(validator)
     prove_negative_subprocess_redaction(validator)
