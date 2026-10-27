@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import os
 import stat
@@ -19,6 +20,7 @@ CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight
 CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
+PREFLIGHT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 
 
 class Fail(RuntimeError):
@@ -1024,6 +1026,44 @@ def prove_preflight_reconcile_writer_preopen_faults(reconciler: object) -> None:
     print("PASS: preflight reconcile mkstemp/fchmod private preopen faults clean FD/temp")
 
 
+
+def prove_preflight_private_path_negative_reachability() -> None:
+    """Independently reject removal of the real private-path fault injection."""
+    source = PREFLIGHT_NEGATIVE.read_text(encoding="utf-8")
+
+    def verify(candidate: str) -> None:
+        try:
+            tree = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("preflight private path negative syntax invalid") from None
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        target = functions.get("prove_private_preflight_path_errors")
+        main = functions.get("main")
+        require(target is not None and main is not None,
+                "preflight private path negative function/main missing")
+        calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == "prove_private_preflight_path_errors"]
+        require(len(calls) == 1, "preflight private path negative not executed exactly once")
+        body = ast.get_source_segment(candidate, target)
+        require(isinstance(body, str), "preflight private path negative body unavailable")
+        for token in ['SYNTHETIC_PRIVATE_PREFLIGHT_PATH_CANARY','validator.repo_relative','validator.require_exact_executable','Path.resolve = private_resolve','exc.__suppress_context__']:
+            require(token in body, "preflight private path negative guard removed")
+
+    verify(source)
+    for label, old, replacement in (
+        ("invocation", "    prove_private_preflight_path_errors(validator)\n", "    pass\n"),
+        ("fault injection", "        Path.resolve = private_resolve\n", "        pass\n"),
+        ("context assertion", "exc.__suppress_context__", "False"),
+    ):
+        require(source.count(old) == 1, "preflight private path deletion anchor drift: " + label)
+        try:
+            verify(source.replace(old, replacement, 1))
+        except Fail:
+            continue
+        raise Fail("preflight private path negative deletion accepted: " + label)
+    print("PASS: preflight private path fault, context and invocation deletion rejected")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -1034,6 +1074,7 @@ def main() -> int:
     prove_helper_source_swap_during_import_is_pinned()
     prove_helper_parent_swap_after_pin_uses_original_source()
     prove_helper_ancestor_swap_during_fd_walk_rejected()
+    prove_preflight_private_path_negative_reachability()
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
     prove_preflight_reconcile_pinned_reader(reconciler)

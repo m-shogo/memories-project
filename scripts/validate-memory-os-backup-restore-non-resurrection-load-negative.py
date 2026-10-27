@@ -1310,6 +1310,44 @@ def prove_typed_reconcile_writer_preopen_faults() -> None:
     print("PASS: typed reconcile mkstemp/fchmod private preopen faults clean FD/temp")
 
 
+
+def prove_typed_private_path_negative_reachability() -> None:
+    """Independently reject removal of the real private-path fault injection."""
+    source = PATH_NEGATIVE.read_text(encoding="utf-8")
+
+    def verify(candidate: str) -> None:
+        try:
+            tree = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("typed admission private path negative syntax invalid") from None
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        target = functions.get("prove_private_typed_admission_paths")
+        main = functions.get("main")
+        require(target is not None and main is not None,
+                "typed admission private path negative function/main missing")
+        calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == "prove_private_typed_admission_paths"]
+        require(len(calls) == 1, "typed admission private path negative not executed exactly once")
+        body = ast.get_source_segment(candidate, target)
+        require(isinstance(body, str), "typed admission private path negative body unavailable")
+        for token in ['SYNTHETIC_PRIVATE_TYPED_ADMISSION_CANARY','validator.repo_relative','validator.canonical_repo_file_ref','Path.resolve = private_resolve','exc.__suppress_context__']:
+            require(token in body, "typed admission private path negative guard removed")
+
+    verify(source)
+    for label, old, replacement in (
+        ("invocation", "    prove_private_typed_admission_paths(validator)\n", "    pass\n"),
+        ("fault injection", "        Path.resolve = private_resolve\n", "        pass\n"),
+        ("context assertion", "exc.__suppress_context__", "False"),
+    ):
+        require(source.count(old) == 1, "typed admission private path deletion anchor drift: " + label)
+        try:
+            verify(source.replace(old, replacement, 1))
+        except Fail:
+            continue
+        raise Fail("typed admission private path negative deletion accepted: " + label)
+    print("PASS: typed admission private path fault, context and invocation deletion rejected")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -1335,6 +1373,7 @@ def main() -> int:
                 "typed load symlinked temp parent published a child")
     print("PASS: typed load fixtures reuse contract path parent guard")
     prove_typed_transport_guard_reachability()
+    prove_typed_private_path_negative_reachability()
     writer = load_module(WRITER, "memory_os_typed_non_resurrection_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_typed_non_resurrection_load_negative")
     prove_typed_writer_json_reader(writer)
