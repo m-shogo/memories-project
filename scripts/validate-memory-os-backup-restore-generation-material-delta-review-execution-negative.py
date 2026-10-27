@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
+import os
 import re
+import stat
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -21,14 +25,124 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+MAX_MODULE_BYTES = 1024 * 1024
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-material-delta-review.py")
+
+
+def load_pinned_module(path: Path, name: str) -> Any:
+    """Execute only regular, bounded source bytes from checked directory FDs."""
+    try:
+        relative = path.relative_to(ROOT)
+        require(path.resolve(strict=True) == ROOT.resolve() / relative,
+                "cannot load material-delta validator")
+        checked = path.lstat()
+        require(stat.S_ISREG(checked.st_mode), "cannot load material-delta validator")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                "cannot load material-delta validator")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(relative.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                                dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    "cannot load material-delta validator")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_MODULE_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except (Exception, SystemExit):
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except (Exception, SystemExit):
+                    cleanup_failed = True
+            require(not cleanup_failed, "cannot load material-delta validator")
+        require(len(source) <= MAX_MODULE_BYTES, "cannot load material-delta validator")
+
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == name, "cannot load material-delta validator")
+                try:
+                    return compile(source, str(path), "exec")
+                except (Exception, SystemExit):
+                    raise Fail("cannot load material-delta validator") from None
+
+        spec = importlib.util.spec_from_file_location(
+            name, path, loader=PinnedSourceLoader(name, str(path)))
+        require(spec is not None and spec.loader is not None,
+                "cannot load material-delta validator")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Fail:
+        raise
+    except (Exception, SystemExit):
+        raise Fail("cannot load material-delta validator") from None
+
+
 def load_validator() -> Any:
-    require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical material-delta validator missing or symlinked")
-    require(VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve()) == Path("scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"), "canonical material-delta validator path drift")
-    spec = importlib.util.spec_from_file_location("memory_os_material_delta_execution_negative", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load material-delta validator")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    require(VALIDATOR == ROOT / VALIDATOR_REL,
+            "canonical material-delta validator path drift")
+    return load_pinned_module(VALIDATOR, "memory_os_material_delta_execution_negative")
+
+
+def prove_pinned_validator_import() -> None:
+    """Parent swaps after reading cannot redirect executed validator bytes."""
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".material-delta-import-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "validator.py"
+        source.write_text("VALUE = 7" + chr(10), encoding="utf-8")
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "validator.py"
+        canary.write_text("raise RuntimeError('PRIVATE_MATERIAL_DELTA_CANARY')" + chr(10),
+                          encoding="utf-8")
+        require(load_pinned_module(source, "material_delta_pinned_positive").VALUE == 7,
+                "material-delta pinned import positive failed")
+        swapped = False
+        def swap_after_read(name, location, *args, **kwargs):
+            nonlocal swapped
+            if not swapped and Path(location) == source:
+                swapped = True
+                parent.rename(parked)
+                parent.symlink_to(redirected, target_is_directory=True)
+            return original_spec(name, location, *args, **kwargs)
+        importlib.util.spec_from_file_location = swap_after_read
+        try:
+            loaded = load_pinned_module(source, "material_delta_parent_swap_negative")
+            require(swapped and loaded.VALUE == 7,
+                    "material-delta pinned import executed redirected source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_MATERIAL_DELTA_CANARY')" + chr(10),
+                    "material-delta pinned import modified external canary")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+        require(load_pinned_module(source, "material_delta_restored").VALUE == 7,
+                "material-delta pinned import restoration failed")
+    print("PASS material-delta descriptor-pinned import parent swap")
 
 
 def same_generation_row() -> dict[str, Any]:
@@ -104,6 +218,7 @@ def expect_row_rejected(module: Any, row: dict[str, Any], label: str, expected: 
 
 
 def main() -> int:
+    prove_pinned_validator_import()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
     canonical_registry = module.REGISTRY.read_bytes()
