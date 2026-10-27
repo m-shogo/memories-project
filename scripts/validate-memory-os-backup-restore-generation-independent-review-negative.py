@@ -1220,9 +1220,9 @@ def prove_source_order_bounded_commit_checks(module) -> None:
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
-    prove_pinned_execution_negative_mutations_rejected()
     module = load_validator()
     prove_runtime_review_pair_controls()
+    prove_pinned_execution_negative_mutations_rejected()
     prove_source_order_bounded_git_output(module)
     prove_source_order_bounded_creation_blob(module)
     prove_source_order_bounded_current_blob(module)
