@@ -34,14 +34,15 @@ REQUIRED = (
 )
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"unreadable-authority negative workflow source boundary drift: {label}")
-    payload = source.encode("utf-8")
-    blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
-    if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
-        raise SystemExit("unreadable-authority negative complete workflow source drift")
+    if check_blob:
+        payload = source.encode("utf-8")
+        blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
+            raise SystemExit("unreadable-authority negative complete workflow source drift")
 
 
 def prove_branch_guards_runtime() -> None:
@@ -1140,16 +1141,19 @@ def main() -> int:
         ("injected action", "      - name: Compile unreadable-authority boundaries\n", "      - uses: unreviewed/action@v1\n      - name: Compile unreadable-authority boundaries\n"),
         ("removed PR self-trigger", '      - "scripts/validate-memory-os-backup-restore-unreadable-authority-workflow-negative.py"\n', ""),
     )
+    blob_only = {"injected shell", "injected action"}
+    if len(cases) != 20 or sum(label in blob_only for label, _, _ in cases) != 2:
+        raise SystemExit("unreadable-authority workflow source negative inventory drift")
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit(f"unreadable-authority negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=label in blob_only)
         except SystemExit:
             continue
         raise SystemExit(f"unreadable-authority negative accepted forbidden mutation: {label}")
-    print(f"PASS: unreadable-authority negative workflow source admission ({len(cases)} negatives)")
+    print(f"PASS: unreadable-authority negative workflow source admission ({len(cases) - 2} semantic anchor + 2 blob-only negatives)")
     return 0
 
 
