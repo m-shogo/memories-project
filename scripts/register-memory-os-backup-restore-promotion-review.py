@@ -182,7 +182,12 @@ def payload_sha256(ref: str) -> str:
     require(not relative.is_absolute() and ".." not in relative.parts
             and relative.as_posix() == ref, "promotion review digest ref invalid")
     path = ROOT / relative
-    require(path.is_file() and not path.is_symlink(), "promotion review digest path unsafe")
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("promotion review digest path unsafe") from None
+    require(resolved == path and path.is_file() and not path.is_symlink(),
+            "promotion review digest path unsafe")
     try:
         with path.open("rb") as source:
             raw = source.read(MAX_JSON_BYTES + 1)

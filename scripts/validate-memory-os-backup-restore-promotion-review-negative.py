@@ -387,6 +387,23 @@ def prove_bounded_promotion_payload_digest() -> None:
                 raise Fail("promotion digest symlink accepted")
             require(canary.read_text(encoding="utf-8") == marker,
                     "promotion digest external canary mutated")
+            with tempfile.TemporaryDirectory(prefix="promotion-digest-external-canary-") as external_tmp:
+                external_root = Path(external_tmp)
+                external_file = external_root / "private.json"
+                external_file.write_text(marker, encoding="utf-8")
+                ancestor_alias = root / "linked-directory"
+                ancestor_alias.symlink_to(external_root, target_is_directory=True)
+                try:
+                    writer.payload_sha256("linked-directory/private.json")
+                except writer.Fail as exc:
+                    require(str(exc) == "promotion review digest path unsafe"
+                            and marker not in str(exc),
+                            "promotion digest ancestor symlink wrong/private rejection")
+                    print("PASS reject: promotion digest symlinked ancestor cannot escape root")
+                else:
+                    raise Fail("promotion digest ancestor symlink unexpectedly accepted")
+                require(external_file.read_text(encoding="utf-8") == marker,
+                        "promotion digest ancestor external canary mutated")
             path.unlink()
             path.mkdir()
             try:
