@@ -1060,6 +1060,20 @@ def prove_preflight_private_path_negative_reachability() -> None:
                       "exc.__suppress_context__", "preflight eligibility helper import unavailable"):
             require(token in import_body, "preflight private import negative guard removed")
 
+        pinned_target = functions.get("prove_pinned_preflight_helper_import")
+        require(pinned_target is not None, "preflight pinned helper race negative missing")
+        pinned_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "prove_pinned_preflight_helper_import"]
+        require(len(pinned_calls) == 1, "preflight pinned helper race negative not executed exactly once")
+        pinned_body = ast.get_source_segment(candidate, pinned_target)
+        require(isinstance(pinned_body, str), "preflight pinned helper race body unavailable")
+        for token in ("validator.load_eligibility_helper()", "parent.rename(parked)",
+                      "parent.symlink_to(redirected", "importlib.util.spec_from_file_location = swap_after_read",
+                      "loaded.derive_registry({}) == {\"origin\": \"pinned\"}",
+                      "PRIVATE_HELPER_SWAP_CANARY", "validator.ELIGIBILITY_HELPER = original_path"):
+            require(token in pinned_body, "preflight pinned helper race guard removed")
+
         semantic_target = functions.get("prove_private_semantic_helper_domain_failure")
         require(semantic_target is not None, "preflight semantic helper private negative missing")
         semantic_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
@@ -1082,6 +1096,15 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("import invocation", "main", "    prove_private_preflight_import_errors(validator)\n", "    pass\n"),
         ("import fault injection", "prove_private_preflight_import_errors", "            importlib.util.module_from_spec = private_import\n", "            pass\n"),
         ("import context assertion", "prove_private_preflight_import_errors", "exc.__suppress_context__", "False"),
+        ("pinned helper invocation", "main", "    prove_pinned_preflight_helper_import(validator)\n", "    pass\n"),
+        ("pinned helper swap", "prove_pinned_preflight_helper_import",
+         "            importlib.util.spec_from_file_location = swap_after_read\n", "            pass\n"),
+        ("pinned helper parent replacement", "prove_pinned_preflight_helper_import",
+         "                    parent.symlink_to(redirected, target_is_directory=True)\n", "                    pass\n"),
+        ("pinned helper source assertion", "prove_pinned_preflight_helper_import",
+         'loaded.derive_registry({}) == {"origin": "pinned"}', "False"),
+        ("pinned helper canary", "prove_pinned_preflight_helper_import",
+         "PRIVATE_HELPER_SWAP_CANARY", "SYNTHETIC_CANARY_REMOVED"),
         ("semantic invocation", "main", "    prove_private_semantic_helper_domain_failure(validator)\n", "    pass\n"),
         ("semantic failure injection", "prove_private_semantic_helper_domain_failure", "            raise SyntheticHelper.Fail(private)\n", "            return {}\n"),
         ("semantic context assertion", "prove_private_semantic_helper_domain_failure", "exc.__suppress_context__", "False"),
