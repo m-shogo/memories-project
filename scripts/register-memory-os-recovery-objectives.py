@@ -236,11 +236,26 @@ def approval_sha256(ref: str) -> str:
     require(relative == resolved and path.is_file() and not path.is_symlink()
             and path.is_relative_to(approval_root),
             "approval evidence digest path unsafe")
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "approval evidence digest platform unsafe")
+    descriptor: int | None = None
     try:
-        with path.open("rb") as source:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(descriptor)
+        require(stat.S_ISREG(metadata.st_mode), "approval evidence digest path unsafe")
+        require(metadata.st_size <= MAX_JSON_BYTES,
+                "approval evidence digest size limit exceeded")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
             payload = source.read(MAX_JSON_BYTES + 1)
-    except OSError:
+    except (OSError, ValueError, TypeError):
         raise Fail("approval evidence digest unreadable") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("approval evidence digest descriptor cleanup failed") from None
     require(len(payload) <= MAX_JSON_BYTES,
             "approval evidence digest size limit exceeded")
     return hashlib.sha256(payload).hexdigest()
