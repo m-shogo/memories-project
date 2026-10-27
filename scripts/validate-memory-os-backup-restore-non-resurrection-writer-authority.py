@@ -601,6 +601,13 @@ def require_lock_probe_reachable(source: str) -> None:
              and node.value.func.id == "exercise_writer_lock_lifecycle_negative"
              and not node.value.args and not node.value.keywords]
     require(len(calls) == 1, "typed lock lifecycle negative not invoked directly by CI")
+    delegated_calls = [node for node in mains[0].body if isinstance(node, ast.Expr)
+                       and isinstance(node.value, ast.Call)
+                       and isinstance(node.value.func, ast.Name)
+                       and node.value.func.id == "exercise_writer_delegated_generation_privacy"
+                       and not node.value.args and not node.value.keywords]
+    require(len(delegated_calls) == 1,
+            "typed delegated generation privacy negative not invoked directly by CI")
     child_calls = [node for node in mains[0].body if isinstance(node, ast.Expr)
                    and isinstance(node.value, ast.Call)
                    and isinstance(node.value.func, ast.Name)
@@ -638,7 +645,17 @@ def prove_lock_probe_reachability() -> None:
                 "typed child symlink negative removal rejected at wrong boundary")
     else:
         raise NegativeFailure("typed child symlink negative removal unexpectedly accepted")
-    print("PASS: typed lock and child-symlink negatives remain directly reachable from CI")
+    removed_delegated = source.replace(
+        "    exercise_writer_delegated_generation_privacy()\\n".replace("\\\\n", "\\n"), "", 1)
+    require(removed_delegated != source, "typed delegated privacy negative mutation did not apply")
+    try:
+        require_lock_probe_reachable(removed_delegated)
+    except NegativeFailure as exc:
+        require(str(exc) == "typed delegated generation privacy negative not invoked directly by CI",
+                "typed delegated privacy negative removal rejected at wrong boundary")
+    else:
+        raise NegativeFailure("typed delegated privacy negative removal unexpectedly accepted")
+    print("PASS: typed lock, delegated-privacy and child-symlink negatives remain directly reachable from CI")
 
 
 def main() -> int:
