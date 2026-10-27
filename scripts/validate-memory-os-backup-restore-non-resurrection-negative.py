@@ -411,7 +411,7 @@ def main() -> int:
             "typed writer candidateCoveredCount drift before append": "candidateCoveredCount drift",
             "typed writer production evidence drift before append": "registry production boundary drift",
             "typed writer production ready drift before append": "registry production boundary drift",
-            "typed writer post-append validation failure rollback": "synthetic typed post-append validation failure",
+            "typed writer post-append validation failure rollback": "typed non-resurrection append failed; rollback completed",
             "writer evidence ref absolute path": "securityReviewRef must be a canonical repository-relative path",
             "writer evidence ref parent traversal alias": "securityReviewRef must be a canonical repository-relative path",
             "writer repo-local evidence symlink escaping repository": f"domains.{domain_name}.evidenceRef evidence path missing or escapes repository",
