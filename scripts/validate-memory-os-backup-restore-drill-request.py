@@ -6,6 +6,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -139,9 +141,18 @@ def load(path: Path) -> dict[str, Any]:
         require(len(value.lstrip("-")) <= 128, "drill request JSON integer too large")
         return int(value)
 
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "drill request JSON safe descriptor reader unsupported")
+    fd: int | None = None
     try:
-        with path.open("rb") as source:
-            raw = source.read(MAX_JSON_BYTES + 1)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(stat.S_ISREG(os.fstat(fd).st_mode), "drill request JSON path unsafe")
+        raw = bytearray()
+        while len(raw) <= MAX_JSON_BYTES:
+            part = os.read(fd, min(65536, MAX_JSON_BYTES + 1 - len(raw)))
+            if not part:
+                break
+            raw.extend(part)
         require(len(raw) <= MAX_JSON_BYTES, "drill request JSON size limit exceeded")
         value = json.loads(
             raw.decode("utf-8"),
@@ -152,6 +163,12 @@ def load(path: Path) -> dict[str, Any]:
         )
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise Fail("drill request JSON unreadable or invalid") from None
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                raise Fail("drill request JSON descriptor cleanup failed") from None
     require(isinstance(value, dict), "drill request JSON root must be object")
     return value
 

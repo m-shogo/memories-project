@@ -575,6 +575,21 @@ def prove_drill_request_json_reader(validator) -> None:
             escaped.symlink_to(canary)
             rejected(escaped, "drill request JSON path missing or outside repository", "external symlink")
             require(canary.read_bytes() == positive, "drill request JSON modified external canary")
+        original_open = validator.os.open
+        marker = "synthetic-secret-drill-request-raced-open"
+        def raced_open(candidate, flags, *args, **kwargs):
+            if Path(candidate) == path:
+                require(flags & validator.os.O_NOFOLLOW and flags & validator.os.O_NONBLOCK,
+                        "drill request JSON reader missing no-follow/nonblocking flags")
+                raise OSError(marker)
+            return original_open(candidate, flags, *args, **kwargs)
+        try:
+            validator.os.open = raced_open
+            rejected(path, "drill request JSON unreadable or invalid", "raced-open descriptor")
+        finally:
+            validator.os.open = original_open
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}},
+                "drill request JSON post-race positive control failed")
         require(path.read_bytes() == positive, "drill request JSON modified positive fixture")
     require(tuple(path.read_bytes() for path in protected_paths) == before, "drill request JSON mutated protected authorities")
     print("PASS: actual drill request JSON reader positive and 16 fail-closed negatives")

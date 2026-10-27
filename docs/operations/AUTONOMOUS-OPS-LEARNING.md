@@ -15041,3 +15041,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Both post-reconcile validators now use bounded class-only transport with exact-source negative/admission CI SUCCESS.
 - **Why safe/reusable mechanism:** Reused a verified fail-closed subprocess pattern without changing validator order, admission semantics, request evidence or production status.
 - **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning and CI never satisfy production readiness or recovery gates.
+
+## 2026-10-27 — Drill-request reconciliation rollback diagnostics are class-only
+
+### Material failure
+- **Symptom/evidence:** At `53d15594c74db934bbd3e21a40f1cc2f7c69672a`, `restore_original_text` concatenated raw rollback paths/exceptions, and the transaction re-raised raw primary failures or interpolated raw primary/rollback text. The existing negative suite expected synthetic private exception details. No actual secret disclosure, request admission or production promotion was observed.
+- **Verified root cause:** This three-authority transaction had not reused the already validated recovery-objective class-only rollback mechanism. **Failed approach:** assuming private post-validator subprocesses also sanitize later Python exception propagation.
+- **Correction:** `490564a9d3fec5e8bc5250060a149c344310422c` attempts all three restores and emits only the primary exception class plus explicit rollback completed/incomplete status, suppressing raw chained context. Negative assertions now reject synthetic private primary/rollback markers while preserving middle-replace and aggregate validator failure rollback checks.
+- **Executable recurrence guard:** CI-reached actual transaction negatives verify all-authority rollback, middle-replace rollback, private class-only failure and exact bytes/modes. Exact-source Reconcile Rollback `40443606253`, Unreadable Authority Negatives `40443606374`, Drill Request Admission `40443606420` and Autonomous Learning Guard `40443606429` completed SUCCESS.
+- **Retry condition:** Revisit on observed rollback integrity/privacy regression or reviewed error-class policy change, not unchanged external evidence or human approval blockers.
+
+### Material success
+- **Outcome/evidence:** Three-authority rollback remains fail-closed and distinguishes completed from incomplete rollback without leaking raw exception text; exact-source negative/admission CI passed.
+- **Why safe/reusable mechanism:** Reused verified objective reconcile transaction error classification and retained exhaustive rollback attempts, with synthetic faults only.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain required. Learning and CI cannot satisfy readiness or recovery gates.
