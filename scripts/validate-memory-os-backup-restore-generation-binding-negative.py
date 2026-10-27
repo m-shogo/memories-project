@@ -339,7 +339,6 @@ def load_pinned_fixture_guard(path: Path, name: str):
             except (Exception, SystemExit):
                 raise Fail("fixture guard pinned descriptor cleanup failed") from None
     finally:
-    finally:
         try:
             os.close(parent_fd)
         except (Exception, SystemExit):
