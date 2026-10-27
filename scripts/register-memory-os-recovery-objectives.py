@@ -105,8 +105,8 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     try:
         relative = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} missing or escapes repository") from None
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
     require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
     return path
@@ -116,8 +116,8 @@ def canonical_repo_directory(path: Path, field: str) -> Path:
     try:
         relative = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} missing or escapes repository") from None
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
     require(relative == resolved and path.is_dir(), f"{field} must resolve to its canonical repository directory")
     return path
@@ -154,8 +154,8 @@ def require_actual_cli_authorities() -> None:
     try:
         relative_parent = LOCK.parent.relative_to(ROOT)
         resolved_parent = LOCK.parent.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail("recovery objective lock parent missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("recovery objective lock parent missing or escapes repository") from None
     require(
         relative_parent == resolved_parent and LOCK.parent.is_dir(),
         "recovery objective lock parent must resolve to the canonical repository directory",
@@ -166,8 +166,8 @@ def parse_utc_timestamp(value: Any, field: str) -> datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
-    except ValueError as exc:
-        raise Fail(f"{field} must be UTC RFC3339 date-time") from exc
+    except ValueError:
+        raise Fail(f"{field} must be UTC RFC3339 date-time") from None
     require(parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0, f"{field} must be UTC")
     return parsed
 
@@ -184,8 +184,8 @@ def repo_ref(value: Any, field: str) -> str:
     path = ROOT / relative
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} evidence missing or escapes repository: {value}") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} evidence missing or escapes repository") from None
     require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
 
@@ -196,8 +196,8 @@ def approval_ref(value: Any) -> str:
     try:
         path = (ROOT / ref).resolve(strict=True)
         approval_root = APPROVAL_DIR.resolve(strict=True)
-    except (FileNotFoundError, OSError, RuntimeError) as exc:
-        raise Fail("approval authority directory or evidence cannot be resolved") from exc
+    except (FileNotFoundError, OSError, RuntimeError):
+        raise Fail("approval authority directory or evidence cannot be resolved") from None
     require(path.is_relative_to(approval_root), "approvalEvidenceRefs must use the dedicated recovery-objective approval authority directory")
     return ref
 
