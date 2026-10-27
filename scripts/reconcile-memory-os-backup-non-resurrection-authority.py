@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -89,12 +90,63 @@ def enforce_runtime_authorities() -> None:
     ):
         require_exact_repo_file(path, expected, field)
 
+MAX_AUTHORITY_BYTES = 1024 * 1024
+
+
 def read_text(path: Path) -> str:
-    relative = repo_relative(path)
+    """Read bounded UTF-8 typed authority from root-pinned nofollow descriptors."""
+    require(isinstance(path, Path) and path.is_absolute(),
+            "typed reconcile authority path unsafe")
     try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise Fail(f"cannot read {relative}: {exc}") from exc
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("typed reconcile authority path unsafe") from None
+    require(lexical == resolved and path.is_file() and not path.is_symlink(),
+            "typed reconcile authority path unsafe")
+    if not all(
+        type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")
+    ):
+        raise Fail("typed reconcile authority nofollow support required") from None
+
+    directories: list[int] = []
+    fd = -1
+    try:
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        parent_fd = os.open(ROOT, flags | os.O_DIRECTORY)
+        directories.append(parent_fd)
+        for component in lexical.parts[:-1]:
+            parent_fd = os.open(component, flags | os.O_DIRECTORY, dir_fd=parent_fd)
+            directories.append(parent_fd)
+        fd = os.open(lexical.name, flags, dir_fd=parent_fd)
+        require(stat.S_ISREG(os.fstat(fd).st_mode),
+                "typed reconcile authority not regular")
+        with os.fdopen(fd, "rb") as source:
+            fd = -1
+            raw = source.read(MAX_AUTHORITY_BYTES + 1)
+    except (OSError, ValueError):
+        raise Fail("typed reconcile authority unreadable") from None
+    finally:
+        cleanup_failed = False
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                cleanup_failed = True
+        for directory_fd in reversed(directories):
+            try:
+                os.close(directory_fd)
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("typed reconcile authority cleanup failed") from None
+    require(len(raw) <= MAX_AUTHORITY_BYTES,
+            "typed reconcile authority exceeds 1 MiB")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeError:
+        raise Fail("typed reconcile authority invalid UTF-8") from None
 
 def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
