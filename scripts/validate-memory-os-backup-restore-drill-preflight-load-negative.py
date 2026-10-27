@@ -1362,7 +1362,7 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("preflight authority pinned loader weakening accepted: " + label)
-    print("PASS: preflight authority pinned loader and five source weakening mutations rejected")
+    print("PASS: preflight authority pinned loader/private path/FD/unsafe source and 21 mutations rejected")
     print("PASS: preflight pinned source loader and four weakening mutations rejected")
     print("PASS: preflight private path/import fault, context and invocation deletion rejected")
 
