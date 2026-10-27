@@ -639,6 +639,70 @@ def prove_generation_evidence_json_reader(validator) -> None:
         positive = b'{"safe":true,"nested":{"count":1}}'
         path.write_bytes(positive)
         require(validator.load(path) == {"safe": True, "nested": {"count": 1}}, "generation recovery JSON positive control failed")
+        # A directory close error must not silently certify an unsafe read.
+        original_close = validator.os.close
+        closed_descriptors = []
+
+        def close_then_fail(descriptor):
+            original_close(descriptor)
+            closed_descriptors.append(descriptor)
+            if len(closed_descriptors) == 1:
+                raise OSError("synthetic-private-generation-recovery-close")
+
+        validator.os.close = close_then_fail
+        try:
+            try:
+                validator.load(path)
+            except validator.Fail as exc:
+                require(str(exc) == "generation recovery JSON cleanup failed",
+                        "generation recovery JSON close fault escaped fixed cleanup classification")
+                require(exc.__suppress_context__ and exc.__cause__ is None,
+                        "generation recovery JSON close fault exposed private exception context")
+            else:
+                raise Fail("generation recovery JSON accepted failed descriptor cleanup")
+        finally:
+            validator.os.close = original_close
+        require(closed_descriptors, "generation recovery JSON close fault was not exercised")
+        for descriptor in closed_descriptors:
+            try:
+                os.fstat(descriptor)
+            except OSError:
+                pass
+            else:
+                raise Fail("generation recovery JSON directory descriptor remained open")
+
+        # A failed fdopen must leave the leaf descriptor owned by finally.
+        original_fdopen = validator.os.fdopen
+        attempted_descriptors = []
+
+        def fdopen_then_fail(descriptor, *args, **kwargs):
+            attempted_descriptors.append(descriptor)
+            raise OSError("synthetic-private-generation-recovery-fdopen")
+
+        validator.os.fdopen = fdopen_then_fail
+        try:
+            try:
+                validator.load(path)
+            except validator.Fail as exc:
+                require(str(exc) == "generation recovery JSON unreadable or invalid",
+                        "generation recovery JSON fdopen fault escaped fixed unreadable classification")
+                require(exc.__suppress_context__ and exc.__cause__ is None,
+                        "generation recovery JSON fdopen fault exposed private exception context")
+            else:
+                raise Fail("generation recovery JSON accepted failed fdopen")
+        finally:
+            validator.os.fdopen = original_fdopen
+        require(len(attempted_descriptors) == 1,
+                "generation recovery JSON fdopen fault was not exercised exactly once")
+        try:
+            os.fstat(attempted_descriptors[0])
+        except OSError:
+            pass
+        else:
+            raise Fail("generation recovery JSON leaf descriptor leaked after fdopen fault")
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}},
+                "generation recovery JSON reader failed after descriptor fault restoration")
+        print("PASS: generation recovery JSON close/fdopen faults private and descriptors released")
         for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
             original = getattr(validator.os, flag)
             try:
