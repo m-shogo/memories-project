@@ -268,6 +268,14 @@ def negatives(publisher: str, independent: str) -> None:
         ("injected Action", "      - name: Prove generation binding source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove generation binding source admission\n"),
         ("injected shell", "      - name: Prove generation binding source admission\n", "      - run: echo unreviewed\n      - name: Prove generation binding source admission\n"),
     )
+    # Pin the inventory and which cases are allowed to rely on complete-source identity.
+    # A removed REQUIRED anchor must never silently turn a semantic proof into a digest-only proof.
+    digest_only = {
+        "publisher": frozenset({"unreviewed Action", "unreviewed shell"}),
+        "independent": frozenset({"injected Action", "injected shell"}),
+    }
+    if len(publisher_cases) != 27 or len(independent_cases) != 13:
+        raise SystemExit("generation binding source mutation inventory drift")
     semantic_counts = {"publisher": 0, "independent": 0}
     blob_counts = {"publisher": 0, "independent": 0}
     for target, cases in (("publisher", publisher_cases), ("independent", independent_cases)):
@@ -282,6 +290,8 @@ def negatives(publisher: str, independent: str) -> None:
             # Anchor-changing mutations must fail the REQUIRED guard without a blob shortcut.
             semantic = any(mutated.count(token) != original.count(token)
                            for _, token, _ in required)
+            if semantic == (label in digest_only[target]):
+                raise SystemExit("generation binding mutation classification drift: " + target + " " + label)
             counts = semantic_counts if semantic else blob_counts
             counts[target] += 1
             try:
@@ -292,7 +302,10 @@ def negatives(publisher: str, independent: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("generation binding accepted source mutation: " + target + " " + label)
-    if semantic_counts["publisher"] < 15 or semantic_counts["independent"] < 9 or not all(blob_counts.values()):
+    if (semantic_counts, blob_counts) != (
+        {"publisher": 25, "independent": 11},
+        {"publisher": 2, "independent": 2},
+    ):
         raise SystemExit("generation binding semantic/blob mutation coverage drift")
     print(f"PASS: generation binding source mutations: publisher {semantic_counts['publisher']} semantic + {blob_counts['publisher']} blob-only; independent {semantic_counts['independent']} semantic + {blob_counts['independent']} blob-only")
 
