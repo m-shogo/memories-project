@@ -56,8 +56,8 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     try:
         lexical = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} missing or escapes repository") from None
     require(
         lexical == expected_relative and resolved == expected_relative and path.is_file() and not path.is_symlink(),
         f"{field} authority drift",
@@ -69,8 +69,8 @@ def require_canonical_lock_path(path: Path, expected_relative: Path, field: str)
     try:
         lexical = path.relative_to(ROOT)
         parent = path.parent.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} parent missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} parent missing or escapes repository") from None
     require(lexical == expected_relative, f"{field} authority drift")
     require(parent == expected_relative.parent, f"{field} parent authority drift")
     require(not path.is_symlink(), f"{field} must not be symlink")
@@ -78,8 +78,8 @@ def require_canonical_lock_path(path: Path, expected_relative: Path, field: str)
         require(path.is_file(), f"{field} must be a file when materialized")
         try:
             resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-            raise Fail(f"{field} materialized path escapes repository") from exc
+        except (FileNotFoundError, OSError, RuntimeError, ValueError):
+            raise Fail(f"{field} materialized path escapes repository") from None
         require(resolved == expected_relative, f"{field} materialized authority drift")
     return path
 
@@ -107,8 +107,8 @@ def repo_file(value: Any, field: str) -> Path:
     path = ROOT / relative
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"contract artifact missing or escapes repository: {field}") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"contract artifact missing or escapes repository: {field}") from None
     require(resolved == relative and path.is_file(), f"contract artifact must resolve to canonical repository file: {field}")
     return path
 
@@ -117,8 +117,8 @@ def repo_directory(path: Path, field: str) -> Path:
     try:
         relative = path.relative_to(ROOT)
         resolved = path.resolve(strict=False).relative_to(ROOT.resolve())
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"contract authority directory escapes repository: {field}") from exc
+    except (OSError, RuntimeError, ValueError):
+        raise Fail(f"contract authority directory escapes repository: {field}") from None
     require(relative == resolved, f"contract authority directory must resolve canonically: {field}")
     require(not path.exists() or path.is_dir(), f"contract authority path must be a directory when present: {field}")
     return path
