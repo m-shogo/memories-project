@@ -27,8 +27,8 @@ def require(condition: bool) -> None:
         raise FixtureImportFail(DIAGNOSTIC)
 
 
-def load_pinned_module(root: Path, path: Path, name: str) -> Any:
-    """Read checked regular source through anchored directory FDs, then execute those bytes."""
+def read_pinned_source(root: Path, path: Path) -> bytes:
+    """Read bounded regular source bytes through pinned ancestor and leaf descriptors."""
     try:
         require(root.is_absolute() and path.is_absolute() and not root.is_symlink())
         relative = path.relative_to(root)
@@ -69,6 +69,17 @@ def load_pinned_module(root: Path, path: Path, name: str) -> Any:
                     cleanup_failed = True
             require(not cleanup_failed)
         require(len(source) <= MAX_MODULE_BYTES)
+        return source
+    except FixtureImportFail:
+        raise FixtureImportFail(DIAGNOSTIC) from None
+    except (Exception, SystemExit):
+        raise FixtureImportFail(DIAGNOSTIC) from None
+
+
+def load_pinned_module(root: Path, path: Path, name: str) -> Any:
+    """Execute descriptor-pinned checked source bytes through a standard source loader."""
+    try:
+        source = read_pinned_source(root, path)
 
         class PinnedLoader(importlib.machinery.SourceFileLoader):
             def get_code(self, fullname: str):
@@ -107,6 +118,7 @@ def prove_pinned_import() -> None:
         parent.mkdir()
         source = parent / "validator.py"
         source.write_text("VALUE = 7\n", encoding="utf-8")
+        require(read_pinned_source(root, source) == b"VALUE = 7\n")
         require(load_pinned_module(root, source, "independent_fixture_positive").VALUE == 7)
 
         parked = root / "parked"

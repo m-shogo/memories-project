@@ -8,7 +8,7 @@ import importlib.util
 from pathlib import Path
 from typing import Any, Callable
 
-from ops_independent_review_fixture_loader import load_pinned_module
+from ops_independent_review_fixture_loader import FixtureImportFail, load_pinned_module, read_pinned_source
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-independent-review.py")
@@ -51,13 +51,11 @@ def require_source_order_pinned_import(source: str) -> None:
 
 
 def prove_source_order_import_guard() -> None:
-    with SOURCE_ORDER_EXECUTION_NEGATIVE.open("rb") as stream:
-        raw = stream.read(1024 * 1024 + 1)
-    require(len(raw) <= 1024 * 1024, "source-order negative source oversized")
     try:
+        raw = read_pinned_source(ROOT, SOURCE_ORDER_EXECUTION_NEGATIVE)
         source = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        raise Fail("source-order negative source invalid") from None
+    except (FixtureImportFail, UnicodeDecodeError):
+        raise Fail("source-order negative source rejected") from None
     require_source_order_pinned_import(source)
     old = 'module = load_checked_module(path_to_validator, "memory_os_source_order_json_negative")'
     require(source.count(old) == 1, "source-order pinned negative mutation anchor drift")

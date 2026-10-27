@@ -14,7 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-review-negative.yml"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
 HELPER = ROOT / "scripts/ops_independent_review_fixture_loader.py"
-REVIEWED_HELPER_GIT_BLOB_SHA = "b0ea70ab9ab212444f0cbf9e5921c925bfc52bc5"
+TRANSPORT = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py"
+REVIEWED_TRANSPORT_GIT_BLOB_SHA = "359a47a8f66a1308b1ef51915cbd5070c531e445"
+REVIEWED_HELPER_GIT_BLOB_SHA = "1091ad96042f16bbb538fad2b81050a6f4fa6450"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -45,6 +47,15 @@ def validate(source: str, *, check_blob: bool = True) -> None:
         git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
         if hashlib.sha1(git_blob).hexdigest() != REVIEWED_WORKFLOW_GIT_BLOB_SHA:
             raise SystemExit("generation independent review workflow complete source blob drift")
+
+
+
+def validate_transport_source(source: bytes) -> None:
+    if len(source) > 1024 * 1024:
+        raise SystemExit("independent-review transport negative source oversized")
+    git_blob = b"blob " + str(len(source)).encode("ascii") + b"\0" + source
+    if hashlib.sha1(git_blob).hexdigest() != REVIEWED_TRANSPORT_GIT_BLOB_SHA:
+        raise SystemExit("independent-review transport negative complete source blob drift")
 
 
 def validate_helper_source(source: bytes) -> None:
@@ -181,12 +192,26 @@ def main() -> int:
     validate(source)
     helper_source = read_bounded_regular(HELPER)
     validate_helper_source(helper_source)
+    transport_source = read_bounded_regular(TRANSPORT)
+    validate_transport_source(transport_source)
+    for label, old, new in (
+        ("restore mutable transport source read", b"raw = read_pinned_source(ROOT, SOURCE_ORDER_EXECUTION_NEGATIVE)", b"raw = SOURCE_ORDER_EXECUTION_NEGATIVE.read_bytes()"),
+        ("remove transport private read failure", b"except (FixtureImportFail, UnicodeDecodeError):", b"except UnicodeDecodeError:"),
+    ):
+        if old not in transport_source:
+            raise SystemExit("independent-review transport mutation anchor missing: " + label)
+        try:
+            validate_transport_source(transport_source.replace(old, new, 1))
+        except SystemExit:
+            continue
+        raise SystemExit("independent-review transport source weakening accepted: " + label)
     for label, old, new in (
         ("remove pinned source safety flag", b"os.O_NOFOLLOW", b"os.O_RDONLY"),
         ("remove real pinned import negative", b"    prove_pinned_import()\n", b"    pass\n"),
         ("remove after-close fault", b"independent_fixture_close_after_close", b"independent_fixture_close_skipped"),
         ("remove unsupported flag loop", b'        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):\n', b'        for flag in ():\n'),
         ("remove compile exit probe", b'            expect_rejected(root, source, "independent_fixture_compile_exit")\n', b'            pass\n'),
+        ("remove pinned source reader delegation", b"source = read_pinned_source(root, path)", b"source = path.read_bytes()"),
     ):
         if old not in helper_source:
             raise SystemExit("independent-review helper negative anchor missing: " + label)
