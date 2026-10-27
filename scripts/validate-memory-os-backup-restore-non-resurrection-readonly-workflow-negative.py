@@ -30,6 +30,8 @@ REQUIRED = (
     ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
     ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
     ("workflow self-trigger", '      - ".github/workflows/backup-restore-non-resurrection-readonly.yml"\n', 2),
+    ("root read-only permission", "permissions:\n  contents: read\n", 1),
+    ("no contents write permission", "contents: write", 0),
 )
 
 
@@ -88,11 +90,13 @@ def main() -> int:
         ("injected unreviewed shell", "          python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py\n", "          echo UNREVIEWED\n          python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py\n"),
         ("injected unreviewed action", "      - name: Prove canonical authority bytes and modes are immutable\n", "      - uses: unreviewed/action@v1\n      - name: Prove canonical authority bytes and modes are immutable\n"),
         ("removed PR self-trigger", '      - ".github/workflows/backup-restore-non-resurrection-readonly.yml"\n', ""),
+        ("root permission escalation", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
+        ("job permission escalation", "jobs:\n  readonly:\n", "jobs:\n  readonly:\n    permissions:\n      contents: write\n"),
     )
     # The workflow's own PR/push trigger is a REQUIRED reachability guard.
     # Only the two anchor-preserving executable injections may rely on the Git blob.
     digest_only = frozenset({"injected unreviewed shell", "injected unreviewed action"})
-    if len(cases) != 20:
+    if len(cases) != 22:
         raise SystemExit("typed readonly mutation inventory drift")
     semantic_count = 0
     blob_only_count = 0
@@ -113,7 +117,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"typed readonly accepted forbidden mutation: {label}")
-    if (semantic_count, blob_only_count) != (18, 2):
+    if (semantic_count, blob_only_count) != (20, 2):
         raise SystemExit("typed readonly semantic/blob mutation coverage drift")
     print(f"PASS: typed non-resurrection readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
