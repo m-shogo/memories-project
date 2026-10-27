@@ -90,6 +90,10 @@ def main() -> int:
         ("removed PR self-trigger", "      - \x27scripts/validate-memory-os-backup-restore-promotion-review-readonly-workflow-negative.py\x27\n", ""),
         ("removed writer trigger", REQUIRED[17][1], ""),
     )
+    # Only the two anchor-preserving executable injections may rely on the full Git blob.
+    digest_only = frozenset({"injected shell command", "injected action"})
+    if len(cases) != 21:
+        raise SystemExit("promotion-review readonly mutation inventory drift")
     semantic_count = 0
     blob_only_count = 0
     for label, old, replacement in cases:
@@ -100,6 +104,8 @@ def main() -> int:
             raise SystemExit(f"promotion-review readonly mutation unchanged: {label}")
         semantic = any(mutated.count(token) != source.count(token)
                        for _, token, _ in REQUIRED)
+        if semantic == (label in digest_only):
+            raise SystemExit("promotion-review readonly mutation classification drift: " + label)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
         try:
@@ -107,7 +113,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"promotion-review readonly accepted forbidden mutation: {label}")
-    if (semantic_count, blob_only_count) != (len(cases) - 2, 2):
+    if (semantic_count, blob_only_count) != (19, 2):
         raise SystemExit("promotion-review readonly semantic/blob mutation coverage drift")
     print(f"PASS: promotion-review readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
