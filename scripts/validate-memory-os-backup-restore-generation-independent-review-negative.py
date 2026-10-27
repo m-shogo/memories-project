@@ -241,6 +241,45 @@ def prove_pinned_pair_validator_import() -> None:
             "independent review pair canonical import restoration failed")
     print("PASS: independent review execution negative import pins source across parent swap")
 
+def prove_pair_import_unsafe_sources() -> None:
+    """Oversized source, symlink, FIFO and unsupported flags are fail-closed."""
+    with tempfile.TemporaryDirectory(prefix=".generation-binding-target-unsafe-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        good = sandbox / "good.py"
+        good.write_text("VALUE = 'safe'\n", encoding="utf-8")
+        oversized = sandbox / "oversized.py"
+        oversized.write_bytes(b"x" * (MAX_PAIR_MODULE_BYTES + 1))
+        linked = sandbox / "linked.py"
+        linked.symlink_to(good.name)
+        fifo = sandbox / "pipe.py"
+        os.mkfifo(fifo)
+        for candidate in (oversized, linked, fifo):
+            try:
+                load_checked_pair_module(candidate, "review_pair_unsafe")
+            except Fail as exc:
+                require(str(exc) == "independent review pair module rejected"
+                        and exc.__suppress_context__,
+                        "independent review pair unsafe source leaked private diagnostics")
+            else:
+                raise Fail("independent review pair accepted unsafe source")
+        original_flag = os.O_NONBLOCK
+        try:
+            os.O_NONBLOCK = 0
+            try:
+                load_checked_pair_module(good, "review_pair_unsupported_flag")
+            except Fail as exc:
+                require(str(exc) == "independent review pair module rejected"
+                        and exc.__suppress_context__,
+                        "independent review pair missing flag leaked private diagnostics")
+            else:
+                raise Fail("independent review pair accepted unsupported platform flag")
+        finally:
+            os.O_NONBLOCK = original_flag
+        require(load_checked_pair_module(good, "review_pair_unsafe_restored").VALUE == "safe",
+                "independent review pair unsafe fixture restoration failed")
+    print("PASS: independent review pair unsafe sources and missing flag rejected")
+
+
 def head_sha() -> str:
     completed = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, "cannot resolve HEAD")
@@ -1332,6 +1371,7 @@ def main() -> int:
     prove_runtime_review_pair_controls()
     prove_pinned_execution_negative_mutations_rejected()
     prove_pinned_pair_validator_import()
+    prove_pair_import_unsafe_sources()
     prove_source_order_bounded_git_output(module)
     prove_source_order_bounded_creation_blob(module)
     prove_source_order_bounded_current_blob(module)
