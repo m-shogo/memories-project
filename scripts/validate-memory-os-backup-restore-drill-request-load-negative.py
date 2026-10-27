@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import importlib.machinery
 import importlib.util
 import io
@@ -179,6 +180,60 @@ def prove_pinned_module_unsafe_sources() -> None:
         require(load_module(good, "drill_import_unsafe_restored").VALUE == "safe",
                 "drill import unsafe fixture canonical restoration failed")
     print("PASS: drill request pinned loader rejects oversized/symlink/FIFO/unsafe flags")
+
+
+def prove_pinned_module_fd_cleanup() -> None:
+    """Failed fdopen/close must not leak any descriptor owned by the loader."""
+    for fault in ("fdopen", "close"):
+        original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
+        opened = []
+        injected = False
+
+        def tracked_open(*args, **kwargs):
+            descriptor = original_open(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor
+
+        def broken_fdopen(descriptor, *args, **kwargs):
+            nonlocal injected
+            if fault == "fdopen" and not injected:
+                injected = True
+                raise OSError(errno.EIO, "PRIVATE_DRILL_FDOPEN_CANARY")
+            return original_fdopen(descriptor, *args, **kwargs)
+
+        def broken_close(descriptor):
+            nonlocal injected
+            if fault == "close" and descriptor in opened and not injected:
+                injected = True
+                original_close(descriptor)
+                raise OSError(errno.EIO, "PRIVATE_DRILL_CLOSE_CANARY")
+            return original_close(descriptor)
+
+        try:
+            os.open, os.fdopen, os.close = tracked_open, broken_fdopen, broken_close
+            try:
+                load_module(VALIDATOR, "drill_import_fd_fault")
+            except Fail as exc:
+                require(str(exc) == "cannot load drill request authority"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        "drill import " + fault + " leaked private exception")
+            else:
+                raise Fail("drill import " + fault + " fault accepted")
+        finally:
+            os.open, os.fdopen, os.close = original_open, original_fdopen, original_close
+        require(injected and len(opened) >= 3,
+                "drill import " + fault + " injection not reached")
+        for descriptor in opened:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        "drill import " + fault + " unexpected descriptor error")
+            else:
+                raise Fail("drill import " + fault + " leaked descriptor")
+    require(callable(getattr(load_module(VALIDATOR, "drill_import_fd_restored"), "main", None)),
+            "drill import FD fault canonical restoration failed")
+    print("PASS: drill request pinned loader fdopen/close faults clean owned descriptors")
 
 
 def _remove_pinned_entries(directory_fd: int, flags: int) -> None:
@@ -892,6 +947,7 @@ def main() -> int:
     prove_file_swap_before_unlink_rejected()
     prove_pinned_module_import()
     prove_pinned_module_unsafe_sources()
+    prove_pinned_module_fd_cleanup()
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     prove_drill_request_json_reader(validator)
