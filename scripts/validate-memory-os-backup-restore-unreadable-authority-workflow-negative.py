@@ -734,6 +734,73 @@ def prove_reconcile_private_path_negative_removal_rejected() -> None:
     print("PASS: preflight and typed reconcile private path/import negative deletion rejected")
 
 
+def require_reconcile_repo_ref_negative_reachable(source: str, function_name: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("reconcile repo ref negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target, main = functions.get(function_name), functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("reconcile repo ref negative missing")
+    invocations = [node for node in ast.walk(main)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id == function_name]
+    if len(invocations) != 1:
+        raise SystemExit("reconcile repo ref negative invocation drift")
+    ref_calls = [node for node in ast.walk(target) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Attribute)
+                 and isinstance(node.func.value, ast.Name)
+                 and node.func.value.id == "reconciler"
+                 and node.func.attr == "require_repo_file"]
+    if len(ref_calls) != 3:
+        raise SystemExit("reconcile repo ref positive/negative calls missing")
+    alias_calls = [node for node in ast.walk(target) if isinstance(node, ast.Call)
+                   and isinstance(node.func, ast.Attribute)
+                   and node.func.attr == "symlink_to"]
+    if len(alias_calls) != 4:
+        raise SystemExit("reconcile repo ref alias matrix incomplete")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if not {"leaf alias", "ancestor alias", "symlink loop", "missing"}.issubset(strings):
+        raise SystemExit("reconcile repo ref rejection labels missing")
+    byte_literals = [node.value for node in ast.walk(target)
+                     if isinstance(node, ast.Constant) and isinstance(node.value, bytes)]
+    if not any(b"SYNTHETIC_PRIVATE_CANARY" in value for value in byte_literals):
+        raise SystemExit("reconcile repo ref outside canary missing")
+
+
+def prove_reconcile_repo_ref_negative_removal_rejected() -> None:
+    for relative, function_name, invocation in (
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py",
+         "prove_preflight_reconcile_repo_refs",
+         "    prove_preflight_reconcile_repo_refs(reconciler)\n"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_reconcile_repo_refs",
+         "    prove_typed_reconcile_repo_refs()\n"),
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        require_reconcile_repo_ref_negative_reachable(source, function_name)
+        for label, anchor, replacement in (
+            ("invocation", invocation, "    pass\n"),
+            ("ref negative", '                reconciler.require_repo_file(candidate, "synthetic ref unsafe")\n',
+             "                pass\n"),
+        ):
+            if label == "invocation":
+                if source.count(anchor) != 1:
+                    raise SystemExit("reconcile repo ref invocation anchor drift")
+                mutated = source.replace(anchor, replacement, 1)
+            else:
+                mutated = mutate_named_function(source, function_name, anchor, replacement)
+            try:
+                require_reconcile_repo_ref_negative_reachable(mutated, function_name)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("reconcile repo ref negative deletion accepted: " + label)
+    print("PASS: preflight and typed reconcile alias ref negative deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -749,6 +816,7 @@ def main() -> int:
     prove_reconcile_writer_negative_removal_rejected()
     prove_typed_reconcile_child_negative_removal_rejected()
     prove_reconcile_private_path_negative_removal_rejected()
+    prove_reconcile_repo_ref_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
