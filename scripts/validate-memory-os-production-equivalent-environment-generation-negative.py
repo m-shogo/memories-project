@@ -7,6 +7,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -166,6 +167,96 @@ def prove_private_generation_suite_transport() -> None:
     print("PASS reject: generation validator child suite timeouts and private errors")
 
 
+def prove_bounded_generation_validator_load() -> None:
+    """Read-only actual validator authority load with inode and descriptor faults."""
+    validator = load_module(GEN_VALIDATOR, "memory_os_generation_validator_load_negative")
+    previous_root = validator.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-load-") as tmp:
+        parent = Path(tmp)
+        validator.ROOT = parent
+        source = parent / "authority.json"
+        payload = b'{"sentinel":"safe"}\n'
+        try:
+            source.write_bytes(payload)
+            require(validator.load(source) == {"sentinel": "safe"},
+                    "generation validator load positive control failed")
+            source.write_bytes(b"x" * (validator.MAX_AUTHORITY_BYTES + 1))
+            try:
+                validator.load(source)
+            except validator.Fail as exc:
+                require(str(exc) == "environment generation authority source size limit exceeded",
+                        "oversized generation validator authority wrong failure class")
+            else:
+                raise Fail("oversized generation validator authority accepted")
+            source.write_bytes(bytes([255]))
+            try:
+                validator.load(source)
+            except validator.Fail as exc:
+                require(str(exc) == "environment generation authority JSON invalid",
+                        "invalid UTF-8 generation validator authority wrong failure class")
+            else:
+                raise Fail("invalid UTF-8 generation validator authority accepted")
+            source.write_bytes(payload)
+
+            outside = parent / "outside-canary.json"
+            outside.write_bytes(b"PRIVATE_GENERATION_VALIDATOR_READ_CANARY")
+            alias = parent / "authority-alias.json"
+            alias.symlink_to(outside)
+            try:
+                validator.load(alias)
+            except validator.Fail as exc:
+                require(str(exc) == "environment generation authority cannot be read"
+                        and exc.__suppress_context__,
+                        "generation validator symlink read leaked private diagnostics")
+            else:
+                raise Fail("generation validator authority symlink followed")
+            require(outside.read_bytes() == b"PRIVATE_GENERATION_VALIDATOR_READ_CANARY",
+                    "generation validator read mutated external canary")
+            fifo = parent / "authority-fifo.json"
+            os.mkfifo(fifo)
+            for unsafe in (fifo, parent):
+                try:
+                    validator.load(unsafe)
+                except validator.Fail as exc:
+                    require(str(exc) == "environment generation authority source is not a regular file",
+                            "generation validator special file wrong failure class")
+                else:
+                    raise Fail("generation validator authority special node accepted")
+
+            original_fdopen = validator.os.fdopen
+            opened: list[int] = []
+
+            def reject_fdopen(fd, *_args, **_kwargs):
+                opened.append(fd)
+                raise OSError("PRIVATE_GENERATION_VALIDATOR_FDOPEN_CANARY")
+
+            validator.os.fdopen = reject_fdopen
+            try:
+                try:
+                    validator.load(source)
+                except validator.Fail as exc:
+                    require(str(exc) == "environment generation authority cannot be read"
+                            and exc.__suppress_context__,
+                            "generation validator fdopen failure leaked private diagnostics")
+                else:
+                    raise Fail("generation validator fdopen failure accepted")
+            finally:
+                validator.os.fdopen = original_fdopen
+            require(len(opened) == 1, "generation validator fdopen negative not reached")
+            for fd in opened:
+                try:
+                    os.fstat(fd)
+                except OSError:
+                    pass
+                else:
+                    raise Fail("generation validator fdopen failure leaked descriptor")
+            require(source.read_bytes() == payload,
+                    "generation validator load modified fixture bytes")
+        finally:
+            validator.ROOT = previous_root
+    print("PASS reject: generation validator authority bounded read, symlink, FIFO and descriptor faults")
+
+
 def main() -> int:
     global EXPECTED_FAILURES
     require(WRITER.is_file() and ENV_VALIDATOR.is_file(), "generation validation foundation missing")
@@ -173,6 +264,7 @@ def main() -> int:
     env_validator = load_module(ENV_VALIDATOR, "memory_os_environment_semantic_negative")
     EXPECTED_FAILURES = (writer.Fail, env_validator.Fail)
     prove_private_generation_suite_transport()
+    prove_bounded_generation_validator_load()
     commit_sha = head_sha()
 
     planned = planned_env()

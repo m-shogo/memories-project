@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -123,16 +125,41 @@ def repo_file(ref: Any, field: str) -> Path:
     return resolved
 
 
+MAX_AUTHORITY_BYTES = 1024 * 1024
+
+
 def load(path: Path) -> dict[str, Any]:
+    """Read one bounded regular authority inode without following symlink leaves."""
     try:
-        relative = path.resolve(strict=False).relative_to(ROOT.resolve())
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"authority path escapes repository: {path}") from exc
+        path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("environment generation authority path invalid") from None
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "environment generation authority safe read unavailable")
+    descriptor = -1
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(stat.S_ISREG(os.fstat(descriptor).st_mode),
+                "environment generation authority source is not a regular file")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = -1
+            raw = source.read(MAX_AUTHORITY_BYTES + 1)
+    except OSError:
+        raise Fail("environment generation authority cannot be read") from None
+    finally:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("environment generation authority read descriptor cleanup failed") from None
+    require(len(raw) <= MAX_AUTHORITY_BYTES,
+            "environment generation authority source size limit exceeded")
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        raise Fail("environment generation authority JSON invalid") from None
+    require(isinstance(value, dict),
+            "environment generation authority root must be object")
     return value
 
 
