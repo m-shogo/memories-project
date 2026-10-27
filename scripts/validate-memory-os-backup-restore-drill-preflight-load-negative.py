@@ -1258,6 +1258,20 @@ def prove_preflight_private_path_negative_reachability() -> None:
         require('raise Fail(f"{field} missing or escapes repository") from None' in canonical_body
                 and "safe = lexical == resolved and path.is_file() and not path.is_symlink()" in canonical_body,
                 "preflight authority private canonical path guard removed")
+        third = main.body[2] if len(main.body) > 2 else None
+        require(isinstance(third, ast.Expr) and isinstance(third.value, ast.Call)
+                and isinstance(third.value.func, ast.Name)
+                and third.value.func.id == "prove_pinned_authority_fd_cleanup",
+                "preflight authority FD proof must precede canonical validation")
+        fd_proof = functions.get("prove_pinned_authority_fd_cleanup")
+        require(fd_proof is not None, "preflight authority pinned FD proof missing")
+        fd_body = ast.get_source_segment(candidate, fd_proof)
+        require(isinstance(fd_body, str), "preflight authority pinned FD source unavailable")
+        for token in ("os.fdopen = broken_fdopen", "os.close = broken_close",
+                      "exc.__suppress_context__", "errno.EBADF",
+                      "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+                      'load_module(source, "preflight_authority_fd_restored"'):
+            require(token in fd_body, "preflight authority pinned FD proof removed")
         loader_body = ast.get_source_segment(candidate, loader)
         proof_body = ast.get_source_segment(candidate, proof)
         require(isinstance(loader_body, str) and isinstance(proof_body, str),
@@ -1299,6 +1313,16 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("private canonical suppression", "canonical_repo_file",
          'raise Fail(f"{field} missing or escapes repository") from None',
          'raise Fail(f"{field} missing or escapes repository") from exc'),
+        ("FD proof invocation", "main",
+         "    prove_pinned_authority_fd_cleanup()\n", "    pass\n"),
+        ("FD proof fdopen fault", "prove_pinned_authority_fd_cleanup",
+         "                    os.fdopen = broken_fdopen\n", "                    pass\n"),
+        ("FD proof close fault", "prove_pinned_authority_fd_cleanup",
+         "                    os.close = broken_close\n", "                    pass\n"),
+        ("FD proof leak check", "prove_pinned_authority_fd_cleanup",
+         "errno.EBADF", "None"),
+        ("FD proof context", "prove_pinned_authority_fd_cleanup",
+         "exc.__suppress_context__", "False"),
     ):
         parsed = ast.parse(authority_source)
         functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
