@@ -1093,6 +1093,24 @@ except (OSError, RuntimeError):
                 for statement in walk_try.body[:-2]),
         "ancestor pin exits before checked walk",
     )
+    expected_anchor_metadata = ast.parse("""try:
+    opened = os.fstat(fd)
+    entry = anchor.lstat()
+except (OSError, RuntimeError):
+    raise Fail("fixture guard parent metadata read failed") from None
+""").body[0]
+    expected_cursor_metadata = ast.parse("""try:
+    opened = os.fstat(fd)
+    entry = cursor.lstat()
+except (OSError, RuntimeError):
+    raise Fail("fixture guard parent metadata read failed") from None
+""").body[0]
+    require(
+        len(walk_try.body) >= 3
+        and ast.dump(walk_try.body[0], include_attributes=False)
+            == ast.dump(expected_anchor_metadata, include_attributes=False),
+        "loader anchor metadata fault not private",
+    )
     walk_loop = walk_try.body[-2]
     expected_cursor_condition = ast.parse(
         "cursor.is_dir() and not cursor.is_symlink()", mode="eval"
@@ -1145,6 +1163,12 @@ except (OSError, RuntimeError):
                 and keyword.value.id == "fd"
                 for keyword in walk_loop.body[3].value.keywords),
         "ancestor pin descriptor open not live",
+    )
+    require(
+        len(walk_loop.body) >= 9
+        and ast.dump(walk_loop.body[7], include_attributes=False)
+            == ast.dump(expected_cursor_metadata, include_attributes=False),
+        "loader ancestor metadata fault not private",
     )
     expected_handoff = ast.parse("""next_fd = os.open(part, flags, dir_fd=fd)
 previous_fd = fd
@@ -1694,6 +1718,34 @@ def negative_cases(source: str, diagnostic: str) -> int:
         (cursor_guard, cursor_guard.replace("not cursor.is_symlink()", "True"),
          "loader ancestor predicate fault not private"),
     )
+    anchor_metadata = """        try:
+            opened = os.fstat(fd)
+            entry = anchor.lstat()
+        except (OSError, RuntimeError):
+            raise Fail("fixture guard parent metadata read failed") from None
+"""
+    cursor_metadata = """            try:
+                opened = os.fstat(fd)
+                entry = cursor.lstat()
+            except (OSError, RuntimeError):
+                raise Fail("fixture guard parent metadata read failed") from None
+"""
+    require(source.count(anchor_metadata) == 1
+            and source.count(cursor_metadata) == 1,
+            "loader parent metadata fault not private")
+    for metadata, diagnostic in (
+        (anchor_metadata, "loader anchor metadata fault not private"),
+        (cursor_metadata, "loader ancestor metadata fault not private"),
+    ):
+        replacements += (
+            (metadata, metadata.replace(
+                "except (OSError, RuntimeError):", "except OSError:"),
+             diagnostic),
+            (metadata, metadata.replace(" from None", ""), diagnostic),
+            (metadata, metadata.replace("os.fstat(fd)", "os.stat(fd)"),
+             diagnostic),
+            (metadata, metadata.replace(".lstat()", ".stat()"), diagnostic),
+        )
     base_cleanup_anchor = (
         "    except BaseException:\n"
         "        try:\n"
@@ -2862,6 +2914,43 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
         finally:
             Path.is_dir, Path.is_symlink = original_is_dir, original_is_symlink
 
+    original_fstat, original_lstat = os.fstat, Path.lstat
+    def fault_anchor_metadata(descriptor):
+        raise RuntimeError("PRIVATE_ANCHOR_METADATA_CANARY")
+    os.fstat = fault_anchor_metadata
+    try:
+        try:
+            loader(good, "pinned_anchor_metadata_negative")
+        except Fail as exc:
+            assert str(exc) == "fixture guard parent metadata read failed"
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_ANCHOR_METADATA_CANARY" not in str(exc)
+        else:
+            raise AssertionError("anchor metadata failure accepted")
+    finally:
+        os.fstat = original_fstat
+
+    cursor_metadata_calls = {"count": 0}
+    def fault_cursor_metadata(self):
+        if self == parent:
+            cursor_metadata_calls["count"] += 1
+            if cursor_metadata_calls["count"] == 2:
+                raise RuntimeError("PRIVATE_CURSOR_METADATA_CANARY")
+        return original_lstat(self)
+    Path.lstat = fault_cursor_metadata
+    try:
+        try:
+            loader(good, "pinned_cursor_metadata_negative")
+        except Fail as exc:
+            assert str(exc) == "fixture guard parent metadata read failed"
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_CURSOR_METADATA_CANARY" not in str(exc)
+        else:
+            raise AssertionError("cursor metadata failure accepted")
+    finally:
+        Path.lstat = original_lstat
+    assert cursor_metadata_calls["count"] >= 2
+
     outside = Path("/PRIVATE_OUTSIDE_CANARY/fixture.py")
     try:
         loader(outside, "pinned_outside_negative")
@@ -3093,7 +3182,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 95 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 103 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

@@ -128,8 +128,11 @@ def pin_checked_helper_parent(path: Path) -> int:
     except OSError:
         raise Fail("drill request fixture guard anchor open failed") from None
     try:
-        opened = os.fstat(fd)
-        entry = anchor.lstat()
+        try:
+            opened = os.fstat(fd)
+            entry = anchor.lstat()
+        except (OSError, RuntimeError):
+            raise Fail("fixture guard parent metadata read failed") from None
         require(
             stat.S_ISDIR(entry.st_mode)
             and (entry.st_dev, entry.st_ino) == (opened.st_dev, opened.st_ino),
@@ -151,8 +154,11 @@ def pin_checked_helper_parent(path: Path) -> int:
                 os.close(previous_fd)
             except (Exception, SystemExit):
                 raise Fail("fixture guard pinned descriptor cleanup failed") from None
-            opened = os.fstat(fd)
-            entry = cursor.lstat()
+            try:
+                opened = os.fstat(fd)
+                entry = cursor.lstat()
+            except (OSError, RuntimeError):
+                raise Fail("fixture guard parent metadata read failed") from None
             require(
                 stat.S_ISDIR(entry.st_mode)
                 and (entry.st_dev, entry.st_ino) == (opened.st_dev, opened.st_ino),
