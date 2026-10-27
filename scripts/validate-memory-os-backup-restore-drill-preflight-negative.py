@@ -193,6 +193,66 @@ def expect_pinned_preflight_json_reader(validator: Any) -> None:
     print("PASS: actual preflight JSON reader parent and ancestor swap retain pinned original source")
 
 
+def expect_preflight_json_descriptor_faults(validator: Any) -> None:
+    """Exercise real-reader cleanup and ownership under private synthetic failures."""
+    with tempfile.TemporaryDirectory(prefix=".preflight-json-fd-fault-", dir=ROOT) as raw:
+        path = Path(raw) / "positive.json"
+        path.write_bytes(b'{"safe":true}')
+        for fault, expected in (
+            ("close", "preflight JSON cleanup failed"),
+            ("fdopen", "preflight JSON unreadable or invalid"),
+        ):
+            original_open, original_close, original_fdopen = os.open, os.close, os.fdopen
+            opened: list[int] = []
+            faulted = False
+
+            def capture_open(*args, **kwargs):
+                descriptor = original_open(*args, **kwargs)
+                opened.append(descriptor)
+                return descriptor
+
+            def close_then_fail(descriptor):
+                nonlocal faulted
+                original_close(descriptor)
+                if not faulted:
+                    faulted = True
+                    raise OSError("SYNTHETIC_PRIVATE_FD_CLOSE_CANARY")
+
+            def fdopen_then_fail(descriptor, *args, **kwargs):
+                nonlocal faulted
+                faulted = True
+                raise OSError("SYNTHETIC_PRIVATE_FDOPEN_CANARY")
+
+            try:
+                os.open = capture_open
+                if fault == "close":
+                    os.close = close_then_fail
+                else:
+                    os.fdopen = fdopen_then_fail
+                try:
+                    validator.load(path)
+                except validator.Fail as exc:
+                    require(str(exc) == expected and exc.__suppress_context__ and exc.__cause__ is None,
+                            f"preflight JSON {fault} fault leaked or misclassified")
+                    require("SYNTHETIC_PRIVATE_" not in str(exc),
+                            f"preflight JSON {fault} private diagnostic leaked")
+                else:
+                    raise Fail(f"preflight JSON {fault} fault unexpectedly accepted")
+            finally:
+                os.open, os.close, os.fdopen = original_open, original_close, original_fdopen
+            require(faulted and opened, f"preflight JSON {fault} injection not reached")
+            for descriptor in opened:
+                try:
+                    os.fstat(descriptor)
+                except OSError:
+                    pass
+                else:
+                    raise Fail(f"preflight JSON {fault} leaked descriptor")
+            require(validator.load(path) == {"safe": True},
+                    f"preflight JSON {fault} recovery positive failed")
+    print("PASS: actual preflight JSON reader close/fdopen private faults clean all descriptors")
+
+
 def expect_state_rejected(
     validator: Any,
     generations: dict[str, Any],
@@ -480,6 +540,7 @@ def main() -> int:
     expect_helper_authority_substitution_rejected(validator, generations, objectives, drill_registry)
     expect_strict_preflight_json_reader(validator)
     expect_pinned_preflight_json_reader(validator)
+    expect_preflight_json_descriptor_faults(validator)
     expect_upstream_validator_substitutions_rejected(validator)
     expect_upstream_validator_output_redacted(validator)
     expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
