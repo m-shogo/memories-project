@@ -703,44 +703,6 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
     main = named_function(tree, "main")
     proof = named_function(tree, PROOF)
     pin = named_function(tree, PIN)
-    # Classify untrusted parent paths before any descriptor is opened.
-    # Intentional outside-root ValueError remains a distinct domain failure.
-    expected_classification = ast.parse("""try:
-    anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
-except (OSError, RuntimeError):
-    raise Fail("fixture guard parent classification failed") from None
-""").body[0]
-    expected_relative_assignment = ast.parse(
-        "relative = path.parent.relative_to(anchor)"
-    ).body[0]
-    expected_relative_handler = ast.parse("""try:
-    pass
-except (OSError, RuntimeError):
-    raise Fail("fixture guard parent classification failed") from None
-""").body[0].handlers[0]
-    pin_live = [
-        node for node in pin.body
-        if not (isinstance(node, ast.Expr)
-                and isinstance(node.value, ast.Constant)
-                and isinstance(node.value.value, str))
-    ]
-    relative_guard = pin_live[2] if len(pin_live) > 2 else None
-    require(
-        len(pin_live) >= 4
-        and ast.dump(pin_live[1], include_attributes=False)
-            == ast.dump(expected_classification, include_attributes=False)
-        and isinstance(relative_guard, ast.Try)
-        and len(relative_guard.body) == 1
-        and ast.dump(relative_guard.body[0], include_attributes=False)
-            == ast.dump(expected_relative_assignment, include_attributes=False)
-        and len(relative_guard.handlers) == 2
-        and isinstance(relative_guard.handlers[0].type, ast.Name)
-        and relative_guard.handlers[0].type.id == "ValueError"
-        and ast.dump(relative_guard.handlers[1], include_attributes=False)
-            == ast.dump(expected_relative_handler, include_attributes=False)
-        and not relative_guard.orelse and not relative_guard.finalbody,
-        "loader parent classification fault not private",
-    )
     expected_parent_failure_cleanup = ast.parse("""try:
     os.close(fd)
 except (Exception, SystemExit):
@@ -1405,6 +1367,44 @@ except (Exception, SystemExit):
         and isinstance(read_handlers[0].body[0].exc.args[0].value, str)
         and read_handlers[0].body[0].exc.args[0].value.endswith("pinned source read failed"),
         "loader read failure not private",
+    )
+    # Classify untrusted parent paths before any descriptor is opened.
+    # Intentional outside-root ValueError remains a distinct domain failure.
+    expected_classification = ast.parse("""try:
+    anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
+except (OSError, RuntimeError):
+    raise Fail("fixture guard parent classification failed") from None
+""").body[0]
+    expected_relative_assignment = ast.parse(
+        "relative = path.parent.relative_to(anchor)"
+    ).body[0]
+    expected_relative_handler = ast.parse("""try:
+    pass
+except (OSError, RuntimeError):
+    raise Fail("fixture guard parent classification failed") from None
+""").body[0].handlers[0]
+    pin_live = [
+        node for node in pin.body
+        if not (isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str))
+    ]
+    relative_guard = pin_live[2] if len(pin_live) > 2 else None
+    require(
+        len(pin_live) >= 4
+        and ast.dump(pin_live[1], include_attributes=False)
+            == ast.dump(expected_classification, include_attributes=False)
+        and isinstance(relative_guard, ast.Try)
+        and len(relative_guard.body) == 1
+        and ast.dump(relative_guard.body[0], include_attributes=False)
+            == ast.dump(expected_relative_assignment, include_attributes=False)
+        and len(relative_guard.handlers) == 2
+        and isinstance(relative_guard.handlers[0].type, ast.Name)
+        and relative_guard.handlers[0].type.id == "ValueError"
+        and ast.dump(relative_guard.handlers[1], include_attributes=False)
+            == ast.dump(expected_relative_handler, include_attributes=False)
+        and not relative_guard.orelse and not relative_guard.finalbody,
+        "loader parent classification fault not private",
     )
     require(
         has_method(proof, "rename") and has_method(proof, "symlink_to"),
