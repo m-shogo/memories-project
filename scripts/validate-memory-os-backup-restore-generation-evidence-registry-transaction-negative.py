@@ -62,6 +62,8 @@ def prove_close_failure_releases_lock(writer: Any) -> None:
     original_typed_covered = writer.typed_non_resurrection_covered
     original_candidate = writer.candidate
     original_close = writer.os.close
+    original_write_fd = writer.os.write
+    original_fsync = writer.os.fsync
     original_argv = sys.argv[:]
 
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-evidence-lock-") as raw_tmp:
@@ -109,11 +111,10 @@ def prove_close_failure_releases_lock(writer: Any) -> None:
             writer.os.close = close_then_fail
             try:
                 writer.main()
-            except OSError as exc:
-                require(
-                    "synthetic generation evidence lock close failure" in str(exc),
-                    f"unexpected generation evidence close failure: {exc}",
-                )
+            except writer.Fail as exc:
+                require(str(exc) == "generation evidence registry lock cleanup failed"
+                        and exc.__suppress_context__,
+                        "generation evidence close failure leaked private exception")
             else:
                 raise Fail("generation evidence lock close failure was accepted")
             finally:
@@ -123,6 +124,39 @@ def prove_close_failure_releases_lock(writer: Any) -> None:
             registry_state["records"].clear()
             require(writer.main() == 0, "generation evidence retry did not complete after close failure cleanup")
             require(not lock.exists(), "generation evidence retry stranded its lock")
+            registry_state["records"].clear()
+
+            writer.os.write = lambda *_args: 0
+            try:
+                try:
+                    writer.main()
+                except writer.Fail as exc:
+                    require(str(exc) == "generation evidence registry lock initialization failed",
+                            "generation evidence short lock write rejected at wrong boundary")
+                else:
+                    raise Fail("generation evidence short lock write accepted")
+            finally:
+                writer.os.write = original_write_fd
+            require(not lock.exists(), "generation evidence short lock write stranded lock")
+
+            def reject_lock_fsync(*_args):
+                raise OSError("PRIVATE_GENERATION_LOCK_CANARY fsync")
+            writer.os.fsync = reject_lock_fsync
+            try:
+                try:
+                    writer.main()
+                except writer.Fail as exc:
+                    require(str(exc) == "generation evidence registry lock initialization failed"
+                            and exc.__suppress_context__,
+                            "generation evidence fsync failure leaked private exception")
+                else:
+                    raise Fail("generation evidence lock fsync failure accepted")
+            finally:
+                writer.os.fsync = original_fsync
+            require(not lock.exists(), "generation evidence lock fsync failure stranded lock")
+            require(writer.main() == 0, "generation evidence lock retry failed after init errors")
+            require(not lock.exists(), "generation evidence lock retry stranded lock")
+            print("PASS reject: generation lock close, short-write and fsync failures preserve private classes and retry")
         finally:
             writer.REGISTRY = original_registry
             writer.LOCK = original_lock
@@ -137,6 +171,8 @@ def prove_close_failure_releases_lock(writer: Any) -> None:
             writer.typed_non_resurrection_covered = original_typed_covered
             writer.candidate = original_candidate
             writer.os.close = original_close
+            writer.os.write = original_write_fd
+            writer.os.fsync = original_fsync
             sys.argv = original_argv
 
 
