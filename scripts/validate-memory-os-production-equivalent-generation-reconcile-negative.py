@@ -634,6 +634,46 @@ def prove_strict_authority_json(reconciler: object) -> None:
     print("PASS reject: generation authority duplicate/nonfinite/huge JSON and nonobject roots")
 
 
+def prove_private_generation_writer_import(reconciler: object) -> None:
+    """Keep filesystem import failures private without hiding implementation faults."""
+    original_spec = reconciler.importlib.util.spec_from_file_location
+    original_module = reconciler.importlib.util.module_from_spec
+    private_canary = "PRIVATE_GENERATION_WRITER_IMPORT_CANARY"
+    try:
+        for scenario in ("module", "loader"):
+            class RejectLoader:
+                def exec_module(self, _module):
+                    raise OSError(private_canary)
+
+            class FakeSpec:
+                loader = RejectLoader()
+
+            def reject_module(_spec):
+                raise OSError(private_canary)
+
+            reconciler.importlib.util.spec_from_file_location = (
+                (lambda *_args, **_kwargs: FakeSpec())
+                if scenario == "loader" else original_spec)
+            reconciler.importlib.util.module_from_spec = (
+                reject_module if scenario == "module" else (lambda _spec: object()))
+            try:
+                reconciler.load_writer()
+            except reconciler.Fail as exc:
+                require(str(exc) == "cannot load environment generation writer"
+                        and exc.__suppress_context__
+                        and private_canary not in str(exc),
+                        f"generation writer import {scenario} leaked private details")
+            else:
+                raise Fail(f"generation writer import {scenario} unexpectedly accepted")
+    finally:
+        reconciler.importlib.util.spec_from_file_location = original_spec
+        reconciler.importlib.util.module_from_spec = original_module
+    module = reconciler.load_writer()
+    require(callable(getattr(module, "validate_record", None)),
+            "generation writer import positive control failed")
+    print("PASS reject: generation reconciler writer import errors are private")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(WORKFLOW.is_file(), "environment generation workflow missing")
@@ -738,6 +778,7 @@ def main() -> int:
     require(values == [old, prefix + " duplicate"], "duplicate generation evidence rejection mutated ordering")
     print("PASS preserve: environment generation evidence ordering is deterministic")
 
+    prove_private_generation_writer_import(reconciler)
     prove_private_child_validator(reconciler)
     prove_private_bounded_authority_reader(reconciler)
     prove_strict_authority_json(reconciler)

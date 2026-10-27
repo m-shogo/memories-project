@@ -245,8 +245,8 @@ def load_writer():
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load environment generation writer: {exc}") from exc
+    except (FileNotFoundError, OSError):
+        raise Fail("cannot load environment generation writer") from None
     return module
 
 
