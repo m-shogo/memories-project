@@ -471,9 +471,20 @@ def require_target_pinned_import_reachable(code: str) -> None:
             "os.O_NONBLOCK = 0",
             'load_target(good, "binding_target_unsafe_restored")',
         ),
+        "prove_target_import_fd_cleanup": (
+            "def tracked_open(",
+            "def broken_fdopen(",
+            "def broken_close(",
+            'load_target(VALIDATOR, "binding_target_fd_fault")',
+            "original_close(descriptor)",
+            "os.fstat(descriptor)",
+            "errno.EBADF",
+            "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+        ),
         "main": (
             "prove_pinned_target_import()",
             "prove_target_import_unsafe_sources()",
+            "prove_target_import_fd_cleanup()",
             "module = load_module()",
         ),
     }
@@ -488,6 +499,7 @@ def require_target_pinned_import_reachable(code: str) -> None:
     main = ast.get_source_segment(code, functions["main"]) or ""
     if not (main.index("prove_pinned_target_import()")
             < main.index("prove_target_import_unsafe_sources()")
+            < main.index("prove_target_import_fd_cleanup()")
             < main.index("module = load_module()")):
         raise SystemExit("generation binding target pinned import proofs not reached before target load")
 
@@ -517,8 +529,15 @@ def prove_target_pinned_import_mutations_rejected() -> None:
          "os.O_NONBLOCK = original_flag"),
         ("main", "prove_pinned_target_import()",
          "pass  # synthetic pinned import proof removed"),
+        ("prove_target_import_fd_cleanup", "os.fstat(descriptor)",
+         "os.fstat(-1)"),
+        ("prove_target_import_fd_cleanup", "errno.EBADF", "errno.EIO"),
+        ("prove_target_import_fd_cleanup", "original_close(descriptor)",
+         "pass  # synthetic owned FD close removed"),
         ("main", "prove_target_import_unsafe_sources()",
          "pass  # synthetic unsafe import proof removed"),
+        ("main", "prove_target_import_fd_cleanup()",
+         "pass  # synthetic FD cleanup proof removed"),
     )
     for name, original, replacement in mutations:
         tree = ast.parse(code)
