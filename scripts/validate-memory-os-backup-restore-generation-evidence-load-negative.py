@@ -453,9 +453,11 @@ def exercise_writer_rollback_diagnostics(writer) -> None:
                 writer.write_registry_transactionally(value)
             except writer.Fail as exc:
                 message = str(exc)
-                require("synthetic generation evidence append post-validator rejection" in message, "generation evidence writer rollback diagnostics lost primary validator rejection")
-                require("rollback incomplete" in message, "generation evidence writer rollback diagnostics missing incomplete marker")
-                require("synthetic generation evidence append rollback restore rejection" in message, "generation evidence writer rollback diagnostics lost rollback rejection")
+                require(message == "generation evidence append failed; rollback incomplete"
+                        and exc.__suppress_context__,
+                        "generation evidence writer rollback failure class leaked private details")
+                require("synthetic generation evidence" not in message,
+                        "generation evidence writer rollback diagnostic leaked private canary")
             else:
                 raise Fail("generation evidence writer rollback diagnostic failure unexpectedly accepted")
         finally:
@@ -465,7 +467,7 @@ def exercise_writer_rollback_diagnostics(writer) -> None:
 
         require(rollback_attempted, "generation evidence writer rollback diagnostics did not attempt rollback")
 
-    print("PASS diagnostics: generation evidence writer preserves primary validator + rollback failure")
+    print("PASS diagnostics: generation evidence writer redacts primary and rollback failures")
 
 
 def exercise_reconciler_transaction_rollback(reconciler) -> None:
@@ -732,7 +734,7 @@ def main() -> int:
 
     print("Generation evidence unreadable/escaped-authority negative suite PASS")
     print("generation writer append authority drift accepted: false")
-    print("generation evidence writer rollback diagnostics preserve primary + rollback failures: true")
+    print("generation evidence writer rollback diagnostics use private failure classes: true")
     print("generation evidence partial multi-authority transaction accepted: false")
     print("generation evidence transaction rollback preserves exact bytes+mode: true")
     print("generation evidence rollback diagnostics preserve primary + rollback failures: true")
