@@ -619,6 +619,28 @@ def prove_strict_objective_json(reconciler: object) -> None:
         expected = json.loads(original)
         require(reconciler.load(path) == expected, "objective reconcile JSON positive failed")
         marker = "PRIVATE_OBJECTIVE_RECONCILE_JSON_CANARY"
+        original_open = reconciler.os.open
+
+        def raced_open(candidate, flags, *_args, **_kwargs):
+            require(candidate == path and flags & reconciler.os.O_NOFOLLOW
+                    and flags & reconciler.os.O_NONBLOCK,
+                    "reconciler JSON reader lost no-follow/nonblocking descriptor flags")
+            raise OSError(marker)
+
+        reconciler.os.open = raced_open
+        try:
+            try:
+                reconciler.load(path)
+            except reconciler.Fail as exc:
+                require(str(exc) == "recovery objective reconcile authority unreadable"
+                        and exc.__suppress_context__ and marker not in str(exc),
+                        "reconciler JSON raced-open private failure drift")
+            else:
+                raise Fail("reconciler JSON raced-open failure unexpectedly accepted")
+        finally:
+            reconciler.os.open = original_open
+        require(reconciler.load(path) == expected,
+                "reconciler JSON descriptor race did not preserve positive fixture")
         cases = (
             ("duplicate", b'{"x":1,"x":2}', "recovery objective reconcile JSON duplicate key refused"),
             ("nested-duplicate", b'{"x":{"y":1,"y":2}}',
@@ -671,7 +693,7 @@ def prove_strict_objective_json(reconciler: object) -> None:
         path.write_bytes(original)
         require(reconciler.load(path) == expected,
                 "objective reconcile JSON restored positive failed")
-    print("PASS: actual recovery objective reconcile JSON reader positive and 12 fail-closed negatives")
+    print("PASS: actual recovery objective reconcile JSON reader positive and 13 fail-closed negatives")
 
 
 def main() -> int:
