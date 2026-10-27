@@ -195,7 +195,7 @@ def validate_generation_registry(writer: Any, registry: dict[str, Any]) -> tuple
         rows = generation_writer.validate_registry_for_append(registry)
     except Exception as exc:
         if writer.domain_validation_failure(exc):
-            raise Fail(f"generation recovery evidence registry authority invalid: {exc}") from exc
+            raise Fail("generation recovery evidence registry authority invalid") from None
         raise
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation recovery evidence registry rows invalid")
     return generation_writer, rows

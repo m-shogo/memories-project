@@ -607,12 +607,54 @@ def prove_private_atomic_write_path_guards(
     print("PASS: promotion reconcile atomic write path and size guards (5 negatives)")
 
 
+
+def prove_private_delegated_generation_registry(reconciler: Any) -> None:
+    """The actual reconcile wrapper must not echo delegated domain errors."""
+    writer = load_module(WRITER, "memory_os_promotion_reconcile_generation_negative")
+    original_loader = writer.load_generation_writer
+    marker = "PRIVATE_PROMOTION_RECONCILE_GENERATION_CANARY"
+    state: dict[str, Any] = {"error": None}
+
+    class SyntheticGenerationWriter:
+        def validate_registry_for_append(self, _registry):
+            if state["error"] is not None:
+                raise state["error"]
+            return []
+
+    generation_writer = SyntheticGenerationWriter()
+    writer.load_generation_writer = lambda: generation_writer
+    try:
+        result, rows = reconciler.validate_generation_registry(writer, {})
+        require(result is generation_writer and rows == [],
+                "promotion reconcile generation positive control failed")
+        state["error"] = writer.Fail(marker)
+        try:
+            reconciler.validate_generation_registry(writer, {})
+        except reconciler.Fail as exc:
+            require(str(exc) == "generation recovery evidence registry authority invalid"
+                    and exc.__suppress_context__ and marker not in str(exc),
+                    "promotion reconcile generation private domain error drift")
+        else:
+            raise Fail("promotion reconcile generation private domain error accepted")
+        state["error"] = TypeError(marker)
+        try:
+            reconciler.validate_generation_registry(writer, {})
+        except TypeError:
+            pass
+        else:
+            raise Fail("promotion reconcile generation unexpected TypeError normalized")
+    finally:
+        writer.load_generation_writer = original_loader
+    print("PASS: promotion reconcile delegated generation private domain error and unexpected fault boundary")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
     original_registry = CANONICAL_REGISTRY.read_bytes()
     validate_atomic_diagnostic_publication()
     prove_strict_reconcile_json(reconciler)
+    prove_private_delegated_generation_registry(reconciler)
     prove_private_post_reconcile_transport(reconciler)
 
     expect_authority_substitution_rejected(reconciler, "CONTRACT", reconciler.REGISTRY, "promotion review contract substitution", "promotion review contract authority drift", original_contract, original_registry)
