@@ -423,35 +423,75 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     return rows
 
 def atomic_write(value: dict[str, Any], mode: int) -> None:
-    fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-non-resurrection.", suffix=".tmp", dir=REGISTRY.parent)
+    """Publish only a complete fsynced candidate; own and clean every temporary FD."""
+    descriptor: int | None = None
+    temp_name: str | None = None
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=".backup-restore-non-resurrection.", suffix=".tmp", dir=REGISTRY.parent)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = None
             os.fchmod(handle.fileno(), mode)
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+        temp_name = None
+    except Exception:
+        raise Fail("typed non-resurrection registry atomic write failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
+        cleanup_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                cleanup_failed = True
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("typed non-resurrection registry temporary cleanup failed") from None
+
 
 def atomic_restore(payload: bytes, mode: int) -> None:
-    fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-non-resurrection-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    """Restore the exact prior registry bytes and mode after post-write rejection."""
+    descriptor: int | None = None
+    temp_name: str | None = None
     try:
-        with os.fdopen(fd, "wb") as handle:
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=".backup-restore-non-resurrection-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
             os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+        temp_name = None
+    except Exception:
+        raise Fail("typed non-resurrection registry atomic restore failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
+        cleanup_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                cleanup_failed = True
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("typed non-resurrection registry temporary cleanup failed") from None
+
 
 def snapshot_registry_for_append() -> tuple[bytes, int]:
     """Pin registry bytes and mode to the same bounded regular-file descriptor."""
@@ -484,17 +524,12 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
     atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
-    except Exception as primary_exc:
+    except Exception:
         try:
             atomic_restore(original, original_mode)
-        except Exception as rollback_exc:
-            raise Fail(
-                "typed non-resurrection append failed; primary failure: "
-                + str(primary_exc)
-                + "; rollback incomplete: "
-                + str(rollback_exc)
-            ) from primary_exc
-        raise
+        except Exception:
+            raise Fail("typed non-resurrection append failed; rollback incomplete") from None
+        raise Fail("typed non-resurrection append failed; rollback completed") from None
 
 def main() -> int:
     require_cli_authorities()
