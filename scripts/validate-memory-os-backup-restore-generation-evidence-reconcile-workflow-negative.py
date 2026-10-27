@@ -74,6 +74,15 @@ def require_private_child_negative_reachable(source: str) -> None:
     ]
     if len(writer_calls) != 1:
         raise SystemExit("generation evidence private writer import negative execution drift")
+    if "prove_private_escaped_path_diagnostic" not in functions:
+        raise SystemExit("generation evidence private escaped-path negative missing")
+    path_calls = [
+        node for node in ast.walk(functions["main"])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "prove_private_escaped_path_diagnostic"
+    ]
+    if len(path_calls) != 1:
+        raise SystemExit("generation evidence private escaped-path negative execution drift")
 
 
 def prove_private_child_negative_removal_rejected() -> None:
@@ -101,6 +110,17 @@ def prove_private_child_negative_removal_rejected() -> None:
     else:
         raise SystemExit("generation evidence private writer import negative deletion accepted")
     print("PASS: generation evidence private writer import negative execution deletion rejected")
+    path_anchor = "    prove_private_escaped_path_diagnostic(module)\n"
+    if source.count(path_anchor) != 1:
+        raise SystemExit("generation evidence private escaped-path negative removal anchor drift")
+    mutated_path = source.replace(path_anchor, "    pass\n", 1)
+    try:
+        require_private_child_negative_reachable(mutated_path)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation evidence private escaped-path negative deletion accepted")
+    print("PASS: generation evidence private escaped-path negative execution deletion rejected")
 
 
 
