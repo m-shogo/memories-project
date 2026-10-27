@@ -53,8 +53,8 @@ def require(condition: bool, message: str) -> None:
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve(strict=False).relative_to(ROOT.resolve())
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"authority path escapes repository: {path}") from exc
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("preflight reconcile authority path unsafe") from None
 
 
 def require_repo_file(path: Path, message: str) -> Path:
@@ -67,8 +67,8 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     try:
         lexical = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} missing or escapes repository") from None
     require(
         lexical == expected_relative
         and resolved == expected_relative
@@ -249,8 +249,8 @@ def load_validator_module():
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load preflight validator: {exc}") from exc
+    except (FileNotFoundError, OSError):
+        raise Fail("preflight reconcile validator import unavailable") from None
     return module
 
 
