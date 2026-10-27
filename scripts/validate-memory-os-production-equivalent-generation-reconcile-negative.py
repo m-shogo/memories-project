@@ -212,7 +212,7 @@ def prove_second_authority_replace_rollback(reconciler: object) -> None:
             "environment generation second-authority replace rejection",
             reconciler.main,
             reconciler.Fail,
-            "cannot atomically write",
+            "environment generation status reconcile failed; rollback completed",
         )
     finally:
         reconciler.os.replace = original_replace
@@ -256,7 +256,7 @@ def prove_rollback_restore_failure_attempts_all(reconciler: object) -> None:
                     )
                 ),
                 reconciler.Fail,
-                "authority rollback failed after attempting all restores",
+                "environment generation authority rollback incomplete",
             )
         finally:
             reconciler.write_text = original_write_text
@@ -298,9 +298,11 @@ def prove_primary_and_rollback_diagnostics_preserved(
             reconciler.main()
         except reconciler.Fail as exc:
             text = str(exc)
-            require("synthetic primary post-validator failure" in text, f"primary failure diagnostic lost: {exc}")
-            require("rollback incomplete" in text, f"rollback-incomplete marker missing: {exc}")
-            require("synthetic rollback restore failure" in text, f"rollback failure diagnostic lost: {exc}")
+            require(text == "environment generation status reconcile failed; rollback incomplete"
+                    and exc.__suppress_context__,
+                    "generation reconcile rollback incomplete class or privacy drift")
+            require("synthetic" not in text,
+                    "generation reconcile leaked private primary or rollback exception")
         else:
             raise Fail("combined primary/rollback failure unexpectedly succeeded")
     finally:
@@ -316,7 +318,7 @@ def prove_primary_and_rollback_diagnostics_preserved(
         canonical_contract_mode,
         canonical_status_mode,
     )
-    print("PASS diagnostics: primary generation-status failure preserved alongside rollback failure")
+    print("PASS diagnostics: generation reconcile rollback incomplete is class-only and private")
 
 
 def prove_aggregate_validator_rollback(reconciler: object) -> None:
@@ -335,7 +337,7 @@ def prove_aggregate_validator_rollback(reconciler: object) -> None:
             "post-write aggregate operability failure",
             reconciler.main,
             reconciler.Fail,
-            "operability validator failed",
+            "environment generation status reconcile failed; rollback completed",
         )
     finally:
         reconciler.run_validator = original_run_validator

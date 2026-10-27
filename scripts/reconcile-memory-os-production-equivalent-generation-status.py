@@ -189,14 +189,15 @@ def write_text(path: Path, text: str) -> None:
 
 
 def restore_authorities(authorities: tuple[tuple[Path, str], ...]) -> None:
-    failures: list[str] = []
+    """Attempt every restore and report only a fixed incomplete class."""
+    failed = False
     for path, text in authorities:
         try:
             write_text(path, text)
-        except Exception as exc:
-            failures.append(f"{repo_relative(path)}: {exc}")
-    if failures:
-        raise Fail("authority rollback failed after attempting all restores: " + "; ".join(failures))
+        except Exception:
+            failed = True
+    if failed:
+        raise Fail("environment generation authority rollback incomplete") from None
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -389,7 +390,7 @@ def main() -> int:
         write_text(STATUS, status_text)
         run_validator(VALIDATOR, VALIDATOR_REL, "generation validator")
         run_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception as exc:
+    except Exception:
         try:
             restore_authorities(
                 (
@@ -397,11 +398,9 @@ def main() -> int:
                     (STATUS, original_status_text),
                 )
             )
-        except Exception as rollback_exc:
-            raise Fail(
-                f"environment generation status reconcile failed: {exc}; rollback incomplete: {rollback_exc}"
-            ) from exc
-        raise
+        except Exception:
+            raise Fail("environment generation status reconcile failed; rollback incomplete") from None
+        raise Fail("environment generation status reconcile failed; rollback completed") from None
 
     print("Memory OS production-equivalent generation status reconciliation PASS")
     print(f"generation registry entries: {count}")
