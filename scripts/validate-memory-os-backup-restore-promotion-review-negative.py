@@ -408,6 +408,22 @@ def prove_bounded_promotion_payload_digest() -> None:
 def main() -> int:
     global EXPECTED_FAILURE
     require(WRITER.is_file() and VALIDATOR.is_file(), "promotion review authority scripts missing")
+    def require_non_executable_source(source: Path) -> None:
+        require(source.is_file() and not source.is_symlink()
+                and source.stat().st_mode & 0o111 == 0,
+                "promotion review source executable mode drift")
+
+    for source in (WRITER, Path(__file__)):
+        require_non_executable_source(source)
+    with tempfile.TemporaryDirectory(prefix="promotion-source-mode-negative-") as mode_tmp:
+        synthetic_source = Path(mode_tmp) / "synthetic-source.py"
+        synthetic_source.write_text("# synthetic source only\n", encoding="utf-8")
+        synthetic_source.chmod(0o755)
+        expect_rejected("promotion source executable bit", lambda: require_non_executable_source(synthetic_source))
+        synthetic_source.chmod(0o644)
+        require_non_executable_source(synthetic_source)
+    print("PASS: promotion writer/negative suite non-executable mode with chmod negative")
+
     prove_promotion_reader()
     prove_promotion_writer_reader()
     prove_bounded_promotion_payload_digest()
