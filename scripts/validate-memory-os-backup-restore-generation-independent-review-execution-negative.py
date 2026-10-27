@@ -630,6 +630,7 @@ def require_pair_pinned_import_source(code: str) -> None:
             "os.fstat(descriptor)",
             "errno.EBADF",
             "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+            "PASS: independent review pair pinned loader fdopen/close faults clean owned descriptors",
         ),
         "main": (
             "prove_runtime_review_pair_controls()",
@@ -683,6 +684,9 @@ def prove_pair_pinned_import_mutations_rejected() -> None:
          "pass  # synthetic pinned proof removed"),
         ("prove_pair_import_fd_cleanup", "os.fstat(descriptor)", "os.fstat(-1)"),
         ("prove_pair_import_fd_cleanup", "errno.EBADF", "errno.EIO"),
+        ("prove_pair_import_fd_cleanup",
+         "PASS: independent review pair pinned loader fdopen/close faults clean owned descriptors",
+         "PASS: drill request pinned loader fdopen/close faults clean owned descriptors"),
         ("main", "prove_pair_import_unsafe_sources()",
          "pass  # synthetic unsafe proof removed"),
         ("main", "prove_pair_import_fd_cleanup()",
