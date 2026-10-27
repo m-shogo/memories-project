@@ -327,36 +327,66 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
 
 
 def atomic_write(value: dict[str, Any], mode: int) -> None:
-    descriptor, temp_name = tempfile.mkstemp(prefix=".recovery-objectives.", suffix=".tmp", dir=REGISTRY.parent)
+    descriptor: int | None = None
+    temp_name: str | None = None
     try:
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=".recovery-objectives.", suffix=".tmp", dir=REGISTRY.parent)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = None
             os.fchmod(handle.fileno(), mode)
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+        temp_name = None
+    except (OSError, ValueError, TypeError, UnicodeError):
+        raise Fail("recovery objective registry atomic write failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("recovery objective registry temporary cleanup failed") from None
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                raise Fail("recovery objective registry temporary cleanup failed") from None
 
 
 def atomic_restore(payload: bytes, mode: int) -> None:
-    descriptor, temp_name = tempfile.mkstemp(prefix=".recovery-objectives-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    descriptor: int | None = None
+    temp_name: str | None = None
     try:
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=".recovery-objectives-rollback.", suffix=".tmp", dir=REGISTRY.parent)
         with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
             os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+        temp_name = None
+    except (OSError, ValueError, TypeError):
+        raise Fail("recovery objective registry atomic restore failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("recovery objective registry temporary cleanup failed") from None
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                raise Fail("recovery objective registry temporary cleanup failed") from None
 
 
 def write_registry_transactionally(value: dict[str, Any]) -> None:
