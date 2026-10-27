@@ -973,6 +973,31 @@ def prove_typed_reconcile_descriptor_faults() -> None:
     print("PASS: typed reconcile close/fdopen private faults close all descriptors")
 
 
+def prove_typed_reconcile_platform_flags() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_flags_negative")
+    with guarded_temporary_directory(".tmp-typed-reconcile-flags-", TMP_PARENT) as raw:
+        path = Path(raw) / "positive.json"
+        path.write_bytes(b'{"safe":true}')
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original = getattr(os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(os, flag, invalid)
+                    try:
+                        reconciler.read_text(path)
+                    except reconciler.Fail as exc:
+                        require(str(exc) == "typed reconcile authority nofollow support required"
+                                and exc.__suppress_context__ and exc.__cause__ is None,
+                                f"typed reconcile {flag} unsafe platform class drift")
+                    else:
+                        raise Fail(f"typed reconcile accepted unsafe {flag}")
+            finally:
+                setattr(os, flag, original)
+        require(reconciler.read_text(path) == '{"safe":true}',
+                "typed reconcile platform flag restoration positive failed")
+    print("PASS: typed reconcile None/zero safety flags rejected")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -1011,6 +1036,7 @@ def main() -> int:
     prove_typed_reconcile_pinned_reader()
     prove_typed_reconcile_strict_json()
     prove_typed_reconcile_descriptor_faults()
+    prove_typed_reconcile_platform_flags()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
