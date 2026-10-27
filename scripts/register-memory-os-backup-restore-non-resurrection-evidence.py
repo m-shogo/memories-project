@@ -241,11 +241,11 @@ def generation_registry_rows() -> list[dict[str, Any]]:
                         generation_writer.validate_record(row, require_current_drill_request=False)
                     except Exception as exc:
                         if domain_validation_failure(exc):
-                            raise Fail(f"generation evidence registry records[{index}] historical authority invalid: {exc}") from exc
+                            raise Fail(f"generation evidence registry records[{index}] historical authority invalid") from None
                         raise
         except Exception as exc:
             if domain_validation_failure(exc):
-                raise Fail(f"generation evidence upstream authority invalid: {exc}") from exc
+                raise Fail("generation evidence upstream authority invalid") from None
             raise
         bound_count = registry.get("drillRequestBoundEvidenceCount")
         backup_count = registry.get("completeGenerationBoundBackupCount")
