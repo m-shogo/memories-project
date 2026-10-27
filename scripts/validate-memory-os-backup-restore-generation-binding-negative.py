@@ -231,7 +231,7 @@ def prove_target_import_fd_cleanup() -> None:
                 raise Fail("generation binding target import " + fault + " leaked descriptor")
     require(callable(getattr(load_target(VALIDATOR, "binding_target_fd_restored"), "main", None)),
             "generation binding target import FD fault canonical restoration failed")
-    print("PASS: drill request pinned loader fdopen/close faults clean owned descriptors")
+    print("PASS: generation binding target pinned loader fdopen/close faults clean owned descriptors")
 
 
 def pin_checked_helper_parent(path: Path) -> int:
