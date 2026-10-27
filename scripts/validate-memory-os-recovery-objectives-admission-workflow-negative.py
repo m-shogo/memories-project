@@ -82,7 +82,10 @@ def source(relative: str) -> str:
         raise SystemExit("recovery objective CI source missing or substituted: " + relative) from exc
 
 
-def validate(publisher: str, independent: str) -> None:
+def validate(
+    publisher: str, independent: str, *,
+    check_publisher_blob: bool = True, check_independent_blob: bool = True,
+) -> None:
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -90,10 +93,11 @@ def validate(publisher: str, independent: str) -> None:
         for label, token, count in required:
             if content.count(token) != count:
                 raise SystemExit("recovery objective " + name + " source drift: " + label)
-        data = content.encode("utf-8")
-        blob = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
-        if hashlib.sha1(blob).hexdigest() != digest:
-            raise SystemExit("recovery objective " + name + " complete source drift")
+        if (name == "publisher" and check_publisher_blob) or (name == "independent" and check_independent_blob):
+            data = content.encode("utf-8")
+            blob = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+            if hashlib.sha1(blob).hexdigest() != digest:
+                raise SystemExit("recovery objective " + name + " complete source drift")
 
 
 def runtime(publisher: str, independent: str) -> None:
@@ -323,6 +327,12 @@ def negatives(publisher: str, independent: str) -> None:
         ("injected Action", "      - name: Prove recovery objective source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove recovery objective source admission\n"),
         ("injected shell", "      - name: Prove recovery objective source admission\n", "      - run: echo unreviewed\n      - name: Prove recovery objective source admission\n"),
     )
+    publisher_blob_only = {"unreviewed Action", "unreviewed shell", "appended command", "symlink guard"}
+    independent_blob_only = {"injected Action", "injected shell"}
+    if (len(publisher_cases), len(independent_cases)) != (25, 13):
+        raise SystemExit("recovery objective source negative population drift")
+    if sum(label in publisher_blob_only for label, _, _ in publisher_cases) != 4 or sum(label in independent_blob_only for label, _, _ in independent_cases) != 2:
+        raise SystemExit("recovery objective digest-only negative population drift")
     for target, cases in (("publisher", publisher_cases), ("independent", independent_cases)):
         for label, old, new in cases:
             original = publisher if target == "publisher" else independent
@@ -332,11 +342,14 @@ def negatives(publisher: str, independent: str) -> None:
             if mutated == original:
                 raise SystemExit("recovery objective negative fixture unchanged: " + target + " " + label)
             try:
-                validate(mutated, independent) if target == "publisher" else validate(publisher, mutated)
+                if target == "publisher":
+                    validate(mutated, independent, check_publisher_blob=label in publisher_blob_only)
+                else:
+                    validate(publisher, mutated, check_independent_blob=label in independent_blob_only)
             except SystemExit:
                 continue
             raise SystemExit("recovery objective accepted source mutation: " + target + " " + label)
-    print(f"PASS: recovery objective publisher source admission ({len(publisher_cases)} negatives), independent source admission ({len(independent_cases)} negatives)")
+    print(f"PASS: recovery objective publisher source admission ({len(publisher_cases) - 4} semantic + 4 blob-only negatives), independent source admission ({len(independent_cases) - 2} semantic + 2 blob-only negatives)")
 
 
 def main() -> int:
