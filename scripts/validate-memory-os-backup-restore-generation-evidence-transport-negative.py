@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -129,10 +130,28 @@ def prove_private_writer_import_failures(module: Any) -> None:
 
 
 
+
+def prove_private_escaped_path_diagnostic(module: Any) -> None:
+    canary = "private-generation-evidence-path-canary"
+    outside = Path(tempfile.gettempdir()) / canary
+    try:
+        module.repo_relative(outside)
+    except module.Fail as exc:
+        require(str(exc) == "artifact path escapes repository root",
+                "generation evidence escaped-path diagnostic disclosed private path")
+        require(canary not in str(exc) and exc.__suppress_context__,
+                "generation evidence escaped-path exception context exposed")
+    else:
+        raise Fail("generation evidence accepted outside private path")
+    print("PASS: generation evidence escaped-path diagnostic is private")
+
+
+
 def main() -> int:
     module = load_validator()
     prove_private_bounded_child_execution(module)
     prove_private_writer_import_failures(module)
+    prove_private_escaped_path_diagnostic(module)
 
     original_guard = module.enforce_execution_transport
     expect_rejected(
