@@ -1462,6 +1462,19 @@ def prove_preflight_private_path_negative_reachability() -> None:
                       'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
                       "importlib.util.spec_from_file_location = original_spec"):
             require(token in proof_body, "drill request pinned race proof removed")
+        unsafe = functions.get("prove_pinned_module_unsafe_sources")
+        require(unsafe is not None, "drill request unsafe pinned proof missing")
+        unsafe_body = ast.get_source_segment(candidate, unsafe)
+        require(isinstance(unsafe_body, str), "drill request unsafe pinned proof unavailable")
+        require(main_body.count("prove_pinned_module_unsafe_sources()") == 1
+                and main_body.index("prove_pinned_module_unsafe_sources()") <
+                    main_body.index("writer = load_module(WRITER"),
+                "drill request unsafe pinned proof must run before canonical imports")
+        for token in ("oversized.write_bytes", "link.symlink_to(good)",
+                      "os.mkfifo(fifo)", "for invalid in (None, 0):",
+                      "exc.__suppress_context__",
+                      'load_module(good, "drill_import_unsafe_restored")'):
+            require(token in unsafe_body, "drill request unsafe pinned proof removed")
         require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                         and node.func.id in {"exec", "eval"} for node in ast.walk(loader)),
                 "drill request direct dynamic execution refused")
@@ -1489,6 +1502,17 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("canary", "prove_pinned_module_import",
          'require(canary.read_text(encoding="utf-8") ==',
          'require(False and'),
+        ("unsafe invocation", "main", "    prove_pinned_module_unsafe_sources()\n", "    pass\n"),
+        ("unsafe size", "prove_pinned_module_unsafe_sources",
+         'oversized.write_bytes(b"x" * (MAX_MODULE_BYTES + 1))', "pass"),
+        ("unsafe symlink", "prove_pinned_module_unsafe_sources", "link.symlink_to(good)", "pass"),
+        ("unsafe FIFO", "prove_pinned_module_unsafe_sources", "os.mkfifo(fifo)", "pass"),
+        ("unsafe flags", "prove_pinned_module_unsafe_sources",
+         "for invalid in (None, 0):", "for invalid in ():"),
+        ("unsafe context", "prove_pinned_module_unsafe_sources", "exc.__suppress_context__", "False"),
+        ("unsafe positive", "prove_pinned_module_unsafe_sources",
+         'load_module(good, "drill_import_unsafe_restored")',
+         'load_module(good, "drill_import_unsafe")'),
     ):
         parsed = ast.parse(drill_source)
         functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
@@ -1504,7 +1528,7 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("drill request pinned loader weakening accepted: " + label)
-    print("PASS: drill request pinned loader and eleven source mutations rejected")
+    print("PASS: drill request pinned loader and eighteen source mutations rejected")
     print("PASS: preflight reconcile negative pinned loader and five source mutations rejected")
     print("PASS: preflight authority pinned loader/private path/FD/unsafe source and 21 mutations rejected")
     print("PASS: preflight pinned source loader and four weakening mutations rejected")
