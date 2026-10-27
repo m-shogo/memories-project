@@ -208,12 +208,15 @@ def prove_second_authority_replace_rollback(reconciler: object) -> None:
 
     reconciler.os.replace = reject_second_replace
     try:
-        expect_domain_fail(
-            "environment generation second-authority replace rejection",
-            reconciler.main,
-            reconciler.Fail,
-            "environment generation status reconcile failed; rollback completed",
-        )
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(str(exc) == "environment generation status reconcile failed; rollback completed"
+                    and exc.__suppress_context__
+                    and "synthetic" not in str(exc),
+                    "second-authority rollback completed class or privacy drift")
+        else:
+            raise Fail("second-authority replace rejection unexpectedly accepted")
     finally:
         reconciler.os.replace = original_replace
 
@@ -247,17 +250,20 @@ def prove_rollback_restore_failure_attempts_all(reconciler: object) -> None:
 
         reconciler.write_text = fail_first_restore
         try:
-            expect_domain_fail(
-                "environment generation first rollback restore failure",
-                lambda: reconciler.restore_authorities(
+            try:
+                reconciler.restore_authorities(
                     (
                         (first, '{"original":1}\n'),
                         (second, '{"original":2}\n'),
                     )
-                ),
-                reconciler.Fail,
-                "environment generation authority rollback incomplete",
-            )
+                )
+            except reconciler.Fail as exc:
+                require(str(exc) == "environment generation authority rollback incomplete"
+                        and exc.__suppress_context__
+                        and "synthetic" not in str(exc),
+                        "restore-all rollback failure class or privacy drift")
+            else:
+                raise Fail("first rollback restore failure unexpectedly accepted")
         finally:
             reconciler.write_text = original_write_text
 
@@ -333,12 +339,15 @@ def prove_aggregate_validator_rollback(reconciler: object) -> None:
 
     reconciler.run_validator = fail_after_generation_validator
     try:
-        expect_domain_fail(
-            "post-write aggregate operability failure",
-            reconciler.main,
-            reconciler.Fail,
-            "environment generation status reconcile failed; rollback completed",
-        )
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(str(exc) == "environment generation status reconcile failed; rollback completed"
+                    and exc.__suppress_context__
+                    and "synthetic" not in str(exc),
+                    "aggregate rollback completed class or privacy drift")
+        else:
+            raise Fail("aggregate operability validation failure unexpectedly accepted")
     finally:
         reconciler.run_validator = original_run_validator
 
