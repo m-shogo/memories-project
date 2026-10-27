@@ -49,8 +49,8 @@ def domain_validation_failure(exc: BaseException) -> bool:
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve().relative_to(ROOT.resolve())
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"artifact path missing, unreadable, or escapes repository root: {path}") from exc
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("typed admission artifact path missing, unreadable, or escapes repository") from None
 
 def enforce_runtime_authorities() -> None:
     canonical_lock = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
@@ -70,7 +70,7 @@ def canonical_repo_file_ref(value: Any, field: str) -> Path:
     relative = Path(value)
     require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == value, f"{field} must be a canonical repository-relative path")
     path = ROOT / relative
-    require(repo_relative(path) == relative and path.is_file(), f"{field} artifact missing or escapes repository: {value}")
+    require(repo_relative(path) == relative and path.is_file(), f"{field} artifact missing or escapes repository")
     return path
 
 MAX_JSON_BYTES = 1024 * 1024

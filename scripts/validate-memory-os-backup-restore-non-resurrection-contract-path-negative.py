@@ -475,6 +475,44 @@ def reject_typed_writer_substitution(validator: Any) -> None:
         validator.load_module = original_loader
         typed_writer.GEN_WRITER = original_generation_writer
 
+
+def prove_private_typed_admission_paths(validator: object) -> None:
+    """Actual admission path helpers must suppress private paths and exception chains."""
+    private = "SYNTHETIC_PRIVATE_TYPED_ADMISSION_CANARY"
+    original_resolve = Path.resolve
+
+    def private_resolve(_path, *args, **kwargs):
+        raise OSError(private)
+
+    def reject(label: str, operation, expected: str) -> None:
+        try:
+            operation()
+        except validator.Fail as exc:
+            require(str(exc) == expected and exc.__cause__ is None and exc.__suppress_context__,
+                    f"typed admission {label} leaked private exception context")
+            require(private not in str(exc), f"typed admission {label} leaked private path")
+        else:
+            raise Fail(f"typed admission {label} accepted private path")
+
+    try:
+        Path.resolve = private_resolve
+        reject("repo_relative fault", lambda: validator.repo_relative(CONTRACT),
+               "typed admission artifact path missing, unreadable, or escapes repository")
+    finally:
+        Path.resolve = original_resolve
+
+    reject("external path", lambda: validator.repo_relative(Path(tempfile.gettempdir()) / private),
+           "typed admission artifact path missing, unreadable, or escapes repository")
+    with guarded_temporary_directory(".tmp-typed-private-ref-", TMP_PARENT) as raw:
+        missing = Path(raw) / (private + ".json")
+        ref = missing.relative_to(ROOT).as_posix()
+        reject("missing canonical ref", lambda: validator.canonical_repo_file_ref(ref, "negative.private"),
+               "negative.private artifact missing or escapes repository")
+    require(validator.repo_relative(CONTRACT) == CONTRACT.relative_to(ROOT),
+            "typed admission repo_relative positive failed after private fault")
+    print("PASS: typed admission private path/ref errors and exception contexts suppressed")
+
+
 def main() -> int:
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     with guarded_temporary_directory(".tmp-typed-path-parent-negative-", TMP_PARENT) as raw:
@@ -499,6 +537,7 @@ def main() -> int:
     prove_nested_swap_during_cleanup_preserves_unowned_data()
     prove_file_swap_before_unlink_rejected()
     validator = load_validator()
+    prove_private_typed_admission_paths(validator)
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
     require(accepted == ROOT / canonical, "canonical in-repository authority ref did not resolve exactly")
