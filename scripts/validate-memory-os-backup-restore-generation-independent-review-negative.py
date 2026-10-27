@@ -117,6 +117,7 @@ def prove_pinned_execution_negative_mutations_rejected() -> None:
         require(fragment.count(original) == 1, "independent review pinned mutation anchor drift: " + name)
         mutated = ("".join(lines[:node.lineno - 1]) + fragment.replace(original, replacement, 1)
                    + "".join(lines[node.end_lineno:]))
+        ast.parse(mutated)  # Only valid Python weakening mutations count as negative proof.
         try:
             require_pinned_execution_negative_source(mutated)
         except Fail:
