@@ -56,6 +56,62 @@ def residue(root: Path) -> list[Path]:
     )
 
 
+def prove_bounded_registry_snapshot(writer) -> None:
+    """Exercise actual pre-append snapshot without changing canonical authorities."""
+    original_registry = writer.REGISTRY
+    private_marker = "PRIVATE_OBJECTIVE_SNAPSHOT_CANARY"
+    with tempfile.TemporaryDirectory(prefix="memory-os-objective-snapshot-") as tmp:
+        root = Path(tmp)
+        registry = root / "registry.json"
+        baseline = b'{"safe":true}\\n'.replace(b"\\\\n", b"\\n")
+        registry.write_bytes(baseline)
+        registry.chmod(0o640)
+        outside = root / "outside-canary.json"
+        outside.write_text(private_marker, encoding="utf-8")
+        alias = root / "registry-alias.json"
+        alias.symlink_to(outside)
+        fifo = root / "registry-fifo"
+        os.mkfifo(fifo)
+
+        def reject(path, label: str, expected: str) -> None:
+            writer.REGISTRY = path
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail as exc:
+                require(str(exc) == expected and exc.__suppress_context__ is not False
+                        and private_marker not in str(exc),
+                        f"registry snapshot {label} rejection drift")
+            else:
+                raise Fail(f"registry snapshot {label} unexpectedly accepted")
+
+        try:
+            writer.REGISTRY = registry
+            require(writer.snapshot_registry_for_append() == (baseline, 0o640),
+                    "registry snapshot positive bytes/mode control failed")
+            registry.write_bytes(b"x" * (writer.MAX_JSON_BYTES + 1))
+            reject(registry, "oversize",
+                   "recovery objective registry snapshot size limit exceeded")
+            registry.write_bytes(baseline)
+            reject(alias, "symlink",
+                   "recovery objective registry snapshot unreadable or unsafe")
+            reject(fifo, "FIFO",
+                   "recovery objective registry snapshot unsafe file type")
+            reject(root, "directory",
+                   "recovery objective registry snapshot unsafe file type")
+            reject(root / "missing-private-canary", "missing",
+                   "recovery objective registry snapshot unreadable or unsafe")
+            reject(Path("relative.json"), "relative",
+                   "recovery objective registry snapshot path invalid")
+            reject("not-a-path", "non-Path",
+                   "recovery objective registry snapshot path invalid")
+            require(registry.read_bytes() == baseline
+                    and outside.read_text(encoding="utf-8") == private_marker,
+                    "registry snapshot negative mutated fixture or outside canary")
+        finally:
+            writer.REGISTRY = original_registry
+    print("PASS: bounded registry snapshot positive and seven fail-closed negatives")
+
+
 def main() -> int:
     require(WRITER.is_file() and CONTRACT.is_file(), "recovery-objective append authority missing")
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
@@ -68,6 +124,7 @@ def main() -> int:
     require(callable(getattr(writer, "write_registry_transactionally", None)), "transactional registry writer missing")
     require(callable(getattr(writer, "require_actual_cli_authorities", None)), "recovery-objective CLI authority guard missing")
     writer.require_actual_cli_authorities()
+    prove_bounded_registry_snapshot(writer)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-objective-append-rollback-") as tmp:
         root = Path(tmp)
