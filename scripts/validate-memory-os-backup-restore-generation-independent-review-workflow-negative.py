@@ -168,11 +168,77 @@ def validate_transport_source(source: bytes, *, check_blob: bool = True) -> None
         raise SystemExit("independent-review transport negative complete source blob drift")
 
 
-def validate_helper_source(source: bytes) -> None:
+def require_helper_semantic_proof(source: bytes) -> None:
+    """Check fixture loader safety independently of the exact Git blob hash."""
+    try:
+        tree = ast.parse(source.decode("utf-8"))
+    except (UnicodeDecodeError, SyntaxError):
+        raise SystemExit("independent-review fixture helper semantic source unreadable") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    if not {"read_pinned_source", "load_pinned_module", "prove_pinned_import"} <= functions.keys():
+        raise SystemExit("independent-review fixture helper semantic functions missing")
+    reader = functions["read_pinned_source"]
+    loader = functions["load_pinned_module"]
+    proof = functions["prove_pinned_import"]
+
+    def calls(node, name):
+        return [item for item in ast.walk(node) if isinstance(item, ast.Call)
+                and isinstance(item.func, ast.Name) and item.func.id == name]
+
+    pinned_opens = [node for node in ast.walk(reader)
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id == "os"
+                    and node.func.attr == "open"
+                    and any(keyword.arg == "dir_fd" for keyword in node.keywords)]
+    if len(pinned_opens) != 2:
+        raise SystemExit("independent-review fixture helper ancestor/leaf pinning weakened")
+    if not any(isinstance(node, ast.Call) and ast.unparse(node) == "stream.read(MAX_MODULE_BYTES + 1)"
+               for node in ast.walk(reader)):
+        raise SystemExit("independent-review fixture helper bounded read weakened")
+    flags = {"O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"}
+    flag_loops = [node for node in ast.walk(reader) if isinstance(node, ast.For)
+                  and isinstance(node.iter, ast.Tuple)
+                  and {elt.value for elt in node.iter.elts if isinstance(elt, ast.Constant)}
+                  == flags]
+    if len(flag_loops) != 1:
+        raise SystemExit("independent-review fixture helper platform flags weakened")
+    if len(calls(loader, "read_pinned_source")) != 1:
+        raise SystemExit("independent-review fixture helper pinned source delegation weakened")
+    if not any(isinstance(node, ast.ClassDef) and node.name == "PinnedLoader"
+               and any(ast.unparse(base) == "importlib.machinery.SourceFileLoader"
+                       for base in node.bases)
+               for node in ast.walk(loader)):
+        raise SystemExit("independent-review fixture helper standard source loader missing")
+    if not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+               and node.func.attr == "exec_module" for node in ast.walk(loader)):
+        raise SystemExit("independent-review fixture helper module execution missing")
+    labels = {call.args[2].value for call in calls(proof, "expect_rejected")
+              if len(call.args) >= 3 and isinstance(call.args[2], ast.Constant)
+              and isinstance(call.args[2].value, str)}
+    if not {"independent_fixture_symlink", "independent_fixture_fifo",
+            "independent_fixture_oversized", "independent_fixture_compile",
+            "independent_fixture_compile_exit", "independent_fixture_fdopen",
+            "independent_fixture_close_after_close"} <= labels:
+        raise SystemExit("independent-review fixture helper real fault probes weakened")
+    proof_flag_loops = [node for node in ast.walk(proof) if isinstance(node, ast.For)
+                        and isinstance(node.iter, ast.Tuple)
+                        and {elt.value for elt in node.iter.elts if isinstance(elt, ast.Constant)}
+                        == flags]
+    if len(proof_flag_loops) != 1:
+        raise SystemExit("independent-review fixture helper unsupported flag probes missing")
+    entrypoints = [node for node in tree.body if isinstance(node, ast.If)
+                   and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                           and call.func.id == "prove_pinned_import" for call in ast.walk(node))]
+    if len(entrypoints) != 1:
+        raise SystemExit("independent-review fixture helper executable proof unreachable")
+
+
+def validate_helper_source(source: bytes, *, check_blob: bool = True) -> None:
+    require_helper_semantic_proof(source)
     if len(source) > 1024 * 1024:
         raise SystemExit("independent-review fixture helper source oversized")
     git_blob = b"blob " + str(len(source)).encode("ascii") + b"\0" + source
-    if hashlib.sha1(git_blob).hexdigest() != REVIEWED_HELPER_GIT_BLOB_SHA:
+    if check_blob and hashlib.sha1(git_blob).hexdigest() != REVIEWED_HELPER_GIT_BLOB_SHA:
         raise SystemExit("independent-review fixture helper source binding drift")
 
 
@@ -480,6 +546,8 @@ def main() -> int:
         ("remove unsupported flag loop", b'        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):\n', b'        for flag in ():\n'),
         ("remove compile exit probe", b'            expect_rejected(root, source, "independent_fixture_compile_exit")\n', b'            pass\n'),
         ("remove pinned source reader delegation", b"source = read_pinned_source(root, path)", b"source = path.read_bytes()"),
+        ("remove bounded source read", b"stream.read(MAX_MODULE_BYTES + 1)", b"stream.read()"),
+        ("remove ancestor dir_fd", b"parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)", b"parent_fd = os.open(component, directory_flags)"),
     ):
         if old not in helper_source:
             raise SystemExit("independent-review helper negative anchor missing: " + label)
@@ -487,10 +555,11 @@ def main() -> int:
         if mutated_helper == helper_source:
             raise SystemExit("independent-review helper negative inert: " + label)
         try:
-            validate_helper_source(mutated_helper)
+            validate_helper_source(mutated_helper, check_blob=False)
         except SystemExit:
             continue
         raise SystemExit("independent-review helper mutation accepted: " + label)
+    print("PASS independent-review helper 8 semantic source mutations")
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
