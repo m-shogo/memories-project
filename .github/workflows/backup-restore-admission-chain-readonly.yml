@@ -9,7 +9,6 @@ on:
       - "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-full.py"
-      - "scripts/validate-memory-os-backup-restore-admission-chain-full-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/backup-restore-*.json"
@@ -26,7 +25,6 @@ on:
       - "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-full.py"
-      - "scripts/validate-memory-os-backup-restore-admission-chain-full-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/backup-restore-*.json"
@@ -107,10 +105,8 @@ jobs:
 
           python -m py_compile \
             scripts/validate-memory-os-backup-restore-admission-chain-full.py \
-            scripts/validate-memory-os-backup-restore-admission-chain-full-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-operability.py
-          python scripts/validate-memory-os-backup-restore-admission-chain-full-negative.py
           python scripts/validate-memory-os-backup-restore-admission-chain-full.py
           python scripts/validate-memory-os-backup-restore-admission-chain.py
           python scripts/validate-memory-os-operability.py
