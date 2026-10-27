@@ -15,7 +15,7 @@ WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-revie
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
 HELPER = ROOT / "scripts/ops_independent_review_fixture_loader.py"
 TRANSPORT = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py"
-REVIEWED_TRANSPORT_GIT_BLOB_SHA = "029aaf34c27c05a3d429252a2978963c4675b3df"
+REVIEWED_TRANSPORT_GIT_BLOB_SHA = "7754999063813f875e8fc5cd6272972814b5c909"
 REVIEWED_HELPER_GIT_BLOB_SHA = "1091ad96042f16bbb538fad2b81050a6f4fa6450"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),

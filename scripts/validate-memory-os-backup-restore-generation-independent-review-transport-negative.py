@@ -72,6 +72,101 @@ def prove_source_order_import_guard() -> None:
     print("PASS: independent source-order negative importer rejects 2 source mutations")
 
 
+WORKFLOW_SOURCE_GUARD = (
+    ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-workflow-negative.py"
+)
+
+
+def require_workflow_guard_pinning(code: str) -> None:
+    """Independently bind the bootstrap reader, its real fault probes and reachability."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise Fail("independent workflow guard source syntax drift") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    required = {
+        "read_bounded_regular": (
+            "checked = path.lstat()",
+            'for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")',
+            "directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK",
+            "for component in path.parts[1:-1]:",
+            "parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)",
+            "fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,",
+            "opened = os.fstat(fd)",
+            "stream.read(limit + 1)",
+            "for directory_fd in reversed(directory_fds):",
+            "if cleanup_failed:",
+            "raise SystemExit(PRIVATE_SOURCE_ERROR) from None",
+        ),
+        "prove_bounded_reader": (
+            "rejected(fifo)",
+            "for unsupported in (None, 0):",
+            "if not swapped and target == parent.name",
+            "if not swapped_after_pin and target == pinned.name",
+            "parent.rename(parked)",
+            "parent.symlink_to(external",
+            "canary.read_bytes()",
+            'len(os.listdir("/proc/self/fd"))',
+            "os.open = original_open",
+        ),
+        "main": ("prove_bounded_reader()",),
+    }
+    for name, tokens in required.items():
+        node = functions.get(name)
+        require(node is not None, "independent workflow source guard function missing: " + name)
+        fragment = ast.get_source_segment(code, node) or ""
+        for token in tokens:
+            require(token in fragment, "independent workflow source guard weakened: " + name)
+    reader = functions["read_bounded_regular"]
+    pinned_opens = [
+        node for node in ast.walk(reader)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "os"
+        and node.func.attr == "open"
+        and any(keyword.arg == "dir_fd" for keyword in node.keywords)
+    ]
+    require(len(pinned_opens) == 2, "independent workflow guard must pin ancestor and leaf")
+
+
+def prove_workflow_guard_mutations_rejected() -> None:
+    try:
+        code = read_pinned_source(ROOT, WORKFLOW_SOURCE_GUARD).decode("utf-8")
+    except (FixtureImportFail, UnicodeDecodeError):
+        raise Fail("independent workflow source guard unreadable") from None
+    require_workflow_guard_pinning(code)
+    mutations = (
+        ("read_bounded_regular", "for component in path.parts[1:-1]:", "for component in ():"),
+        ("read_bounded_regular", "parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)",
+         "parent_fd = os.open(component, directory_flags)"),
+        ("read_bounded_regular", "for directory_fd in reversed(directory_fds):",
+         "for directory_fd in ():"),
+        ("read_bounded_regular", "stream.read(limit + 1)", "stream.read()"),
+        ("read_bounded_regular", "if cleanup_failed:", "if False:"),
+        ("prove_bounded_reader", "if not swapped_after_pin and target == pinned.name",
+         "if False and target == pinned.name"),
+        ("prove_bounded_reader", "for unsupported in (None, 0):", "for unsupported in ():"),
+        ("main", "prove_bounded_reader()", "pass"),
+    )
+    for name, old, new in mutations:
+        tree = ast.parse(code)
+        nodes = [node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == name]
+        require(len(nodes) == 1, "independent workflow guard mutation function drift")
+        node = nodes[0]
+        lines = code.splitlines(keepends=True)
+        fragment = "".join(lines[node.lineno - 1:node.end_lineno])
+        require(fragment.count(old) == 1, "independent workflow guard mutation anchor drift")
+        mutant = "".join(lines[:node.lineno - 1]) + fragment.replace(old, new, 1) + "".join(lines[node.end_lineno:])
+        try:
+            require_workflow_guard_pinning(mutant)
+        except Fail:
+            continue
+        raise Fail("independent workflow guard mutation accepted: " + name)
+    print("PASS independent workflow bootstrap ancestor pin and 8 deletion mutations")
+
+
 def read_authority(path: Path) -> bytes:
     """Bound and pin canonical authority bytes before and after transport fault probes."""
     try:
@@ -94,6 +189,7 @@ def expect_transport_rejected(module: Any, mutate: Callable[[], None], restore: 
 
 
 def main() -> int:
+    prove_workflow_guard_mutations_rejected()
     prove_source_order_import_guard()
     module = load_validator()
     canonical_contract = read_authority(module.CONTRACT)
