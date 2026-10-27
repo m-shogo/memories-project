@@ -67,7 +67,7 @@ def prove_private_negative_classifier(writer) -> None:
 
     for label, fault, expected_output in (
         ("unexpected", TypeError(marker), ""),
-        ("expected", writer.Fail(marker), "PASS reject: private classifier\\n"),
+        ("expected", writer.Fail(marker), "PASS reject: private classifier" + chr(10)),
     ):
         captured = io.StringIO()
         with redirect_stdout(captured):
@@ -94,7 +94,7 @@ def prove_bounded_registry_snapshot(writer) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-objective-snapshot-") as tmp:
         root = Path(tmp)
         registry = root / "registry.json"
-        baseline = b'{"safe":true}\\n'
+        baseline = b'{"safe":true}' + bytes([10])
         registry.write_bytes(baseline)
         registry.chmod(0o640)
         outside = root / "outside-canary.json"
