@@ -90,7 +90,7 @@ def load_target(path: Path, name: str):
                 "generation binding target import rejected")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except Exception:
+    except (Exception, SystemExit):
         raise Fail("generation binding target import rejected") from None
     return module
 
@@ -162,6 +162,17 @@ def prove_target_import_unsafe_sources() -> None:
                         "generation binding target unsafe source leaked private diagnostics")
             else:
                 raise Fail("generation binding target accepted unsafe source")
+        exit_source = sandbox / "exit.py"
+        exit_source.write_text("raise SystemExit('PRIVATE_BINDING_TARGET_EXIT_CANARY')\\n",
+                               encoding="utf-8")
+        try:
+            load_target(exit_source, "binding_target_system_exit")
+        except Fail as exc:
+            require(str(exc) == "generation binding target import rejected"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
+                    "generation binding target SystemExit leaked private diagnostics")
+        else:
+            raise Fail("generation binding target accepted SystemExit source")
         for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
             original_flag = getattr(os, flag)
             for unsupported in (0, None):
