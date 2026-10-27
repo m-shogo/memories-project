@@ -187,35 +187,59 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def write_text(path: Path, text: str) -> None:
-    relative = repo_relative(path)
-    require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
-    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    """Bounded atomic authority replacement with explicit FD/temp ownership."""
+    require(isinstance(path, Path) and path.is_absolute(),
+            "preflight reconcile write path unsafe")
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("preflight reconcile write path unsafe") from None
+    require(lexical == resolved and path.is_file() and not path.is_symlink(),
+            "preflight reconcile write path unsafe")
+    require(isinstance(text, str), "preflight reconcile write payload invalid")
+    try:
+        payload = text.encode("utf-8")
+    except UnicodeError:
+        raise Fail("preflight reconcile write payload invalid") from None
+    require(len(payload) <= MAX_AUTHORITY_BYTES,
+            "preflight reconcile write size limit exceeded")
+
+    fd: int | None = None
     temp_name: str | None = None
     try:
+        existing_mode = path.stat().st_mode & 0o7777
         fd, temp_name = tempfile.mkstemp(
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            dir=path.parent,
-            text=True,
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent, text=True,
         )
-        if existing_mode is not None:
-            os.fchmod(fd, existing_mode)
+        os.fchmod(fd, existing_mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            handle.write(text)
+            fd = None
+            written = handle.write(text)
+            require(type(written) is int and written == len(text),
+                    "preflight reconcile write short buffered write refused")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, path)
         temp_name = None
-    except OSError as exc:
-        raise Fail(f"cannot atomically write {relative}: {exc}") from exc
+    except (OSError, UnicodeError, ValueError, TypeError):
+        raise Fail("preflight reconcile atomic write failed") from None
     finally:
+        cleanup_failed = False
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                cleanup_failed = True
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
             except FileNotFoundError:
                 pass
             except OSError:
-                pass
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("preflight reconcile atomic cleanup failed") from None
 
 
 def load_validator_module():
