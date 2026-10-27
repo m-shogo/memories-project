@@ -907,8 +907,14 @@ def prove_preflight_reconcile_private_path_diagnostics(reconciler: object) -> No
     def fail_private_import(_spec):
         raise OSError(private)
 
+    def fail_private_runtime(_spec):
+        raise RuntimeError(private)
+
     try:
         reconciler.importlib.util.module_from_spec = fail_private_import
+        require_private_fail(reconciler.load_validator_module,
+                             "preflight reconcile validator import unavailable")
+        reconciler.importlib.util.module_from_spec = fail_private_runtime
         require_private_fail(reconciler.load_validator_module,
                              "preflight reconcile validator import unavailable")
     finally:
