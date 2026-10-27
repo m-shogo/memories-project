@@ -1349,7 +1349,7 @@ def prove_typed_private_path_negative_reachability() -> None:
         ("invocation", "main", "    prove_private_typed_admission_paths(validator)\n", "    pass\n"),
         ("fault injection", "prove_private_typed_admission_paths", "        Path.resolve = private_resolve\n", "        pass\n"),
         ("context assertion", "prove_private_typed_admission_paths", "exc.__suppress_context__", "False"),
-        ("import invocation", "main", "    prove_private_typed_admission_import_errors()\n", "    pass\n"),
+        ("import invocation", "main", "    prove_private_typed_admission_import_errors(validator)\n", "    pass\n"),
         ("import fault injection", "prove_private_typed_admission_import_errors", "            importlib.util.module_from_spec = private_import\n", "            pass\n"),
         ("import context assertion", "prove_private_typed_admission_import_errors", "exc.__suppress_context__", "False"),
     ):
