@@ -524,9 +524,11 @@ def main() -> int:
             writer.os.replace = reject_replace
             try:
                 writer.write_registry_transactionally(candidate)
-            except OSError as exc:
-                require("synthetic promotion registry replace rejection" in str(exc), f"unexpected promotion replace rejection: {exc}")
-                print("PASS reject: promotion registry candidate replace rejection")
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review registry atomic write failed; original preserved"
+                        and exc.__suppress_context__,
+                        "promotion registry replace failure disclosed private diagnostics")
+                print("PASS reject: promotion registry candidate replace failure is private")
             else:
                 raise Fail("promotion registry candidate replace rejection unexpectedly succeeded")
             finally:
@@ -535,6 +537,81 @@ def main() -> int:
             require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "promotion registry mode changed after candidate replace rejection")
             require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")), "promotion registry replace rejection left temporary residue")
             print("PASS preserve: promotion registry replace rejection retains bytes and mode without temporary residue")
+
+            private_marker = "PRIVATE_PROMOTION_PREWRITE_CANARY_DO_NOT_LOG"
+            original_mkstemp = writer.tempfile.mkstemp
+            writer.tempfile.mkstemp = lambda **_kwargs: (_ for _ in ()).throw(OSError(private_marker))
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review registry atomic write failed; original preserved"
+                        and exc.__suppress_context__ and private_marker not in str(exc),
+                        "promotion registry temporary creation error disclosed private diagnostics")
+                print("PASS diagnostics: promotion atomic staging creation failure is private")
+            else:
+                raise Fail("promotion registry temporary creation rejection unexpectedly succeeded")
+            finally:
+                writer.tempfile.mkstemp = original_mkstemp
+            require(temp_registry.read_bytes() == before, "promotion registry staging failure changed original bytes")
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")),
+                    "promotion registry staging failure left temporary residue")
+
+            original_fsync = writer.os.fsync
+            writer.os.fsync = lambda _fd: (_ for _ in ()).throw(OSError(private_marker))
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review registry atomic write failed; original preserved"
+                        and exc.__suppress_context__ and private_marker not in str(exc),
+                        "promotion registry staging fsync error disclosed private diagnostics")
+                print("PASS diagnostics: promotion atomic staging fsync failure is private")
+            else:
+                raise Fail("promotion registry staging fsync rejection unexpectedly succeeded")
+            finally:
+                writer.os.fsync = original_fsync
+            require(temp_registry.read_bytes() == before, "promotion registry fsync failure changed original bytes")
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")),
+                    "promotion registry fsync failure left temporary residue")
+
+            original_unlink = writer.os.unlink
+            def reject_post_replace_cleanup(path, *args, **kwargs):
+                if ".backup-restore-promotion-review." in str(path) and str(path).endswith(".tmp"):
+                    raise OSError(private_marker)
+                return original_unlink(path, *args, **kwargs)
+
+            writer.os.unlink = reject_post_replace_cleanup
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review registry atomic write failed; rollback completed"
+                        and exc.__suppress_context__ and private_marker not in str(exc),
+                        "promotion registry post-replace cleanup error bypassed rollback/private class")
+                print("PASS rollback: promotion post-replace cleanup failure restores original")
+            else:
+                raise Fail("promotion registry post-replace cleanup rejection unexpectedly succeeded")
+            finally:
+                writer.os.unlink = original_unlink
+            require(temp_registry.read_bytes() == before, "promotion registry cleanup failure retained candidate bytes")
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode,
+                    "promotion registry cleanup failure changed original mode")
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")),
+                    "promotion registry cleanup failure left temporary residue")
+
+            writer.os.replace = reject_replace
+            try:
+                writer.atomic_restore(before, before_mode)
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review registry atomic restore failed"
+                        and exc.__suppress_context__ and private_marker not in str(exc),
+                        "promotion registry atomic restore exposed private replace error")
+                print("PASS diagnostics: promotion atomic restore replace failure is private")
+            else:
+                raise Fail("promotion registry atomic restore replace rejection unexpectedly succeeded")
+            finally:
+                writer.os.replace = original_replace
+            require(temp_registry.read_bytes() == before, "promotion registry restore rejection changed original bytes")
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")),
+                    "promotion registry restore rejection left temporary residue")
         finally:
             writer.REGISTRY = original_registry_path
             writer.validate_registry_for_append = original_validate_registry

@@ -408,7 +408,10 @@ def reconcile_current_decision(registry: dict[str, Any]) -> tuple[list[dict[str,
 
 
 def atomic_write(value: dict[str, Any], mode: int) -> None:
-    fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-promotion-review.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-promotion-review.", suffix=".tmp", dir=REGISTRY.parent)
+    except OSError:
+        raise Fail("promotion review registry atomic write failed") from None
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, ensure_ascii=False)
@@ -417,15 +420,22 @@ def atomic_write(value: dict[str, Any], mode: int) -> None:
             os.fchmod(handle.fileno(), mode)
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+    except (OSError, TypeError, ValueError, OverflowError):
+        raise Fail("promotion review registry atomic write failed") from None
     finally:
         try:
             os.unlink(temp_name)
         except FileNotFoundError:
             pass
+        except OSError:
+            raise Fail("promotion review registry atomic write cleanup failed") from None
 
 
 def atomic_restore(payload: bytes, mode: int) -> None:
-    fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-promotion-review-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-promotion-review-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    except OSError:
+        raise Fail("promotion review registry atomic restore failed") from None
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
@@ -433,20 +443,38 @@ def atomic_restore(payload: bytes, mode: int) -> None:
             os.fchmod(handle.fileno(), mode)
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+    except OSError:
+        raise Fail("promotion review registry atomic restore failed") from None
     finally:
         try:
             os.unlink(temp_name)
         except FileNotFoundError:
             pass
+        except OSError:
+            raise Fail("promotion review registry atomic restore cleanup failed") from None
 
 
 def write_registry_transactionally(value: dict[str, Any]) -> None:
     try:
         original = REGISTRY.read_bytes()
         original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
-    except OSError as exc:
-        raise Fail("cannot snapshot promotion review registry before append") from exc
-    atomic_write(value, original_mode)
+    except OSError:
+        raise Fail("cannot snapshot promotion review registry before append") from None
+    try:
+        atomic_write(value, original_mode)
+    except Exception:
+        try:
+            unchanged = (REGISTRY.read_bytes() == original
+                         and stat.S_IMODE(REGISTRY.stat().st_mode) == original_mode)
+        except OSError:
+            unchanged = False
+        if unchanged:
+            raise Fail("promotion review registry atomic write failed; original preserved") from None
+        try:
+            atomic_restore(original, original_mode)
+        except Exception:
+            raise Fail("promotion review registry atomic write failed; rollback incomplete") from None
+        raise Fail("promotion review registry atomic write failed; rollback completed") from None
     try:
         validate_registry_for_append(load(REGISTRY))
     except Exception:
@@ -455,7 +483,6 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
         except Exception:
             raise Fail("promotion review registry append validation failed; rollback incomplete") from None
         raise Fail("promotion review registry append validation failed; rollback completed") from None
-
 
 def main() -> int:
     require_cli_authorities()
