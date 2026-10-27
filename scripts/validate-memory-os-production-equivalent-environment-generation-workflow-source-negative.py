@@ -245,6 +245,9 @@ def negatives(publisher: str, independent: str) -> None:
 
 
 NEGATIVE_REACHABILITY = {
+    "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py": (
+        "prove_private_generation_suite_transport",
+    ),
     "scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py": (
         "prove_bounded_digest_reader",
         "prove_bounded_source_binding",
@@ -271,9 +274,13 @@ def check_negative_reachability(tree: ast.Module, path: str, expected: tuple[str
                  and isinstance(node.value, ast.Call)
                  and isinstance(node.value.func, ast.Name)
                  and node.value.func.id == function
-                 and node.value.args
-                 and isinstance(node.value.args[0], ast.Name)
-                 and node.value.args[0].id == "writer"
+                 and (
+                     (node.value.args
+                      and isinstance(node.value.args[0], ast.Name)
+                      and node.value.args[0].id == "writer")
+                     or (function == "prove_private_generation_suite_transport"
+                         and not node.value.args)
+                 )
                  and not node.value.keywords]
         if len(definitions) != 1 or len(calls) != 1:
             raise SystemExit("environment generation negative executable guard missing: "
@@ -304,7 +311,7 @@ def prove_negative_reachability() -> None:
                 continue
             raise SystemExit("environment generation negative removal mutation accepted: "
                              + path + " " + function)
-    print("PASS: environment generation real-writer negative reachability and removal mutations (4 cases)")
+    print("PASS: environment generation real-writer negative reachability and removal mutations (5 cases)")
 
 
 def main() -> int:
