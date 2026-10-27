@@ -5,13 +5,16 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import io
 import os
+import sys
+import types
 import secrets
 import shutil
 import stat
 import tempfile
 import weakref
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Callable
 
@@ -528,6 +531,54 @@ def prove_negative_subprocess_redaction(validator) -> None:
     print("PASS: drill request negative subprocess bounded execution and fixed private failure classes")
 
 
+def prove_private_helper_import(validator) -> None:
+    """No Python-level private import output or raw exception may escape."""
+    module = validator.load_module(validator.WRITER, "memory_os_drill_request_import_positive")
+    require(callable(getattr(module, "require_cli_authorities", None)),
+            "drill request canonical writer positive import failed")
+
+    original_spec = validator.importlib.util.spec_from_file_location
+    original_module = validator.importlib.util.module_from_spec
+    marker = "synthetic-secret-drill-request-import"
+
+    class LoudLoader:
+        def __init__(self, should_fail):
+            self.should_fail = should_fail
+
+        def exec_module(self, module):
+            print(marker)
+            print(marker, file=sys.stderr)
+            module.positive = True
+            if self.should_fail:
+                raise OSError(marker)
+
+    try:
+        for should_fail in (False, True):
+            spec = types.SimpleNamespace(loader=LoudLoader(should_fail))
+            validator.importlib.util.spec_from_file_location = lambda *_args, **_kwargs: spec
+            validator.importlib.util.module_from_spec = lambda _spec: types.SimpleNamespace()
+            output, errors = io.StringIO(), io.StringIO()
+            with redirect_stdout(output), redirect_stderr(errors):
+                if should_fail:
+                    try:
+                        validator.load_module(validator.WRITER, "memory_os_drill_import_negative")
+                    except validator.Fail as exc:
+                        require(str(exc) == "drill request canonical helper import failed",
+                                "drill request import failure class drift")
+                        require(exc.__cause__ is None, "drill request import retained private exception context")
+                    else:
+                        raise Fail("drill request noisy import failure accepted")
+                else:
+                    imported = validator.load_module(validator.WRITER, "memory_os_drill_import_success")
+                    require(imported.positive is True, "drill request noisy positive import failed")
+            require(marker not in output.getvalue() + errors.getvalue(),
+                    "drill request import disclosed private stdout/stderr")
+    finally:
+        validator.importlib.util.spec_from_file_location = original_spec
+        validator.importlib.util.module_from_spec = original_module
+    print("PASS: drill request canonical helper import suppresses Python output and private exceptions")
+
+
 def prove_drill_request_json_reader(validator) -> None:
     """Exercise the actual drill planning reader with no protected-authority writes."""
     protected_paths = (validator.CONTRACT, validator.REGISTRY, validator.GEN_REGISTRY, validator.OBJECTIVES_REGISTRY)
@@ -704,6 +755,7 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     prove_drill_request_json_reader(validator)
     prove_negative_subprocess_redaction(validator)
+    prove_private_helper_import(validator)
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
     prove_reconciler_bounded_reader(reconciler)
     prove_reconciler_strict_json(reconciler)

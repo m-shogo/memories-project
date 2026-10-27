@@ -10,6 +10,7 @@ import os
 import stat
 import subprocess
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -173,14 +174,17 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 def load_module(path: Path, name: str):
-    relative = repo_relative(path)
-    spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    repo_relative(path)
     try:
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+        with open(os.devnull, "w", encoding="utf-8") as private_sink:
+            with redirect_stdout(private_sink), redirect_stderr(private_sink):
+                spec = importlib.util.spec_from_file_location(name, path)
+                require(spec is not None and spec.loader is not None,
+                        "drill request canonical helper import failed")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("drill request canonical helper import failed") from None
     return module
 
 

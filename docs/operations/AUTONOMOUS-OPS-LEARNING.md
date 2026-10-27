@@ -15055,3 +15055,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Three-authority rollback remains fail-closed and distinguishes completed from incomplete rollback without leaking raw exception text; exact-source negative/admission CI passed.
 - **Why safe/reusable mechanism:** Reused verified objective reconcile transaction error classification and retained exhaustive rollback attempts, with synthetic faults only.
 - **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain required. Learning and CI cannot satisfy readiness or recovery gates.
+
+## 2026-10-27 — Drill-request validator JSON source identity is descriptor-pinned
+
+### Material failure
+- **Symptom/evidence:** At `490564a9d3fec5e8bc5250060a149c344310422c`, drill-request validator `load` checked a canonical path and then reopened it using `Path.open`; a replacement between the two lookups could redirect reads despite the earlier check. No actual source substitution or production evidence tampering was observed.
+- **Verified root cause:** The validator's independent JSON reader lacked a pinned regular-file descriptor even though its parser already enforced 1 MiB and strict JSON semantics. **Failed approach:** treating pre-open path validation as immutable file identity.
+- **Correction:** `e2bd49051e972abe7cf4cae1dd6e9df9c8be3e0a` adds no-follow/nonblocking descriptor open, `fstat` regular-file enforcement, bounded descriptor reads, fixed private errors and close handling.
+- **Executable recurrence guard:** CI-reached actual-function negative suite adds raced-open fault injection verifying flags, fixed error and unchanged positive JSON, alongside existing duplicate-key, oversized, UTF-8, symlink and special-path tests. Exact-source Unreadable Authority Negatives `40443805972`, Drill Request Admission `40443805950`, Reconcile Rollback `40443805949` and Autonomous Learning Guard `40443805939` completed SUCCESS.
+- **Retry condition:** Revisit only on observed file-identity/descriptor regression or reviewed filesystem policy change, never by inventing external recovery evidence.
+
+### Material success
+- **Outcome/evidence:** Drill-request validator JSON reads now pin the actual regular file and pass exact-source negative/admission CI.
+- **Why safe/reusable mechanism:** Enforce source identity at the actual read, not just during path preflight; synthetic race injection does not create planning requests, credentials, traffic or readiness.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy recovery or production gates.
