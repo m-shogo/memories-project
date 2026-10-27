@@ -205,14 +205,14 @@ def write_text(path: Path, text: str) -> None:
             raise Fail("typed reconcile atomic cleanup failed") from None
 
 def restore_original_text(original_text: dict[Path, str]) -> None:
-    failures: list[str] = []
+    rollback_incomplete = False
     for path, text in original_text.items():
         try:
             write_text(path, text)
-        except Exception as exc:
-            failures.append(f"{repo_relative(path)}: {type(exc).__name__}: {exc}")
-    if failures:
-        raise Fail("typed non-resurrection rollback restore failures: " + "; ".join(failures))
+        except Exception:
+            rollback_incomplete = True
+    if rollback_incomplete:
+        raise Fail("typed non-resurrection rollback incomplete") from None
 
 def load(path: Path) -> dict[str, Any]:
     """Reject ambiguous typed authority JSON independently of admission validator."""
@@ -308,8 +308,8 @@ def main() -> int:
         generation_writer.validate_registry_for_append(generation_registry)
     except RuntimeError as exc:
         if exc.__class__.__name__ != "Fail":
-            raise
-        raise Fail(f"append-only recovery authority invalid before reconcile: {exc}") from exc
+            raise Fail("typed append-only authority validation unavailable") from None
+        raise Fail("typed append-only recovery authority invalid") from None
 
     typed_rows = registry.get("records")
     generation_rows = generation_registry.get("records")
@@ -396,12 +396,12 @@ def main() -> int:
             write_text(path, text)
         run_post_validator(VALIDATOR, VALIDATOR_REL, "typed non-resurrection validator")
         run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception as exc:
+    except Exception:
         try:
             restore_original_text(original_text)
-        except Fail as rollback_exc:
-            raise Fail(f"typed non-resurrection reconcile failed: {exc}; rollback incomplete: {rollback_exc}") from exc
-        raise
+        except Exception:
+            raise Fail("typed non-resurrection reconcile failed; rollback incomplete") from None
+        raise Fail("typed non-resurrection reconcile failed; rollback completed") from None
 
     print("Memory OS backup/restore typed non-resurrection authority reconciliation PASS")
     print("canonical typed/generation data, writer and validator authorities enforced: true")
