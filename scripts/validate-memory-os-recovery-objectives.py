@@ -205,6 +205,17 @@ def run_negative() -> None:
     )
 
 
+def require_negative_admission_cases(negative_cases: Any) -> None:
+    """Validate typed case authority before constructing any set."""
+    require(
+        isinstance(negative_cases, list)
+        and all(isinstance(case, str) for case in negative_cases)
+        and len(negative_cases) == len(set(negative_cases))
+        and set(negative_cases) == EXPECTED_NEGATIVE_CASES,
+        "negative admission case authority drift",
+    )
+
+
 def main() -> int:
     enforce_runtime_authorities()
     contract = load(CONTRACT)
@@ -267,13 +278,7 @@ def main() -> int:
         "rawUrlsSecretsAccountAndSessionIdentifiersForbidden",
     ):
         require(rules.get(key) is True, f"required recovery-objective rule missing: {key}")
-    negative_cases = contract.get("negativeAdmissionCases")
-    require(
-        isinstance(negative_cases, list)
-        and len(negative_cases) == len(set(negative_cases))
-        and set(negative_cases) == EXPECTED_NEGATIVE_CASES,
-        "negative admission case authority drift",
-    )
+    require_negative_admission_cases(contract.get("negativeAdmissionCases"))
 
     rows = writer.validate_registry_for_append(registry)
     count = registry.get("approvedObjectiveCount")
