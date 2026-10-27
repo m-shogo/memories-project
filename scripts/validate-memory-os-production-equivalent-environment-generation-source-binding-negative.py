@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import os
 import json
 import subprocess
 import sys
@@ -145,6 +147,83 @@ def run_in_isolated_worktree() -> int:
     return 0
 
 
+def prove_bounded_digest_reader(writer) -> None:
+    """Exercise the real generation environment-record digest reader in isolation."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-digest-") as tmp:
+        parent = Path(tmp)
+        source = parent / "environment-record.json"
+        payload = b'{"sentinel":"bounded"}\n'
+        source.write_bytes(payload)
+        require(writer.sha256(source) == hashlib.sha256(payload).hexdigest(),
+                "generation bounded digest positive control failed")
+        source.write_bytes(b"x" * (writer.MAX_SOURCE_BYTES + 1))
+        try:
+            writer.sha256(source)
+        except writer.Fail as exc:
+            require(str(exc) == "environmentRecordRef source file size limit exceeded",
+                    "oversized generation digest wrong rejection class")
+        else:
+            raise Fail("oversized generation digest accepted")
+        source.write_bytes(payload)
+
+        external = parent / "external-canary.json"
+        external.write_bytes(b"PRIVATE_GENERATION_DIGEST_CANARY")
+        alias = parent / "source-alias.json"
+        alias.symlink_to(external)
+        try:
+            writer.sha256(alias)
+        except writer.Fail as exc:
+            require(str(exc) == "environmentRecordRef cannot be read for immutable source binding"
+                    and exc.__suppress_context__,
+                    "generation digest symlink leaked private diagnostics")
+        else:
+            raise Fail("generation digest followed symlink")
+        require(external.read_bytes() == b"PRIVATE_GENERATION_DIGEST_CANARY",
+                "generation digest mutated external canary")
+
+        fifo = parent / "source-fifo.json"
+        os.mkfifo(fifo)
+        for unsafe in (fifo, parent):
+            try:
+                writer.sha256(unsafe)
+            except writer.Fail as exc:
+                require(str(exc) == "environmentRecordRef source is not a regular file",
+                        "generation digest special file wrong rejection class")
+            else:
+                raise Fail("generation digest accepted special file")
+
+        original_fdopen = writer.os.fdopen
+        opened: list[int] = []
+
+        def reject_fdopen(fd, *_args, **_kwargs):
+            opened.append(fd)
+            raise OSError("PRIVATE_GENERATION_DIGEST_FDOPEN_CANARY")
+
+        writer.os.fdopen = reject_fdopen
+        try:
+            try:
+                writer.sha256(source)
+            except writer.Fail as exc:
+                require(str(exc) == "environmentRecordRef cannot be read for immutable source binding"
+                        and exc.__suppress_context__,
+                        "generation digest fdopen failure leaked private diagnostics")
+            else:
+                raise Fail("generation digest fdopen failure unexpectedly accepted")
+        finally:
+            writer.os.fdopen = original_fdopen
+        require(len(opened) == 1, "generation digest fdopen negative not reached")
+        for fd in opened:
+            try:
+                os.fstat(fd)
+            except OSError:
+                pass
+            else:
+                raise Fail("generation digest fdopen failure leaked descriptor")
+        require(source.read_bytes() == payload,
+                "generation digest reader modified source bytes")
+    print("PASS reject: bounded generation digest refuses oversized/special sources and closes failed descriptors")
+
+
 def prove_bounded_source_binding(writer, source_commit: str) -> None:
     """Exercise bounded immutable Git blobs with real writer and private faults."""
     path = ENVIRONMENT_RECORD_FIXTURE
@@ -247,6 +326,7 @@ def main() -> int:
 
     writer = load_writer()
     source = head_sha()
+    prove_bounded_digest_reader(writer)
     prove_bounded_source_binding(writer, source)
     refs = tuple(path.relative_to(ROOT).as_posix() for _, path in EVIDENCE_CASES)
     require(len(set(refs)) == len(refs), "source-binding negative suite requires distinct evidence refs")
