@@ -1610,9 +1610,9 @@ def main() -> int:
         validator.enforce_execution_transport = original_guard
 
     exercise_registry_transaction_transport()
-    exercise_writer_snapshot_transport()
     exercise_reconciler_transaction_transport()
     prove_typed_transport_fixture_parent_guard()
+    exercise_writer_snapshot_transport()
 
     print("Typed non-resurrection execution/registry/reconcile transport negative suite PASS")
     print("subprocess/import loader/guard substitution accepted: false")
