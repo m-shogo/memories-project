@@ -6,6 +6,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -140,19 +142,56 @@ def load(path: Path) -> dict[str, Any]:
         require(not candidate.is_symlink(), "preflight JSON symlink refused")
     require(path.is_file(), "preflight JSON missing or unsafe")
     try:
-        path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
-    except (OSError, ValueError):
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, RuntimeError, ValueError):
         raise Fail("preflight JSON escaped repository") from None
+    require(lexical == resolved, "preflight JSON escaped repository")
+    if not all(
+        type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")
+    ):
+        raise Fail("preflight JSON nofollow support required") from None
+
+    directories: list[int] = []
+    fd = -1
     try:
-        with path.open("rb") as source:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+        parent_fd = os.open(ROOT, directory_flags)
+        directories.append(parent_fd)
+        for component in lexical.parts[:-1]:
+            parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            directories.append(parent_fd)
+        fd = os.open(lexical.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+        require(stat.S_ISREG(os.fstat(fd).st_mode), "preflight JSON missing or unsafe")
+        with os.fdopen(fd, "rb") as source:
+            fd = -1
             raw = source.read(MAX_JSON_BYTES + 1)
-        require(len(raw) <= MAX_JSON_BYTES, "preflight JSON exceeds reviewed read limit")
+    except (OSError, ValueError):
+        raise Fail("preflight JSON unreadable or invalid") from None
+    finally:
+        cleanup_failed = False
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                cleanup_failed = True
+        for directory_fd in reversed(directories):
+            try:
+                os.close(directory_fd)
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("preflight JSON cleanup failed") from None
+
+    require(len(raw) <= MAX_JSON_BYTES, "preflight JSON exceeds reviewed read limit")
+    try:
         value = json.loads(raw.decode("utf-8"),
                            parse_constant=reject_nonfinite_constant,
                            parse_float=parse_finite_float,
                            parse_int=parse_bounded_int,
                            object_pairs_hook=reject_duplicate_json_keys)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+    except (UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise Fail("preflight JSON unreadable or invalid") from None
     require(isinstance(value, dict), "preflight JSON root must be object")
     return value
