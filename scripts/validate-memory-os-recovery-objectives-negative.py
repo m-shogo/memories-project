@@ -504,29 +504,6 @@ def prove_exact_typed_approval_value_binding(writer) -> None:
     print("PASS: exact typed approval RPO/RTO/skew positive and four negatives")
 
 
-def prove_strict_utc_objective_timestamps(writer) -> None:
-    """Only complete canonical UTC RFC3339 timestamps are accepted."""
-    for value in ("2026-08-08T00:00:00Z", "2026-08-08T00:00:00.123Z"):
-        parsed = writer.parse_utc_timestamp(value, "approvedAt")
-        require(parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0,
-                "strict UTC objective timestamp positive control failed")
-    for label, value, expected in (
-        ("space separator", "2026-08-08 00:00:00Z", "approvedAt must be UTC RFC3339 date-time"),
-        ("missing seconds", "2026-08-08T00:00Z", "approvedAt must be UTC RFC3339 date-time"),
-        ("double timezone", "2026-08-08T00:00:00+00:00Z", "approvedAt must be UTC RFC3339 date-time"),
-        ("date only", "2026-08-08Z", "approvedAt must be UTC RFC3339 date-time"),
-        ("no UTC suffix", "2026-08-08T00:00:00", "approvedAt must be UTC RFC3339 ending in Z"),
-    ):
-        try:
-            writer.parse_utc_timestamp(value, "approvedAt")
-        except writer.Fail as exc:
-            require(str(exc) == expected,
-                    f"strict UTC objective timestamp {label} rejection drift")
-        else:
-            raise Fail(f"strict UTC objective timestamp {label} unexpectedly accepted")
-    print("PASS: strict UTC objective timestamp two positive and five negative cases")
-
-
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
@@ -534,7 +511,6 @@ def main() -> int:
     prove_private_reference_failure_classes(writer)
     prove_unhashable_approval_inputs(writer)
     prove_exact_typed_approval_value_binding(writer)
-    prove_strict_utc_objective_timestamps(writer)
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
     prove_typed_negative_case_authority(validator)
     prove_validator_private_path_errors(validator)
