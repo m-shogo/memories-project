@@ -233,6 +233,25 @@ def require_pinned_json_race_negative_reachable(source: str, function_name: str)
         raise SystemExit("pinned JSON race positive/canary coverage missing")
 
 
+def mutate_named_function(source: str, function_name: str, anchor: str, replacement: str) -> str:
+    """Limit repeated fixture tokens to the intended AST function's source span."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("named negative mutation source syntax invalid") from None
+    targets = [node for node in tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == function_name]
+    if len(targets) != 1:
+        raise SystemExit("named negative mutation target missing")
+    lines = source.splitlines(keepends=True)
+    start, end = targets[0].lineno - 1, targets[0].end_lineno
+    segment = "".join(lines[start:end])
+    if segment.count(anchor) != 1:
+        raise SystemExit("named negative mutation anchor missing or duplicated")
+    lines[start:end] = [segment.replace(anchor, replacement, 1)]
+    return "".join(lines)
+
+
 def prove_pinned_json_race_negative_removal_rejected() -> None:
     for relative, function_name in (
         ("scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
@@ -246,9 +265,12 @@ def prove_pinned_json_race_negative_removal_rejected() -> None:
             ("invocation", f"    {function_name}(validator)\n"),
             ("race injection", "                os.open = swap_during_walk\n"),
         ):
-            if code.count(anchor) != 1:
-                raise SystemExit("pinned JSON race deletion anchor drift: " + label)
-            mutated = code.replace(anchor, "    pass\n" if label == "invocation" else "                pass\n", 1)
+            if label == "invocation":
+                if code.count(anchor) != 1:
+                    raise SystemExit("pinned JSON race deletion anchor drift: " + label)
+                mutated = code.replace(anchor, "    pass\n", 1)
+            else:
+                mutated = mutate_named_function(code, function_name, anchor, "                pass\n")
             try:
                 require_pinned_json_race_negative_reachable(mutated, function_name)
             except SystemExit:
@@ -427,9 +449,12 @@ def prove_reconcile_reader_race_negative_removal_rejected() -> None:
             ("invocation", invocation, "    pass\n"),
             ("race injection", "                os.open = swap_during_walk\n", "                pass\n"),
         ):
-            if source.count(anchor) != 1:
-                raise SystemExit("reconcile reader race deletion anchor drift: " + label)
-            mutated = source.replace(anchor, replacement, 1)
+            if label == "invocation":
+                if source.count(anchor) != 1:
+                    raise SystemExit("reconcile reader race deletion anchor drift: " + label)
+                mutated = source.replace(anchor, replacement, 1)
+            else:
+                mutated = mutate_named_function(source, function_name, anchor, replacement)
             try:
                 require_reconcile_reader_race_negative_reachable(mutated, function_name)
             except SystemExit:
