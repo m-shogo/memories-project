@@ -53,8 +53,10 @@ REQUIRED = (
 )
 
 
-def validate_trigger_reachability(source: str) -> None:
+def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS) -> None:
     """Prove every reviewed executable and authority path reaches both CI events."""
+    if len(trigger_paths) != 16 or len(set(trigger_paths)) != 16:
+        raise SystemExit("admission linkage readonly trigger inventory drift")
     pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
     push_marker = "  push:\n    branches: [so]\n    paths:\n"
     dispatch_marker = "  workflow_dispatch:\n"
@@ -64,7 +66,7 @@ def validate_trigger_reachability(source: str) -> None:
     pr_block = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push_block = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr_block), ("push", push_block)):
-        for path in TRIGGER_PATHS:
+        for path in trigger_paths:
             token = '      - "' + path + '"\n'
             if block.count(token) != 1:
                 raise SystemExit("admission linkage readonly " + event + " trigger drift: " + path)
@@ -88,7 +90,13 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("admission linkage readonly trigger negative accepted: " + event + " " + path)
-    print(f"PASS: admission linkage readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives)")
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("admission linkage readonly shortened trigger inventory accepted")
+    print(f"PASS: admission linkage readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 1 shortened inventory negative)")
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
