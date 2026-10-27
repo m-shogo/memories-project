@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -648,6 +649,48 @@ def prove_private_delegated_generation_registry(reconciler: Any) -> None:
     print("PASS: promotion reconcile delegated generation private domain error and unexpected fault boundary")
 
 
+
+def prove_private_writer_import(reconciler: Any) -> None:
+    """Import exceptions and Python-level output never enter CI diagnostics."""
+    actual = reconciler.load_writer()
+    require(Path(actual.__file__).resolve() == WRITER.resolve(),
+            "promotion reconcile writer import positive identity drift")
+    original_spec = reconciler.importlib.util.spec_from_file_location
+    spec = original_spec("memory_os_promotion_reconcile_import_negative", reconciler.WRITER)
+    require(spec is not None and spec.loader is not None,
+            "promotion reconcile writer import negative spec missing")
+    marker = "PRIVATE_PROMOTION_RECONCILE_IMPORT_CANARY"
+
+    class FailingLoader:
+        def create_module(self, _spec):
+            return None
+
+        def exec_module(self, _module):
+            print(marker)
+            print(marker, file=sys.stderr)
+            raise OSError(marker)
+
+    spec.loader = FailingLoader()
+    reconciler.importlib.util.spec_from_file_location = lambda *_args, **_kwargs: spec
+    stdout, stderr = io.StringIO(), io.StringIO()
+    try:
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            try:
+                reconciler.load_writer()
+            except reconciler.Fail as exc:
+                require(str(exc) == "promotion review canonical writer import failed"
+                        and exc.__suppress_context__ and marker not in str(exc),
+                        "promotion reconcile writer import private failure drift")
+            else:
+                raise Fail("promotion reconcile writer import failure accepted")
+    finally:
+        reconciler.importlib.util.spec_from_file_location = original_spec
+    require(marker not in stdout.getvalue() and marker not in stderr.getvalue()
+            and not stdout.getvalue() and not stderr.getvalue(),
+            "promotion reconcile writer import leaked Python-level output")
+    print("PASS: promotion reconcile writer import output and errors private")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
@@ -655,6 +698,7 @@ def main() -> int:
     validate_atomic_diagnostic_publication()
     prove_strict_reconcile_json(reconciler)
     prove_private_delegated_generation_registry(reconciler)
+    prove_private_writer_import(reconciler)
     prove_private_post_reconcile_transport(reconciler)
 
     expect_authority_substitution_rejected(reconciler, "CONTRACT", reconciler.REGISTRY, "promotion review contract substitution", "promotion review contract authority drift", original_contract, original_registry)

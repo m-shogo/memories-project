@@ -11,6 +11,7 @@ import subprocess
 import sys
 import stat
 import tempfile
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -178,14 +179,20 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
+    """Load only the reviewed writer without forwarding import output or errors."""
     require_exact_repo_file(WRITER, WRITER_REL, "promotion review writer")
-    spec = importlib.util.spec_from_file_location("memory_os_promotion_review_writer_reconcile", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load canonical promotion review writer")
     try:
+        spec = importlib.util.spec_from_file_location(
+            "memory_os_promotion_review_writer_reconcile", WRITER,
+        )
+        require(spec is not None and spec.loader is not None,
+                "promotion review canonical writer import failed")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {WRITER_REL}: {exc}") from exc
+        with open(os.devnull, "w", encoding="utf-8") as sink:
+            with redirect_stdout(sink), redirect_stderr(sink):
+                spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("promotion review canonical writer import failed") from None
     return module
 
 
