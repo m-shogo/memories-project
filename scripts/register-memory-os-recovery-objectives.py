@@ -202,10 +202,29 @@ def approval_ref(value: Any) -> str:
 
 
 def approval_sha256(ref: str) -> str:
+    """Hash only bounded canonical approval files, never aliases or private paths."""
+    require(isinstance(ref, str) and bool(ref),
+            "approval evidence digest reference invalid")
+    relative = Path(ref)
+    require(not relative.is_absolute() and ".." not in relative.parts
+            and relative.as_posix() == ref,
+            "approval evidence digest reference invalid")
+    path = ROOT / relative
     try:
-        payload = (ROOT / ref).read_bytes()
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"approval evidence cannot be hashed: {ref}") from exc
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+        approval_root = APPROVAL_DIR.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("approval evidence digest path unsafe") from None
+    require(relative == resolved and path.is_file() and not path.is_symlink()
+            and path.is_relative_to(approval_root),
+            "approval evidence digest path unsafe")
+    try:
+        with path.open("rb") as source:
+            payload = source.read(MAX_JSON_BYTES + 1)
+    except OSError:
+        raise Fail("approval evidence digest unreadable") from None
+    require(len(payload) <= MAX_JSON_BYTES,
+            "approval evidence digest size limit exceeded")
     return hashlib.sha256(payload).hexdigest()
 
 
