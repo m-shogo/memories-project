@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-generation-evidence",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "38f346be55b76659bc568650fa50c77fb19047f7",
+  "output": "REDACTED: generation evidence validation failed; consult CI job logs",
+  "containsSecrets": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
