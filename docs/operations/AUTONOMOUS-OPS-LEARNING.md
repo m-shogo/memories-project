@@ -14971,3 +14971,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** The rollback restored exact-source admission CI SUCCESS without altering human-approved objective values or bypassing source-CAS protection.
 - **Why safe/reusable mechanism:** Prefer a bounded rollback to the last validated policy over weakening the negative suite or claiming an unexplained failure is harmless. Preserve the failed commits and learning history for diagnosis.
 - **Protected-authority check:** Production status and recovery objective registry remain unchanged with `productionDecision=NO_GO` and zero approved objectives. OPS-P0-007 semantic generation eligibility, distinct environments, explicit current human-approved objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy production or recovery gates.
+
+## 2026-10-27 — Bound and redact drill-request negative subprocess diagnostics
+
+### Material failure
+- **Symptom/evidence:** At source `e78c441887aab1a7f77e280fa952e11781d25377`, `validate-memory-os-backup-restore-drill-request.py::run_negative` captured child stdout/stderr and interpolated their last 5000 characters into a thrown error, without an execution timeout. This could expose private negative-suite output or hang a planning admission gate. No real credential disclosure was observed.
+- **Root cause or unknown:** The drill-request validator retained an unbounded, raw-output subprocess transport even though the recovery-objective negative runner already had a verified bounded, class-only pattern. **Failed approach:** relying on truncated stdout/stderr to preserve confidentiality.
+- **Correction:** Commit `de972da4f844bdc3863a81f7130f530326d8f5ad` routes child output to DEVNULL, imposes a 120-second limit, and emits fixed failure/unavailable classes without exception chaining.
+- **Executable recurrence guard:** The CI-reached actual-function negative suite verifies exact target, cwd, DEVNULL, timeout, success, nonzero exit, OSError, TimeoutExpired and private-canary suppression. Exact-source Backup Restore Drill Request Admission run `40442766146` completed SUCCESS. Its Publisher removed only an obsolete diagnostic in a separate bounded commit.
+- **Retry condition:** Revisit only for a demonstrated negative-runner regression or reviewed timeout/diagnostic policy change; do not expose private output or retry unchanged external/human-evidence blockers.
+
+### Material success
+- **Outcome/evidence:** Actual drill-request negative execution transport is bounded and class-only, and exact-source admission CI succeeded at `de972da4`.
+- **Why safe/reusable mechanism:** Reused the already validated recovery-objective negative subprocess guard, tested synthetic output without creating human approvals, requests, recovery evidence, traffic or credentials.
+- **Protected-authority check:** Production status, strict OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract blobs remained unchanged. `productionDecision=NO_GO`; semantic distinct unsuperseded environments, explicit current human objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning and CI never satisfy production or recovery gates.
