@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import json
 import math
@@ -259,12 +260,19 @@ def load_eligibility_helper():
                     cleanup_failed = True
             require(not cleanup_failed, "preflight eligibility helper import unavailable")
         require(len(source) <= MAX_JSON_BYTES, "preflight eligibility helper import unavailable")
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == "memory_os_environment_generation_eligibility_for_restore_preflight",
+                        "preflight eligibility helper import unavailable")
+                return compile(source, str(ELIGIBILITY_HELPER), "exec")
+
+        name = "memory_os_environment_generation_eligibility_for_restore_preflight"
         spec = importlib.util.spec_from_file_location(
-            "memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
+            name, ELIGIBILITY_HELPER, loader=PinnedSourceLoader(name, str(ELIGIBILITY_HELPER)))
         require(spec is not None and spec.loader is not None,
                 "preflight eligibility helper import unavailable")
         module = importlib.util.module_from_spec(spec)
-        exec(compile(source, str(ELIGIBILITY_HELPER), "exec"), module.__dict__)
+        spec.loader.exec_module(module)
     except Exception:
         raise Fail("preflight eligibility helper import unavailable") from None
     return module
