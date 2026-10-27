@@ -236,6 +236,10 @@ def load_pinned_fixture_guard(path: Path, name: str):
             fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
         except OSError:
             raise Fail("preflight fixture guard source open failed") from None
+        except RuntimeError as exc:
+            if isinstance(exc, Fail):
+                raise
+            raise Fail("preflight fixture guard source open failed") from None
         try:
             opened = os.fstat(fd)
             entry = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)

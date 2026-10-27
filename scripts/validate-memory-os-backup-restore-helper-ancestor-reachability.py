@@ -1216,7 +1216,7 @@ except (Exception, SystemExit):
     source_open_try = loader_try.body[0]
     source_open_handlers = source_open_try.handlers if isinstance(source_open_try, ast.Try) else []
     require(
-        len(source_open_handlers) == 1
+        len(source_open_handlers) == 2
         and isinstance(source_open_handlers[0].type, ast.Name)
         and source_open_handlers[0].type.id == "OSError"
         and source_open_handlers[0].name is None
@@ -1234,6 +1234,20 @@ except (Exception, SystemExit):
             "fixture guard source open failed")
         and not source_open_try.orelse and not source_open_try.finalbody,
         "loader source open failure not private",
+    )
+    expected_runtime_open = (
+        "try:\n"
+        "    pass\n"
+        "except RuntimeError as exc:\n"
+        "    if isinstance(exc, Fail):\n"
+        "        raise\n"
+        f"    raise Fail({source_open_handlers[0].body[0].exc.args[0].value!r}) from None\n"
+    )
+    require(
+        ast.dump(source_open_handlers[1], include_attributes=False)
+        == ast.dump(ast.parse(expected_runtime_open).body[0].handlers[0],
+                    include_attributes=False),
+        "loader source runtime open failure not private",
     )
     read_try = loader_try.body[1] if len(loader_try.body) > 1 else None
     require(
@@ -1663,6 +1677,25 @@ def negative_cases(source: str, diagnostic: str) -> int:
         (source_open_privacy, source_open_privacy.replace(
             "except OSError:", "except FileNotFoundError:"),
          "loader source open failure not private"),
+    )
+    source_runtime_open_privacy = source_open_privacy.replace(
+        "        except OSError:\n",
+        "        except RuntimeError as exc:\n"
+        "            if isinstance(exc, Fail):\n"
+        "                raise\n",
+    )
+    require(source.count(source_runtime_open_privacy) == 1,
+            "loader source runtime open failure not private")
+    replacements += (
+        (source_runtime_open_privacy, source_runtime_open_privacy.replace(
+            "except RuntimeError as exc:", "except ValueError as exc:"),
+         "loader source runtime open failure not private"),
+        (source_runtime_open_privacy, source_runtime_open_privacy.replace(
+            "if isinstance(exc, Fail):", "if False:"),
+         "loader source runtime open failure not private"),
+        (source_runtime_open_privacy, source_runtime_open_privacy.replace(
+            " from None", ""),
+         "loader source runtime open failure not private"),
     )
     read_privacy_anchors = re.findall(
         r'        except OSError:\n            raise Fail\("[^"]+ pinned source read failed"\) from None\n',
@@ -3306,20 +3339,36 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
         os.open, os.close = original_open, original_close
     assert injected_parent_close["done"]
 
-    def fault_source_open(file, flags, *args, **kwargs):
+    for fault_class in (OSError, RuntimeError):
+        def fault_source_open(file, flags, *args, **kwargs):
+            if file == good.name and kwargs.get("dir_fd") is not None:
+                raise fault_class("PRIVATE_SOURCE_OPEN_CANARY")
+            return original_open(file, flags, *args, **kwargs)
+        os.open = fault_source_open
+        try:
+            try:
+                loader(good, "pinned_source_open_negative_" + fault_class.__name__)
+            except Fail as exc:
+                assert str(exc).endswith("fixture guard source open failed")
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_SOURCE_OPEN_CANARY" not in str(exc)
+            else:
+                raise AssertionError("source open failure accepted")
+        finally:
+            os.open = original_open
+
+    def fault_source_domain(file, flags, *args, **kwargs):
         if file == good.name and kwargs.get("dir_fd") is not None:
-            raise OSError("PRIVATE_SOURCE_OPEN_CANARY")
+            raise Fail("intentional source-open domain")
         return original_open(file, flags, *args, **kwargs)
-    os.open = fault_source_open
+    os.open = fault_source_domain
     try:
         try:
-            loader(good, "pinned_source_open_negative")
+            loader(good, "pinned_source_open_domain_negative")
         except Fail as exc:
-            assert str(exc).endswith("fixture guard source open failed")
-            assert exc.__cause__ is None and exc.__suppress_context__
-            assert "PRIVATE_SOURCE_OPEN_CANARY" not in str(exc)
+            assert str(exc) == "intentional source-open domain"
         else:
-            raise AssertionError("source open failure accepted")
+            raise AssertionError("source-open domain Fail was masked")
     finally:
         os.open = original_open
 
@@ -3481,7 +3530,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 124 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 127 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
