@@ -2,6 +2,7 @@
 """Validate typed non-resurrection coverage for generation-bound restore admission."""
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import json
 import math
@@ -218,10 +219,16 @@ def load_module(path: Path, name: str):
                     cleanup_failed = True
             require(not cleanup_failed, "typed admission module import unavailable")
         require(len(source) <= MAX_MODULE_BYTES, "typed admission module import unavailable")
-        spec = importlib.util.spec_from_file_location(name, path)
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == name, "typed admission module import unavailable")
+                return compile(source, str(path), "exec")
+
+        spec = importlib.util.spec_from_file_location(
+            name, path, loader=PinnedSourceLoader(name, str(path)))
         require(spec is not None and spec.loader is not None, "typed admission module import unavailable")
         module = importlib.util.module_from_spec(spec)
-        exec(compile(source, str(path), "exec"), module.__dict__)
+        spec.loader.exec_module(module)
     except Exception:
         raise Fail("typed admission module import unavailable") from None
     return module
