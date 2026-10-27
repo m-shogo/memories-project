@@ -14,6 +14,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-review-negative.yml"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
+
+TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-generation-independent-review-negative.yml",
+    "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "docs/evidence/backup-restore/**",
+    "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review-workflow-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py",
+    "scripts/ops_independent_review_fixture_loader.py",
+)
 HELPER = ROOT / "scripts/ops_independent_review_fixture_loader.py"
 TRANSPORT = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py"
 REVIEWED_TRANSPORT_GIT_BLOB_SHA = "3a872dcc8554a63feb894f342c3c2960c85c7975"
@@ -40,7 +57,54 @@ REQUIRED = (
 )
 
 
+def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS) -> None:
+    """Pin independent-review PR and push paths with list-style branch markers."""
+    if len(trigger_paths) != 14 or len(set(trigger_paths)) != 14:
+        raise SystemExit("generation independent review trigger inventory drift")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("generation independent review trigger marker drift")
+    pr_block = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push_block = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    for event, block in (("pull_request", pr_block), ("push", push_block)):
+        for path in trigger_paths:
+            token = '      - "' + path + '"\n'
+            if block.count(token) != 1:
+                raise SystemExit("generation independent review " + event + " trigger drift: " + path)
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    """Reject one-event-only path removal and validator inventory shortening."""
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for path in TRIGGER_PATHS:
+            token = '      - "' + path + '"\n'
+            if source.count(token) != 2:
+                raise SystemExit("generation independent review trigger negative anchor drift: " + path)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("generation independent review trigger negative accepted: " + event + " " + path)
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation independent review shortened trigger inventory accepted")
+    print(f"PASS: generation independent review PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 1 shortened inventory negative)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_trigger_reachability(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"generation independent review workflow source boundary drift: {label}")
@@ -464,6 +528,7 @@ def main() -> int:
     except UnicodeDecodeError:
         raise SystemExit(PRIVATE_SOURCE_ERROR) from None
     validate(source)
+    prove_trigger_reachability_negatives(source)
     helper_source = read_bounded_regular(HELPER)
     validate_helper_source(helper_source)
     transport_source = read_bounded_regular(TRANSPORT)
