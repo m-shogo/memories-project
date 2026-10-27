@@ -590,7 +590,7 @@ def main() -> int:
             raise SystemExit(f"generation independent review negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=False)
         except SystemExit:
             continue
         raise SystemExit(f"generation independent review accepted forbidden mutation: {label}")
@@ -602,7 +602,7 @@ def main() -> int:
             raise SystemExit("generation independent review PR branch negative anchor missing: " + label)
         mutated = source.replace(old, replacement, 1)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=False)
         except SystemExit:
             continue
         raise SystemExit("generation independent review accepted forbidden PR branch mutation: " + label)
@@ -622,7 +622,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("generation independent review accepted whole-source mutation: " + label)
-    print(f"PASS: generation independent review workflow source admission ({len(cases) + 4} negatives)")
+    print(f"PASS: generation independent review workflow source admission ({len(cases) + 2} semantic negatives; 2 whole-source binding negatives)")
     return 0
 
 
