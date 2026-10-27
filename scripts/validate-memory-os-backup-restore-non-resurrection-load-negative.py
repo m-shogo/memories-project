@@ -1468,10 +1468,18 @@ def prove_typed_private_path_negative_reachability() -> None:
         ("descriptor-relative leaf", "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
          "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)"),
     ):
-        require(validator_source.count(old) == 1,
-                "typed pinned loader mutation anchor drift: " + label)
+        parsed = ast.parse(validator_source)
+        helpers = [node for node in parsed.body
+                   if isinstance(node, ast.FunctionDef) and node.name == "load_module"]
+        require(len(helpers) == 1, "typed pinned loader mutation scope missing")
+        lines = validator_source.splitlines(keepends=True)
+        helper = helpers[0]
+        span = "".join(lines[helper.lineno - 1:helper.end_lineno])
+        require(span.count(old) == 1,
+                "typed pinned loader scoped mutation anchor drift: " + label)
+        lines[helper.lineno - 1:helper.end_lineno] = [span.replace(old, replacement, 1)]
         try:
-            verify_pinned_loader(validator_source.replace(old, replacement, 1))
+            verify_pinned_loader("".join(lines))
         except Fail:
             continue
         raise Fail("typed pinned loader source weakening accepted: " + label)
