@@ -481,6 +481,10 @@ def require_typed_transport_guard_reachability(tree: ast.Module) -> None:
                      if direct_call(stmt, "prove_typed_transport_fixture_parent_guard")]
     require(len(parent_proofs) == 1 and parent_proofs[0][0] == calls[1][0] + 1,
             "typed transport negative must execute checked fixture parent proof after transactions")
+    snapshot_proofs = [(i, stmt) for i, stmt in enumerate(body)
+                       if direct_call(stmt, "exercise_writer_snapshot_transport")]
+    require(len(snapshot_proofs) == 1 and snapshot_proofs[0][0] == parent_proofs[0][0] + 1,
+            "typed transport negative must execute pinned snapshot proof after parent guard")
     require(isinstance(body[-1], ast.Return) and isinstance(body[-1].value, ast.Constant)
             and type(body[-1].value.value) is int and body[-1].value.value == 0,
             "typed transport negative must return only after its guards")
@@ -512,6 +516,7 @@ def prove_typed_transport_guard_reachability() -> None:
         ("missing-registry-transport", "typed transport negative must execute registry and reconcile transaction probes"),
         ("missing-reconcile-transport", "typed transport negative must execute registry and reconcile transaction probes"),
         ("missing-parent-proof", "typed transport negative must execute checked fixture parent proof after transactions"),
+        ("missing-snapshot-proof", "typed transport negative must execute pinned snapshot proof after parent guard"),
         ("early-parent-proof", "typed transport negative must execute checked fixture parent proof after transactions"),
         ("wrong-final-return", "typed transport negative must return only after its guards"),
         ("nested-early-return", "typed transport negative cannot return before its guards"),
@@ -543,6 +548,12 @@ def prove_typed_transport_guard_reachability() -> None:
             index = next(i for i, stmt in enumerate(body)
                          if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
                          and isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == name)
+            body[index] = ast.Pass()
+        elif label == "missing-snapshot-proof":
+            index = next(i for i, stmt in enumerate(body)
+                         if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                         and isinstance(stmt.value.func, ast.Name)
+                         and stmt.value.func.id == "exercise_writer_snapshot_transport")
             body[index] = ast.Pass()
         elif label in ("missing-parent-proof", "early-parent-proof"):
             index = next(i for i, stmt in enumerate(body)
