@@ -62,9 +62,15 @@ def repo_relative(path: Path) -> Path:
         raise Fail("typed reconcile authority path unsafe") from None
 
 def require_repo_file(path: Path, message: str) -> Path:
-    relative = repo_relative(path)
-    require((ROOT / relative).is_file(), message)
-    return relative
+    require(isinstance(path, Path) and path.is_absolute(),
+            "typed reconcile repository file unsafe")
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("typed reconcile repository file unsafe") from None
+    require(lexical == resolved and path.is_file() and not path.is_symlink(), message)
+    return lexical
 
 def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
     try:
