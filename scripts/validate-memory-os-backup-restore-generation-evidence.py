@@ -183,18 +183,22 @@ def load_writer():
 
 
 def run_validator(path: Path, expected_relative: Path, label: str) -> None:
+    """Execute a canonical child without publishing its output or hanging indefinitely."""
     require_exact_repo_file(path, expected_relative, label)
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=90,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("generation evidence child validator failed") from None
     require(
-        completed.returncode == 0,
-        f"{label} failed:\n" + completed.stdout[-6000:] + completed.stderr[-6000:],
+        type(getattr(completed, "returncode", None)) is int and completed.returncode == 0,
+        "generation evidence child validator failed",
     )
 
 
