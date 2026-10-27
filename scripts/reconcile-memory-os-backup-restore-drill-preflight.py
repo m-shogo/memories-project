@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import stat
 import subprocess
@@ -151,12 +152,37 @@ def read_text(path: Path) -> str:
 
 
 def load(path: Path) -> dict[str, Any]:
-    relative = repo_relative(path)
+    """Reject duplicate, nonfinite and oversized-integer authority JSON."""
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            require(key not in result, "preflight reconcile JSON duplicate key refused")
+            result[key] = item
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("preflight reconcile JSON nonfinite number refused")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "preflight reconcile JSON nonfinite number refused")
+        return number
+
+    def bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "preflight reconcile JSON integer too large")
+        return int(value)
+
     try:
-        value = json.loads(read_text(path))
-    except json.JSONDecodeError as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
+        value = json.loads(
+            read_text(path),
+            object_pairs_hook=unique_keys,
+            parse_constant=reject_nonfinite,
+            parse_float=finite_float,
+            parse_int=bounded_int,
+        )
+    except (json.JSONDecodeError, UnicodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("preflight reconcile JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "preflight reconcile JSON root must be object")
     return value
 
 
