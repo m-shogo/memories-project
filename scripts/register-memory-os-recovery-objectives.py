@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -57,12 +58,45 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+MAX_JSON_BYTES = 1024 * 1024
+
+
 def load(path: Path) -> dict[str, Any]:
+    """Read bounded, unambiguous objective JSON without exposing private paths."""
+    require(isinstance(path, Path) and path.is_absolute(),
+            "recovery objective writer JSON path invalid")
+
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "recovery objective writer JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_constant(_value: str) -> None:
+        raise Fail("recovery objective writer JSON nonfinite number refused")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "recovery objective writer JSON nonfinite number refused")
+        return number
+
+    def bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128,
+                "recovery objective writer JSON integer too large")
+        return int(value)
+
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load recovery-objective JSON authority: {path}") from exc
-    require(isinstance(value, dict), f"root must be object: {path}")
+        with path.open("rb") as source:
+            raw = source.read(MAX_JSON_BYTES + 1)
+        require(len(raw) <= MAX_JSON_BYTES,
+                "recovery objective writer JSON size limit exceeded")
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys,
+                           parse_constant=reject_constant, parse_float=finite_float,
+                           parse_int=bounded_int)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("recovery objective writer JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "recovery objective writer JSON root must be object")
     return value
 
 
