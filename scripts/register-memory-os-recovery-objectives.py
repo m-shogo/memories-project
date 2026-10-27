@@ -87,16 +87,33 @@ def load(path: Path) -> dict[str, Any]:
                 "recovery objective writer JSON integer too large")
         return int(value)
 
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "recovery objective writer JSON platform unsafe")
+    descriptor: int | None = None
     try:
-        with path.open("rb") as source:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(descriptor)
+        require(stat.S_ISREG(metadata.st_mode),
+                "recovery objective writer JSON unreadable or invalid")
+        require(metadata.st_size <= MAX_JSON_BYTES,
+                "recovery objective writer JSON size limit exceeded")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
             raw = source.read(MAX_JSON_BYTES + 1)
         require(len(raw) <= MAX_JSON_BYTES,
                 "recovery objective writer JSON size limit exceeded")
         value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys,
                            parse_constant=reject_constant, parse_float=finite_float,
                            parse_int=bounded_int)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError,
+            OverflowError, RecursionError):
         raise Fail("recovery objective writer JSON unreadable or invalid") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("recovery objective writer JSON descriptor cleanup failed") from None
     require(isinstance(value, dict), "recovery objective writer JSON root must be object")
     return value
 
