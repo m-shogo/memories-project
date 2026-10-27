@@ -475,6 +475,61 @@ def prove_rollback_attempts_all_restores(reconciler: Any) -> None:
     print("PASS rollback: drill-request restore failure still attempts all three authorities")
 
 
+def prove_post_validator_transport(reconciler: Any) -> None:
+    """Actual post-validator helper must be bounded, class-only and fail closed."""
+    original_run = reconciler.subprocess.run
+    marker = "synthetic-secret-post-reconcile-validator"
+    seen = []
+
+    def fake_run(exit_code):
+        def run(argv, **kwargs):
+            require(argv in ([reconciler.sys.executable, str(reconciler.VALIDATOR)],
+                             [reconciler.sys.executable, str(reconciler.OPERABILITY_VALIDATOR)]),
+                    "post-validator target drift")
+            require(kwargs.get("cwd") == reconciler.ROOT,
+                    "post-validator cwd drift")
+            require(kwargs.get("stdout") == reconciler.subprocess.DEVNULL
+                    and kwargs.get("stderr") == reconciler.subprocess.DEVNULL,
+                    "post-validator captured private output")
+            require(kwargs.get("timeout") == 120 and kwargs.get("check") is False,
+                    "post-validator runtime budget drift")
+            seen.append(exit_code)
+            return subprocess.CompletedProcess(argv, exit_code, stdout=marker, stderr=marker)
+        return run
+
+    try:
+        for path, label in ((reconciler.VALIDATOR, "drill request"),
+                            (reconciler.OPERABILITY_VALIDATOR, "operability")):
+            reconciler.subprocess.run = fake_run(0)
+            reconciler.run_post_validator(path, label)
+            for exit_code in (1, False):
+                reconciler.subprocess.run = fake_run(exit_code)
+                try:
+                    reconciler.run_post_validator(path, label)
+                except reconciler.Fail as exc:
+                    require(str(exc) == f"post-reconcile {label} validator failed (raw output withheld)",
+                            "post-validator failure class drift")
+                    require(marker not in str(exc), "post-validator private output leaked")
+                else:
+                    raise Fail("post-validator nonzero/bool status accepted")
+            for failure in (OSError(marker), subprocess.TimeoutExpired(["synthetic"], 120)):
+                def raise_failure(*_args, **_kwargs):
+                    raise failure
+                reconciler.subprocess.run = raise_failure
+                try:
+                    reconciler.run_post_validator(path, label)
+                except reconciler.Fail as exc:
+                    require(str(exc) == f"post-reconcile {label} validator unavailable or timed out (raw output withheld)",
+                            "post-validator unavailable/timeout class drift")
+                    require(marker not in str(exc), "post-validator exception disclosed")
+                else:
+                    raise Fail("post-validator unavailable/timeout accepted")
+    finally:
+        reconciler.subprocess.run = original_run
+    require(seen == [0, 1, False, 0, 1, False], "post-validator positive/failure controls incomplete")
+    print("PASS: drill request post-validators use bounded class-only subprocess transport")
+
+
 def prove_primary_and_rollback_diagnostics(reconciler: Any) -> None:
     original_write = reconciler.write_text
     original_restore = reconciler.restore_original_text
@@ -506,8 +561,10 @@ def prove_primary_and_rollback_diagnostics(reconciler: Any) -> None:
             reconciler.main()
         except reconciler.Fail as exc:
             message = str(exc)
-            require("post-reconcile drill request validator failed" in message, f"primary validator diagnostic lost: {exc}")
-            require("synthetic drill-request validator rejection" in message, f"primary validator detail lost: {exc}")
+            require("post-reconcile drill request validator failed (raw output withheld)" in message,
+                    "primary validator fixed failure class lost")
+            require("synthetic drill-request validator rejection" not in message,
+                    "private primary validator output leaked")
             require("rollback incomplete" in message, f"rollback-incomplete marker lost: {exc}")
             require("synthetic drill-request rollback restore rejection" in message, f"rollback diagnostic lost: {exc}")
         else:
@@ -551,6 +608,7 @@ def main() -> int:
 
     reconciler = load_reconciler()
     require(issubclass(reconciler.Fail, RuntimeError), "reconciler Fail must remain a runtime validation error")
+    prove_post_validator_transport(reconciler)
 
     canonical_contract = CONTRACT.read_bytes()
     canonical_registry = REGISTRY.read_bytes()

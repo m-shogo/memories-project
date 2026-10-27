@@ -271,6 +271,27 @@ def expected_decision(
     return "AWAITING_REVIEWED_DRILL_REQUEST"
 
 
+def run_post_validator(path: Path, label: str) -> None:
+    """Execute read-only post-write validators with bounded private diagnostics."""
+    require(label in ("drill request", "operability"), "drill request post-validator class drift")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"post-reconcile {label} validator unavailable or timed out (raw output withheld)") from None
+    require(
+        isinstance(completed, subprocess.CompletedProcess)
+        and type(completed.returncode) is int and completed.returncode == 0,
+        f"post-reconcile {label} validator failed (raw output withheld)",
+    )
+
+
 def main() -> int:
     enforce_runtime_authorities()
     for path, message in (
@@ -444,10 +465,8 @@ def main() -> int:
         write_text(REGISTRY, json.dumps(registry, indent=2, ensure_ascii=False) + "\n")
         write_text(CONTRACT, json.dumps(contract, indent=2, ensure_ascii=False) + "\n")
         write_text(STATUS, json.dumps(status, indent=2, ensure_ascii=False) + "\n")
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"post-reconcile drill request validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
-        operability = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(operability.returncode == 0, f"post-reconcile operability validator failed:\n{operability.stdout[-5000:]}{operability.stderr[-5000:]}")
+        run_post_validator(VALIDATOR, "drill request")
+        run_post_validator(OPERABILITY_VALIDATOR, "operability")
     except Exception as exc:
         try:
             restore_original_text(original_text)
