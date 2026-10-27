@@ -56,13 +56,22 @@ def enforce_runtime_authorities() -> None:
     canonical_lock = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
     require(EXPECTED_LOCK == canonical_lock, "typed non-resurrection append-lock authority drift")
     require(EXPECTED_LOCK.parent == REGISTRY.parent, "typed non-resurrection append lock must share registry authority directory")
-    require(not EXPECTED_LOCK.is_symlink(), "typed non-resurrection append lock must not be a symlink")
-    if EXPECTED_LOCK.exists():
-        require(EXPECTED_LOCK.is_file(), "typed non-resurrection materialized append lock must be a regular file")
+    try:
+        is_symlink = EXPECTED_LOCK.is_symlink()
+        exists = EXPECTED_LOCK.exists()
+    except (OSError, RuntimeError):
+        raise Fail("typed non-resurrection append lock metadata unavailable") from None
+    require(not is_symlink, "typed non-resurrection append lock must not be a symlink")
+    if exists:
+        try:
+            regular = EXPECTED_LOCK.is_file()
+        except (OSError, RuntimeError):
+            raise Fail("typed non-resurrection materialized append lock is unreadable") from None
+        require(regular, "typed non-resurrection materialized append lock must be a regular file")
         try:
             resolved = EXPECTED_LOCK.resolve(strict=True)
-        except (FileNotFoundError, OSError, RuntimeError) as exc:
-            raise Fail("typed non-resurrection materialized append lock is unreadable") from exc
+        except (FileNotFoundError, OSError, RuntimeError):
+            raise Fail("typed non-resurrection materialized append lock is unreadable") from None
         require(resolved == canonical_lock, "typed non-resurrection materialized append lock authority drift")
 
 def canonical_repo_file_ref(value: Any, field: str) -> Path:

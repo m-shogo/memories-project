@@ -554,6 +554,49 @@ def prove_private_typed_admission_import_errors(validator: object) -> None:
     print("PASS: typed admission private module import faults and canonical positive")
 
 
+
+def prove_private_typed_append_lock_metadata(validator: object) -> None:
+    """Materialized lock metadata errors cannot disclose filesystem exception details."""
+    private = "SYNTHETIC_PRIVATE_TYPED_LOCK_CANARY"
+    original_symlink, original_exists = Path.is_symlink, Path.exists
+    original_file, original_resolve = Path.is_file, Path.resolve
+
+    def fault(_path, *args, **kwargs):
+        raise OSError(private)
+
+    for mode, expected in (
+        ("symlink", "typed non-resurrection append lock metadata unavailable"),
+        ("exists", "typed non-resurrection append lock metadata unavailable"),
+        ("is_file", "typed non-resurrection materialized append lock is unreadable"),
+        ("resolve", "typed non-resurrection materialized append lock is unreadable"),
+    ):
+        try:
+            if mode == "symlink":
+                Path.is_symlink = fault
+            elif mode == "exists":
+                Path.exists = fault
+            elif mode == "is_file":
+                Path.exists = lambda _path: True
+                Path.is_file = fault
+            else:
+                Path.exists = lambda _path: True
+                Path.is_file = lambda _path: True
+                Path.resolve = fault
+            try:
+                validator.enforce_runtime_authorities()
+            except validator.Fail as exc:
+                require(str(exc) == expected and exc.__suppress_context__
+                        and exc.__cause__ is None and private not in str(exc),
+                        "typed admission lock " + mode + " leaked private metadata")
+            else:
+                raise Fail("typed admission lock " + mode + " metadata fault accepted")
+        finally:
+            Path.is_symlink, Path.exists = original_symlink, original_exists
+            Path.is_file, Path.resolve = original_file, original_resolve
+    validator.enforce_runtime_authorities()
+    print("PASS: typed append lock four private metadata faults and canonical positive")
+
+
 def main() -> int:
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     with guarded_temporary_directory(".tmp-typed-path-parent-negative-", TMP_PARENT) as raw:
@@ -580,6 +623,7 @@ def main() -> int:
     validator = load_validator()
     prove_private_typed_admission_paths(validator)
     prove_private_typed_admission_import_errors(validator)
+    prove_private_typed_append_lock_metadata(validator)
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
     require(accepted == ROOT / canonical, "canonical in-repository authority ref did not resolve exactly")
