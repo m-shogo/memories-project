@@ -280,6 +280,55 @@ def main() -> int:
             require(not list(temp_registry.parent.glob(".environment-generation*.tmp")), "generation registry rollback left temporary residue")
             print("PASS preserve: generation registry validator failure rolls back exact bytes and mode")
 
+            # A partial buffered rollback must not publish an incomplete generation registry.
+            original_restore_fdopen = writer.os.fdopen
+
+            class ShortRestoreHandle:
+                def __init__(self, descriptor: int):
+                    self.source = original_restore_fdopen(descriptor, "wb")
+
+                def __enter__(self):
+                    self.source.__enter__()
+                    return self
+
+                def __exit__(self, *args):
+                    return self.source.__exit__(*args)
+
+                def fileno(self):
+                    return self.source.fileno()
+
+                def write(self, payload: bytes) -> int:
+                    short_count = max(1, len(payload) // 2)
+                    self.source.write(payload[:short_count])
+                    return short_count
+
+                def flush(self) -> None:
+                    self.source.flush()
+
+            def short_restore_fdopen(descriptor, mode, *args, **kwargs):
+                if mode == "wb":
+                    return ShortRestoreHandle(descriptor)
+                return original_restore_fdopen(descriptor, mode, *args, **kwargs)
+
+            writer.os.fdopen = short_restore_fdopen
+            try:
+                try:
+                    writer.atomic_restore(before, before_mode)
+                except writer.Fail as exc:
+                    require(str(exc) == "environment generation registry atomic restore failed"
+                            and exc.__suppress_context__,
+                            "environment generation short restore error class or privacy drift")
+                else:
+                    raise Fail("environment generation short restore unexpectedly accepted")
+            finally:
+                writer.os.fdopen = original_restore_fdopen
+            require(temp_registry.read_bytes() == before,
+                    "environment generation short restore published truncated bytes")
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode,
+                    "environment generation short restore changed registry mode")
+            require(not list(temp_registry.parent.glob(".environment-generation*.tmp")),
+                    "environment generation short restore left temporary residue")
+
             temp_registry.write_bytes(before); temp_registry.chmod(before_mode)
             writer.validate_registry_for_append = original_validate_registry
             def reject_replace(source: str | Path, destination: str | Path) -> None:
