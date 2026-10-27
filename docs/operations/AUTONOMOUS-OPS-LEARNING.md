@@ -15069,3 +15069,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Drill-request validator JSON reads now pin the actual regular file and pass exact-source negative/admission CI.
 - **Why safe/reusable mechanism:** Enforce source identity at the actual read, not just during path preflight; synthetic race injection does not create planning requests, credentials, traffic or readiness.
 - **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy recovery or production gates.
+
+## 2026-10-27 — Drill-request validator helper imports keep Python diagnostics private
+
+### Material failure
+- **Symptom/evidence:** At `e2bd49051e972abe7cf4cae1dd6e9df9c8be3e0a`, drill-request validator `load_module` executed canonical helper imports with inherited Python stdout/stderr and included raw import OSError text/context in failures. A noisy or failing import could disclose private output before admission checks. No actual credential disclosure or production evidence change was observed.
+- **Verified root cause:** Dynamic module imports are a separate diagnostic boundary from strict JSON reads and private subprocess runners. **Failed approach:** assuming downstream class-only errors protect earlier import-time output.
+- **Correction:** `ae986ff2410a87da6b9da8bfdccb0cbe818ba976` redirects Python import stdout/stderr to a private null sink and converts import failures into a fixed error without raw exception chaining.
+- **Executable recurrence guard:** CI-reached actual import negative exercises canonical writer positive import and synthetic noisy successful/failing loaders, asserting no Python output, fixed failure class and no chained private exception. Exact-source Unreadable Authority Negatives `40443982724`, Drill Request Admission `40443982684`, Reconcile Rollback `40443982656` and Autonomous Learning Guard `40443982718` completed SUCCESS.
+- **Retry condition:** Revisit only for observed import-output/exception regression or reviewed module loading policy change; never treat learning as recovery evidence.
+
+### Material success
+- **Outcome/evidence:** Canonical helper imports are private at the Python stream and exception boundary, with exact-source negative/admission CI success.
+- **Why safe/reusable mechanism:** Reused a verified null-sink import guard while retaining the canonical helper identity and admission logic; synthetic noisy modules never create requests, credentials, traffic or readiness.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy production or recovery gates.

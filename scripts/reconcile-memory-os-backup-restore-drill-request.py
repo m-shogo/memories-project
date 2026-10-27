@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -228,14 +229,17 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_module(path: Path, name: str):
-    relative = require_repo_file(path, f"module missing: {path.name}")
-    spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    require_repo_file(path, "drill request reconciler helper missing")
     try:
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+        with open(os.devnull, "w", encoding="utf-8") as private_sink:
+            with redirect_stdout(private_sink), redirect_stderr(private_sink):
+                spec = importlib.util.spec_from_file_location(name, path)
+                require(spec is not None and spec.loader is not None,
+                        "drill request reconciler helper import failed")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("drill request reconciler helper import failed") from None
     return module
 
 
