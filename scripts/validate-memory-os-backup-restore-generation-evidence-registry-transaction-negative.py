@@ -406,6 +406,44 @@ def main() -> int:
             finally:
                 writer.os.replace = original_replace
 
+            # A partial buffered rollback write cannot be reported as restored.
+            original_restore_fdopen = writer.os.fdopen
+
+            class ShortRestoreHandle:
+                def __init__(self, descriptor: int):
+                    self.source = original_restore_fdopen(descriptor, "wb")
+
+                def __enter__(self):
+                    self.source.__enter__()
+                    return self
+
+                def __exit__(self, *args):
+                    return self.source.__exit__(*args)
+
+                def fileno(self):
+                    return self.source.fileno()
+
+                def write(self, payload: bytes) -> int:
+                    short_count = max(1, len(payload) // 2)
+                    self.source.write(payload[:short_count])
+                    return short_count
+
+                def flush(self) -> None:
+                    self.source.flush()
+
+            def short_restore_fdopen(descriptor, mode, *args, **kwargs):
+                if mode == "wb":
+                    return ShortRestoreHandle(descriptor)
+                return original_restore_fdopen(descriptor, mode, *args, **kwargs)
+
+            writer.os.fdopen = short_restore_fdopen
+            try:
+                expect_private("generation atomic short rollback write",
+                               lambda: writer.atomic_restore(original_bytes, original_mode),
+                               "generation evidence registry atomic restore failed")
+            finally:
+                writer.os.fdopen = original_restore_fdopen
+
             # Cleanup failure must be classified privately after removing its owned temp.
             original_unlink = writer.os.unlink
             def unlink_then_fail(path, *args, **kwargs):
