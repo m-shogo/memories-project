@@ -709,7 +709,7 @@ def prove_generation_evidence_json_reader(validator) -> None:
 
         def swap_before_leaf_open(target, flags, *args, **kwargs):
             nonlocal swapped
-            if not swapped and Path(target) == race:
+            if not swapped and target == race.name and kwargs.get("dir_fd") is not None:
                 swapped = True
                 race.rename(parked)
                 race.symlink_to(race_canary)
