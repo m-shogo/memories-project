@@ -143,7 +143,7 @@ def prove_pinned_validator_import() -> None:
 
 def prove_review_import_unsafe_sources() -> None:
     """Oversized source, symlink, FIFO and unsupported flags are fail-closed."""
-    with tempfile.TemporaryDirectory(prefix=".generation-binding-target-unsafe-", dir=ROOT) as raw:
+    with tempfile.TemporaryDirectory(prefix=".independent-review-execution-unsafe-", dir=ROOT) as raw:
         sandbox = Path(raw)
         good = sandbox / "good.py"
         good.write_text("VALUE = 'safe'\n", encoding="utf-8")
@@ -162,22 +162,24 @@ def prove_review_import_unsafe_sources() -> None:
                         "independent review execution unsafe source leaked private diagnostics")
             else:
                 raise Fail("independent review execution accepted unsafe source")
-        original_flag = os.O_NONBLOCK
-        try:
-            os.O_NONBLOCK = 0
-            try:
-                load_checked_module(good, "independent_review_unsupported_flag")
-            except Fail as exc:
-                require(str(exc) == "independent review negative source rejected"
-                        and exc.__suppress_context__,
-                        "independent review execution missing flag leaked private diagnostics")
-            else:
-                raise Fail("independent review execution accepted unsupported platform flag")
-        finally:
-            os.O_NONBLOCK = original_flag
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original_flag = getattr(os, flag)
+            for unsupported in (0, None):
+                try:
+                    setattr(os, flag, unsupported)
+                    try:
+                        load_checked_module(good, "independent_review_unsupported_flag")
+                    except Fail as exc:
+                        require(str(exc) == "independent review negative source rejected"
+                                and exc.__suppress_context__,
+                                "independent review execution unsafe flag leaked private diagnostics")
+                    else:
+                        raise Fail("independent review execution accepted unsupported platform flag")
+                finally:
+                    setattr(os, flag, original_flag)
         require(load_checked_module(good, "independent_review_unsafe_restored").VALUE == "safe",
                 "independent review execution unsafe fixture restoration failed")
-    print("PASS: independent review execution unsafe sources and missing flag rejected")
+    print("PASS: independent review execution unsafe sources and six platform flag cases rejected")
 
 
 def prove_review_import_fd_cleanup() -> None:
