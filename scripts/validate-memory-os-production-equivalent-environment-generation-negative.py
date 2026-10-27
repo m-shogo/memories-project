@@ -338,8 +338,10 @@ def main() -> int:
             writer.os.replace = reject_replace
             try:
                 writer.write_registry_transactionally(candidate)
-            except OSError as exc:
-                require("synthetic generation registry replace rejection" in str(exc), f"unexpected generation replace rejection: {exc}")
+            except writer.Fail as exc:
+                require(str(exc) == "environment generation registry atomic write failed"
+                        and exc.__suppress_context__,
+                        "generation replace rejection failure class or privacy drift")
                 print("PASS reject: generation registry candidate replace rejection")
             else:
                 raise Fail("generation registry candidate replace rejection unexpectedly succeeded")

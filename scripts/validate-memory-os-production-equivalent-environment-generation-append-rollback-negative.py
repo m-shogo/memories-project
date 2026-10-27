@@ -195,8 +195,10 @@ def prove_atomic_replace_rejection_preserves_registry(writer) -> None:
         try:
             try:
                 writer.atomic_write({"sentinel": "after"}, original_mode)
-            except OSError as exc:
-                require("synthetic environment generation append replace rejection" in str(exc), "unexpected atomic generation append replace failure")
+            except writer.Fail as exc:
+                require(str(exc) == "environment generation registry atomic write failed"
+                        and exc.__suppress_context__,
+                        "environment generation append replace failure class or privacy drift")
             else:
                 raise Fail("atomic generation append replace rejection was accepted")
             require(registry.read_bytes() == original, "failed atomic generation append replace changed registry bytes")
@@ -207,6 +209,82 @@ def prove_atomic_replace_rejection_preserves_registry(writer) -> None:
             writer.REGISTRY = original_registry
     print("PASS boundary: rejected atomic generation append preserves registry bytes/mode and leaves no temporary residue")
 
+
+
+def prove_atomic_io_failure_privacy_and_cleanup(writer) -> None:
+    """Fault-inject the real writer/restore at each descriptor/publication boundary."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-atomic-faults-") as tmp:
+        registry = Path(tmp) / "generation-registry.v1.json"
+        original = b'{"sentinel":"before"}\n'
+        registry.write_bytes(original)
+        registry.chmod(0o640)
+        previous_registry = writer.REGISTRY
+        original_mkstemp = writer.tempfile.mkstemp
+        original_fdopen = writer.os.fdopen
+        original_fchmod = writer.os.fchmod
+        original_replace = writer.os.replace
+        writer.REGISTRY = registry
+        try:
+            for operation in ("write", "restore"):
+                for stage in ("mkstemp", "fdopen", "fchmod", "replace"):
+                    opened: list[int] = []
+
+                    def reject(*_args, **_kwargs):
+                        raise OSError("PRIVATE_GENERATION_ATOMIC_IO_CANARY")
+
+                    def reject_fdopen(fd, *_args, **_kwargs):
+                        opened.append(fd)
+                        raise OSError("PRIVATE_GENERATION_ATOMIC_IO_CANARY")
+
+                    owner, attribute, replacement = {
+                        "mkstemp": (writer.tempfile, "mkstemp", reject),
+                        "fdopen": (writer.os, "fdopen", reject_fdopen),
+                        "fchmod": (writer.os, "fchmod", reject),
+                        "replace": (writer.os, "replace", reject),
+                    }[stage]
+                    setattr(owner, attribute, replacement)
+                    try:
+                        try:
+                            if operation == "write":
+                                writer.atomic_write({"sentinel": "after"}, 0o640)
+                            else:
+                                writer.atomic_restore(b'{"sentinel":"after"}\n', 0o640)
+                        except writer.Fail as exc:
+                            expected = ("environment generation registry atomic write failed"
+                                        if operation == "write"
+                                        else "environment generation registry atomic restore failed")
+                            require(str(exc) == expected and exc.__suppress_context__
+                                    and "PRIVATE_GENERATION_ATOMIC_IO_CANARY" not in str(exc),
+                                    f"generation {operation} {stage} leaked filesystem diagnostics")
+                        else:
+                            raise Fail(f"generation {operation} {stage} unexpectedly accepted")
+                    finally:
+                        setattr(owner, attribute, {
+                            "mkstemp": original_mkstemp,
+                            "fdopen": original_fdopen,
+                            "fchmod": original_fchmod,
+                            "replace": original_replace,
+                        }[stage])
+                    for fd in opened:
+                        try:
+                            os.fstat(fd)
+                        except OSError:
+                            pass
+                        else:
+                            raise Fail(f"generation {operation} fdopen failure leaked descriptor")
+                    require(registry.read_bytes() == original,
+                            f"generation {operation} {stage} mutated registry bytes")
+                    require(file_mode(registry) == 0o640,
+                            f"generation {operation} {stage} mutated registry mode")
+                    require(not generation_temp_files(registry),
+                            f"generation {operation} {stage} stranded temporary files")
+        finally:
+            writer.tempfile.mkstemp = original_mkstemp
+            writer.os.fdopen = original_fdopen
+            writer.os.fchmod = original_fchmod
+            writer.os.replace = original_replace
+            writer.REGISTRY = previous_registry
+    print("PASS reject: environment generation atomic IO faults stay private and clean up descriptors")
 
 def prove_short_restore_write_rejected(writer) -> None:
     """Exercise the real rollback writer through the canonical CI-reached suite."""
@@ -506,6 +584,7 @@ def main() -> int:
     prove_bounded_registry_snapshot(writer)
     prove_successful_atomic_write_preserves_mode(writer)
     prove_atomic_replace_rejection_preserves_registry(writer)
+    prove_atomic_io_failure_privacy_and_cleanup(writer)
     prove_short_restore_write_rejected(writer)
     prove_post_append_validation_rollback(writer)
     prove_post_append_rollback_failure_preserves_diagnostics(writer)

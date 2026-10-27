@@ -372,39 +372,76 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
 
 
 def atomic_write(value: dict[str, Any], mode: int) -> None:
-    descriptor, temp_name = tempfile.mkstemp(prefix=".environment-generation.", suffix=".tmp", dir=REGISTRY.parent)
+    """Publish one fsynced registry candidate with private errors and owned FDs."""
+    descriptor: int | None = None
+    temp_name: str | None = None
     try:
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=".environment-generation.", suffix=".tmp", dir=REGISTRY.parent)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = None
+            os.fchmod(handle.fileno(), mode)
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
-            os.fchmod(handle.fileno(), mode)
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+        temp_name = None
+    except Exception:
+        raise Fail("environment generation registry atomic write failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
+        cleanup_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                cleanup_failed = True
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("environment generation registry temporary cleanup failed") from None
 
 
 def atomic_restore(payload: bytes, mode: int) -> None:
-    descriptor, temp_name = tempfile.mkstemp(prefix=".environment-generation-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    """Restore exact prior bytes and mode without exposing filesystem diagnostics."""
+    descriptor: int | None = None
+    temp_name: str | None = None
     try:
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=".environment-generation-rollback.", suffix=".tmp", dir=REGISTRY.parent)
         with os.fdopen(descriptor, "wb") as handle:
-            written = handle.write(payload)
-            if type(written) is not int or written != len(payload):
-                raise Fail("environment generation registry atomic restore failed") from None
-            handle.flush()
+            descriptor = None
             os.fchmod(handle.fileno(), mode)
+            written = handle.write(payload)
+            require(type(written) is int and written == len(payload),
+                    "environment generation registry atomic restore failed")
+            handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+        temp_name = None
+    except Exception:
+        raise Fail("environment generation registry atomic restore failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
-
+        cleanup_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                cleanup_failed = True
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("environment generation registry temporary cleanup failed") from None
 
 MAX_JSON_BYTES = 1024 * 1024
 
