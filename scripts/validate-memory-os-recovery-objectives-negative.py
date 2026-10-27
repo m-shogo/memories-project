@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -147,6 +148,12 @@ def prove_writer_json_reader(writer) -> None:
         rejected(Path(tmp) / "missing.json",
                  "recovery objective writer JSON unreadable or invalid", "missing")
         rejected(Path(tmp), "recovery objective writer JSON unreadable or invalid", "directory")
+        alias = Path(tmp) / "writer-json-alias.json"
+        alias.symlink_to(path)
+        rejected(alias, "recovery objective writer JSON unreadable or invalid", "symlink")
+        fifo = Path(tmp) / "writer-json-fifo"
+        os.mkfifo(fifo)
+        rejected(fifo, "recovery objective writer JSON unreadable or invalid", "FIFO")
         rejected(Path("relative.json"), "recovery objective writer JSON path invalid", "relative")
         rejected("not-a-path", "recovery objective writer JSON path invalid", "non-Path")
         rejected(Path(tmp) / "PRIVATE_WRITER_PATH_CANARY.json",
@@ -154,7 +161,7 @@ def prove_writer_json_reader(writer) -> None:
         require(path.read_bytes() == positive, "writer JSON reader mutated positive fixture")
     require((writer.CONTRACT.read_bytes(), writer.REGISTRY.read_bytes()) == before,
             "writer JSON reader mutated canonical recovery objective authorities")
-    print("PASS: recovery objective writer JSON reader positive and 16 fail-closed negatives")
+    print("PASS: recovery objective writer JSON reader positive and 18 fail-closed negatives")
 
 
 def prove_recovery_objective_json_reader(validator) -> None:
