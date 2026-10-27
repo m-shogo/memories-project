@@ -1426,6 +1426,85 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("preflight reconcile negative pinned loader weakening accepted: " + label)
+    drill_source = DRILL_REQUEST_LOAD_NEGATIVE.read_text(encoding="utf-8")
+
+    def verify_drill_pinned_loader(candidate: str) -> None:
+        try:
+            parsed = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("drill request pinned loader source syntax invalid") from None
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        loader = functions.get("load_module")
+        proof = functions.get("prove_pinned_module_import")
+        main = functions.get("main")
+        require(loader is not None and proof is not None and main is not None,
+                "drill request pinned loader/proof/main missing")
+        main_body = ast.get_source_segment(candidate, main)
+        loader_body = ast.get_source_segment(candidate, loader)
+        proof_body = ast.get_source_segment(candidate, proof)
+        require(all(isinstance(body, str) for body in (main_body, loader_body, proof_body)),
+                "drill request pinned loader source unavailable")
+        require(main_body.count("prove_pinned_module_import()") == 1
+                and main_body.index("prove_pinned_module_import()") <
+                    main_body.index("writer = load_module(WRITER"),
+                "drill request pinned proof must run before canonical imports")
+        for token in ("class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+                      'return compile(source, str(path), "exec")',
+                      "loader=PinnedSourceLoader(name, str(path))",
+                      "spec.loader.exec_module(module)",
+                      "source = stream.read(MAX_MODULE_BYTES + 1)",
+                      "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+                      'for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")',
+                      'raise Fail("cannot load drill request authority") from None'):
+            require(token in loader_body, "drill request pinned source binding removed")
+        for token in ("parent.rename(parked)", "parent.symlink_to(redirected",
+                      "importlib.util.spec_from_file_location = swap_after_read",
+                      'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
+                      "importlib.util.spec_from_file_location = original_spec"):
+            require(token in proof_body, "drill request pinned race proof removed")
+        require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in {"exec", "eval"} for node in ast.walk(loader)),
+                "drill request direct dynamic execution refused")
+
+    verify_drill_pinned_loader(drill_source)
+    for label, scope, old, replacement in (
+        ("proof invocation", "main", "    prove_pinned_module_import()\n", "    pass\n"),
+        ("source loader", "load_module", "loader=PinnedSourceLoader(name, str(path))", "loader=None"),
+        ("pinned code", "load_module", 'return compile(source, str(path), "exec")', "return None"),
+        ("stdlib execution", "load_module", "spec.loader.exec_module(module)", "pass"),
+        ("descriptor leaf", "load_module",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)"),
+        ("bounded read", "load_module", "source = stream.read(MAX_MODULE_BYTES + 1)",
+         "source = stream.read()"),
+        ("platform flags", "load_module",
+         'for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")',
+         'for flag in ()'),
+        ("private suppression", "load_module",
+         'raise Fail("cannot load drill request authority") from None',
+         'raise Fail("cannot load drill request authority") from exc'),
+        ("parent substitution", "prove_pinned_module_import",
+         "parent.symlink_to(redirected, target_is_directory=True)", "pass"),
+        ("pinned value", "prove_pinned_module_import", 'loaded.VALUE == "pinned"', "False"),
+        ("canary", "prove_pinned_module_import",
+         'require(canary.read_text(encoding="utf-8") ==',
+         'require(False and'),
+    ):
+        parsed = ast.parse(drill_source)
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        function = functions.get(scope)
+        require(function is not None, "drill request pinned mutation scope missing")
+        lines = drill_source.splitlines(keepends=True)
+        span = "".join(lines[function.lineno - 1:function.end_lineno])
+        require(span.count(old) == 1,
+                "drill request pinned scoped mutation anchor drift: " + label)
+        lines[function.lineno - 1:function.end_lineno] = [span.replace(old, replacement, 1)]
+        try:
+            verify_drill_pinned_loader("".join(lines))
+        except Fail:
+            continue
+        raise Fail("drill request pinned loader weakening accepted: " + label)
+    print("PASS: drill request pinned loader and eleven source mutations rejected")
     print("PASS: preflight reconcile negative pinned loader and five source mutations rejected")
     print("PASS: preflight authority pinned loader/private path/FD/unsafe source and 21 mutations rejected")
     print("PASS: preflight pinned source loader and four weakening mutations rejected")
