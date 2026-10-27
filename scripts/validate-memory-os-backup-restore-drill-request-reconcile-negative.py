@@ -42,11 +42,68 @@ def mode(path: Path) -> int:
 
 
 def load_reconciler() -> Any:
-    spec = importlib.util.spec_from_file_location("memory_os_restore_drill_request_reconcile_negative", RECONCILER)
-    require(spec is not None and spec.loader is not None, "cannot load drill request reconciler")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    """Reuse the CI-proven pinned loader instead of executing a mutable path."""
+    try:
+        require(DRILL_REQUEST_LOAD_NEGATIVE.is_file()
+                and not DRILL_REQUEST_LOAD_NEGATIVE.is_symlink(),
+                "cannot load drill request reconciler")
+        helper = load_pinned_fixture_guard(
+            DRILL_REQUEST_LOAD_NEGATIVE, "memory_os_drill_reconcile_pinned_loader")
+        module = helper.load_module(
+            RECONCILER, "memory_os_restore_drill_request_reconcile_negative")
+    except Exception:
+        raise Fail("cannot load drill request reconciler") from None
     return module
+
+
+def prove_reconciler_pinned_import() -> None:
+    """An after-capture parent substitution cannot select a different reconciler."""
+    global RECONCILER
+    original_path = RECONCILER
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".drill-reconcile-import-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "module.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "module.py"
+        source.write_text("VALUE = 'pinned'\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_DRILL_RECONCILE_IMPORT_CANARY')\n",
+                          encoding="utf-8")
+        swapped = False
+        try:
+            RECONCILER = source
+            require(load_reconciler().VALUE == "pinned",
+                    "drill reconcile pinned import positive failed")
+
+            def swap_after_read(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = load_reconciler()
+            require(swapped and loaded.VALUE == "pinned",
+                    "drill reconcile import executed redirected source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_DRILL_RECONCILE_IMPORT_CANARY')\n",
+                    "drill reconcile import changed redirected canary")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            RECONCILER = original_path
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    require(callable(getattr(load_reconciler(), "main", None)),
+            "drill reconcile pinned import canonical restoration failed")
+    print("PASS: drill request reconcile negative loader uses pinned source after parent swap")
 
 
 def pin_checked_helper_parent(path: Path) -> int:
@@ -638,6 +695,7 @@ def main() -> int:
     prove_helper_source_swap_during_import_is_pinned()
     prove_helper_parent_swap_after_pin_uses_original_source()
     prove_helper_ancestor_swap_during_fd_walk_rejected()
+    prove_reconciler_pinned_import()
     with guarded_temporary_directory(".tmp-drill-reconcile-parent-negative-", ROOT) as raw:
         sandbox = Path(raw)
         link = sandbox / "redirect"
