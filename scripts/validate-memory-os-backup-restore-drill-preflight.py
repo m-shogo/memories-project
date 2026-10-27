@@ -222,10 +222,49 @@ def load_eligibility_helper():
         "shared environment generation eligibility authority",
     )
     try:
-        spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
-        require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
+        checked = ELIGIBILITY_HELPER.lstat()
+        require(stat.S_ISREG(checked.st_mode), "preflight eligibility helper import unavailable")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                "preflight eligibility helper import unavailable")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in ELIGIBILITY_HELPER_REL.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(ELIGIBILITY_HELPER_REL.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    "preflight eligibility helper import unavailable")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_JSON_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            require(not cleanup_failed, "preflight eligibility helper import unavailable")
+        require(len(source) <= MAX_JSON_BYTES, "preflight eligibility helper import unavailable")
+        spec = importlib.util.spec_from_file_location(
+            "memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
+        require(spec is not None and spec.loader is not None,
+                "preflight eligibility helper import unavailable")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        exec(compile(source, str(ELIGIBILITY_HELPER), "exec"), module.__dict__)
     except Exception:
         raise Fail("preflight eligibility helper import unavailable") from None
     return module

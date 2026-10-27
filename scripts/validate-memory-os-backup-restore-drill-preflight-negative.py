@@ -151,6 +151,55 @@ def prove_private_preflight_import_errors(validator: Any) -> None:
     print("PASS: preflight helper private import faults and canonical positive")
 
 
+def prove_pinned_preflight_helper_import(validator: Any) -> None:
+    """Checked helper bytes remain authoritative after source or parent replacement."""
+    original_path = validator.ELIGIBILITY_HELPER
+    original_rel = validator.ELIGIBILITY_HELPER_REL
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".preflight-helper-source-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        helper = parent / "helper.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "helper.py"
+        source = ("class Fail(RuntimeError):\n    pass\n"
+                  "def derive_registry(_registry):\n    return {'origin': 'pinned'}\n")
+        helper.write_text(source, encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_HELPER_SWAP_CANARY')\n", encoding="utf-8")
+        try:
+            validator.ELIGIBILITY_HELPER = helper
+            validator.ELIGIBILITY_HELPER_REL = helper.relative_to(ROOT)
+            require(validator.load_eligibility_helper().derive_registry({}) == {"origin": "pinned"},
+                    "preflight pinned helper canonical positive failed")
+            swapped = False
+
+            def swap_after_read(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == helper:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = validator.load_eligibility_helper()
+            require(swapped and loaded.derive_registry({}) == {"origin": "pinned"},
+                    "preflight helper executed replaced parent source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_HELPER_SWAP_CANARY')\n",
+                    "preflight helper redirected canary mutated")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            validator.ELIGIBILITY_HELPER = original_path
+            validator.ELIGIBILITY_HELPER_REL = original_rel
+    require(callable(getattr(validator.load_eligibility_helper(), "derive_registry", None)),
+            "preflight pinned helper canonical restoration failed")
+    print("PASS: preflight eligibility helper uses descriptor-pinned bytes after parent swap")
+
+
 def expect_strict_preflight_json_reader(validator: Any) -> None:
     """Actual preflight reader rejects noncanonical, unsafe or oversized JSON evidence."""
     require(isinstance(validator.load(CONTRACT), dict), "preflight JSON canonical positive failed")
@@ -557,6 +606,7 @@ def main() -> int:
     validator = load_validator()
     prove_private_preflight_path_errors(validator)
     prove_private_preflight_import_errors(validator)
+    prove_pinned_preflight_helper_import(validator)
     prove_private_semantic_helper_domain_failure(validator)
     canonical = load(CONTRACT)
     generations = load(GEN_REGISTRY)
