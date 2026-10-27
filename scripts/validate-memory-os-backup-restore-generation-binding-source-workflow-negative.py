@@ -55,6 +55,7 @@ MAIN_REQUIRED = (
     ("raw CI log suppression", '          printf "Generation binding validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
     ("no raw diagnostic tail", "text[-12000:]", 0),
     ("no raw CI log echo", '          cat "$log"\n', 0),
+    ("diagnostic symlink rejection", "          if path.is_symlink():\n              raise SystemExit('generation binding diagnostic target must not be a symlink')\n", 1),
 )
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
@@ -86,7 +87,10 @@ def source(relative: str) -> str:
         raise SystemExit("generation binding CI source missing or substituted: " + relative) from exc
 
 
-def validate(publisher: str, independent: str, *, check_blob: bool = True) -> None:
+def validate(
+    publisher: str, independent: str, *,
+    check_publisher_blob: bool = True, check_independent_blob: bool = True,
+) -> None:
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -96,7 +100,7 @@ def validate(publisher: str, independent: str, *, check_blob: bool = True) -> No
                 raise SystemExit("generation binding " + name + " source drift: " + label)
         data = content.encode("utf-8")
         blob = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
-        if check_blob and hashlib.sha1(blob).hexdigest() != digest:
+        if ((name == "publisher" and check_publisher_blob) or (name == "independent" and check_independent_blob)) and hashlib.sha1(blob).hexdigest() != digest:
             raise SystemExit("generation binding " + name + " complete source drift")
 
 
@@ -281,7 +285,10 @@ def negatives(publisher: str, independent: str) -> None:
             counts = semantic_counts if semantic else blob_counts
             counts[target] += 1
             try:
-                validate(mutated, independent, check_blob=not semantic) if target == "publisher" else validate(publisher, mutated, check_blob=not semantic)
+                if target == "publisher":
+                    validate(mutated, independent, check_publisher_blob=not semantic)
+                else:
+                    validate(publisher, mutated, check_independent_blob=not semantic)
             except SystemExit:
                 continue
             raise SystemExit("generation binding accepted source mutation: " + target + " " + label)
