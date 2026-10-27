@@ -639,6 +639,25 @@ def prove_generation_evidence_json_reader(validator) -> None:
         positive = b'{"safe":true,"nested":{"count":1}}'
         path.write_bytes(positive)
         require(validator.load(path) == {"safe": True, "nested": {"count": 1}}, "generation recovery JSON positive control failed")
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK"):
+            original = getattr(validator.os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(validator.os, flag, invalid)
+                    try:
+                        validator.load(path)
+                    except validator.Fail as exc:
+                        require(str(exc) == "generation recovery JSON nofollow support required",
+                                "generation recovery JSON accepted missing or ineffective platform flag")
+                        require(exc.__suppress_context__,
+                                "generation recovery JSON unsupported flag exposed exception context")
+                    else:
+                        raise Fail("generation recovery JSON accepted unsafe platform flag: " + flag)
+            finally:
+                setattr(validator.os, flag, original)
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}},
+                "generation recovery JSON reader failed after flag restoration")
+        print("PASS: generation recovery JSON missing and zero-valued nofollow flags rejected")
         cases = (
             ("duplicate root", b'{"safe":true,"safe":false}', "generation recovery JSON duplicate key refused"),
             ("duplicate nested", b'{"nested":{"a":1,"a":2}}', "generation recovery JSON duplicate key refused"),
