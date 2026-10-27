@@ -244,8 +244,10 @@ def main() -> int:
             )
             try:
                 writer.write_registry_transactionally(candidate_value)
-            except writer.Fail:
-                pass
+            except writer.Fail as exc:
+                require(str(exc) == "generation evidence append failed; rollback completed"
+                        and exc.__suppress_context__,
+                        "generation evidence post-append rollback leaked primary diagnostic")
             else:
                 raise Fail("post-append validation failure unexpectedly accepted")
             require(registry.read_bytes() == original_bytes, "post-append rejection changed generation evidence registry bytes")
