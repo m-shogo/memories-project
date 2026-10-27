@@ -1060,6 +1060,19 @@ def prove_preflight_private_path_negative_reachability() -> None:
                       "exc.__suppress_context__", "preflight eligibility helper import unavailable"):
             require(token in import_body, "preflight private import negative guard removed")
 
+        semantic_target = functions.get("prove_private_semantic_helper_domain_failure")
+        require(semantic_target is not None, "preflight semantic helper private negative missing")
+        semantic_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                          and isinstance(node.func, ast.Name)
+                          and node.func.id == "prove_private_semantic_helper_domain_failure"]
+        require(len(semantic_calls) == 1, "preflight semantic helper private negative not executed")
+        semantic_body = ast.get_source_segment(candidate, semantic_target)
+        require(isinstance(semantic_body, str), "preflight semantic helper private negative body unavailable")
+        for token in ("SYNTHETIC_PRIVATE_SEMANTIC_HELPER_CANARY",
+                      "raise SyntheticHelper.Fail(private)", "exc.__suppress_context__",
+                      "shared generation semantic derivation failed"):
+            require(token in semantic_body, "preflight semantic helper private negative guard removed")
+
     verify(source)
     for label, scope, old, replacement in (
         ("invocation", "main", "    prove_private_preflight_path_errors(validator)\n", "    pass\n"),
@@ -1068,6 +1081,9 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("import invocation", "main", "    prove_private_preflight_import_errors(validator)\n", "    pass\n"),
         ("import fault injection", "prove_private_preflight_import_errors", "            importlib.util.module_from_spec = private_import\n", "            pass\n"),
         ("import context assertion", "prove_private_preflight_import_errors", "exc.__suppress_context__", "False"),
+        ("semantic invocation", "main", "    prove_private_semantic_helper_domain_failure(validator)\n", "    pass\n"),
+        ("semantic failure injection", "prove_private_semantic_helper_domain_failure", "            raise SyntheticHelper.Fail(private)\n", "            return {}\n"),
+        ("semantic context assertion", "prove_private_semantic_helper_domain_failure", "exc.__suppress_context__", "False"),
     ):
         # A source-wide anchor can repeat in unrelated tests; mutate only the named AST function.
         parsed = ast.parse(source)
