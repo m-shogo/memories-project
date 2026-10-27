@@ -575,6 +575,22 @@ def main() -> int:
         valid_json.write_text('{"nested":{"value":1}}', encoding="utf-8")
         require(module.load(valid_json) == {"nested": {"value": 1}},
                 "generation binding strict JSON reader positive control failed")
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK"):
+            original_flag = getattr(module.os, flag)
+            try:
+                setattr(module.os, flag, None)
+                try:
+                    module.load(valid_json)
+                except module.Fail as exc:
+                    require(str(exc) == "generation binding JSON nofollow support required",
+                            "generation binding JSON accepted missing nofollow support")
+                else:
+                    raise Fail("generation binding JSON accepted missing platform flag: " + flag)
+            finally:
+                setattr(module.os, flag, original_flag)
+        require(module.load(valid_json) == {"nested": {"value": 1}},
+                "generation binding JSON reader failed after flag restoration")
+        print("PASS: generation binding JSON missing nofollow/nonblocking support rejected")
         linked_json = tmp / "linked-authority.json"
         linked_json.symlink_to(valid_json)
         expect_rejected(module, "generation binding JSON symlink", lambda: module.load(linked_json))
