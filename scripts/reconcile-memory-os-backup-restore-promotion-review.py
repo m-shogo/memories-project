@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import subprocess
 import sys
@@ -74,12 +75,30 @@ def enforce_runtime_authorities() -> None:
     require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
 
 
+MAX_AUTHORITY_BYTES = 1024 * 1024
+
+
 def read_text(path: Path) -> str:
-    relative = repo_relative(path)
+    require(isinstance(path, Path) and path.is_absolute(),
+            "promotion reconcile authority path unsafe")
     try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise Fail(f"cannot read {relative}: {exc}") from exc
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("promotion reconcile authority path unsafe") from None
+    require(lexical == resolved and path.is_file() and not path.is_symlink(),
+            "promotion reconcile authority path unsafe")
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_AUTHORITY_BYTES + 1)
+    except OSError:
+        raise Fail("promotion reconcile authority unreadable") from None
+    require(len(raw) <= MAX_AUTHORITY_BYTES,
+            "promotion reconcile authority size limit exceeded")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeError:
+        raise Fail("promotion reconcile authority invalid UTF-8") from None
 
 
 def write_text(path: Path, text: str) -> None:
@@ -115,12 +134,32 @@ def write_text(path: Path, text: str) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
-    relative = repo_relative(path)
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "promotion reconcile JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_constant(_value: str) -> None:
+        raise Fail("promotion reconcile JSON nonfinite number refused")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "promotion reconcile JSON nonfinite number refused")
+        return number
+
+    def bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "promotion reconcile JSON integer too large")
+        return int(value)
+
     try:
-        value = json.loads(read_text(path))
-    except json.JSONDecodeError as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
+        value = json.loads(read_text(path), object_pairs_hook=unique_keys,
+                           parse_constant=reject_constant, parse_float=finite_float,
+                           parse_int=bounded_int)
+    except (json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("promotion reconcile JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "promotion reconcile JSON root must be object")
     return value
 
 

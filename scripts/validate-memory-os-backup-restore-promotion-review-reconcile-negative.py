@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -490,11 +491,74 @@ def prove_private_post_reconcile_transport(reconciler: Any) -> None:
     print("PASS: promotion reconcile post-validation transport private, bounded and source-pinned (5 negatives)")
 
 
+
+def prove_strict_reconcile_json(reconciler: Any) -> None:
+    """Exercise the actual reconciler authority reader against disposable nodes."""
+    with isolated_reconcile_authorities(reconciler):
+        path = reconciler.REGISTRY
+        original = path.read_bytes()
+        expected = json.loads(original)
+        require(reconciler.load(path) == expected, "promotion reconcile JSON positive failed")
+        marker = "PRIVATE_PROMOTION_RECONCILE_JSON_CANARY"
+        cases = (
+            ("duplicate", b'{"x":1,"x":2}', "promotion reconcile JSON duplicate key refused"),
+            ("nested-duplicate", b'{"x":{"y":1,"y":2}}', "promotion reconcile JSON duplicate key refused"),
+            ("nan", b'{"x":NaN}', "promotion reconcile JSON nonfinite number refused"),
+            ("infinity", b'{"x":Infinity}', "promotion reconcile JSON nonfinite number refused"),
+            ("float-overflow", b'{"x":1e309}', "promotion reconcile JSON nonfinite number refused"),
+            ("huge-integer", b'{"x":' + b"9" * 129 + b'}', "promotion reconcile JSON integer too large"),
+            ("invalid-utf8", b'{"x":"' + bytes([255]) + b'"}',
+             "promotion reconcile authority invalid UTF-8"),
+            ("malformed", b'{"x":', "promotion reconcile JSON unreadable or invalid"),
+            ("nonobject", b'[1,2]', "promotion reconcile JSON root must be object"),
+            ("oversized", b"x" * (reconciler.MAX_AUTHORITY_BYTES + 1),
+             "promotion reconcile authority size limit exceeded"),
+        )
+        for label, payload, failure in cases:
+            path.write_bytes(payload)
+            try:
+                reconciler.load(path)
+            except reconciler.Fail as exc:
+                require(str(exc) == failure and marker not in str(exc),
+                        f"promotion reconcile JSON {label} wrong/private rejection")
+            else:
+                raise Fail(f"promotion reconcile JSON {label} unexpectedly accepted")
+        path.unlink()
+        with tempfile.TemporaryDirectory(prefix="promotion-reconcile-external-") as tmp:
+            external = Path(tmp) / "private.json"
+            external.write_text(marker, encoding="utf-8")
+            path.symlink_to(external)
+            try:
+                reconciler.load(path)
+            except reconciler.Fail as exc:
+                require(str(exc) == "promotion reconcile authority path unsafe",
+                        "promotion reconcile JSON symlink wrong rejection")
+            else:
+                raise Fail("promotion reconcile JSON symlink accepted")
+            path.unlink()
+            require(external.read_text(encoding="utf-8") == marker,
+                    "promotion reconcile JSON external canary changed")
+        path.mkdir()
+        try:
+            reconciler.load(path)
+        except reconciler.Fail as exc:
+            require(str(exc) == "promotion reconcile authority path unsafe",
+                    "promotion reconcile JSON directory wrong rejection")
+        else:
+            raise Fail("promotion reconcile JSON directory accepted")
+        path.rmdir()
+        path.write_bytes(original)
+        require(reconciler.load(path) == expected,
+                "promotion reconcile JSON restored positive failed")
+    print("PASS: actual promotion reconcile JSON reader positive and 12 fail-closed negatives")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
     original_registry = CANONICAL_REGISTRY.read_bytes()
     validate_atomic_diagnostic_publication()
+    prove_strict_reconcile_json(reconciler)
     prove_private_post_reconcile_transport(reconciler)
 
     expect_authority_substitution_rejected(reconciler, "CONTRACT", reconciler.REGISTRY, "promotion review contract substitution", "promotion review contract authority drift", original_contract, original_registry)
