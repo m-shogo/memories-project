@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -100,6 +101,26 @@ def main() -> int:
                 "approvalRefs": refs,
             }
             digests = {ref: writer.approval_sha256(ref) for ref in refs.values()}
+            first_approval = ROOT / next(iter(refs.values()))
+            original_approval = first_approval.read_bytes()
+            oversized = temp / "oversized.json"
+            oversized.write_bytes(b"x" * (writer.MAX_APPROVAL_DIGEST_BYTES + 1))
+            alias = temp / "alias.json"
+            alias.symlink_to(first_approval)
+            directory = temp / "directory"
+            directory.mkdir()
+            fifo = temp / "fifo.json"
+            os.mkfifo(fifo)
+            for label, candidate in (
+                ("oversized approval", oversized),
+                ("symlink approval", alias),
+                ("directory approval", directory),
+                ("fifo approval", fifo),
+            ):
+                ref = candidate.relative_to(ROOT).as_posix()
+                expect_rejected(writer, label, lambda ref=ref: writer.approval_sha256(ref))
+            require(first_approval.read_bytes() == original_approval and alias.is_symlink(),
+                    "unsafe drill approval digest changed canonical canary or symlink")
             baseline = {
                 "schemaVersion": "memory-os-backup-restore-drill-request-registry.v1",
                 "registryClass": "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS",

@@ -113,11 +113,34 @@ def canonical_request_sha256(record: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+MAX_APPROVAL_DIGEST_BYTES = 1024 * 1024
+
+
 def approval_sha256(ref: str) -> str:
+    """Hash one bounded, canonical, no-follow approval file descriptor."""
+    repo_ref(ref, "approval evidence digest")
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "drill approval digest platform unsafe")
+    descriptor: int | None = None
     try:
-        payload = (ROOT / ref).read_bytes()
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"approval evidence cannot be hashed: {ref}") from exc
+        descriptor = os.open(ROOT / ref, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(descriptor)
+        require(stat.S_ISREG(metadata.st_mode), "drill approval digest unsafe file type")
+        require(metadata.st_size <= MAX_APPROVAL_DIGEST_BYTES,
+                "drill approval digest size limit exceeded")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
+            payload = source.read(MAX_APPROVAL_DIGEST_BYTES + 1)
+    except (OSError, ValueError, TypeError):
+        raise Fail("drill approval digest unreadable or unsafe") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("drill approval digest descriptor cleanup failed") from None
+    require(len(payload) <= MAX_APPROVAL_DIGEST_BYTES,
+            "drill approval digest size limit exceeded")
     return hashlib.sha256(payload).hexdigest()
 
 
