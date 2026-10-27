@@ -684,14 +684,15 @@ def require_reconcile_private_path_negative_reachable(source: str, function_name
     if len(invocations) != 1:
         raise SystemExit("reconcile private path negative invocation drift")
     nested = {node.name for node in ast.walk(target) if isinstance(node, ast.FunctionDef)}
-    if not {"fail_private_resolve", "fail_private_import", "require_private_fail"}.issubset(nested):
+    if not {"fail_private_resolve", "fail_private_import", "fail_private_runtime", "require_private_fail"}.issubset(nested):
         raise SystemExit("reconcile private path negative fault functions missing")
     assignments = {(item.attr, node.value.id)
                    for node in ast.walk(target) if isinstance(node, ast.Assign)
                    and isinstance(node.value, ast.Name)
                    for item in node.targets if isinstance(item, ast.Attribute)}
     if not {("resolve", "fail_private_resolve"),
-            ("module_from_spec", "fail_private_import")}.issubset(assignments):
+            ("module_from_spec", "fail_private_import"),
+            ("module_from_spec", "fail_private_runtime")}.issubset(assignments):
         raise SystemExit("reconcile private path/import fault injection not applied")
     strings = {node.value for node in ast.walk(target)
                if isinstance(node, ast.Constant) and isinstance(node.value, str)}
@@ -714,6 +715,8 @@ def prove_reconcile_private_path_negative_removal_rejected() -> None:
             ("invocation", invocation, "    pass\n"),
             ("path injection", "        Path.resolve = fail_private_resolve\n", "        pass\n"),
             ("import injection", "        reconciler.importlib.util.module_from_spec = fail_private_import\n",
+             "        pass\n"),
+            ("runtime injection", "        reconciler.importlib.util.module_from_spec = fail_private_runtime\n",
              "        pass\n"),
         ):
             if label == "invocation":
