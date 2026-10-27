@@ -113,7 +113,9 @@ def pin_checked_helper_parent(path: Path) -> int:
         isinstance(getattr(os, "O_NOFOLLOW", None), int)
         and os.O_NOFOLLOW != 0
         and isinstance(getattr(os, "O_DIRECTORY", None), int)
-        and os.O_DIRECTORY != 0,
+        and os.O_DIRECTORY != 0
+        and isinstance(getattr(os, "O_NONBLOCK", None), int)
+        and os.O_NONBLOCK != 0,
             "drill request fixture guard no-follow directory open unsupported")
     try:
         anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
@@ -198,7 +200,7 @@ def load_pinned_fixture_guard(path: Path, name: str):
     parent_fd = pin_checked_helper_parent(path)
     try:
         try:
-            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
         except OSError:
             raise Fail("drill request fixture guard source open failed") from None
         try:

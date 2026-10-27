@@ -1057,6 +1057,17 @@ except (OSError, RuntimeError):
         ),
         "loader leaf open not bound to checked parent FD",
     )
+    # Nonblocking leaf open is mandatory: a FIFO must never stall a proof.
+    expected_leaf_flags = ast.parse(
+        "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK", mode="eval"
+    ).body
+    leaf_open_call = live_statements[1].body[0].body[0].value
+    require(
+        len(leaf_open_call.args) == 2
+        and ast.dump(leaf_open_call.args[1], include_attributes=False)
+            == ast.dump(expected_leaf_flags, include_attributes=False),
+        "loader leaf open lacks nonblocking nofollow flags",
+    )
     descriptor_open = any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -1423,7 +1434,9 @@ except (OSError, RuntimeError):
         "isinstance(getattr(os, 'O_NOFOLLOW', None), int)"
         " and os.O_NOFOLLOW != 0"
         " and isinstance(getattr(os, 'O_DIRECTORY', None), int)"
-        " and os.O_DIRECTORY != 0", mode="eval"
+        " and os.O_DIRECTORY != 0"
+        " and isinstance(getattr(os, 'O_NONBLOCK', None), int)"
+        " and os.O_NONBLOCK != 0", mode="eval"
     ).body
     first_pin_statement = pin_live[0] if pin_live else None
     require(
@@ -1478,8 +1491,8 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "    if False: pin_checked_helper_parent(path)  # dead pin call\n"
          "    parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)\n",
          "loader parent FD not bound to checked ancestors"),
-        ("            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)\n",
-         "            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)\n",
+        ("            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)\n",
+         "            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)\n",
          "loader leaf open not bound to checked parent FD"),
         ('if __name__ == "__main__":',
          'main = lambda: 0  # synthetic shadowed main\n\nif __name__ == "__main__":',
@@ -1862,11 +1875,23 @@ def negative_cases(source: str, diagnostic: str) -> int:
             "path.parent.relative_to(anchor)", "Path('.')"),
          "loader parent classification fault not private"),
     )
+    leaf_open_anchor = (
+        "            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)\n"
+    )
+    require(source.count(leaf_open_anchor) == 1,
+            "loader leaf open lacks nonblocking nofollow flags")
+    replacements += (
+        (leaf_open_anchor, leaf_open_anchor.replace(
+            " | os.O_NONBLOCK", ""),
+         "loader leaf open lacks nonblocking nofollow flags"),
+    )
     platform_flag_guard = """    require(
         isinstance(getattr(os, "O_NOFOLLOW", None), int)
         and os.O_NOFOLLOW != 0
         and isinstance(getattr(os, "O_DIRECTORY", None), int)
-        and os.O_DIRECTORY != 0,
+        and os.O_DIRECTORY != 0
+        and isinstance(getattr(os, "O_NONBLOCK", None), int)
+        and os.O_NONBLOCK != 0,
 """
     require(source.count(platform_flag_guard) == 1,
             "loader unsupported platform flags accepted")
@@ -1882,6 +1907,12 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader unsupported platform flags accepted"),
         (platform_flag_guard, platform_flag_guard.replace(
             'isinstance(getattr(os, "O_DIRECTORY", None), int)', "True"),
+         "loader unsupported platform flags accepted"),
+        (platform_flag_guard, platform_flag_guard.replace(
+            "os.O_NONBLOCK != 0", "os.O_NONBLOCK >= 0"),
+         "loader unsupported platform flags accepted"),
+        (platform_flag_guard, platform_flag_guard.replace(
+            'isinstance(getattr(os, "O_NONBLOCK", None), int)', "True"),
          "loader unsupported platform flags accepted"),
     )
     base_cleanup_anchor = (
@@ -3141,7 +3172,7 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     else:
         raise AssertionError("outside parent accepted")
 
-    for flag_name in ("O_NOFOLLOW", "O_DIRECTORY"):
+    for flag_name in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK"):
         original_flag = getattr(os, flag_name)
         for unsafe_value in (0, None):
             setattr(os, flag_name, unsafe_value)
@@ -3155,6 +3186,16 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
                     raise AssertionError("unsupported platform flag accepted")
             finally:
                 setattr(os, flag_name, original_flag)
+
+    fifo = parent / "blocked-source.pipe"
+    import os
+    os.mkfifo(fifo)
+    try:
+        loader(fifo, "pinned_fifo_nonblocking_negative")
+    except Fail as exc:
+        assert str(exc).endswith("fixture guard source identity drift")
+    else:
+        raise AssertionError("FIFO source accepted")
 
     def fault_parent_runtime_open(file, flags, *args, **kwargs):
         if file == parent.name and kwargs.get("dir_fd") is not None:
@@ -3427,7 +3468,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 118 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 121 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
