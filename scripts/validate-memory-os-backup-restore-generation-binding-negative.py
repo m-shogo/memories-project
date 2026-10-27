@@ -560,6 +560,24 @@ def prove_private_escaped_path_diagnostic(module: Any) -> None:
 
 
 
+def prove_private_authority_file_diagnostic(module: Any) -> None:
+    missing = TMP_PARENT / ".synthetic-private-generation-binding-missing.json"
+    require(not missing.exists() and not missing.is_symlink(),
+            "generation binding missing authority negative fixture unexpectedly exists")
+    try:
+        module.require_exact_repo_file(missing, Path("unused.json"), "generation binding contract")
+    except module.Fail as exc:
+        require(str(exc) == "generation binding contract missing or escapes repository",
+                "generation binding missing authority diagnostic drift")
+        require(exc.__suppress_context__ and exc.__cause__ is None,
+                "generation binding missing authority leaked private filesystem exception context")
+        require("synthetic-private" not in str(exc),
+                "generation binding missing authority leaked canary path")
+    else:
+        raise Fail("generation binding missing authority accepted")
+    print("PASS: generation binding missing authority diagnostic suppresses private exception context")
+
+
 def main() -> int:
     prove_symlink_parent_rejected()
     prove_helper_source_symlink_rejected()
@@ -569,6 +587,7 @@ def main() -> int:
     module = load_module()
     prove_private_writer_import_failures(module)
     prove_private_escaped_path_diagnostic(module)
+    prove_private_authority_file_diagnostic(module)
     state = candidate_state(module)
 
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
