@@ -500,6 +500,38 @@ def expect_unexpected_helper_exception_preserved(
     raise Fail("unexpected helper exception was silently accepted")
 
 
+
+def prove_private_semantic_helper_domain_failure(validator: Any) -> None:
+    """Helper domain rejection must not disclose private message or chained cause."""
+    private = "SYNTHETIC_PRIVATE_SEMANTIC_HELPER_CANARY"
+
+    class SyntheticHelper:
+        class Fail(RuntimeError):
+            pass
+
+        @staticmethod
+        def derive_registry(_generations):
+            raise SyntheticHelper.Fail(private)
+
+    original = validator.load_eligibility_helper
+    try:
+        validator.load_eligibility_helper = lambda: SyntheticHelper
+        try:
+            validator.derive_state({}, {}, {})
+        except validator.Fail as exc:
+            require(str(exc) == "shared generation semantic derivation failed"
+                    and exc.__suppress_context__ and exc.__cause__ is None
+                    and private not in str(exc),
+                    "preflight semantic helper domain failure leaked private details")
+        else:
+            raise Fail("preflight private semantic helper domain failure accepted")
+    finally:
+        validator.load_eligibility_helper = original
+    require(callable(getattr(validator.load_eligibility_helper(), "derive_registry", None)),
+            "preflight semantic helper canonical positive unavailable")
+    print("PASS: preflight semantic helper domain errors private; unexpected failures remain distinct")
+
+
 def main() -> int:
     require(
         VALIDATOR.is_file()
@@ -513,6 +545,7 @@ def main() -> int:
     validator = load_validator()
     prove_private_preflight_path_errors(validator)
     prove_private_preflight_import_errors(validator)
+    prove_private_semantic_helper_domain_failure(validator)
     canonical = load(CONTRACT)
     generations = load(GEN_REGISTRY)
     objectives = load(OBJECTIVES)

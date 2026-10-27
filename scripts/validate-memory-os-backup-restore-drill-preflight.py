@@ -253,8 +253,8 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
     helper = load_eligibility_helper()
     try:
         semantic = helper.derive_registry(generations)
-    except helper.Fail as exc:
-        raise Fail(f"shared generation semantic derivation failed: {exc}") from exc
+    except helper.Fail:
+        raise Fail("shared generation semantic derivation failed") from None
     generation_count = semantic.get("registeredGenerationCount")
     preflight_eligible_count = semantic.get("preflightEligibleGenerationCount")
     unsuperseded_count = semantic.get("unsupersededGenerationCount")
