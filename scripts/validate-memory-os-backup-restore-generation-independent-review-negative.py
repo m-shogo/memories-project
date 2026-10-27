@@ -83,6 +83,7 @@ def require_pinned_execution_negative_source(code: str) -> None:
             "os.fstat(descriptor)",
             "errno.EBADF",
             "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+            "PASS: independent review execution pinned loader fdopen/close faults clean owned descriptors",
         ),
         "main": (
             "prove_pinned_validator_import()",
@@ -137,6 +138,9 @@ def prove_pinned_execution_negative_mutations_rejected() -> None:
          "pass  # synthetic pinned import proof removed"),
         ("prove_review_import_fd_cleanup", "os.fstat(descriptor)", "os.fstat(-1)"),
         ("prove_review_import_fd_cleanup", "errno.EBADF", "errno.EIO"),
+        ("prove_review_import_fd_cleanup",
+         "PASS: independent review execution pinned loader fdopen/close faults clean owned descriptors",
+         "PASS: drill request pinned loader fdopen/close faults clean owned descriptors"),
         ("main", "prove_review_import_unsafe_sources()",
          "pass  # synthetic unsafe proof removed"),
         ("main", "prove_review_import_fd_cleanup()",
