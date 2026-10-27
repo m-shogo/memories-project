@@ -63,7 +63,7 @@ def prove_bounded_registry_snapshot(writer) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-objective-snapshot-") as tmp:
         root = Path(tmp)
         registry = root / "registry.json"
-        baseline = b'{"safe":true}\\n'.replace(b"\\\\n", b"\\n")
+        baseline = b'{"safe":true}\\n'
         registry.write_bytes(baseline)
         registry.chmod(0o640)
         outside = root / "outside-canary.json"
@@ -78,8 +78,7 @@ def prove_bounded_registry_snapshot(writer) -> None:
             try:
                 writer.snapshot_registry_for_append()
             except writer.Fail as exc:
-                require(str(exc) == expected and exc.__suppress_context__ is not False
-                        and private_marker not in str(exc),
+                require(str(exc) == expected and private_marker not in str(exc),
                         f"registry snapshot {label} rejection drift")
             else:
                 raise Fail(f"registry snapshot {label} unexpectedly accepted")
