@@ -521,9 +521,17 @@ def require_pair_pinned_import_source(code: str) -> None:
             "importlib.util.spec_from_file_location = original_spec",
         ),
         "load_validator": ("return load_checked_pair_module(",),
+        "prove_pair_import_unsafe_sources": (
+            "oversized.write_bytes(b\"x\" * (MAX_PAIR_MODULE_BYTES + 1))",
+            "linked.symlink_to(good.name)",
+            "os.mkfifo(fifo)",
+            "os.O_NONBLOCK = 0",
+            'load_checked_pair_module(good, "review_pair_unsafe_restored")',
+        ),
         "main": (
             "prove_runtime_review_pair_controls()",
             "prove_pinned_pair_validator_import()",
+            "prove_pair_import_unsafe_sources()",
             "prove_source_order_bounded_git_output(module)",
         ),
     }
@@ -536,6 +544,7 @@ def require_pair_pinned_import_source(code: str) -> None:
     main = ast.get_source_segment(code, functions["main"]) or ""
     require(main.index("prove_runtime_review_pair_controls()")
             < main.index("prove_pinned_pair_validator_import()")
+            < main.index("prove_pair_import_unsafe_sources()")
             < main.index("prove_source_order_bounded_git_output(module)"),
             "independent review pair pinned proof unreachable after canonical main steps")
 
@@ -561,8 +570,14 @@ def prove_pair_pinned_import_mutations_rejected() -> None:
          'require(False and canary.read_text(encoding="utf-8") =='),
         ("load_validator", "return load_checked_pair_module(",
          "return load_unpinned_pair_module("),
+        ("prove_pair_import_unsafe_sources", "os.mkfifo(fifo)",
+         "pass  # synthetic FIFO proof removed"),
+        ("prove_pair_import_unsafe_sources", "os.O_NONBLOCK = 0",
+         "os.O_NONBLOCK = original_flag"),
         ("main", "prove_pinned_pair_validator_import()",
          "pass  # synthetic pinned proof removed"),
+        ("main", "prove_pair_import_unsafe_sources()",
+         "pass  # synthetic unsafe proof removed"),
     )
     for name, original, replacement in mutations:
         tree = ast.parse(code)
