@@ -77,15 +77,37 @@ def expect_validator_rejected(
     original_read_text = Path.read_text
     original_guard = validator.enforce_execution_authority
     original_command = validator.validate_command_source
+    original_source = validator.validate_source
     fixture_guard = lambda: None
     expected_commands = tuple(validator.COMMAND_SOURCES)
+    expected_sources = tuple(validator.SOURCES)
+    target_relative = path.relative_to(ROOT).as_posix()
+    target_indices = [index for index, entry in enumerate(expected_sources)
+                      if entry[0] == target_relative]
+    require(len(target_indices) == 1, f"source registry target not unique: {name}")
+    expected_prefix = expected_sources[:target_indices[0] + 1]
     command_calls: list[tuple[str, str, str]] = []
+    source_calls: list[tuple[str, str, str, str, str]] = []
+    target_calls = 0
 
     def record_command(relative: str, module_name: str, label: str) -> None:
         # The mutated tracked registry makes the canonical checkout dirty.
         # Keep the upstream call inventory, not its recursive clean-worktree subprocesses.
         require((relative, module_name, label) in expected_commands, f"unexpected source command: {relative}")
         command_calls.append((relative, module_name, label))
+
+    def record_source(relative: str, validator_path: str, module_name: str,
+                      function_name: str, label: str) -> None:
+        nonlocal target_calls
+        entry = (relative, validator_path, module_name, function_name, label)
+        require(entry in expected_sources, f"unexpected source registry: {relative}")
+        source_calls.append(entry)
+        if relative == target_relative:
+            target_calls += 1
+            # Run the canonical target reader, not a synthetic acceptance path.
+            # Earlier registries have clean-source positive coverage; invoking
+            # them while this tracked target is dirty can reject prematurely.
+            original_source(*entry)
 
     def tracked_read_text(candidate: Path, *args: Any, **kwargs: Any) -> str:
         nonlocal reads
@@ -95,17 +117,22 @@ def expect_validator_rejected(
 
     validator.enforce_execution_authority = fixture_guard
     validator.validate_command_source = record_command
+    validator.validate_source = record_source
     try:
         with patch.object(Path, "read_text", tracked_read_text):
             validator.main(canonical_execution_guard=fixture_guard)
     except validator.Fail:
         rejected = True
     finally:
+        validator.validate_source = original_source
         validator.validate_command_source = original_command
         validator.enforce_execution_authority = original_guard
         path.write_bytes(original)
+    require(validator.validate_source is original_source, "source registry validator not restored")
     require(validator.validate_command_source is original_command, "source command validator not restored")
     require(tuple(command_calls) == expected_commands, f"source command call sites skipped/reordered: {name}")
+    require(tuple(source_calls) == expected_prefix, f"source registry call sites skipped/reordered: {name}")
+    require(target_calls == 1, f"canonical target registry validator not called exactly once: {name}")
     require(reads > 0, f"source validator rejected before reading mutated authority: {name}")
     require(rejected, f"corrupt append-only authority unexpectedly accepted by validator: {name}")
     require(path.read_bytes() == original, f"validator fixture did not restore canonical authority: {name}")
