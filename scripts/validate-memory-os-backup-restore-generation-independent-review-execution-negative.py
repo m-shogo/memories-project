@@ -490,10 +490,105 @@ def prove_source_order_json_reader() -> None:
     print("PASS: actual source-order JSON reader positive and 16 fail-closed negatives")
 
 
+def require_pair_pinned_import_source(code: str) -> None:
+    """Require the pair-negative's executable pinned loader and parent-swap proof."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise Fail("independent review pair pinned source syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    required = {
+        "load_checked_pair_module": (
+            "stream.read(MAX_PAIR_MODULE_BYTES + 1)",
+            "require(len(source) <= MAX_PAIR_MODULE_BYTES",
+            "os.open(component, directory_flags, dir_fd=parent_fd)",
+            "os.open(relative.name,",
+            "os.O_NOFOLLOW | os.O_NONBLOCK",
+            "for directory_fd in reversed(directory_fds):",
+            "class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+            'return compile(source, str(path), "exec")',
+            "spec.loader.exec_module(module)",
+            'raise Fail("independent review pair module rejected") from None',
+        ),
+        "prove_pinned_pair_validator_import": (
+            'load_checked_pair_module(source, "review_pair_import_positive")',
+            'load_checked_pair_module(source, "review_pair_import_parent_swap")',
+            "parent.rename(parked)",
+            "parent.symlink_to(redirected",
+            'loaded.VALUE == "pinned"',
+            'require(canary.read_text(encoding="utf-8") ==',
+            "PRIVATE_INDEPENDENT_REVIEW_PAIR_CANARY",
+            "importlib.util.spec_from_file_location = original_spec",
+        ),
+        "load_validator": ("return load_checked_pair_module(",),
+        "main": (
+            "prove_runtime_review_pair_controls()",
+            "prove_pinned_pair_validator_import()",
+            "prove_source_order_bounded_git_output(module)",
+        ),
+    }
+    for name, tokens in required.items():
+        node = functions.get(name)
+        require(node is not None, "independent review pair pinned function missing: " + name)
+        fragment = ast.get_source_segment(code, node) or ""
+        for token in tokens:
+            require(token in fragment, "independent review pair pinned source drift: " + name)
+    main = ast.get_source_segment(code, functions["main"]) or ""
+    require(main.index("prove_runtime_review_pair_controls()")
+            < main.index("prove_pinned_pair_validator_import()")
+            < main.index("prove_source_order_bounded_git_output(module)"),
+            "independent review pair pinned proof unreachable after canonical main steps")
+
+
+def prove_pair_pinned_import_mutations_rejected() -> None:
+    code = (ROOT / PAIR_NEGATIVE_REL).read_text(encoding="utf-8")
+    require_pair_pinned_import_source(code)
+    mutations = (
+        ("load_checked_pair_module", "stream.read(MAX_PAIR_MODULE_BYTES + 1)", "stream.read()"),
+        ("load_checked_pair_module", "os.open(component, directory_flags, dir_fd=parent_fd)",
+         "os.open(path.parent, directory_flags)"),
+        ("load_checked_pair_module", 'return compile(source, str(path), "exec")',
+         'return compile(path.read_bytes(), str(path), "exec")'),
+        ("load_checked_pair_module", "for directory_fd in reversed(directory_fds):",
+         "for directory_fd in ():"),
+        ("load_checked_pair_module", 'raise Fail("independent review pair module rejected") from None',
+         'raise Fail("independent review pair module rejected")'),
+        ("prove_pinned_pair_validator_import", "parent.symlink_to(redirected",
+         "parent.symlink_to(parked"),
+        ("prove_pinned_pair_validator_import", 'loaded.VALUE == "pinned"',
+         'loaded.VALUE == "redirected"'),
+        ("prove_pinned_pair_validator_import", 'require(canary.read_text(encoding="utf-8") ==',
+         'require(False and canary.read_text(encoding="utf-8") =='),
+        ("load_validator", "return load_checked_pair_module(",
+         "return load_unpinned_pair_module("),
+        ("main", "prove_pinned_pair_validator_import()",
+         "pass  # synthetic pinned proof removed"),
+    )
+    for name, original, replacement in mutations:
+        tree = ast.parse(code)
+        nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name]
+        require(len(nodes) == 1, "independent review pair pinned mutation function drift")
+        lines = code.splitlines(keepends=True)
+        node = nodes[0]
+        fragment = "".join(lines[node.lineno - 1:node.end_lineno])
+        require(fragment.count(original) == 1,
+                "independent review pair pinned mutation anchor drift: " + name)
+        mutated = ("".join(lines[:node.lineno - 1]) + fragment.replace(original, replacement, 1)
+                   + "".join(lines[node.end_lineno:]))
+        ast.parse(mutated)
+        try:
+            require_pair_pinned_import_source(mutated)
+        except Fail:
+            continue
+        raise Fail("independent review pair pinned source weakening accepted: " + name)
+    print(f"PASS: independent review pair negative pinned import {len(mutations)} mutations rejected")
+
+
 def main() -> int:
     require_source_order_main_negative_proof()
     prove_source_order_json_reader()
     prove_pair_negative_harness_reachability()
+    prove_pair_pinned_import_mutations_rejected()
     prove_pinned_validator_import()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
