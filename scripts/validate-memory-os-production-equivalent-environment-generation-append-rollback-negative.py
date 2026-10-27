@@ -289,7 +289,9 @@ def prove_post_append_validation_rollback(writer) -> None:
             try:
                 writer.write_registry_transactionally({"sentinel": "after"})
             except writer.Fail as exc:
-                require("synthetic post-append" in str(exc), "unexpected transactional generation append failure")
+                require(str(exc) == "environment generation append failed; rollback completed"
+                        and exc.__suppress_context__,
+                        "generation append rollback completed class or privacy drift")
             else:
                 raise Fail("post-append generation registry validation failure was accepted")
             require(registry.read_bytes() == original, "failed generation append did not restore original registry bytes")
@@ -325,16 +327,11 @@ def prove_post_append_rollback_failure_preserves_diagnostics(writer) -> None:
             try:
                 writer.write_registry_transactionally({"sentinel": "after"})
             except writer.Fail as exc:
-                message = str(exc)
-                require(
-                    "synthetic post-append generation registry validation failure" in message,
-                    "rollback failure erased primary generation append validation diagnostic",
-                )
-                require("rollback incomplete" in message, "generation append rollback failure marker missing")
-                require(
-                    "synthetic environment generation rollback restore rejection" in message,
-                    "generation append rollback failure diagnostic missing",
-                )
+                require(str(exc) == "environment generation append failed; rollback incomplete"
+                        and exc.__suppress_context__,
+                        "generation append rollback incomplete class or privacy drift")
+                require("synthetic" not in str(exc),
+                        "generation append rollback leaked private primary or restore details")
             else:
                 raise Fail("generation append validation plus rollback failure was accepted")
             require(not generation_temp_files(registry), "rollback diagnostic negative left temporary registry files")
@@ -342,7 +339,7 @@ def prove_post_append_rollback_failure_preserves_diagnostics(writer) -> None:
             writer.atomic_restore = original_restore
             writer.validate_registry_for_append = original_validate
             writer.REGISTRY = original_registry
-    print("PASS diagnostics: generation append preserves primary validation and rollback failure diagnostics")
+    print("PASS diagnostics: generation append rollback uses private fixed completed/incomplete classes")
 
 
 def prove_failed_registration_releases_lock_for_retry(writer) -> None:
