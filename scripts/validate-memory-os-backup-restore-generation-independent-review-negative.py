@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import errno
 import importlib.machinery
 import importlib.util
 import stat
@@ -294,6 +295,60 @@ def prove_pair_import_unsafe_sources() -> None:
         require(load_checked_pair_module(good, "review_pair_unsafe_restored").VALUE == "safe",
                 "independent review pair unsafe fixture restoration failed")
     print("PASS: independent review pair unsafe sources and missing flag rejected")
+
+
+def prove_pair_import_fd_cleanup() -> None:
+    """Failed fdopen/close must not leak any descriptor owned by the loader."""
+    for fault in ("fdopen", "close"):
+        original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
+        opened = []
+        injected = False
+
+        def tracked_open(*args, **kwargs):
+            descriptor = original_open(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor
+
+        def broken_fdopen(descriptor, *args, **kwargs):
+            nonlocal injected
+            if fault == "fdopen" and not injected:
+                injected = True
+                raise OSError(errno.EIO, "PRIVATE_REVIEW_PAIR_FDOPEN_CANARY")
+            return original_fdopen(descriptor, *args, **kwargs)
+
+        def broken_close(descriptor):
+            nonlocal injected
+            if fault == "close" and descriptor in opened and not injected:
+                injected = True
+                original_close(descriptor)
+                raise OSError(errno.EIO, "PRIVATE_REVIEW_PAIR_CLOSE_CANARY")
+            return original_close(descriptor)
+
+        try:
+            os.open, os.fdopen, os.close = tracked_open, broken_fdopen, broken_close
+            try:
+                load_checked_pair_module(VALIDATOR, "review_pair_fd_fault")
+            except Fail as exc:
+                require(str(exc) == "independent review pair module rejected"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        "independent review pair module " + fault + " leaked private exception")
+            else:
+                raise Fail("independent review pair module " + fault + " fault accepted")
+        finally:
+            os.open, os.fdopen, os.close = original_open, original_fdopen, original_close
+        require(injected and len(opened) >= 3,
+                "independent review pair module " + fault + " injection not reached")
+        for descriptor in opened:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        "independent review pair module " + fault + " unexpected descriptor error")
+            else:
+                raise Fail("independent review pair module " + fault + " leaked descriptor")
+    require(callable(getattr(load_checked_pair_module(VALIDATOR, "review_pair_fd_restored"), "main", None)),
+            "independent review pair module FD fault canonical restoration failed")
+    print("PASS: drill request pinned loader fdopen/close faults clean owned descriptors")
 
 
 def head_sha() -> str:
@@ -1388,6 +1443,7 @@ def main() -> int:
     prove_pinned_execution_negative_mutations_rejected()
     prove_pinned_pair_validator_import()
     prove_pair_import_unsafe_sources()
+    prove_pair_import_fd_cleanup()
     prove_source_order_bounded_git_output(module)
     prove_source_order_bounded_creation_blob(module)
     prove_source_order_bounded_current_blob(module)
