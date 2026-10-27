@@ -108,11 +108,27 @@ def read_text(path: Path) -> str:
         raise Fail("recovery objective reconcile authority path unsafe") from None
     require(lexical == resolved and path.is_file() and not path.is_symlink(),
             "recovery objective reconcile authority path unsafe")
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "recovery objective reconcile authority platform unsafe")
+    descriptor: int | None = None
     try:
-        with path.open("rb") as source:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(descriptor)
+        require(stat.S_ISREG(metadata.st_mode),
+                "recovery objective reconcile authority path unsafe")
+        require(metadata.st_size <= MAX_AUTHORITY_BYTES,
+                "recovery objective reconcile authority size limit exceeded")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
             raw = source.read(MAX_AUTHORITY_BYTES + 1)
-    except OSError:
+    except (OSError, ValueError, TypeError):
         raise Fail("recovery objective reconcile authority unreadable") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("recovery objective reconcile authority descriptor cleanup failed") from None
     require(len(raw) <= MAX_AUTHORITY_BYTES,
             "recovery objective reconcile authority size limit exceeded")
     try:
