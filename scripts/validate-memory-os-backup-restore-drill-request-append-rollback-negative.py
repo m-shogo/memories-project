@@ -130,10 +130,15 @@ def prove_close_failure_releases_lock(writer) -> None:
             writer.os.close = close_then_fail
             try:
                 writer.main()
-            except OSError as exc:
+            except writer.Fail as exc:
                 require(
-                    "synthetic drill request lock close failure" in str(exc),
-                    f"unexpected drill request close failure: {exc}",
+                    str(exc) == "backup/restore drill request registry lock cleanup failed",
+                    "drill request close failure did not use fixed private class",
+                )
+                require(
+                    "synthetic drill request lock close failure" not in str(exc)
+                    and exc.__suppress_context__,
+                    "drill request lock cleanup exposed private exception context",
                 )
             else:
                 raise Fail("drill request lock close failure was accepted")

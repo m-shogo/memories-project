@@ -559,13 +559,19 @@ def main() -> int:
         registry["currentExecutableRequestCount"] = sum(1 for row in requests if request_currently_executable(row))
         write_registry_transactionally(registry)
     finally:
+        cleanup_failed = False
         try:
             os.close(lock_fd)
-        finally:
-            try:
-                LOCK.unlink()
-            except FileNotFoundError:
-                pass
+        except OSError:
+            cleanup_failed = True
+        try:
+            LOCK.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("backup/restore drill request registry lock cleanup failed") from None
 
     print(f"Registered production-equivalent backup/restore drill request: {record['requestId']}")
     print("source/target semantically preflight eligible: true")
