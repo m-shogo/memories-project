@@ -14926,3 +14926,18 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Both read boundaries are now descriptor-pinned and exercised by canonical CI negative suites with unchanged positive fixture bytes.
 - **Why safe/reusable mechanism:** Recheck identity at the actual open operation, not only before it; preserve bounded byte reads and fixed private errors; use synthetic OSError canaries to test flags and fail-closed behavior.
 - **Protected-authority check:** Production status, recovery objective registry and autonomous-learning contract are unchanged. `productionDecision=NO_GO`; registered versus semantically eligible distinct environments, current human objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy any production or recovery evidence gate.
+
+## 2026-10-27 — Reconciler atomic descriptor cleanup must precede temporary unlink
+
+### Material failure
+- **Symptom/evidence:** Reconciler source `4a6f90a57621d8768eac9c774a2ef21f07a90a28` created an atomic temporary descriptor, then called `os.fchmod` and `os.fdopen` without a `finally` close for a failure before the `fdopen` context manager owned the descriptor. Temporary unlink alone did not close that descriptor. No actual file-descriptor exhaustion or production authority corruption was observed.
+- **Verified root cause:** Descriptor ownership was transferred only after `fdopen` succeeded; pre-transfer failures skipped close. **Failed approach:** assuming unlinking a failed temporary file also closes its open file descriptor.
+- **Correction:** `14e83747be675c0f3d7bf5f23b8aadd8b79620ac` tracks the descriptor until context-manager ownership transfers, then always attempts both descriptor close and temporary unlink, emitting a fixed cleanup failure class if either fails.
+- **Executable recurrence guard:** `557c5f00c7042579935865b6011ca0c2f909422c` adds real `fchmod` and `fdopen` injected failures, asserts descriptor closure using `fstat`, no temporary residue, unchanged fixture bytes/mode and fixed private diagnostics. Exact-source Recovery Objectives Reconcile Negative `40439071919` and Recovery Objectives Admission `40439071969` both completed SUCCESS; the prior code-only source `14e83747` also passed `40439037063` and `40439037174`.
+- **Retry condition:** Revisit only on observed descriptor/cleanup regression or reviewed atomic-write policy change. Do not retry unchanged MinIO or external human-evidence blockers.
+
+### Material success
+- **Outcome/evidence:** The actual reconciler's pre-`fdopen` fault paths are now exercised by canonical negative CI and preserve isolated authority bytes and modes.
+- **Why safe:** The test patches only disposable reconciler fixture authorities and restores all monkeypatches; no canonical objective, status, production evidence, readiness or promotion was written.
+- **Reusable mechanism:** Track descriptor ownership explicitly and independently attempt close and unlink in `finally`; verify closure using the OS, not just absence of temporary filenames.
+- **Protected-authority check:** `productionDecision=NO_GO`, OPS-P0-007 blocking, zero approved objectives, semantically eligible distinct unsuperseded environments, explicit current human objective, current executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning cannot satisfy production or recovery gates.
