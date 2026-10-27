@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -16,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/backup-restore-generation-binding.yml"
 INDEPENDENT = ".github/workflows/backup-restore-generation-binding-source-negative.yml"
 SELF = "scripts/validate-memory-os-backup-restore-generation-binding-source-workflow-negative.py"
+BINDING_NEGATIVE = "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
 REVIEWED_PUBLISHER = "d01915e43432927f97c9f15d3243200f1a6a5622"
 REVIEWED_INDEPENDENT = "bd93725cf6b91fed44a47bd8c6a0bae8507893ab"
 D = chr(36)
@@ -278,6 +280,41 @@ def negatives(publisher: str, independent: str) -> None:
     print(f"PASS: generation binding publisher source admission ({len(publisher_cases)} negatives), independent source admission ({len(independent_cases)} negatives)")
 
 
+
+def require_binding_writer_import_negative_reachable(code: str) -> None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise SystemExit("generation binding negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    if "prove_private_writer_import_failures" not in functions or "main" not in functions:
+        raise SystemExit("generation binding private writer import negative missing")
+    calls = [
+        node for node in ast.walk(functions["main"])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "prove_private_writer_import_failures"
+    ]
+    if len(calls) != 1:
+        raise SystemExit("generation binding private writer import negative invocation drift")
+
+
+def prove_binding_writer_import_negative_deletion_rejected() -> None:
+    code = source(BINDING_NEGATIVE)
+    require_binding_writer_import_negative_reachable(code)
+    anchor = "    prove_private_writer_import_failures(module)\n"
+    if code.count(anchor) != 1:
+        raise SystemExit("generation binding private writer import negative removal anchor drift")
+    mutated = code.replace(anchor, "    pass\n", 1)
+    try:
+        require_binding_writer_import_negative_reachable(mutated)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation binding private writer import negative deletion accepted")
+    print("PASS: generation binding private writer import negative deletion rejected")
+
+
+
 def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
@@ -285,6 +322,7 @@ def main() -> int:
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
+    prove_binding_writer_import_negative_deletion_rejected()
     negatives(publisher, independent)
     return 0
 
