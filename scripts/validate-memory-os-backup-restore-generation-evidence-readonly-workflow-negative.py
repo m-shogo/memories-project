@@ -13,6 +13,26 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-readonly.yml"
 EXTERNAL_PERMISSION_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py"
 REVIEWED_WORKFLOW_BLOB_SHA = "4f3974d40145a61176ea4de7f302568cbf6c782f"
+
+TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-generation-evidence-readonly.yml",
+    ".github/workflows/backup-restore-generation-evidence.yml",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-readonly-workflow-negative.py",
+    "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/recovery-objectives-admission-contract.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+)
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -35,7 +55,54 @@ REQUIRED = (
 )
 
 
+def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS) -> None:
+    """Pin generation recovery evidence CI trigger paths in PR and push separately."""
+    if len(trigger_paths) != 17 or len(set(trigger_paths)) != 17:
+        raise SystemExit("generation evidence readonly trigger inventory drift")
+    pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+    push_marker = "  push:\n    branches: [so]\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("generation evidence readonly trigger marker drift")
+    pr_block = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push_block = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    for event, block in (("pull_request", pr_block), ("push", push_block)):
+        for path in trigger_paths:
+            token = '      - "' + path + '"\n'
+            if block.count(token) != 1:
+                raise SystemExit("generation evidence readonly " + event + " trigger drift: " + path)
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    """Prove one-event path removals and shortened inventories fail semantically."""
+    push_marker = "  push:\n    branches: [so]\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for path in TRIGGER_PATHS:
+            token = '      - "' + path + '"\n'
+            if source.count(token) != 2:
+                raise SystemExit("generation evidence readonly trigger negative anchor drift: " + path)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("generation evidence readonly trigger negative accepted: " + event + " " + path)
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation evidence readonly shortened trigger inventory accepted")
+    print(f"PASS: generation evidence readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 1 shortened inventory negative)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_trigger_reachability(source)
     for label, token, count in REQUIRED:
         if source.count(token) != count:
             raise SystemExit("generation evidence readonly source drift: " + label)
@@ -76,6 +143,7 @@ def prove_branch_guards_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_trigger_reachability_negatives(source)
     external = EXTERNAL_PERMISSION_VALIDATOR.read_text(encoding="utf-8")
     require_external_reviewed_binding(external)
     mutated_external = external.replace(REVIEWED_WORKFLOW_BLOB_SHA, "0" * 40, 1)
