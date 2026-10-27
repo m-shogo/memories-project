@@ -30,6 +30,8 @@ REQUIRED = (
     ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
     ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
     ("writer self-trigger", "      - 'scripts/register-memory-os-backup-restore-promotion-review.py'\n", 2),
+    ("root read-only permission", "permissions:\n  contents: read\n", 1),
+    ("no contents write permission", "contents: write", 0),
 )
 
 
@@ -89,10 +91,12 @@ def main() -> int:
         ("injected action", "      - name: Assert exact clean promotion-review source\n", "      - uses: unreviewed/action@v1\n      - name: Assert exact clean promotion-review source\n"),
         ("removed PR self-trigger", "      - \x27scripts/validate-memory-os-backup-restore-promotion-review-readonly-workflow-negative.py\x27\n", ""),
         ("removed writer trigger", REQUIRED[17][1], ""),
+        ("root permission escalation", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
+        ("job permission escalation", "jobs:\n  validate:\n", "jobs:\n  validate:\n    permissions:\n      contents: write\n"),
     )
     # Only the two anchor-preserving executable injections may rely on the full Git blob.
     digest_only = frozenset({"injected shell command", "injected action"})
-    if len(cases) != 21:
+    if len(cases) != 23:
         raise SystemExit("promotion-review readonly mutation inventory drift")
     semantic_count = 0
     blob_only_count = 0
@@ -113,7 +117,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"promotion-review readonly accepted forbidden mutation: {label}")
-    if (semantic_count, blob_only_count) != (19, 2):
+    if (semantic_count, blob_only_count) != (21, 2):
         raise SystemExit("promotion-review readonly semantic/blob mutation coverage drift")
     print(f"PASS: promotion-review readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
