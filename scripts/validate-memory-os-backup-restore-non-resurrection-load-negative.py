@@ -202,8 +202,8 @@ def load_pinned_fixture_helper(path: Path, name: str):
     try:
         try:
             fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
-        except OSError as exc:
-            raise Fail("typed contract path fixture guard source open failed") from exc
+        except OSError:
+            raise Fail("typed contract path fixture guard source open failed") from None
         try:
             opened = os.fstat(fd)
             entry = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)

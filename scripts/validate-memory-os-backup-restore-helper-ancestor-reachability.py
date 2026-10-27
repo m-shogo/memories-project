@@ -977,6 +977,28 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
     # The checked leaf FD must supply the executed bytes; merely opening a
     # pinned FD before a later pathname read does not prevent import TOCTOU.
     loader_try = live_statements[1]
+    source_open_try = loader_try.body[0]
+    source_open_handlers = source_open_try.handlers if isinstance(source_open_try, ast.Try) else []
+    require(
+        len(source_open_handlers) == 1
+        and isinstance(source_open_handlers[0].type, ast.Name)
+        and source_open_handlers[0].type.id == "OSError"
+        and source_open_handlers[0].name is None
+        and len(source_open_handlers[0].body) == 1
+        and isinstance(source_open_handlers[0].body[0], ast.Raise)
+        and isinstance(source_open_handlers[0].body[0].cause, ast.Constant)
+        and source_open_handlers[0].body[0].cause.value is None
+        and isinstance(source_open_handlers[0].body[0].exc, ast.Call)
+        and isinstance(source_open_handlers[0].body[0].exc.func, ast.Name)
+        and source_open_handlers[0].body[0].exc.func.id == "Fail"
+        and len(source_open_handlers[0].body[0].exc.args) == 1
+        and isinstance(source_open_handlers[0].body[0].exc.args[0], ast.Constant)
+        and isinstance(source_open_handlers[0].body[0].exc.args[0].value, str)
+        and source_open_handlers[0].body[0].exc.args[0].value.endswith(
+            "fixture guard source open failed")
+        and not source_open_try.orelse and not source_open_try.finalbody,
+        "loader source open failure not private",
+    )
     read_try = loader_try.body[1] if len(loader_try.body) > 1 else None
     require(
         isinstance(read_try, ast.Try)
@@ -1299,6 +1321,20 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ('                        raise Fail("fixture guard pinned source compilation failed") from None\n',
          '                        raise Fail("synthetic raw compilation failure") from None\n',
          "loader compilation failure not private"),
+    )
+    source_open_privacy_anchors = re.findall(
+        r'        except OSError:\n            raise Fail\("[^"]+ fixture guard source open failed"\) from None\n',
+        source,
+    )
+    require(len(source_open_privacy_anchors) == 1,
+            "loader source open failure not private")
+    source_open_privacy = source_open_privacy_anchors[0]
+    replacements += (
+        (source_open_privacy, source_open_privacy.replace(" from None", ""),
+         "loader source open failure not private"),
+        (source_open_privacy, source_open_privacy.replace(
+            "except OSError:", "except FileNotFoundError:"),
+         "loader source open failure not private"),
     )
     read_privacy_anchors = re.findall(
         r'        except OSError:\n            raise Fail\("[^"]+ pinned source read failed"\) from None\n',
@@ -2365,6 +2401,23 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
             os.open, os.close = original_open, original_close
         assert "leaf" in tracked and "parent" in tracked
 
+    def fault_source_open(file, flags, *args, **kwargs):
+        if file == good.name and kwargs.get("dir_fd") is not None:
+            raise OSError("PRIVATE_SOURCE_OPEN_CANARY")
+        return original_open(file, flags, *args, **kwargs)
+    os.open = fault_source_open
+    try:
+        try:
+            loader(good, "pinned_source_open_negative")
+        except Fail as exc:
+            assert str(exc).endswith("fixture guard source open failed")
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_SOURCE_OPEN_CANARY" not in str(exc)
+        else:
+            raise AssertionError("source open failure accepted")
+    finally:
+        os.open = original_open
+
     original_fstat = os.fstat
     tracked_read = {}
     def watch_read_open(file, flags, *args, **kwargs):
@@ -2469,7 +2522,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 65 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 67 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
