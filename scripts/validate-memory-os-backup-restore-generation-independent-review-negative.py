@@ -220,12 +220,12 @@ def load_checked_pair_module(path: Path, name: str):
             if source_fd >= 0:
                 try:
                     os.close(source_fd)
-                except OSError:
+                except (Exception, SystemExit):
                     cleanup_failed = True
             for directory_fd in reversed(directory_fds):
                 try:
                     os.close(directory_fd)
-                except OSError:
+                except (Exception, SystemExit):
                     cleanup_failed = True
             require(not cleanup_failed, "independent review pair module rejected")
         require(len(source) <= MAX_PAIR_MODULE_BYTES,
@@ -350,7 +350,7 @@ def prove_pair_import_unsafe_sources() -> None:
 
 def prove_pair_import_fd_cleanup() -> None:
     """Failed fdopen/close must not leak any descriptor owned by the loader."""
-    for fault in ("fdopen", "close"):
+    for fault in ("fdopen", "close", "close_runtime", "close_exit"):
         original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
         opened = []
         injected = False
@@ -369,9 +369,13 @@ def prove_pair_import_fd_cleanup() -> None:
 
         def broken_close(descriptor):
             nonlocal injected
-            if fault == "close" and descriptor in opened and not injected:
+            if fault.startswith("close") and descriptor in opened and not injected:
                 injected = True
                 original_close(descriptor)
+                if fault == "close_runtime":
+                    raise RuntimeError("PRIVATE_REVIEW_PAIR_CLOSE_RUNTIME_CANARY")
+                if fault == "close_exit":
+                    raise SystemExit("PRIVATE_REVIEW_PAIR_CLOSE_EXIT_CANARY")
                 raise OSError(errno.EIO, "PRIVATE_REVIEW_PAIR_CLOSE_CANARY")
             return original_close(descriptor)
 

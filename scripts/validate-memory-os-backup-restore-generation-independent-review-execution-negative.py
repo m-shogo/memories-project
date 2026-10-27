@@ -683,6 +683,10 @@ def require_pair_pinned_import_source(code: str) -> None:
             "def tracked_open(",
             "def broken_fdopen(",
             "def broken_close(",
+            '"close_runtime"',
+            '"close_exit"',
+            "PRIVATE_REVIEW_PAIR_CLOSE_RUNTIME_CANARY",
+            "PRIVATE_REVIEW_PAIR_CLOSE_EXIT_CANARY",
             'load_checked_pair_module(VALIDATOR, "review_pair_fd_fault")',
             "os.fstat(descriptor)",
             "errno.EBADF",
@@ -703,6 +707,9 @@ def require_pair_pinned_import_source(code: str) -> None:
         fragment = ast.get_source_segment(code, node) or ""
         for token in tokens:
             require(token in fragment, "independent review pair pinned source drift: " + name)
+    loader_fragment = ast.get_source_segment(code, functions["load_checked_pair_module"]) or ""
+    require(loader_fragment.count("except (Exception, SystemExit):") >= 3,
+            "independent review pair close cleanup exception boundary drift")
     main = ast.get_source_segment(code, functions["main"]) or ""
     require(main.index("prove_runtime_review_pair_controls()")
             < main.index("prove_pinned_pair_validator_import()")
@@ -723,6 +730,15 @@ def prove_pair_pinned_import_mutations_rejected() -> None:
          'return compile(path.read_bytes(), str(path), "exec")'),
         ("load_checked_pair_module", "for directory_fd in reversed(directory_fds):",
          "for directory_fd in ():"),
+        ("load_checked_pair_module",
+         "os.close(source_fd)\n                except (Exception, SystemExit):",
+         "os.close(source_fd)\n                except OSError:"),
+        ("load_checked_pair_module",
+         "os.close(directory_fd)\n                except (Exception, SystemExit):",
+         "os.close(directory_fd)\n                except OSError:"),
+        ("prove_pair_import_fd_cleanup",
+         'for fault in ("fdopen", "close", "close_runtime", "close_exit"):',
+         'for fault in ("fdopen", "close"):'),
         ("load_checked_pair_module", 'raise Fail("independent review pair module rejected") from None',
          'raise Fail("independent review pair module rejected")'),
         ("load_checked_pair_module", "except (Exception, SystemExit):", "except Exception:"),
