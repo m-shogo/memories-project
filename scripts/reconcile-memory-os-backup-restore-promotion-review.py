@@ -171,19 +171,16 @@ def run_validator(path: Path, label: str) -> None:
             f"post-reconcile {label} validator failed without exposing subprocess output")
 
 def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_error: Exception) -> None:
-    rollback_failures: list[str] = []
+    rollback_incomplete = False
     for path, original_text in authorities:
         try:
             write_text(path, original_text)
-        except Exception as rollback_exc:
-            rollback_failures.append(f"{repo_relative(path)}: {rollback_exc}")
-    if rollback_failures:
+        except Exception:
+            rollback_incomplete = True
+    if rollback_incomplete:
         raise Fail(
-            "promotion review reconcile failed; primary failure: "
-            + str(reconcile_error)
-            + "; rollback could not restore all canonical authorities; rollback incomplete: "
-            + "; ".join(rollback_failures)
-        ) from reconcile_error
+            f"promotion review reconcile transaction failed ({type(reconcile_error).__name__}); rollback incomplete"
+        ) from None
 
 
 def main() -> int:
@@ -247,7 +244,9 @@ def main() -> int:
             ),
             reconcile_error,
         )
-        raise
+        raise Fail(
+            f"promotion review reconcile transaction failed ({type(reconcile_error).__name__}); rollback completed"
+        ) from None
 
     print("Memory OS backup/restore promotion review reconciliation PASS")
     print(f"final recovery candidates: {candidate_count}")

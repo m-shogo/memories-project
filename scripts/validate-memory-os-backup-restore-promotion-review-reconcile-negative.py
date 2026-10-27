@@ -247,7 +247,7 @@ def prove_second_replace_failure_rolls_back_transaction(
         nonlocal replace_calls
         replace_calls += 1
         if replace_calls == 2:
-            raise OSError("synthetic second promotion-review replace rejection")
+            raise OSError("PRIVATE_PROMOTION_RECONCILE_REPLACE_CANARY")
         original_replace(source, destination)
 
     with isolated_reconcile_authorities(reconciler):
@@ -260,7 +260,10 @@ def prove_second_replace_failure_rolls_back_transaction(
             try:
                 reconciler.main()
             except reconciler.Fail as exc:
-                require("cannot atomically write" in str(exc), f"second replace rejected at wrong boundary: {exc}")
+                require(str(exc) == "promotion review reconcile transaction failed (Fail); rollback completed"
+                        and exc.__suppress_context__
+                        and "PRIVATE_PROMOTION_RECONCILE_REPLACE_CANARY" not in str(exc),
+                        "second replace rejected at wrong/private boundary")
             else:
                 raise Fail("synthetic second promotion-review replace failure unexpectedly accepted")
 
@@ -294,7 +297,7 @@ def prove_rollback_attempts_all_authorities(reconciler: Any) -> None:
     def fail_first_restore(path: Path, _text: str) -> None:
         attempts.append(path)
         if path == first:
-            raise reconciler.Fail("synthetic first rollback restore rejection")
+            raise reconciler.Fail("PRIVATE_PROMOTION_RECONCILE_ROLLBACK_CANARY")
 
     reconciler.write_text = fail_first_restore
     reconciler.repo_relative = lambda path: Path(path.name)
@@ -302,13 +305,15 @@ def prove_rollback_attempts_all_authorities(reconciler: Any) -> None:
         try:
             reconciler.restore_authorities(
                 ((first, "registry-original"), (second, "contract-original")),
-                reconciler.Fail("synthetic forward reconcile rejection"),
+                reconciler.Fail("PRIVATE_PROMOTION_RECONCILE_PRIMARY_CANARY"),
             )
         except reconciler.Fail as exc:
             require(
-                "rollback could not restore all canonical authorities" in str(exc)
-                and "promotion-registry.json" in str(exc),
-                f"rollback aggregation rejected at wrong boundary: {exc}",
+                str(exc) == "promotion review reconcile transaction failed (Fail); rollback incomplete"
+                and exc.__suppress_context__
+                and "PRIVATE_PROMOTION_RECONCILE_PRIMARY_CANARY" not in str(exc)
+                and "PRIVATE_PROMOTION_RECONCILE_ROLLBACK_CANARY" not in str(exc),
+                "rollback aggregation rejected at wrong/private boundary",
             )
         else:
             raise Fail("synthetic first rollback restore failure unexpectedly accepted")
@@ -392,7 +397,7 @@ def prove_aggregate_validator_rejection_rolls_back_transaction(
         def fake_run_validator(path: Path, label: str) -> None:
             labels.append(label)
             if path == reconciler.OPERABILITY_VALIDATOR:
-                raise reconciler.Fail("synthetic aggregate operability rejection")
+                raise reconciler.Fail("PRIVATE_PROMOTION_RECONCILE_VALIDATOR_CANARY")
             require(path == reconciler.VALIDATOR, f"unexpected validator path: {path}")
 
         def tracked_write_text(path: Path, text: str) -> None:
@@ -409,7 +414,10 @@ def prove_aggregate_validator_rejection_rolls_back_transaction(
             try:
                 reconciler.main()
             except reconciler.Fail as exc:
-                require("synthetic aggregate operability rejection" in str(exc), f"unexpected reconcile rejection: {exc}")
+                require(str(exc) == "promotion review reconcile transaction failed (Fail); rollback completed"
+                        and exc.__suppress_context__
+                        and "PRIVATE_PROMOTION_RECONCILE_VALIDATOR_CANARY" not in str(exc),
+                        "aggregate validator rejected at wrong/private boundary")
             else:
                 raise Fail("aggregate operability rejection unexpectedly accepted")
 
