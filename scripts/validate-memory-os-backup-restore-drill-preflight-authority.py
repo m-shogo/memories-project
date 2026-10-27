@@ -243,6 +243,46 @@ def prove_pinned_authority_fd_cleanup() -> None:
     print("PASS: preflight authority pinned fdopen/close faults clean owned descriptors")
 
 
+def prove_pinned_authority_unsafe_sources() -> None:
+    """Actual authority import rejects oversized, special and unsafe-platform sources."""
+    def rejected(path: Path, label: str) -> None:
+        try:
+            load_module(path, "preflight_authority_unsafe_" + label, "synthetic authority")
+        except Fail as exc:
+            require(str(exc) == "cannot load synthetic authority"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
+                    "preflight authority unsafe source leaked details: " + label)
+        else:
+            raise Fail("preflight authority accepted unsafe source: " + label)
+
+    with tempfile.TemporaryDirectory(prefix=".preflight-authority-unsafe-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        good = sandbox / "good.py"
+        good.write_text("VALUE = 'safe'\n", encoding="utf-8")
+        require(load_module(good, "preflight_authority_unsafe_positive", "synthetic authority").VALUE == "safe",
+                "preflight authority unsafe source positive unavailable")
+        oversized = sandbox / "oversized.py"
+        oversized.write_bytes(b"x" * (MAX_MODULE_BYTES + 1))
+        rejected(oversized, "oversized")
+        link = sandbox / "linked.py"
+        link.symlink_to(good)
+        rejected(link, "symlink")
+        fifo = sandbox / "fifo.py"
+        os.mkfifo(fifo)
+        rejected(fifo, "fifo")
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original = getattr(os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(os, flag, invalid)
+                    rejected(good, flag + "_missing_or_zero")
+            finally:
+                setattr(os, flag, original)
+        require(load_module(good, "preflight_authority_unsafe_restored", "synthetic authority").VALUE == "safe",
+                "preflight authority unsafe source restoration failed")
+    print("PASS: preflight authority oversized/symlink/FIFO/unsafe flag negatives and positive")
+
+
 def require_module_authority(module: object, name: str, expected: Path, field: str) -> None:
     actual = getattr(module, name, None)
     require(actual == expected, f"{field} authority drift: {name}")
@@ -395,6 +435,7 @@ def main() -> int:
     prove_pinned_authority_import()
     prove_private_authority_path_errors()
     prove_pinned_authority_fd_cleanup()
+    prove_pinned_authority_unsafe_sources()
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_authority_validator", "restore drill preflight validator")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_authority_reconciler", "restore drill preflight reconciler")
 
