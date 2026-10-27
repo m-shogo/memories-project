@@ -120,6 +120,11 @@ def parse_finite_float(value: str) -> float:
     return parsed
 
 
+def parse_bounded_int(value: str) -> int:
+    require(len(value.lstrip("-")) <= 128, "preflight JSON integer too large")
+    return int(value)
+
+
 def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     document: dict[str, Any] = {}
     for key, value in pairs:
@@ -145,6 +150,7 @@ def load(path: Path) -> dict[str, Any]:
         value = json.loads(raw.decode("utf-8"),
                            parse_constant=reject_nonfinite_constant,
                            parse_float=parse_finite_float,
+                           parse_int=parse_bounded_int,
                            object_pairs_hook=reject_duplicate_json_keys)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise Fail("preflight JSON unreadable or invalid") from None

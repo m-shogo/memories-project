@@ -86,6 +86,10 @@ def expect_strict_preflight_json_reader(validator: Any) -> None:
         regular = inside / "regular.json"
         regular.write_text('{"safe":true}', encoding="utf-8")
         require(validator.load(regular) == {"safe": True}, "preflight JSON regular positive failed")
+        bounded_integer = inside / "bounded-integer.json"
+        bounded_integer.write_bytes(b'{"value":' + b"9" * 128 + b"}")
+        require(validator.load(bounded_integer)["value"] == int("9" * 128),
+                "preflight JSON 128-digit integer positive failed")
         bounded = inside / "bounded.json"
         bounded.write_bytes(b'{"padding":"' + b"x" * (validator.MAX_JSON_BYTES - 14) + b'"}')
         require(validator.load(bounded)["padding"], "preflight JSON bounded positive failed")
@@ -110,7 +114,8 @@ def expect_strict_preflight_json_reader(validator: Any) -> None:
             ("negative Infinity", b'{"value":-Infinity}', "nonfinite"),
             ("float overflow", b'{"value":1e999}', "nonfinite"),
             ("invalid UTF-8", b'{"value":"' + bytes([255]) + b'"}', "unreadable or invalid"),
-            ("huge integer", b'{"value":' + b"9" * 5000 + b"}", "unreadable or invalid"),
+            ("129-digit integer", b'{"value":' + b"9" * 129 + b"}", "integer too large"),
+            ("huge integer", b'{"value":' + b"9" * 5000 + b"}", "integer too large"),
         ):
             path = inside / (label.replace(" ", "-") + ".json")
             path.write_bytes(raw)
@@ -132,7 +137,7 @@ def expect_strict_preflight_json_reader(validator: Any) -> None:
                "absolute Path")
         require(canary.read_bytes() == b'{"SYNTHETIC_EXTERNAL_CANARY":true}',
                 "preflight JSON reader changed outside canary")
-    print("PASS: preflight strict JSON 3 positives and 15 unsafe/nonfinite negatives")
+    print("PASS: preflight strict JSON 4 positives and 16 unsafe/nonfinite negatives")
 
 
 def expect_state_rejected(
