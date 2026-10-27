@@ -94,9 +94,45 @@ def prove_private_bounded_child_execution(module: Any) -> None:
 
 
 
+
+def prove_private_writer_import_failures(module: Any) -> None:
+    """Reject private filesystem errors in the actual generation evidence writer loader."""
+    original_spec = module.importlib.util.spec_from_file_location
+    original_module = module.importlib.util.module_from_spec
+    canary = "private-generation-evidence-writer-import-canary"
+
+    def fail_private(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError(canary)
+
+    try:
+        for target in ("spec", "module"):
+            if target == "spec":
+                module.importlib.util.spec_from_file_location = fail_private
+            else:
+                module.importlib.util.spec_from_file_location = original_spec
+                module.importlib.util.module_from_spec = fail_private
+            try:
+                module.load_writer()
+            except module.Fail as exc:
+                require(str(exc) == "generation evidence writer import unavailable",
+                        "generation evidence writer import disclosed private error")
+                require(canary not in str(exc) and exc.__suppress_context__,
+                        "generation evidence writer import exposed exception context")
+            else:
+                raise Fail("generation evidence writer import accepted private failure: " + target)
+    finally:
+        module.importlib.util.spec_from_file_location = original_spec
+        module.importlib.util.module_from_spec = original_module
+    require(callable(getattr(module.load_writer(), "validate_record", None)),
+            "generation evidence writer import positive control failed")
+    print("PASS: generation evidence writer import private failures and real positive")
+
+
+
 def main() -> int:
     module = load_validator()
     prove_private_bounded_child_execution(module)
+    prove_private_writer_import_failures(module)
 
     original_guard = module.enforce_execution_transport
     expect_rejected(
