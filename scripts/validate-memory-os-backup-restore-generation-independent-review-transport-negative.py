@@ -28,6 +28,8 @@ def require(condition: bool, message: str) -> None:
 def load_validator() -> Any:
     """Delegate canonical path admission to the pinned loader, never a mutable precheck."""
     try:
+        require(VALIDATOR == ROOT / VALIDATOR_REL,
+                "canonical independent-review validator lexical path drift")
         return load_pinned_module(ROOT, VALIDATOR, "memory_os_generation_independent_review_transport_negative")
     except (Exception, SystemExit):
         raise Fail("canonical independent-review validator path rejected") from None
@@ -54,6 +56,10 @@ def prove_validator_path_failures() -> None:
             parent = Path(raw)
             VALIDATOR = parent / "missing.py"
             rejected("missing")
+            substitute = parent / "substitute.py"
+            substitute.write_text("VALUE = 7\n", encoding="utf-8")
+            VALIDATOR = substitute
+            rejected("noncanonical substitute")
             alias = parent / "alias.py"
             alias.symlink_to(original_validator)
             VALIDATOR = alias
@@ -74,7 +80,7 @@ def prove_validator_path_failures() -> None:
     finally:
         VALIDATOR = original_validator
         load_pinned_module = original_loader
-    print("PASS independent transport canonical validator path privacy: missing symlink OSError RuntimeError SystemExit")
+    print("PASS independent transport canonical validator path privacy: missing substitute symlink OSError RuntimeError SystemExit")
 
 
 SOURCE_ORDER_EXECUTION_NEGATIVE = (

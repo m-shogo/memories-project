@@ -15,7 +15,7 @@ WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-revie
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
 HELPER = ROOT / "scripts/ops_independent_review_fixture_loader.py"
 TRANSPORT = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py"
-REVIEWED_TRANSPORT_GIT_BLOB_SHA = "1f3e4fcb7f03ca1df57e6c18a0d3c17580b51f0d"
+REVIEWED_TRANSPORT_GIT_BLOB_SHA = "818c0a27a04ac63c5b277ef803fd2a3c99ef78a9"
 REVIEWED_HELPER_GIT_BLOB_SHA = "1091ad96042f16bbb538fad2b81050a6f4fa6450"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
@@ -290,6 +290,7 @@ def main() -> int:
         ("restore unbounded contract read", b"canonical_contract = read_authority(module.CONTRACT)", b"canonical_contract = module.CONTRACT.read_bytes()"),
         ("skip pinned registry postcondition", b"require(read_authority(module.REGISTRY) == canonical_registry", b"require(True or read_authority(module.REGISTRY) == canonical_registry"),
         ("remove transport validator private failure", b"except (Exception, SystemExit):", b"except FixtureImportFail:"),
+        ("remove canonical transport validator path binding", b"require(VALIDATOR == ROOT / VALIDATOR_REL,", b"require(True,"),
         ("remove transport validator path fault probe", b"    prove_validator_path_failures()\n", b"    pass\n"),
     ):
         if old not in transport_source:
