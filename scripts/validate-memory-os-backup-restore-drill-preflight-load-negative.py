@@ -601,6 +601,65 @@ def prove_rollback_failure_diagnostics(reconciler: object, tmp: Path) -> None:
     print("PASS diagnostic: primary post-validation failure preserved alongside rollback incomplete failure")
 
 
+def prove_preflight_reconcile_pinned_reader(reconciler: object) -> None:
+    """Actual reconciler snapshot reads are bounded and cannot follow swapped parents."""
+    protected = (CANONICAL_CONTRACT.read_bytes(), CANONICAL_STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-preflight-reconcile-fd-race-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        oversized = sandbox / "oversized.json"
+        oversized.write_bytes(b"x" * (reconciler.MAX_AUTHORITY_BYTES + 1))
+        try:
+            reconciler.read_text(oversized)
+        except reconciler.Fail as exc:
+            require(str(exc) == "preflight reconcile authority exceeds 1 MiB",
+                    "preflight reconciler oversized read rejected at wrong boundary")
+        else:
+            raise Fail("preflight reconciler accepted oversized snapshot")
+        for case in ("parent", "ancestor"):
+            checked = sandbox / (case + "-checked")
+            parked = sandbox / (case + "-parked")
+            redirect = sandbox / (case + "-redirect")
+            checked.mkdir()
+            redirect.mkdir()
+            if case == "ancestor":
+                (checked / "nested").mkdir()
+                (redirect / "nested").mkdir()
+                checked_leaf = checked / "nested/candidate.json"
+                redirect_leaf = redirect / "nested/candidate.json"
+                trigger = "nested"
+            else:
+                checked_leaf = checked / "candidate.json"
+                redirect_leaf = redirect / "candidate.json"
+                trigger = "candidate.json"
+            checked_leaf.write_bytes(b'{"source":"pinned"}')
+            redirect_leaf.write_bytes(b'{"source":"redirected","secret":"SYNTHETIC_PRIVATE_CANARY"}')
+            original_open = os.open
+            swapped = False
+
+            def swap_during_walk(target, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and target == trigger and kwargs.get("dir_fd") is not None:
+                    swapped = True
+                    checked.rename(parked)
+                    checked.symlink_to(redirect, target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            try:
+                require(reconciler.read_text(checked_leaf) == '{"source":"pinned"}',
+                        f"preflight reconciler {case} positive control failed")
+                os.open = swap_during_walk
+                value = reconciler.read_text(checked_leaf)
+                require(swapped and value == '{"source":"pinned"}',
+                        f"preflight reconciler {case} read substituted authority")
+                require(redirect_leaf.read_bytes() == b'{"source":"redirected","secret":"SYNTHETIC_PRIVATE_CANARY"}',
+                        f"preflight reconciler {case} modified canary")
+            finally:
+                os.open = original_open
+    require((CANONICAL_CONTRACT.read_bytes(), CANONICAL_STATUS.read_bytes()) == protected,
+            "preflight reconciler pinned reader changed protected authorities")
+    print("PASS: preflight reconciler bounded JSON snapshot and parent/ancestor FD race negatives")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -613,6 +672,7 @@ def main() -> int:
     prove_helper_ancestor_swap_during_fd_walk_rejected()
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
+    prove_preflight_reconcile_pinned_reader(reconciler)
 
     prove_data_and_executable_authority_rejection(reconciler)
     prove_post_reconcile_output_suppression(reconciler)
