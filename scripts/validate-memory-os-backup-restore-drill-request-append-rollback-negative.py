@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import stat
 import sys
@@ -223,6 +224,48 @@ def prove_reconciler_transaction_rollback() -> None:
     print("PASS rollback: drill-request 3-authority reconcile restores exact bytes+mode after second/third replace failures")
 
 
+def prove_bounded_registry_snapshot(writer) -> None:
+    original_registry = writer.REGISTRY
+    with tempfile.TemporaryDirectory(prefix="drill-request-snapshot-negative-") as tmpdir:
+        root = Path(tmpdir)
+        regular = root / "registry.json"
+        payload = b'{"sentinel":"before"}\n'
+        regular.write_bytes(payload)
+        regular.chmod(0o640)
+        oversized = root / "oversized.json"
+        oversized.write_bytes(b"x" * (1024 * 1024 + 1))
+        directory = root / "directory"
+        directory.mkdir()
+        symlink = root / "symlink.json"
+        symlink.symlink_to(regular)
+        fifo = root / "fifo.json"
+        os.mkfifo(fifo)
+        try:
+            writer.REGISTRY = regular
+            before, mode = writer.snapshot_registry_for_append()
+            require(before == payload and mode == 0o640,
+                    "drill request bounded registry snapshot positive control drift")
+            for label, candidate, expected in (
+                ("oversized", oversized, "drill request registry snapshot size limit exceeded"),
+                ("directory", directory, "drill request registry snapshot unsafe file type"),
+                ("symlink", symlink, "drill request registry snapshot unreadable or unsafe"),
+                ("fifo", fifo, "drill request registry snapshot unsafe file type"),
+            ):
+                writer.REGISTRY = candidate
+                try:
+                    writer.snapshot_registry_for_append()
+                except writer.Fail as exc:
+                    require(str(exc) == expected,
+                            "drill request registry snapshot rejected at wrong boundary: " + label)
+                else:
+                    raise Fail("unsafe drill request registry snapshot accepted: " + label)
+            require(regular.read_bytes() == payload and symlink.is_symlink(),
+                    "drill request snapshot negative mutated external canary or link")
+        finally:
+            writer.REGISTRY = original_registry
+    print("PASS: drill request bounded descriptor snapshot and four negative file types")
+
+
 def main() -> int:
     require(WRITER.is_file() and RECONCILER.is_file() and CONTRACT.is_file(), "drill request append authority missing")
     with guarded_temporary_directory(".tmp-drill-append-parent-negative-", ROOT) as raw:
@@ -249,6 +292,7 @@ def main() -> int:
 
     writer = load_writer()
     require(callable(getattr(writer, "write_registry_transactionally", None)), "transactional drill request registry writer missing")
+    prove_bounded_registry_snapshot(writer)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-drill-request-append-rollback-") as tmp:
         registry = Path(tmp) / "backup-restore-drill-request-registry.v1.json"
