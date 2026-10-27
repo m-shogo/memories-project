@@ -1088,6 +1088,20 @@ def prove_preflight_private_path_negative_reachability() -> None:
                       "validator.load_eligibility_helper().derive_registry({})"):
             require(token in unsafe_body, "preflight pinned helper unsafe guard removed")
 
+        fd_target = functions.get("prove_preflight_pinned_helper_fd_cleanup")
+        require(fd_target is not None, "preflight pinned helper FD negative missing")
+        fd_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "prove_preflight_pinned_helper_fd_cleanup"]
+        require(len(fd_calls) == 1, "preflight pinned helper FD negative not executed exactly once")
+        fd_body = ast.get_source_segment(candidate, fd_target)
+        require(isinstance(fd_body, str), "preflight pinned helper FD body unavailable")
+        for token in ("os.fdopen = broken_fdopen", "os.close = broken_close",
+                      "exc.__suppress_context__", "errno.EBADF",
+                      "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+                      "validator.ELIGIBILITY_HELPER = original_path"):
+            require(token in fd_body, "preflight pinned helper FD negative guard removed")
+
         semantic_target = functions.get("prove_private_semantic_helper_domain_failure")
         require(semantic_target is not None, "preflight semantic helper private negative missing")
         semantic_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
@@ -1130,6 +1144,16 @@ def prove_preflight_private_path_negative_reachability() -> None:
          "exc.__suppress_context__", "False"),
         ("pinned unsafe restore", "prove_preflight_pinned_helper_fail_closed",
          "            validator.ELIGIBILITY_HELPER = original_path\n", "            pass\n"),
+        ("pinned FD invocation", "main",
+         "    prove_preflight_pinned_helper_fd_cleanup(validator)\n", "    pass\n"),
+        ("pinned FD fdopen fault", "prove_preflight_pinned_helper_fd_cleanup",
+         "                        os.fdopen = broken_fdopen\n", "                        pass\n"),
+        ("pinned FD close fault", "prove_preflight_pinned_helper_fd_cleanup",
+         "                        os.close = broken_close\n", "                        pass\n"),
+        ("pinned FD leak check", "prove_preflight_pinned_helper_fd_cleanup",
+         "errno.EBADF", "None"),
+        ("pinned FD context", "prove_preflight_pinned_helper_fd_cleanup",
+         "exc.__suppress_context__", "False"),
         ("semantic invocation", "main", "    prove_private_semantic_helper_domain_failure(validator)\n", "    pass\n"),
         ("semantic failure injection", "prove_private_semantic_helper_domain_failure", "            raise SyntheticHelper.Fail(private)\n", "            return {}\n"),
         ("semantic context assertion", "prove_private_semantic_helper_domain_failure", "exc.__suppress_context__", "False"),
