@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "backup-restore-drill-request",
-  "sourceCommitSha": "5e92d3589e5e35a20116f79ced07ec89b9463585",
+  "sourceCommitSha": "3289a69ad1bf94e1d8ac27b777364c63e2802f9c",
   "result": "FAIL",
   "exitCode": 1,
   "output": "REDACTED: drill request validation failed; consult CI job logs",
