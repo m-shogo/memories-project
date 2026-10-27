@@ -23,7 +23,11 @@ class Fail(RuntimeError):
 
 
 def require(condition: bool, message: str) -> None:
-   MAX_REVIEW_MODULE_BYTES = 1024 * 1024
+    if not condition:
+        raise Fail(message)
+
+
+MAX_REVIEW_MODULE_BYTES = 1024 * 1024
 
 
 def load_checked_module(path: Path, name: str) -> Any:
@@ -135,10 +139,6 @@ def prove_pinned_validator_import() -> None:
     require(callable(getattr(load_validator(), "main", None)),
             "independent review canonical import restoration failed")
     print("PASS: independent review execution negative import pins source across parent swap")
-
-ec.loader.exec_module(module)
-    return module
-
 
 def expect_candidate_rejected(module: Any, field: str, replacement: Any) -> None:
     original = getattr(module, field)
