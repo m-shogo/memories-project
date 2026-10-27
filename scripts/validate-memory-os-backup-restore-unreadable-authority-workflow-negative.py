@@ -183,9 +183,18 @@ def prove_generation_json_descriptor_fault_negative_deletion_rejected() -> None:
     require_generation_json_descriptor_fault_negative_reachable(code)
     start = '        # A directory close error must not silently certify an unsafe read.\n'
     end = '        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):\n'
-    if code.count(start) != 1 or code.count(end) != 1:
-        raise SystemExit("generation recovery JSON descriptor fault deletion anchor drift")
-    mutated = code[:code.index(start)] + code[code.index(end, code.index(start)):]
+    parsed = ast.parse(code)
+    target = next((node for node in parsed.body if isinstance(node, ast.FunctionDef)
+                   and node.name == "prove_generation_evidence_json_reader"), None)
+    if target is None:
+        raise SystemExit("generation recovery JSON descriptor fault target missing")
+    lines = code.splitlines(keepends=True)
+    span = "".join(lines[target.lineno - 1:target.end_lineno])
+    if span.count(start) != 1 or span.count(end) != 1:
+        raise SystemExit("generation recovery JSON descriptor fault scoped anchor drift")
+    left, right = span.index(start), span.index(end, span.index(start))
+    lines[target.lineno - 1:target.end_lineno] = [span[:left] + span[right:]]
+    mutated = "".join(lines)
     try:
         require_generation_json_descriptor_fault_negative_reachable(mutated)
     except SystemExit:
