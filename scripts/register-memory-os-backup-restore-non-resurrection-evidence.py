@@ -161,23 +161,57 @@ def repo_ref(value: Any, field: str) -> str:
     require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
 
+MAX_SOURCE_BYTES = 1024 * 1024
+SOURCE_GIT_TIMEOUT = 20
+
 def require_ref_bound_to_source(source_commit: str, ref: str, field: str) -> None:
-    """Require canonical typed evidence bytes to exist unchanged at sourceCommitSha."""
+    """Compare a pinned, bounded local regular file with a bounded immutable Git blob."""
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit), f"{field} sourceCommitSha invalid")
     require(isinstance(ref, str) and ref and ":" not in ref, f"{field} invalid for immutable source binding")
+    repo_ref(ref, field)
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            f"{field} safe source read unavailable")
     path = ROOT / ref
+    fd = -1
     try:
-        current = path.read_bytes()
-    except (OSError, RuntimeError) as exc:
-        raise Fail(f"{field} cannot be read for immutable source binding") from exc
-    completed = subprocess.run(
-        ["git", "show", f"{source_commit}:{ref}"],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    require(completed.returncode == 0, f"{field} evidence missing from sourceCommitSha")
-    require(current == completed.stdout, f"{field} evidence changed since sourceCommitSha")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(stat.S_ISREG(os.fstat(fd).st_mode), f"{field} evidence source is not a regular file")
+        with os.fdopen(fd, "rb") as source:
+            fd = -1
+            current = source.read(MAX_SOURCE_BYTES + 1)
+    except OSError:
+        raise Fail(f"{field} cannot be read for immutable source binding") from None
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                raise Fail(f"{field} source descriptor cleanup failed") from None
+    require(len(current) <= MAX_SOURCE_BYTES, f"{field} source file size limit exceeded")
+
+    def git_blob(*args: str) -> bytes:
+        try:
+            completed = subprocess.run(
+                ["git", *args], cwd=ROOT, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, timeout=SOURCE_GIT_TIMEOUT, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            raise Fail(f"{field} evidence missing from sourceCommitSha") from None
+        require(type(completed.returncode) is int and completed.returncode == 0
+                and isinstance(completed.stdout, bytes),
+                f"{field} evidence missing from sourceCommitSha")
+        return completed.stdout
+
+    source_ref = f"{source_commit}:{ref}"
+    size_bytes = git_blob("cat-file", "-s", source_ref)
+    require(len(size_bytes) <= 32 and size_bytes.strip().isascii()
+            and size_bytes.strip().isdigit(),
+            f"{field} source blob size invalid")
+    source_size = int(size_bytes.strip())
+    require(source_size <= MAX_SOURCE_BYTES, f"{field} source blob size limit exceeded")
+    historical = git_blob("show", source_ref)
+    require(len(historical) == source_size, f"{field} source blob length mismatch")
+    require(current == historical, f"{field} evidence changed since sourceCommitSha")
 
 def load_generation_writer():
     writer = canonical_repo_file(GEN_WRITER, "generation recovery writer")

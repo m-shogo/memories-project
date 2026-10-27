@@ -78,6 +78,70 @@ def expect_rejected(writer, source_commit: str, ref: str, field: str) -> None:
     raise Fail(f"post-source evidence unexpectedly accepted: {field}")
 
 
+def prove_bounded_source_binding(writer, source_commit: str) -> None:
+    """Exercise real immutable-source binding with private synthetic Git faults."""
+    field = "bounded typed source"
+    original_run = writer.subprocess.run
+    original_payload = POST_SOURCE_PATH.read_bytes()
+    private_marker = "PRIVATE_TYPED_GIT_SOURCE_CANARY"
+    try:
+        POST_SOURCE_PATH.write_bytes(b"x" * (writer.MAX_SOURCE_BYTES + 1))
+        try:
+            writer.require_ref_bound_to_source(source_commit, POST_SOURCE_REF, field)
+        except writer.Fail as exc:
+            require(str(exc) == f"{field} source file size limit exceeded",
+                    "oversized local typed source rejected at wrong boundary")
+        else:
+            raise Fail("oversized local typed source unexpectedly accepted")
+        POST_SOURCE_PATH.write_bytes(original_payload)
+
+        def fake_git(args, **kwargs):
+            require(kwargs.get("cwd") == ROOT
+                    and kwargs.get("stdout") == subprocess.PIPE
+                    and kwargs.get("stderr") == subprocess.DEVNULL
+                    and kwargs.get("timeout") == writer.SOURCE_GIT_TIMEOUT
+                    and kwargs.get("check") is False,
+                    "typed source Git privacy/timeout drift")
+            require(args[:2] == ["git", "cat-file"] or args[:2] == ["git", "show"],
+                    "typed source Git command drift")
+            if fake_git.mode == "timeout":
+                raise subprocess.TimeoutExpired(args, writer.SOURCE_GIT_TIMEOUT,
+                                                output=private_marker.encode())
+            if fake_git.mode == "oserror":
+                raise OSError(private_marker)
+            if fake_git.mode == "oversize":
+                return subprocess.CompletedProcess(args, 0,
+                                                   stdout=str(writer.MAX_SOURCE_BYTES + 1).encode() + b"\n")
+            if fake_git.mode == "nonnumeric":
+                return subprocess.CompletedProcess(args, 0, stdout=b"not-a-size\n")
+            if args[1] == "cat-file":
+                return subprocess.CompletedProcess(args, 0, stdout=b"3\n")
+            return subprocess.CompletedProcess(args, 0, stdout=b"bad")
+
+        for mode, expected in (
+            ("timeout", f"{field} evidence missing from sourceCommitSha"),
+            ("oserror", f"{field} evidence missing from sourceCommitSha"),
+            ("oversize", f"{field} source blob size limit exceeded"),
+            ("nonnumeric", f"{field} source blob size invalid"),
+            ("mismatch", f"{field} evidence changed since sourceCommitSha"),
+        ):
+            fake_git.mode = mode
+            writer.subprocess.run = fake_git
+            try:
+                writer.require_ref_bound_to_source(source_commit, POST_SOURCE_REF, field)
+            except writer.Fail as exc:
+                require(str(exc) == expected, f"{mode}: typed Git source failure class drift")
+                require(private_marker not in str(exc), f"{mode}: private Git output disclosed")
+            else:
+                raise Fail(f"{mode}: unsafe typed source binding accepted")
+    finally:
+        writer.subprocess.run = original_run
+        POST_SOURCE_PATH.write_bytes(original_payload)
+    require(POST_SOURCE_PATH.read_bytes() == original_payload,
+            "typed source binding negative changed its owned fixture")
+    print("PASS reject: typed source Git timeout, oversized blobs, invalid sizes and private errors")
+
+
 def validate_atomic_diagnostic_publication() -> None:
     require(WORKFLOW.is_file(), "typed admission workflow missing")
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -210,6 +274,7 @@ def main() -> int:
         with os.fdopen(fd, "w", encoding="utf-8") as owned:
             owned.write("{}\n")
         expect_rejected(writer, source_commit, POST_SOURCE_REF, "post-source typed evidence")
+        prove_bounded_source_binding(writer, source_commit)
     finally:
         require(require_fixture_parent_canonical(POST_SOURCE_PATH.parent) == parent_identity,
                 "source-binding fixture parent inode drift before cleanup")
