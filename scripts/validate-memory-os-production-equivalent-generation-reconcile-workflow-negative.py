@@ -63,6 +63,7 @@ def prove_branch_guards_runtime() -> None:
 
 RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py"
 REAL_WRITER_NEGATIVES = (
+    "prove_private_generation_writer_import",
     "prove_private_child_validator",
     "prove_private_atomic_authority_writer",
     "prove_private_bounded_authority_reader",
@@ -115,7 +116,7 @@ def prove_reconcile_negative_reachability() -> None:
         except SystemExit:
             continue
         raise SystemExit("generation reconcile negative removal mutation accepted: " + function)
-    print("PASS: generation reconcile real-writer negative AST reachability (4 removals)")
+    print("PASS: generation reconcile real-writer negative AST reachability (5 removals)")
 
 
 def main() -> int:
