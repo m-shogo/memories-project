@@ -1914,6 +1914,19 @@ def negative_cases(source: str, diagnostic: str) -> int:
         (platform_flag_guard, platform_flag_guard.replace(
             'type(getattr(os, "O_NONBLOCK", None)) is int', "True"),
          "loader unsupported platform flags accepted"),
+        # An isinstance regression would accept bool (True) as an OS flag.
+        (platform_flag_guard, platform_flag_guard.replace(
+            'type(getattr(os, "O_NOFOLLOW", None)) is int',
+            'isinstance(getattr(os, "O_NOFOLLOW", None), int)'),
+         "loader unsupported platform flags accepted"),
+        (platform_flag_guard, platform_flag_guard.replace(
+            'type(getattr(os, "O_DIRECTORY", None)) is int',
+            'isinstance(getattr(os, "O_DIRECTORY", None), int)'),
+         "loader unsupported platform flags accepted"),
+        (platform_flag_guard, platform_flag_guard.replace(
+            'type(getattr(os, "O_NONBLOCK", None)) is int',
+            'isinstance(getattr(os, "O_NONBLOCK", None), int)'),
+         "loader unsupported platform flags accepted"),
     )
     base_cleanup_anchor = (
         "    except BaseException as exc:\n"
@@ -3468,7 +3481,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 121 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 124 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
