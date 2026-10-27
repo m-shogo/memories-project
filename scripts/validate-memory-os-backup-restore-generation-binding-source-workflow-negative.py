@@ -296,6 +296,15 @@ def require_binding_writer_import_negative_reachable(code: str) -> None:
     ]
     if len(calls) != 1:
         raise SystemExit("generation binding private writer import negative invocation drift")
+    if "prove_private_escaped_path_diagnostic" not in functions:
+        raise SystemExit("generation binding private escaped-path negative missing")
+    path_calls = [
+        node for node in ast.walk(functions["main"])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "prove_private_escaped_path_diagnostic"
+    ]
+    if len(path_calls) != 1:
+        raise SystemExit("generation binding private escaped-path negative invocation drift")
 
 
 def prove_binding_writer_import_negative_deletion_rejected() -> None:
@@ -312,6 +321,17 @@ def prove_binding_writer_import_negative_deletion_rejected() -> None:
     else:
         raise SystemExit("generation binding private writer import negative deletion accepted")
     print("PASS: generation binding private writer import negative deletion rejected")
+    path_anchor = "    prove_private_escaped_path_diagnostic(module)\n"
+    if code.count(path_anchor) != 1:
+        raise SystemExit("generation binding private escaped-path negative removal anchor drift")
+    mutated_path = code.replace(path_anchor, "    pass\n", 1)
+    try:
+        require_binding_writer_import_negative_reachable(mutated_path)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation binding private escaped-path negative deletion accepted")
+    print("PASS: generation binding private escaped-path negative deletion rejected")
 
 
 
