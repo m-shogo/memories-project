@@ -6,6 +6,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -157,8 +159,17 @@ def load(path: Path) -> dict[str, Any]:
         return int(value)
 
     try:
-        with path.open("rb") as source:
-            raw = source.read(MAX_JSON_BYTES + 1)
+        require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+                "generation recovery JSON nofollow support required")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            require(stat.S_ISREG(os.fstat(fd).st_mode), "generation recovery JSON path unsafe")
+            with os.fdopen(fd, "rb") as source:
+                fd = -1
+                raw = source.read(MAX_JSON_BYTES + 1)
+        finally:
+            if fd >= 0:
+                os.close(fd)
         require(len(raw) <= MAX_JSON_BYTES, "generation recovery JSON size limit exceeded")
         value = json.loads(
             raw.decode("utf-8"),
