@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import re
 import stat
@@ -59,12 +60,60 @@ def domain_validation_failure(exc: BaseException) -> bool:
         current = current.__cause__ or current.__context__
     return False
 
+MAX_JSON_BYTES = 1024 * 1024
+
 def load(path: Path) -> dict[str, Any]:
+    """Read external evidence and canonical registry JSON with bounded, strict semantics."""
+    require(isinstance(path, Path) and path.is_absolute(), "typed writer JSON path invalid")
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "typed writer JSON safe open unavailable")
+    fd = -1
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path}")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(stat.S_ISREG(os.fstat(fd).st_mode), "typed writer JSON path unsafe")
+        with os.fdopen(fd, "rb") as source:
+            fd = -1
+            raw = source.read(MAX_JSON_BYTES + 1)
+    except OSError:
+        raise Fail("typed writer JSON unreadable or invalid") from None
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                raise Fail("typed writer JSON descriptor cleanup failed") from None
+    require(len(raw) <= MAX_JSON_BYTES, "typed writer JSON size limit exceeded")
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "typed writer JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("typed writer JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "typed writer JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "typed writer JSON integer too large")
+        return int(value)
+
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("typed writer JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "typed writer JSON root must be object")
     return value
 
 def canonical_repo_file(path: Path, field: str) -> Path:
