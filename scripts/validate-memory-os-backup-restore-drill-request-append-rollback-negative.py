@@ -296,7 +296,14 @@ def main() -> int:
             try:
                 writer.write_registry_transactionally({"sentinel": "after"})
             except writer.Fail as exc:
-                require("synthetic post-append" in str(exc), "unexpected transactional drill request append failure")
+                require(
+                    str(exc) == "backup/restore drill request append failed; rollback completed",
+                    "drill request append did not report completed rollback privately",
+                )
+                require(
+                    exc.__suppress_context__ and "synthetic post-append" not in str(exc),
+                    "drill request append leaked private validator diagnostics",
+                )
             else:
                 raise Fail("post-append drill request registry validation failure was accepted")
             require(registry.read_bytes() == original, "failed drill request append did not restore original registry bytes")
@@ -310,16 +317,15 @@ def main() -> int:
             try:
                 writer.write_registry_transactionally({"sentinel": "rollback-failure"})
             except writer.Fail as exc:
-                text = str(exc)
-                require("primary failure" in text, "drill request rollback failure lost primary failure marker")
                 require(
-                    "synthetic post-append drill request registry validation failure" in text,
-                    "drill request rollback failure lost primary validator diagnostic",
+                    str(exc) == "backup/restore drill request append failed; rollback incomplete",
+                    "drill request append did not report incomplete rollback privately",
                 )
-                require("rollback incomplete" in text, "drill request rollback failure missing incomplete rollback marker")
                 require(
-                    "synthetic drill request rollback restore failure" in text,
-                    "drill request rollback failure diagnostic missing restore cause",
+                    exc.__suppress_context__
+                    and "synthetic post-append" not in str(exc)
+                    and "synthetic drill request rollback restore failure" not in str(exc),
+                    "drill request rollback exposed private primary or restore diagnostics",
                 )
             else:
                 raise Fail("drill request rollback restore failure was accepted")
