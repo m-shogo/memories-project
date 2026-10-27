@@ -22,6 +22,7 @@ TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 DRILL_REQUEST_RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
 DRILL_REQUEST_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
+GENERATION_EVIDENCE_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
 PREFLIGHT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 PREFLIGHT_AUTHORITY = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-authority.py"
 PREFLIGHT_RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
@@ -1696,6 +1697,83 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("drill writer negative pinned source weakening accepted: " + label)
+    generation_source = GENERATION_EVIDENCE_LOAD_NEGATIVE.read_text(encoding="utf-8")
+
+    def verify_generation_pinned_loader(candidate: str) -> None:
+        try:
+            parsed = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("generation evidence pinned loader syntax invalid") from None
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        loader = functions.get("load_module")
+        proof = functions.get("prove_pinned_module_import")
+        main = functions.get("main")
+        require(loader is not None and proof is not None and main is not None,
+                "generation evidence pinned loader/proof/main missing")
+        loader_body = ast.get_source_segment(candidate, loader)
+        proof_body = ast.get_source_segment(candidate, proof)
+        main_body = ast.get_source_segment(candidate, main)
+        require(all(isinstance(body, str) for body in (loader_body, proof_body, main_body)),
+                "generation evidence pinned source unavailable")
+        require(main_body.count("prove_pinned_module_import()") == 1
+                and main_body.index("prove_pinned_module_import()") <
+                    main_body.index("writer = load_module(WRITER"),
+                "generation evidence pinned proof must run before canonical import")
+        for token in ("class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+                      'return compile(source, str(path), "exec")',
+                      "loader=PinnedSourceLoader(name, str(path))",
+                      "spec.loader.exec_module(module)",
+                      "source = stream.read(MAX_MODULE_BYTES + 1)",
+                      "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+                      'for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")',
+                      'raise Fail("cannot load generation evidence authority") from None'):
+            require(token in loader_body, "generation evidence pinned loader weakened")
+        for token in ("parent.rename(parked)", "parent.symlink_to(redirected",
+                      "importlib.util.spec_from_file_location = swap_after_read",
+                      'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
+                      "importlib.util.spec_from_file_location = original_spec",
+                      'getattr(load_module(VALIDATOR, "generation_import_restored"), "main", None)'):
+            require(token in proof_body, "generation evidence pinned proof removed")
+        require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in {"exec", "eval"} for node in ast.walk(loader)),
+                "generation evidence direct dynamic execution refused")
+
+    verify_generation_pinned_loader(generation_source)
+    for label, scope, old, replacement in (
+        ("proof invocation", "main", "    prove_pinned_module_import()\n", "    pass\n"),
+        ("pinned loader", "load_module", "loader=PinnedSourceLoader(name, str(path))",
+         "loader=None"),
+        ("pinned code", "load_module", 'return compile(source, str(path), "exec")',
+         "return None"),
+        ("descriptor leaf", "load_module",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)"),
+        ("bounded source", "load_module", "source = stream.read(MAX_MODULE_BYTES + 1)",
+         "source = stream.read()"),
+        ("private suppression", "load_module",
+         'raise Fail("cannot load generation evidence authority") from None',
+         'raise Fail("cannot load generation evidence authority") from exc'),
+        ("parent substitution", "prove_pinned_module_import",
+         "parent.symlink_to(redirected, target_is_directory=True)", "pass"),
+        ("pinned value", "prove_pinned_module_import", 'loaded.VALUE == "pinned"', "False"),
+        ("canary", "prove_pinned_module_import",
+         'require(canary.read_text(encoding="utf-8") ==', 'require(False and'),
+    ):
+        parsed = ast.parse(generation_source)
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        function = functions.get(scope)
+        require(function is not None, "generation evidence pinned mutation scope missing")
+        lines = generation_source.splitlines(keepends=True)
+        span = "".join(lines[function.lineno - 1:function.end_lineno])
+        require(span.count(old) == 1,
+                "generation evidence pinned scoped mutation anchor drift: " + label)
+        lines[function.lineno - 1:function.end_lineno] = [span.replace(old, replacement, 1)]
+        try:
+            verify_generation_pinned_loader("".join(lines))
+        except Fail:
+            continue
+        raise Fail("generation evidence pinned source weakening accepted: " + label)
+    print("PASS: generation evidence pinned loader and nine source mutations rejected")
     print("PASS: drill writer negative pinned loader and nine source mutations rejected")
     print("PASS: drill reconcile pinned loader and eight source mutations rejected")
     print("PASS: drill request pinned loader and twenty-five source mutations rejected")
