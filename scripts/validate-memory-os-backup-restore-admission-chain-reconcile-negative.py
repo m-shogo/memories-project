@@ -66,7 +66,7 @@ def pin_checked_helper_parent(path: Path) -> int:
             "admission-chain fixture guard trusted anchor missing or symlinked")
     try:
         fd = os.open(anchor, flags)
-    except OSError:
+    except (OSError, RuntimeError):
         raise Fail("admission-chain fixture guard anchor open failed") from None
     try:
         try:

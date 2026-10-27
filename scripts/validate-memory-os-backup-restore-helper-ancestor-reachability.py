@@ -762,7 +762,7 @@ except (OSError, RuntimeError):
     )
     for suffix, expected_type, expected_count in (
         ("fixture guard parent outside trusted roots", "ValueError", 1),
-        ("fixture guard anchor open failed", "OSError", 1),
+        ("fixture guard anchor open failed", ("OSError", "RuntimeError"), 1),
         ("fixture guard parent open failed", "OSError", 2),
     ):
         matches = [
@@ -780,8 +780,16 @@ except (OSError, RuntimeError):
         ]
         require(
             len(matches) == 1
-            and isinstance(matches[0].type, ast.Name)
-            and matches[0].type.id == expected_type
+            and (
+                (isinstance(expected_type, str)
+                 and isinstance(matches[0].type, ast.Name)
+                 and matches[0].type.id == expected_type)
+                or (isinstance(expected_type, tuple)
+                    and isinstance(matches[0].type, ast.Tuple)
+                    and [elt.id for elt in matches[0].type.elts
+                         if isinstance(elt, ast.Name)] == list(expected_type)
+                    and len(matches[0].type.elts) == len(expected_type))
+            )
             and matches[0].name is None
             and len(matches[0].body) == expected_count
             and isinstance(matches[0].body[-1].cause, ast.Constant)
@@ -1654,8 +1662,8 @@ def negative_cases(source: str, diagnostic: str) -> int:
     pin_privacy_cases = (
         (r'    except ValueError:\n        raise Fail\("[^"]+ fixture guard parent outside trusted roots"\) from None\n',
          "except ValueError:", "except TypeError:"),
-        (r'    except OSError:\n        raise Fail\("[^"]+ fixture guard anchor open failed"\) from None\n',
-         "except OSError:", "except FileNotFoundError:"),
+        (r'    except \(OSError, RuntimeError\):\n        raise Fail\("[^"]+ fixture guard anchor open failed"\) from None\n',
+         "except (OSError, RuntimeError):", "except OSError:"),
         (r'    except OSError:\n        try:\n            os.close\(fd\)\n        except \(Exception, SystemExit\):\n            raise Fail\("fixture guard pinned descriptor cleanup failed"\) from None\n        raise Fail\("[^"]+ fixture guard parent open failed"\) from None\n',
          "except OSError:", "except FileNotFoundError:"),
     )
@@ -1669,6 +1677,12 @@ def negative_cases(source: str, diagnostic: str) -> int:
             (anchor, anchor.replace(original_handler, narrowed_handler),
              "loader parent pin failure not private"),
         )
+        if "fixture guard anchor open failed" in anchor:
+            replacements += (
+                (anchor, anchor.replace(
+                    "except (OSError, RuntimeError):", "except RuntimeError:"),
+                 "loader parent pin failure not private"),
+            )
         if "fixture guard parent open failed" in anchor:
             cleanup = (
                 "        try:\n"
@@ -3063,6 +3077,23 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     else:
         raise AssertionError("outside parent accepted")
 
+    def fault_anchor_runtime_open(file, flags, *args, **kwargs):
+        if Path(file) == Path(sys.argv[2]):
+            raise RuntimeError("PRIVATE_ANCHOR_RUNTIME_CANARY")
+        return original_open(file, flags, *args, **kwargs)
+    os.open = fault_anchor_runtime_open
+    try:
+        try:
+            loader(good, "pinned_anchor_runtime_negative")
+        except Fail as exc:
+            assert str(exc).endswith("fixture guard anchor open failed")
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_ANCHOR_RUNTIME_CANARY" not in str(exc)
+        else:
+            raise AssertionError("anchor runtime fault accepted")
+    finally:
+        os.open = original_open
+
     for fault, suffix in (
         ("anchor", "fixture guard anchor open failed"),
         ("parent", "fixture guard parent open failed"),
@@ -3284,7 +3315,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 109 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 110 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

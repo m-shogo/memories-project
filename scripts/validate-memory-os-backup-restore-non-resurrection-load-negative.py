@@ -168,7 +168,7 @@ def pin_checked_helper_parent(path: Path) -> int:
             "typed contract path fixture guard trusted anchor missing or symlinked")
     try:
         fd = os.open(anchor, flags)
-    except OSError:
+    except (OSError, RuntimeError):
         raise Fail("typed contract path fixture guard anchor open failed") from None
     try:
         try:
