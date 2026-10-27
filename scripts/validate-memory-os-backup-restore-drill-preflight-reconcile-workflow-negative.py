@@ -71,16 +71,17 @@ def validate(source: str, *, check_blob: bool = True) -> None:
 
 
 
-def validate_independent(source: str) -> None:
+def validate_independent(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in INDEPENDENT_REQUIRED:
         if source.count(token) != expected:
             raise SystemExit("semantic preflight independent source drift: " + label)
     if not source.rstrip().endswith('          test -z "$(git status --porcelain)"'):
         raise SystemExit("semantic preflight independent final read-only terminator drift")
-    payload = source.encode("utf-8")
-    git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
-    if hashlib.sha1(git_blob).hexdigest() != INDEPENDENT_BLOB:
-        raise SystemExit("semantic preflight independent complete workflow source drift")
+    if check_blob:
+        payload = source.encode("utf-8")
+        git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        if hashlib.sha1(git_blob).hexdigest() != INDEPENDENT_BLOB:
+            raise SystemExit("semantic preflight independent complete workflow source drift")
 
 
 def prove_independent_runtime(source: str) -> None:
@@ -137,15 +138,17 @@ def prove_independent_negatives(source: str) -> None:
         ("injected action", "      - name: Prove reconcile source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove reconcile source admission\n"),
         ("appended shell", "          git diff --exit-code\n", "          git diff --exit-code\n          echo unreviewed\n"),
     )
-    for label, old, replacement in cases:
+    if len(cases) != 17 or tuple(label for label, _, _ in cases[-2:]) != ("injected action", "appended shell"):
+        raise SystemExit("semantic preflight independent negative population drift")
+    for index, (label, old, replacement) in enumerate(cases):
         if old not in source:
             raise SystemExit("semantic preflight independent negative anchor missing: " + label)
         try:
-            validate_independent(source.replace(old, replacement, 1))
+            validate_independent(source.replace(old, replacement, 1), check_blob=index >= 15)
         except SystemExit:
             continue
         raise SystemExit("semantic preflight independent accepted forbidden mutation: " + label)
-    print(f"PASS: semantic preflight independent source admission ({len(cases)} negatives)")
+    print(f"PASS: semantic preflight independent source admission ({len(cases) - 2} semantic anchor + 2 blob-only negatives)")
 
 
 
