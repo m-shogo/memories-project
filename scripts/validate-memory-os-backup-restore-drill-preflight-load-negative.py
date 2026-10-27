@@ -873,6 +873,49 @@ def prove_preflight_reconcile_writer_ownership(reconciler: object) -> None:
     print("PASS: preflight writer oversized/symlink/fdopen/short-write private ownership negatives")
 
 
+def prove_preflight_reconcile_private_path_diagnostics(reconciler: object) -> None:
+    original_resolve = Path.resolve
+    original_module_from_spec = reconciler.importlib.util.module_from_spec
+    private = "SYNTHETIC_PRIVATE_PATH_CANARY"
+
+    def fail_private_resolve(self, *args, **kwargs):
+        if self == CANONICAL_CONTRACT:
+            raise OSError(private)
+        return original_resolve(self, *args, **kwargs)
+
+    def require_private_fail(action, expected):
+        try:
+            action()
+        except reconciler.Fail as exc:
+            require(str(exc) == expected and exc.__suppress_context__ and exc.__cause__ is None
+                    and private not in str(exc),
+                    "preflight reconcile path/import leaked private exception")
+        else:
+            raise Fail("preflight reconcile private path/import exception accepted")
+
+    try:
+        Path.resolve = fail_private_resolve
+        require_private_fail(lambda: reconciler.repo_relative(CANONICAL_CONTRACT),
+                             "preflight reconcile authority path unsafe")
+        require_private_fail(
+            lambda: reconciler.require_exact_repo_file(
+                CANONICAL_CONTRACT, reconciler.CONTRACT_REL, "preflight contract"),
+            "preflight contract missing or escapes repository")
+    finally:
+        Path.resolve = original_resolve
+
+    def fail_private_import(_spec):
+        raise OSError(private)
+
+    try:
+        reconciler.importlib.util.module_from_spec = fail_private_import
+        require_private_fail(reconciler.load_validator_module,
+                             "preflight reconcile validator import unavailable")
+    finally:
+        reconciler.importlib.util.module_from_spec = original_module_from_spec
+    print("PASS: preflight reconcile private path and validator import errors suppressed")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -894,6 +937,7 @@ def main() -> int:
     prove_post_reconcile_output_suppression(reconciler)
     prove_atomic_write_failure(reconciler)
     prove_preflight_reconcile_writer_ownership(reconciler)
+    prove_preflight_reconcile_private_path_diagnostics(reconciler)
 
     with guarded_temporary_directory(".tmp-preflight-load-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
