@@ -173,24 +173,26 @@ def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
 
 
 def run_validator(path: Path, label: str) -> None:
-    if path == VALIDATOR:
-        relative = require_exact_repo_file(path, VALIDATOR_REL, "recovery objective validator")
-    elif path == OPERABILITY_VALIDATOR:
-        relative = require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, "operability validator")
+    """Run only reviewed validators with bounded, private failure classes."""
+    if path == VALIDATOR and label == "recovery objective validator":
+        require_exact_repo_file(path, VALIDATOR_REL, "recovery objective validator")
+    elif path == OPERABILITY_VALIDATOR and label == "aggregate operability validator":
+        require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, "operability validator")
     else:
-        raise Fail(f"unexpected recovery objective validator authority: {path}")
-    completed = subprocess.run(
-        [sys.executable, str(ROOT / relative)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    require(
-        completed.returncode == 0,
-        f"post-reconcile {label} failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}",
-    )
+        raise Fail("unreviewed recovery objective post-reconcile validator")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"post-reconcile {label} unavailable") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"post-reconcile {label} failed without exposing subprocess output")
 
 
 def main() -> int:

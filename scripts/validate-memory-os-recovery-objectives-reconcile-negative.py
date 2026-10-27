@@ -305,6 +305,70 @@ def prove_aggregate_validator_rollback(reconciler: object) -> None:
     print("PASS boundary: post-write validator order is recovery objective then aggregate Operability")
 
 
+
+def prove_private_post_reconcile_transport(reconciler: object) -> None:
+    """Exercise the actual subprocess boundary with private synthetic canaries."""
+    original_run = reconciler.subprocess.run
+    marker = "PRIVATE_RECOVERY_OBJECTIVE_RECONCILE_SUBPROCESS_CANARY"
+    state: dict[str, object] = {"returncode": 0, "error": None}
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(args, **kwargs):
+        require(args in ([sys.executable, str(reconciler.VALIDATOR)],
+                         [sys.executable, str(reconciler.OPERABILITY_VALIDATOR)]),
+                "recovery objective reconcile subprocess command drift")
+        require(kwargs.get("cwd") == reconciler.ROOT
+                and kwargs.get("stdout") is subprocess.DEVNULL
+                and kwargs.get("stderr") is subprocess.DEVNULL
+                and kwargs.get("check") is False
+                and kwargs.get("timeout") == 180
+                and "text" not in kwargs,
+                "recovery objective reconcile subprocess privacy/timeout drift")
+        calls.append(tuple(args))
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(args, state["returncode"],
+                                           stdout=marker, stderr=marker)
+
+    reconciler.subprocess.run = fake_run
+    try:
+        reconciler.run_validator(reconciler.VALIDATOR, "recovery objective validator")
+        reconciler.run_validator(reconciler.OPERABILITY_VALIDATOR, "aggregate operability validator")
+        cases = (
+            ("nonzero", {"returncode": 1},
+             "post-reconcile recovery objective validator failed without exposing subprocess output"),
+            ("boolean", {"returncode": True},
+             "post-reconcile recovery objective validator failed without exposing subprocess output"),
+            ("timeout", {"error": subprocess.TimeoutExpired(["python"], 180, stderr=marker)},
+             "post-reconcile recovery objective validator unavailable"),
+            ("unavailable", {"error": OSError(marker)},
+             "post-reconcile recovery objective validator unavailable"),
+        )
+        for label, change, expected in cases:
+            state.update({"returncode": 0, "error": None})
+            state.update(change)
+            try:
+                reconciler.run_validator(reconciler.VALIDATOR, "recovery objective validator")
+            except reconciler.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc)
+                        and (label not in ("timeout", "unavailable") or exc.__suppress_context__),
+                        f"recovery objective reconcile {label} private failure drift")
+            else:
+                raise Fail(f"recovery objective reconcile {label} unexpectedly accepted")
+        try:
+            reconciler.run_validator(reconciler.VALIDATOR, "aggregate operability validator")
+        except reconciler.Fail as exc:
+            require(str(exc) == "unreviewed recovery objective post-reconcile validator",
+                    "recovery objective reconcile label mismatch accepted")
+        else:
+            raise Fail("recovery objective reconcile label mismatch unexpectedly accepted")
+        require(len(calls) == len(cases) + 2,
+                "recovery objective reconcile subprocess multiplicity drift")
+    finally:
+        reconciler.subprocess.run = original_run
+    print("PASS: recovery objective reconcile post-validation transport private, bounded and source-pinned (5 negatives)")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "recovery objective reconciler missing")
     require(WORKFLOW.is_file(), "recovery objective workflow missing")
@@ -393,6 +457,7 @@ def main() -> int:
             outside.write_text("{}\n", encoding="utf-8")
             expect_domain_fail("objective authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
+    prove_private_post_reconcile_transport(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     with isolated_authorities(reconciler):
         prove_atomic_write_failure(reconciler)
