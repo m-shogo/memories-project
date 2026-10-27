@@ -674,36 +674,74 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
 
 
 def atomic_write(value: dict[str, Any], mode: int) -> None:
-    descriptor, temp_name = tempfile.mkstemp(prefix=".backup-restore-generation.", suffix=".tmp", dir=REGISTRY.parent)
+    """Publish a complete fsynced candidate and release every owned descriptor."""
+    descriptor: int | None = None
+    temp_name: str | None = None
     try:
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=".backup-restore-generation.", suffix=".tmp", dir=REGISTRY.parent)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = None
             os.fchmod(handle.fileno(), mode)
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+        temp_name = None
+    except Exception:
+        raise Fail("generation evidence registry atomic write failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
+        cleanup_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                cleanup_failed = True
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("generation evidence registry temporary cleanup failed") from None
 
 
 def atomic_restore(payload: bytes, mode: int) -> None:
-    descriptor, temp_name = tempfile.mkstemp(prefix=".backup-restore-generation-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    """Restore the prior exact bytes and mode without raw filesystem diagnostics."""
+    descriptor: int | None = None
+    temp_name: str | None = None
     try:
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=".backup-restore-generation-rollback.", suffix=".tmp", dir=REGISTRY.parent)
         with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
             os.fchmod(handle.fileno(), mode)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, REGISTRY)
+        temp_name = None
+    except Exception:
+        raise Fail("generation evidence registry atomic restore failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
+        cleanup_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                cleanup_failed = True
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("generation evidence registry temporary cleanup failed") from None
 
 
 def snapshot_registry_for_append() -> tuple[bytes, int]:
