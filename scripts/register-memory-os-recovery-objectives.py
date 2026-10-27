@@ -510,8 +510,10 @@ def main() -> int:
     validate_record(record)
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError as exc:
-        raise Fail("recovery objectives registry lock already exists") from exc
+    except FileExistsError:
+        raise Fail("recovery objectives registry lock already exists") from None
+    except OSError:
+        raise Fail("recovery objectives registry lock acquisition failed") from None
     try:
         os.write(lock_fd, (record["objectiveId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)

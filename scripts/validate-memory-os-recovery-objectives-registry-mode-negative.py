@@ -53,6 +53,7 @@ def prove_close_failure_releases_lock(writer) -> None:
     original_require_actual = writer.require_actual_cli_authorities
     original_require_canonical = writer.require_canonical_runtime_authorities
     original_close = writer.os.close
+    original_open = writer.os.open
     original_argv = sys.argv[:]
 
     with tempfile.TemporaryDirectory(prefix="memory-os-objective-lock-") as tmpdir:
@@ -112,6 +113,32 @@ def prove_close_failure_releases_lock(writer) -> None:
             require(not lock.exists(), "recovery objective close failure stranded its lock")
             require(writer.main() == 0, "recovery objective retry did not complete after close failure cleanup")
             require(not lock.exists(), "recovery objective retry stranded its lock")
+
+            # A failed lock open must be private and must not claim an acquired lock.
+            def reject_lock_open(path, flags, mode=0o777):
+                if Path(path) == lock:
+                    raise OSError("PRIVATE_OBJECTIVE_LOCK_OPEN_CANARY")
+                return original_open(path, flags, mode)
+
+            writer.os.open = reject_lock_open
+            try:
+                writer.main()
+            except writer.Fail as exc:
+                require(
+                    str(exc) == "recovery objectives registry lock acquisition failed",
+                    "recovery objective lock open failure class drift",
+                )
+                require(
+                    exc.__suppress_context__ and "PRIVATE_OBJECTIVE_LOCK_OPEN_CANARY" not in str(exc),
+                    "recovery objective lock open failure leaked private OS diagnostics",
+                )
+            else:
+                raise Fail("recovery objective failed lock open was accepted")
+            finally:
+                writer.os.open = original_open
+            require(not lock.exists(), "failed objective lock acquisition left a lock")
+            require(writer.main() == 0, "recovery objective retry after lock open fault failed")
+            require(not lock.exists(), "recovery objective lock open retry stranded lock")
         finally:
             writer.REGISTRY = original_registry
             writer.LOCK = original_lock
@@ -123,6 +150,7 @@ def prove_close_failure_releases_lock(writer) -> None:
             writer.require_actual_cli_authorities = original_require_actual
             writer.require_canonical_runtime_authorities = original_require_canonical
             writer.os.close = original_close
+            writer.os.open = original_open
             sys.argv = original_argv
 
 
