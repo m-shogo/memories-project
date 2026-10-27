@@ -1311,8 +1311,10 @@ except (Exception, SystemExit):
         and ast.dump(compile_try.body[0], include_attributes=False)
         == ast.dump(ast.parse('return compile(source, str(path), "exec")').body[0], include_attributes=False)
         and len(compile_try.handlers) == 1
-        and isinstance(compile_try.handlers[0].type, ast.Name)
-        and compile_try.handlers[0].type.id == "Exception"
+        and isinstance(compile_try.handlers[0].type, ast.Tuple)
+        and len(compile_try.handlers[0].type.elts) == 2
+        and [elt.id for elt in compile_try.handlers[0].type.elts
+             if isinstance(elt, ast.Name)] == ["Exception", "SystemExit"]
         and len(compile_try.handlers[0].body) == 1
         and ast.dump(compile_try.handlers[0].body[0], include_attributes=False)
         == ast.dump(ast.parse('raise Fail("fixture guard pinned source compilation failed") from None').body[0], include_attributes=False)
@@ -1694,8 +1696,11 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader FD cleanup not guaranteed"),
     )
     replacements += (
-        ('                    except Exception:\n',
+        ('                    except (Exception, SystemExit):\n',
          '                    except SyntaxError:\n',
+         "loader compilation failure not private"),
+        ('                    except (Exception, SystemExit):\n',
+         '                    except Exception:\n',
          "loader compilation failure not private"),
         ('                        raise Fail("fixture guard pinned source compilation failed") from None\n',
          '                        raise Fail("fixture guard pinned source compilation failed")\n',
@@ -3134,6 +3139,25 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     else:
         raise AssertionError("malformed helper was executed")
 
+    import builtins
+    original_compile = builtins.compile
+    def fault_compile_exit(source, filename, mode, *args, **kwargs):
+        if filename == str(good) and mode == "exec":
+            raise SystemExit("PRIVATE_COMPILE_EXIT_CANARY")
+        return original_compile(source, filename, mode, *args, **kwargs)
+    builtins.compile = fault_compile_exit
+    try:
+        try:
+            loader(good, "pinned_compile_exit_negative")
+        except Fail as exc:
+            assert str(exc) == "fixture guard pinned source compilation failed"
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_COMPILE_EXIT_CANARY" not in str(exc)
+        else:
+            raise AssertionError("compile SystemExit was accepted")
+    finally:
+        builtins.compile = original_compile
+
     import os
     original_open, original_close = os.open, os.close
     for fault in ("leaf", "parent"):
@@ -3706,7 +3730,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 135 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 136 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

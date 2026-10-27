@@ -266,7 +266,7 @@ def load_pinned_fixture_guard(path: Path, name: str):
                     require(fullname == name, "fixture guard module identity drift")
                     try:
                         return compile(source, str(path), "exec")
-                    except Exception:
+                    except (Exception, SystemExit):
                         raise Fail("fixture guard pinned source compilation failed") from None
             try:
                 spec = importlib.util.spec_from_file_location(name, path, loader=PinnedSourceLoader(name, str(path)))
