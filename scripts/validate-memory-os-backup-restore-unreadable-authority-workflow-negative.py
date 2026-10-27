@@ -543,6 +543,75 @@ def prove_reconcile_strict_json_negative_removal_rejected() -> None:
     print("PASS: preflight and typed reconcile strict JSON negative deletion rejected")
 
 
+def require_reconcile_writer_negative_reachable(source: str, function_name: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("reconcile writer negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target, main = functions.get(function_name), functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("reconcile writer negative missing")
+    invocations = [node for node in ast.walk(main)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id == function_name]
+    if len(invocations) != 1:
+        raise SystemExit("reconcile writer negative invocation drift")
+    nested = {node.name for node in ast.walk(target) if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+    if not {"ShortStream", "capture_mkstemp", "fault_fdopen"}.issubset(nested):
+        raise SystemExit("reconcile writer fault injection helpers missing")
+    calls = [node for node in ast.walk(target) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Attribute)
+             and isinstance(node.func.value, ast.Name)
+             and node.func.value.id == "reconciler" and node.func.attr == "write_text"]
+    if len(calls) != 3:
+        raise SystemExit("reconcile writer positive/negative write calls missing")
+    assignments = {(item.value.id, item.attr, node.value.id)
+                   for node in ast.walk(target) if isinstance(node, ast.Assign)
+                   and isinstance(node.value, ast.Name)
+                   for item in node.targets if isinstance(item, ast.Attribute)
+                   and isinstance(item.value, ast.Name)}
+    if not {("tempfile", "mkstemp", "capture_mkstemp"),
+            ("os", "fdopen", "fault_fdopen")}.issubset(assignments):
+        raise SystemExit("reconcile writer fault injection not applied")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if not {"oversized", "nonstring", "fdopen", "short"}.issubset(strings):
+        raise SystemExit("reconcile writer negative matrix incomplete")
+
+
+def prove_reconcile_writer_negative_removal_rejected() -> None:
+    for relative, function_name, invocation in (
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py",
+         "prove_preflight_reconcile_writer_ownership",
+         "    prove_preflight_reconcile_writer_ownership(reconciler)\n"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_reconcile_writer_ownership",
+         "    prove_typed_reconcile_writer_ownership()\n"),
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        require_reconcile_writer_negative_reachable(source, function_name)
+        for label, anchor, replacement in (
+            ("invocation", invocation, "    pass\n"),
+            ("fdopen injection", "                os.fdopen = fault_fdopen\n", "                pass\n"),
+            ("faulted write", "                    reconciler.write_text(path, '{\"safe\":false}')\n",
+             "                    pass\n"),
+        ):
+            if label == "invocation":
+                if source.count(anchor) != 1:
+                    raise SystemExit("reconcile writer negative invocation anchor drift")
+                mutated = source.replace(anchor, replacement, 1)
+            else:
+                mutated = mutate_named_function(source, function_name, anchor, replacement)
+            try:
+                require_reconcile_writer_negative_reachable(mutated, function_name)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("reconcile writer negative deletion accepted: " + label)
+    print("PASS: preflight and typed reconcile atomic writer negative deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -555,6 +624,7 @@ def main() -> int:
     prove_json_platform_flag_negative_removal_rejected()
     prove_reconcile_reader_race_negative_removal_rejected()
     prove_reconcile_strict_json_negative_removal_rejected()
+    prove_reconcile_writer_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
