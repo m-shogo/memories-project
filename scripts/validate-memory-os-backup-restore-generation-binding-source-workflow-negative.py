@@ -480,6 +480,7 @@ def require_target_pinned_import_reachable(code: str) -> None:
             "os.fstat(descriptor)",
             "errno.EBADF",
             "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+            "PASS: generation binding target pinned loader fdopen/close faults clean owned descriptors",
         ),
         "main": (
             "prove_pinned_target_import()",
@@ -532,6 +533,9 @@ def prove_target_pinned_import_mutations_rejected() -> None:
         ("prove_target_import_fd_cleanup", "os.fstat(descriptor)",
          "os.fstat(-1)"),
         ("prove_target_import_fd_cleanup", "errno.EBADF", "errno.EIO"),
+        ("prove_target_import_fd_cleanup",
+         "PASS: generation binding target pinned loader fdopen/close faults clean owned descriptors",
+         "PASS: drill request pinned loader fdopen/close faults clean owned descriptors"),
         ("prove_target_import_fd_cleanup",
          "                original_close(descriptor)\n                raise OSError",
          "                pass  # synthetic owned FD close removed\n                raise OSError"),
