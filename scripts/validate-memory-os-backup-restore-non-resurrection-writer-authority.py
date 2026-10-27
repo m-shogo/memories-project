@@ -601,6 +601,16 @@ def require_lock_probe_reachable(source: str) -> None:
              and node.value.func.id == "exercise_writer_lock_lifecycle_negative"
              and not node.value.args and not node.value.keywords]
     require(len(calls) == 1, "typed lock lifecycle negative not invoked directly by CI")
+    child_calls = [node for node in mains[0].body if isinstance(node, ast.Expr)
+                   and isinstance(node.value, ast.Call)
+                   and isinstance(node.value.func, ast.Name)
+                   and node.value.func.id == "prove_child_validator_symlink_rejected"
+                   and len(node.value.args) == 1
+                   and isinstance(node.value.args[0], ast.Name)
+                   and node.value.args[0].id == "validator"
+                   and not node.value.keywords]
+    require(len(child_calls) == 1,
+            "typed child validator symlink negative not invoked directly by CI")
 
 
 def prove_lock_probe_reachability() -> None:
@@ -619,7 +629,16 @@ def prove_lock_probe_reachability() -> None:
                 "typed lock negative removal rejected at wrong boundary")
     else:
         raise NegativeFailure("typed lock negative removal unexpectedly accepted")
-    print("PASS: typed lock lifecycle negative remains directly reachable from CI")
+    removed_child = source.replace("    prove_child_validator_symlink_rejected(validator)\n", "", 1)
+    require(removed_child != source, "typed child symlink negative mutation did not apply")
+    try:
+        require_lock_probe_reachable(removed_child)
+    except NegativeFailure as exc:
+        require(str(exc) == "typed child validator symlink negative not invoked directly by CI",
+                "typed child symlink negative removal rejected at wrong boundary")
+    else:
+        raise NegativeFailure("typed child symlink negative removal unexpectedly accepted")
+    print("PASS: typed lock and child-symlink negatives remain directly reachable from CI")
 
 
 def main() -> int:
