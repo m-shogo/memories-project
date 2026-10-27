@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -25,9 +26,55 @@ def require(condition: bool, message: str) -> None:
 
 
 def load_validator() -> Any:
-    require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical independent-review validator missing or symlinked")
-    require(VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve()) == VALIDATOR_REL, "canonical independent-review validator path drift")
-    return load_pinned_module(ROOT, VALIDATOR, "memory_os_generation_independent_review_transport_negative")
+    """Delegate canonical path admission to the pinned loader, never a mutable precheck."""
+    try:
+        return load_pinned_module(ROOT, VALIDATOR, "memory_os_generation_independent_review_transport_negative")
+    except (Exception, SystemExit):
+        raise Fail("canonical independent-review validator path rejected") from None
+
+
+def prove_validator_path_failures() -> None:
+    """Prove fixed private errors for missing/symlinked paths and loader faults."""
+    global VALIDATOR, load_pinned_module
+    original_validator = VALIDATOR
+    original_loader = load_pinned_module
+
+    def rejected(label: str) -> None:
+        try:
+            load_validator()
+        except Fail as exc:
+            require(str(exc) == "canonical independent-review validator path rejected"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
+                    "independent transport private validator diagnostic drift: " + label)
+        else:
+            raise Fail("independent transport accepted unsafe validator path: " + label)
+
+    try:
+        with tempfile.TemporaryDirectory(prefix=".independent-transport-path-", dir=ROOT) as raw:
+            parent = Path(raw)
+            VALIDATOR = parent / "missing.py"
+            rejected("missing")
+            alias = parent / "alias.py"
+            alias.symlink_to(original_validator)
+            VALIDATOR = alias
+            rejected("symlink")
+        VALIDATOR = original_validator
+        for error in (OSError("PRIVATE_TRANSPORT_OS_CANARY"),
+                      RuntimeError("PRIVATE_TRANSPORT_RUNTIME_CANARY"),
+                      SystemExit("PRIVATE_TRANSPORT_EXIT_CANARY")):
+            def fail_loader(*_args, **_kwargs):
+                raise error
+            load_pinned_module = fail_loader
+            try:
+                rejected(type(error).__name__)
+            finally:
+                load_pinned_module = original_loader
+        require(callable(load_validator().candidate_reviews_approved),
+                "independent transport canonical validator restoration drift")
+    finally:
+        VALIDATOR = original_validator
+        load_pinned_module = original_loader
+    print("PASS independent transport canonical validator path privacy: missing symlink OSError RuntimeError SystemExit")
 
 
 SOURCE_ORDER_EXECUTION_NEGATIVE = (
@@ -189,6 +236,7 @@ def expect_transport_rejected(module: Any, mutate: Callable[[], None], restore: 
 
 
 def main() -> int:
+    prove_validator_path_failures()
     prove_workflow_guard_mutations_rejected()
     prove_source_order_import_guard()
     module = load_validator()
