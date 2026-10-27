@@ -432,6 +432,115 @@ def prove_binding_json_descriptor_fault_negative_deletion_rejected() -> None:
     print("PASS: generation binding JSON descriptor fault negative deletion rejected")
 
 
+
+def require_target_pinned_import_reachable(code: str) -> None:
+    """Verify executable target-import proof and its fail-closed source transport."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise SystemExit("generation binding target pinned import syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    required = {
+        "load_target": (
+            "stream.read(MAX_TARGET_MODULE_BYTES + 1)",
+            "require(len(source) <= MAX_TARGET_MODULE_BYTES",
+            "os.open(component, directory_flags, dir_fd=parent_fd)",
+            "os.open(relative.name,",
+            "dir_fd=parent_fd)",
+            "os.O_NOFOLLOW | os.O_NONBLOCK",
+            "for directory_fd in reversed(directory_fds):",
+            "class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+            'return compile(source, str(path), "exec")',
+            "spec.loader.exec_module(module)",
+            'raise Fail("generation binding target import rejected") from None',
+        ),
+        "prove_pinned_target_import": (
+            'load_target(source, "binding_target_positive")',
+            'load_target(source, "binding_target_parent_swap")',
+            "parent.rename(parked)",
+            "parent.symlink_to(redirected",
+            'loaded.VALUE == "pinned"',
+            'require(canary.read_text(encoding="utf-8") ==',
+            "PRIVATE_GENERATION_BINDING_TARGET_CANARY",
+            "importlib.util.spec_from_file_location = original_spec",
+        ),
+        "prove_target_import_unsafe_sources": (
+            "oversized.write_bytes(b\"x\" * (MAX_TARGET_MODULE_BYTES + 1))",
+            "linked.symlink_to(good.name)",
+            "os.mkfifo(fifo)",
+            "os.O_NONBLOCK = 0",
+            'load_target(good, "binding_target_unsafe_restored")',
+        ),
+        "main": (
+            "prove_pinned_target_import()",
+            "prove_target_import_unsafe_sources()",
+            "module = load_module()",
+        ),
+    }
+    for name, tokens in required.items():
+        node = functions.get(name)
+        if node is None:
+            raise SystemExit("generation binding target pinned import missing function: " + name)
+        fragment = ast.get_source_segment(code, node) or ""
+        for token in tokens:
+            if token not in fragment:
+                raise SystemExit("generation binding target pinned import guard missing: " + name)
+    main = ast.get_source_segment(code, functions["main"]) or ""
+    if not (main.index("prove_pinned_target_import()")
+            < main.index("prove_target_import_unsafe_sources()")
+            < main.index("module = load_module()")):
+        raise SystemExit("generation binding target pinned import proofs not reached before target load")
+
+
+def prove_target_pinned_import_mutations_rejected() -> None:
+    code = source(BINDING_NEGATIVE)
+    require_target_pinned_import_reachable(code)
+    mutations = (
+        ("load_target", "stream.read(MAX_TARGET_MODULE_BYTES + 1)", "stream.read()"),
+        ("load_target", "os.open(component, directory_flags, dir_fd=parent_fd)",
+         "os.open(path.parent, directory_flags)"),
+        ("load_target", 'return compile(source, str(path), "exec")',
+         'return compile(path.read_bytes(), str(path), "exec")'),
+        ("load_target", "for directory_fd in reversed(directory_fds):",
+         "for directory_fd in ():"),
+        ("load_target", 'raise Fail("generation binding target import rejected") from None',
+         'raise Fail("generation binding target import rejected")'),
+        ("prove_pinned_target_import", "parent.symlink_to(redirected",
+         "parent.rename(redirected  # synthetic removed parent swap"),
+        ("prove_pinned_target_import", 'loaded.VALUE == "pinned"',
+         'loaded.VALUE == "redirected"'),
+        ("prove_pinned_target_import", 'require(canary.read_text(encoding="utf-8") ==',
+         'require(False and canary.read_text(encoding="utf-8") =='),
+        ("prove_target_import_unsafe_sources", "os.mkfifo(fifo)",
+         "pass  # synthetic FIFO proof removed"),
+        ("prove_target_import_unsafe_sources", "os.O_NONBLOCK = 0",
+         "os.O_NONBLOCK = original_flag"),
+        ("main", "prove_pinned_target_import()",
+         "pass  # synthetic pinned import proof removed"),
+        ("main", "prove_target_import_unsafe_sources()",
+         "pass  # synthetic unsafe import proof removed"),
+    )
+    for name, original, replacement in mutations:
+        tree = ast.parse(code)
+        matches = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == name]
+        if len(matches) != 1:
+            raise SystemExit("generation binding target pinned import mutation function drift")
+        lines = code.splitlines(keepends=True)
+        node = matches[0]
+        fragment = "".join(lines[node.lineno - 1:node.end_lineno])
+        if fragment.count(original) != 1:
+            raise SystemExit("generation binding target pinned import mutation anchor drift: " + name)
+        fragment = fragment.replace(original, replacement, 1)
+        mutated = "".join(lines[:node.lineno - 1]) + fragment + "".join(lines[node.end_lineno:])
+        try:
+            require_target_pinned_import_reachable(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("generation binding target pinned import weakening accepted: " + name)
+    print(f"PASS: generation binding target pinned import {len(mutations)} source mutations rejected")
+
+
 def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
@@ -442,6 +551,7 @@ def main() -> int:
     prove_binding_writer_import_negative_deletion_rejected()
     prove_binding_json_parent_swap_negative_deletion_rejected()
     prove_binding_json_descriptor_fault_negative_deletion_rejected()
+    prove_target_pinned_import_mutations_rejected()
     negatives(publisher, independent)
     return 0
 
