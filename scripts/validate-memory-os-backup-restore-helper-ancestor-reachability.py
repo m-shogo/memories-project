@@ -1838,7 +1838,7 @@ def negative_cases(source: str, diagnostic: str) -> int:
         else:
             raise GuardFailure("combined import/marker mutation unexpectedly accepted")
     count = 0
-    for original, mutation, expected in replacements:
+    for case_index, (original, mutation, expected) in enumerate(replacements):
         require(original in source, f"negative mutation anchor absent: {expected}")
         if (expected == "canonical __main__ dispatch handler drift"
                 and original == "        raise SystemExit(1)\n"):
@@ -1858,7 +1858,8 @@ def negative_cases(source: str, diagnostic: str) -> int:
         try:
             validate_source(mutated, diagnostic)
         except GuardFailure as exc:
-            require(str(exc) == expected, f"negative rejected at wrong boundary: {exc}")
+            require(str(exc) == expected,
+                    f"negative rejected at wrong boundary: case={case_index} expected={expected}; observed={exc}")
         else:
             raise GuardFailure(f"negative unexpectedly accepted: {expected}")
         count += 1
