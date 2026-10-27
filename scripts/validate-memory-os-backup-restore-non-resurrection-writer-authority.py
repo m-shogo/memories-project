@@ -11,6 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+TRANSPORT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py"
 
 
 class NegativeFailure(RuntimeError):
@@ -588,10 +589,44 @@ def prove_guard_source_classifier() -> None:
     print("PASS reject: comment/string/dead/early-return/async CLI guard substitutes")
 
 
+def require_lock_probe_reachable(source: str) -> None:
+    """Require the existing transport CI suite to invoke the actual lock lifecycle negative."""
+    tree = ast.parse(source)
+    mains = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+             and node.name == "main"]
+    require(len(mains) == 1, "typed transport negative main missing")
+    calls = [node for node in mains[0].body if isinstance(node, ast.Expr)
+             and isinstance(node.value, ast.Call)
+             and isinstance(node.value.func, ast.Name)
+             and node.value.func.id == "exercise_writer_lock_lifecycle_negative"
+             and not node.value.args and not node.value.keywords]
+    require(len(calls) == 1, "typed lock lifecycle negative not invoked directly by CI")
+
+
+def prove_lock_probe_reachability() -> None:
+    require(TRANSPORT_NEGATIVE.is_file() and not TRANSPORT_NEGATIVE.is_symlink(),
+            "typed transport negative source missing or symlinked")
+    require(TRANSPORT_NEGATIVE.stat().st_size <= 1024 * 1024,
+            "typed transport negative source too large")
+    source = TRANSPORT_NEGATIVE.read_text(encoding="utf-8")
+    require_lock_probe_reachable(source)
+    removed = source.replace("    exercise_writer_lock_lifecycle_negative()\n", "", 1)
+    require(removed != source, "typed lock negative mutation did not apply")
+    try:
+        require_lock_probe_reachable(removed)
+    except NegativeFailure as exc:
+        require(str(exc) == "typed lock lifecycle negative not invoked directly by CI",
+                "typed lock negative removal rejected at wrong boundary")
+    else:
+        raise NegativeFailure("typed lock negative removal unexpectedly accepted")
+    print("PASS: typed lock lifecycle negative remains directly reachable from CI")
+
+
 def main() -> int:
     prove_guard_source_classifier()
     prove_main_binding_classifier()
     prove_parser_lock_classifier()
+    prove_lock_probe_reachability()
     prove_writer_cli_dispatch_classifier()
     prove_pre_dispatch_exit_classifier()
     writer_source = WRITER_PATH.read_text(encoding="utf-8")
