@@ -1333,11 +1333,25 @@ def prove_typed_private_path_negative_reachability() -> None:
         for token in ['SYNTHETIC_PRIVATE_TYPED_ADMISSION_CANARY','validator.repo_relative','validator.canonical_repo_file_ref','Path.resolve = private_resolve','exc.__suppress_context__']:
             require(token in body, "typed admission private path negative guard removed")
 
+        import_target = functions.get("prove_private_typed_admission_import_errors")
+        require(import_target is not None, "typed admission private import negative missing")
+        import_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name) and node.func.id == "prove_private_typed_admission_import_errors"]
+        require(len(import_calls) == 1, "typed admission private import negative not executed exactly once")
+        import_body = ast.get_source_segment(candidate, import_target)
+        require(isinstance(import_body, str), "typed admission private import negative body unavailable")
+        for token in ("SYNTHETIC_PRIVATE_TYPED_IMPORT_CANARY", "importlib.util.module_from_spec = private_import",
+                      "exc.__suppress_context__", "typed admission module import unavailable"):
+            require(token in import_body, "typed admission private import negative guard removed")
+
     verify(source)
     for label, scope, old, replacement in (
         ("invocation", "main", "    prove_private_typed_admission_paths(validator)\n", "    pass\n"),
         ("fault injection", "prove_private_typed_admission_paths", "        Path.resolve = private_resolve\n", "        pass\n"),
         ("context assertion", "prove_private_typed_admission_paths", "exc.__suppress_context__", "False"),
+        ("import invocation", "main", "    prove_private_typed_admission_import_errors()\n", "    pass\n"),
+        ("import fault injection", "prove_private_typed_admission_import_errors", "            importlib.util.module_from_spec = private_import\n", "            pass\n"),
+        ("import context assertion", "prove_private_typed_admission_import_errors", "exc.__suppress_context__", "False"),
     ):
         # A source-wide anchor can repeat in unrelated tests; mutate only the named AST function.
         parsed = ast.parse(source)
@@ -1353,7 +1367,7 @@ def prove_typed_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("typed admission private path negative deletion accepted: " + label)
-    print("PASS: typed admission private path fault, context and invocation deletion rejected")
+    print("PASS: typed admission private path/import fault, context and invocation deletion rejected")
 
 
 def main() -> int:
