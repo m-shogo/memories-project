@@ -1046,6 +1046,36 @@ except (Exception, SystemExit):
 except (Exception, SystemExit):
     raise Fail("fixture guard pinned descriptor cleanup failed") from None
 """).body[0]
+    setup_try = read_try.body[-3]
+    expected_setup_handlers = ast.parse("""try:
+    pass
+except Fail:
+    raise
+except (Exception, SystemExit):
+    raise Fail("fixture guard pinned module setup failed") from None
+""").body[0].handlers
+    require(
+        isinstance(setup_try, ast.Try)
+        and len(setup_try.body) == 3
+        and isinstance(setup_try.body[0], ast.Assign)
+        and len(setup_try.body[0].targets) == 1
+        and isinstance(setup_try.body[0].targets[0], ast.Name)
+        and setup_try.body[0].targets[0].id == "spec"
+        and isinstance(setup_try.body[1], ast.Expr)
+        and isinstance(setup_try.body[1].value, ast.Call)
+        and isinstance(setup_try.body[1].value.func, ast.Name)
+        and setup_try.body[1].value.func.id == "require"
+        and isinstance(setup_try.body[2], ast.Assign)
+        and len(setup_try.body[2].targets) == 1
+        and isinstance(setup_try.body[2].targets[0], ast.Name)
+        and setup_try.body[2].targets[0].id == "module"
+        and len(setup_try.handlers) == 2
+        and all(ast.dump(actual, include_attributes=False)
+                == ast.dump(expected, include_attributes=False)
+                for actual, expected in zip(setup_try.handlers, expected_setup_handlers))
+        and not setup_try.orelse and not setup_try.finalbody,
+        "loader module setup failure not private",
+    )
     require(
         len(read_try.finalbody) == 1
         and ast.dump(read_try.finalbody[0], include_attributes=False)
@@ -1292,6 +1322,17 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ("            try:\n                spec.loader.exec_module(module)\n            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module execution failed\") from None\n",
          "            try:\n                spec.loader.exec_module(module)\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module execution failed\") from None\n",
          "loader source execution not pinned to FD"),
+    )
+    replacements += (
+        ("            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module setup failed\") from None\n",
+         "            except Fail:\n                raise\n            except Exception:\n                raise Fail(\"fixture guard pinned module setup failed\") from None\n",
+         "loader module setup failure not private"),
+        ("            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module setup failed\") from None\n",
+         "            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module setup failed\")\n",
+         "loader module setup failure not private"),
+        ("            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module setup failed\") from None\n",
+         "            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module setup failed\") from None\n",
+         "loader module setup failure not private"),
     )
     count = 0
     for original, mutation, expected in replacements:
@@ -2349,6 +2390,33 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
         os.open, os.fstat = original_open, original_fstat
     assert "leaf" in tracked_read
 
+    import importlib.util
+    original_spec = importlib.util.spec_from_file_location
+    original_module = importlib.util.module_from_spec
+    def fail_spec(name, location, *args, **kwargs):
+        if name == "pinned_setup_spec":
+            raise RuntimeError("PRIVATE_SETUP_SPEC_CANARY")
+        return original_spec(name, location, *args, **kwargs)
+    def fail_module(spec):
+        if spec.name == "pinned_setup_module":
+            raise SystemExit("PRIVATE_SETUP_MODULE_CANARY")
+        return original_module(spec)
+    importlib.util.spec_from_file_location = fail_spec
+    importlib.util.module_from_spec = fail_module
+    try:
+        for name in ("pinned_setup_spec", "pinned_setup_module"):
+            try:
+                loader(good, name)
+            except Fail as exc:
+                assert str(exc) == "fixture guard pinned module setup failed"
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_" not in str(exc)
+            else:
+                raise AssertionError("unsafe module setup accepted")
+    finally:
+        importlib.util.spec_from_file_location = original_spec
+        importlib.util.module_from_spec = original_module
+
     for filename, payload in (
         ("runtime-error.py", "raise RuntimeError('PRIVATE_EXEC_CANARY')"),
         ("system-exit.py", "raise SystemExit('PRIVATE_EXIT_CANARY')"),
@@ -2401,7 +2469,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 62 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 65 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

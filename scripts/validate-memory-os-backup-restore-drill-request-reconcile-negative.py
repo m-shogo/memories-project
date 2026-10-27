@@ -185,10 +185,15 @@ def load_pinned_fixture_guard(path: Path, name: str):
                         return compile(source, str(path), "exec")
                     except Exception:
                         raise Fail("fixture guard pinned source compilation failed") from None
-            spec = importlib.util.spec_from_file_location(name, path, loader=PinnedSourceLoader(name, str(path)))
-            require(spec is not None and spec.loader is not None,
-                    "drill request fixture guard cannot load")
-            module = importlib.util.module_from_spec(spec)
+            try:
+                spec = importlib.util.spec_from_file_location(name, path, loader=PinnedSourceLoader(name, str(path)))
+                require(spec is not None and spec.loader is not None,
+                        "drill request fixture guard cannot load")
+                module = importlib.util.module_from_spec(spec)
+            except Fail:
+                raise
+            except (Exception, SystemExit):
+                raise Fail("fixture guard pinned module setup failed") from None
             try:
                 spec.loader.exec_module(module)
             except Fail:
