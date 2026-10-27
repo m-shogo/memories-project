@@ -84,7 +84,7 @@ def load_pinned_module(root: Path, path: Path, name: str) -> Any:
         spec.loader.exec_module(module)
         return module
     except FixtureImportFail:
-        raise
+        raise FixtureImportFail(DIAGNOSTIC) from None
     except (Exception, SystemExit):
         raise FixtureImportFail(DIAGNOSTIC) from None
 
@@ -93,7 +93,7 @@ def expect_rejected(root: Path, path: Path, name: str) -> None:
     try:
         load_pinned_module(root, path, name)
     except FixtureImportFail as exc:
-        require(str(exc) == DIAGNOSTIC)
+        require(str(exc) == DIAGNOSTIC and exc.__suppress_context__)
         return
     raise AssertionError("unsafe independent-review fixture module accepted")
 
@@ -161,8 +161,24 @@ def prove_pinned_import() -> None:
         finally:
             os.fdopen = original_fdopen
         require(len(os.listdir("/proc/self/fd")) == before)
+        original_close = os.close
+        close_fired = False
+
+        def close_then_fail(fd: int) -> None:
+            nonlocal close_fired
+            original_close(fd)
+            if not close_fired:
+                close_fired = True
+                raise OSError("PRIVATE_CLOSE_CANARY")
+
+        os.close = close_then_fail
+        try:
+            expect_rejected(root, source, "independent_fixture_close_after_close")
+        finally:
+            os.close = original_close
+        require(close_fired and len(os.listdir("/proc/self/fd")) == before)
         require(load_pinned_module(root, source, "independent_fixture_final").VALUE == 7)
-    print("PASS independent-review pinned fixture import: swap, symlink, FIFO, size, compile, fdopen")
+    print("PASS independent-review pinned fixture import: swap, symlink, FIFO, size, compile, fdopen, close-after-close")
 
 
 if __name__ == "__main__":

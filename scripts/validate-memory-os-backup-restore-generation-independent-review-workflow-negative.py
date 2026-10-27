@@ -11,6 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-review-negative.yml"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
+HELPER = ROOT / "scripts/ops_independent_review_fixture_loader.py"
+REVIEWED_HELPER_GIT_BLOB_SHA = "f1c522f8ce54afee86ca994cd1d92bbaddb990ea"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -43,6 +45,14 @@ def validate(source: str, *, check_blob: bool = True) -> None:
             raise SystemExit("generation independent review workflow complete source blob drift")
 
 
+def validate_helper_source(source: bytes) -> None:
+    if len(source) > 1024 * 1024:
+        raise SystemExit("independent-review fixture helper source oversized")
+    git_blob = b"blob " + str(len(source)).encode("ascii") + b"\0" + source
+    if hashlib.sha1(git_blob).hexdigest() != REVIEWED_HELPER_GIT_BLOB_SHA:
+        raise SystemExit("independent-review fixture helper source binding drift")
+
+
 def prove_branch_guards_runtime() -> None:
     """Execute the reviewed shell predicates against disposable synthetic refs."""
     cases = (
@@ -64,6 +74,23 @@ def prove_branch_guards_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    helper_source = HELPER.read_bytes()
+    validate_helper_source(helper_source)
+    for label, old, new in (
+        ("remove pinned source safety flag", b"os.O_NOFOLLOW", b"os.O_RDONLY"),
+        ("remove real pinned import negative", b"    prove_pinned_import()\n", b"    pass\n"),
+        ("remove after-close fault", b"independent_fixture_close_after_close", b"independent_fixture_close_skipped"),
+    ):
+        if old not in helper_source:
+            raise SystemExit("independent-review helper negative anchor missing: " + label)
+        mutated_helper = helper_source.replace(old, new, 1)
+        if mutated_helper == helper_source:
+            raise SystemExit("independent-review helper negative inert: " + label)
+        try:
+            validate_helper_source(mutated_helper)
+        except SystemExit:
+            continue
+        raise SystemExit("independent-review helper mutation accepted: " + label)
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
