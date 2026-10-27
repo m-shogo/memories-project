@@ -15471,3 +15471,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Compare 3a803cef..8ca5a1ec contains only the two writers and their existing negative suites; no production or recovery authority changed. Both rollback paths now reject short writes before publication, and both suites contain actual-writer short-write fault injection.
 - **Why safe/reusable mechanism:** Only disposable fixture registries are used in negatives; the correction preserves original atomic replacement, mode and failure-class semantics and does not register evidence or authorize promotion.
 - **Protected-authority check:** `productionDecision=NO_GO`, OPS-P0-007 blocked; no generation/objective/drill/recovery/typed/promotion registry, production status, strict snapshot or learning contract modified by this change set. Registered generations remain distinct from semantically eligible unsuperseded generations in distinct environments; current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI never substitutes for production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-27 — Recovery-objective atomic rollback refuses partial buffered writes
+
+### Material failure/risk
+- **Symptom/evidence:** Source audit at bd8735cc found `register-memory-os-recovery-objectives.py` also ignored the return count from `atomic_restore`'s `handle.write(payload)`. A synthetic short write could otherwise be fsynced and published as an allegedly complete rollback. No actual objective registry corruption or human approval was observed.
+- **Verified root cause:** Restore assumed a non-raising buffered write was complete. **Failed approach:** relying on exception handling without checking the explicit byte count.
+- **Correction:** 10e5bf3b rejects non-integer or incomplete write counts before fsync/replace, with the existing fixed private atomic-restore class and suppressed context.
+- **Executable recurrence guard:** fca1c767 extends the existing objective append/rollback negative with a real-writer short-write wrapper, exact fixed failure class, unchanged registry bytes/mode and no temporary residue. Exact-source CI is **pending/unverified**, not inferred from code review.
+- **Retry condition:** Revisit only on exact-source objective rollback negative failure or reviewed rollback contract change; do not repeat the unchanged typed delegated-generation failure without job-stage evidence.
+
+### Material success (source-level; CI pending)
+- **Outcome/evidence:** Compare bd8735cc..fca1c767 changed only the objective writer and existing append/rollback negative; short restore writes are rejected before publication.
+- **Why safe/reusable mechanism:** Isolated fixture and prior fixed-class atomic rollback pattern; no approved recovery objective, production authority, drill request, registry evidence or promotion was created.
+- **Protected-authority check:** `productionDecision=NO_GO`; OPS-P0-007 remains blocked. All registered-vs-eligible generation, distinct environment, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion gates remain unchanged. Learning and CI are not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
