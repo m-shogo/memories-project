@@ -44,13 +44,41 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     try:
         action()
     except fail_type as exc:
-        if expected is not None:
-            require(expected in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        if expected is not None and expected not in str(exc):
+            raise Fail(f"{name} rejected at wrong boundary") from None
         print(f"PASS reject: {name}")
         return
-    except Exception as exc:
-        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+    except Exception:
+        raise Fail(f"{name} leaked non-domain exception") from None
     raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def prove_private_negative_failure_classifier() -> None:
+    """Wrong-boundary and unexpected errors must never echo synthetic private data."""
+    marker = "PRIVATE_OBJECTIVE_NEGATIVE_CLASSIFIER_CANARY"
+
+    def raise_fault(fault: Exception) -> None:
+        raise fault
+
+    for label, fault, expected, diagnostic in (
+        ("wrong boundary", Fail(marker), "expected canonical",
+         "private classifier rejected at wrong boundary"),
+        ("unexpected fault", TypeError(marker), None,
+         "private classifier leaked non-domain exception"),
+    ):
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            try:
+                expect_domain_fail("private classifier", lambda: raise_fault(fault), Fail, expected)
+            except Fail as exc:
+                require(str(exc) == diagnostic and exc.__suppress_context__
+                        and marker not in str(exc),
+                        f"private negative classifier {label} diagnostic drift")
+            else:
+                raise Fail(f"private negative classifier {label} unexpectedly accepted")
+        require(not captured.getvalue(),
+                f"private negative classifier {label} emitted public success")
+    print("PASS: recovery objective negative classifier private wrong-boundary diagnostics")
 
 
 def file_mode(path: Path) -> int:
@@ -650,6 +678,7 @@ def main() -> int:
     require(RECONCILER.is_file(), "recovery objective reconciler missing")
     require(WORKFLOW.is_file(), "recovery objective workflow missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    prove_private_negative_failure_classifier()
     reconciler = load_reconciler()
 
     canonical_contract = CONTRACT.read_bytes()
