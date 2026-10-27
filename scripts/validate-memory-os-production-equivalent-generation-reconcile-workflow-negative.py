@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import subprocess
@@ -60,10 +61,68 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: environment generation reconcile PR/push branch guard runtime (6 cases)")
 
 
+RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py"
+REAL_WRITER_NEGATIVES = (
+    "prove_private_child_validator",
+    "prove_private_atomic_authority_writer",
+    "prove_private_bounded_authority_reader",
+    "prove_strict_authority_json",
+)
+
+
+def check_reconcile_negative_reachability(tree: ast.Module) -> None:
+    mains = [node for node in tree.body
+             if isinstance(node, ast.FunctionDef) and node.name == "main"]
+    if len(mains) != 1:
+        raise SystemExit("generation reconcile negative main authority drift")
+    for function in REAL_WRITER_NEGATIVES:
+        definitions = [node for node in tree.body
+                       if isinstance(node, ast.FunctionDef) and node.name == function]
+        calls = [node for node in mains[0].body
+                 if isinstance(node, ast.Expr)
+                 and isinstance(node.value, ast.Call)
+                 and isinstance(node.value.func, ast.Name)
+                 and node.value.func.id == function
+                 and node.value.args
+                 and isinstance(node.value.args[0], ast.Name)
+                 and node.value.args[0].id == "reconciler"
+                 and not node.value.keywords]
+        if len(definitions) != 1 or len(calls) != 1:
+            raise SystemExit("generation reconcile real-writer negative invocation missing: " + function)
+
+
+def prove_reconcile_negative_reachability() -> None:
+    """Remove each real-writer negative call in-memory and require rejection."""
+    if RECONCILE_NEGATIVE.is_symlink() or not RECONCILE_NEGATIVE.is_file():
+        raise SystemExit("generation reconcile negative source substituted")
+    source = RECONCILE_NEGATIVE.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source, filename=str(RECONCILE_NEGATIVE))
+    except SyntaxError:
+        raise SystemExit("generation reconcile negative source syntax invalid") from None
+    check_reconcile_negative_reachability(tree)
+    for function in REAL_WRITER_NEGATIVES:
+        mutated = ast.parse(source, filename=str(RECONCILE_NEGATIVE))
+        main = next(node for node in mutated.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        main.body = [node for node in main.body
+                     if not (isinstance(node, ast.Expr)
+                             and isinstance(node.value, ast.Call)
+                             and isinstance(node.value.func, ast.Name)
+                             and node.value.func.id == function)]
+        try:
+            check_reconcile_negative_reachability(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("generation reconcile negative removal mutation accepted: " + function)
+    print("PASS: generation reconcile real-writer negative AST reachability (4 removals)")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
+    prove_reconcile_negative_reachability()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
