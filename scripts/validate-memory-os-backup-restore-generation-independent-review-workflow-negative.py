@@ -127,6 +127,44 @@ def prove_bounded_reader() -> None:
         oversized = root / "oversized.py"
         oversized.write_bytes(b"x" * (MAX_SOURCE_BYTES + 1))
         rejected(oversized)
+
+        parent = root / "source-parent"
+        parent.mkdir()
+        pinned = parent / "source.py"
+        pinned.write_bytes(b"PINNED_SOURCE\n")
+        external = root / "external"
+        external.mkdir()
+        canary = external / "source.py"
+        canary.write_bytes(b"PRIVATE_EXTERNAL_CANARY\n")
+        parked = root / "parked"
+        original_open = os.open
+        before_swap = len(os.listdir("/proc/self/fd"))
+        swapped = False
+
+        def swap_parent_before_open(target, flags, *args, **kwargs):
+            nonlocal swapped
+            if not swapped and Path(target) == pinned:
+                swapped = True
+                parent.rename(parked)
+                parent.symlink_to(external, target_is_directory=True)
+            return original_open(target, flags, *args, **kwargs)
+
+        os.open = swap_parent_before_open
+        try:
+            rejected(pinned)
+        finally:
+            os.open = original_open
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+        if not swapped or canary.read_bytes() != b"PRIVATE_EXTERNAL_CANARY\n":
+            raise SystemExit("independent-review bounded source parent-swap proof drift")
+        if len(os.listdir("/proc/self/fd")) != before_swap:
+            raise SystemExit("independent-review bounded source parent-swap FD leak")
+        if read_bounded_regular(pinned) != b"PINNED_SOURCE\n":
+            raise SystemExit("independent-review bounded source parent-swap restoration drift")
+
         before = len(os.listdir("/proc/self/fd"))
         original_fdopen = os.fdopen
 
@@ -162,7 +200,7 @@ def prove_bounded_reader() -> None:
             raise SystemExit("independent-review bounded source close cleanup drift")
         if read_bounded_regular(source) != b"VALUE = 7\n":
             raise SystemExit("independent-review bounded source restoration drift")
-    print("PASS independent-review bounded workflow/helper source: symlink FIFO oversize fdopen close")
+    print("PASS independent-review bounded workflow/helper/transport source: symlink FIFO oversize parent-swap fdopen close")
 
 
 def prove_branch_guards_runtime() -> None:
