@@ -108,7 +108,8 @@ def require_transport_path_proof(source: bytes) -> None:
                    and {elt.func.id for elt in node.iter.elts
                         if isinstance(elt, ast.Call) and isinstance(elt.func, ast.Name)}
                    == {"OSError", "RuntimeError", "SystemExit"}
-                   and any(isinstance(call.args[0], ast.Call)
+                   and any(isinstance(call.args[0], ast.Attribute)
+                           and call.args[0].attr == "__name__"
                            for call in calls(node, "rejected") if call.args)]
     if len(fault_loops) != 1:
         raise SystemExit("independent-review transport private fault probes weakened")
