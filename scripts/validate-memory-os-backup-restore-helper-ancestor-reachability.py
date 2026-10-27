@@ -1696,11 +1696,11 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader FD cleanup not guaranteed"),
     )
     replacements += (
-        ('                    except (Exception, SystemExit):\n',
-         '                    except SyntaxError:\n',
+        ('                    try:\n                        return compile(source, str(path), "exec")\n                    except (Exception, SystemExit):\n',
+         '                    try:\n                        return compile(source, str(path), "exec")\n                    except SyntaxError:\n',
          "loader compilation failure not private"),
-        ('                    except (Exception, SystemExit):\n',
-         '                    except Exception:\n',
+        ('                    try:\n                        return compile(source, str(path), "exec")\n                    except (Exception, SystemExit):\n',
+         '                    try:\n                        return compile(source, str(path), "exec")\n                    except Exception:\n',
          "loader compilation failure not private"),
         ('                        raise Fail("fixture guard pinned source compilation failed") from None\n',
          '                        raise Fail("fixture guard pinned source compilation failed")\n',
