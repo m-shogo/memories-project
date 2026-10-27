@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import importlib.machinery
 import importlib.util
 import os
@@ -136,6 +137,98 @@ def prove_pinned_module_import() -> None:
     require(callable(getattr(load_module(VALIDATOR, "generation_import_restored"), "main", None)),
             "generation evidence pinned import canonical restoration failed")
     print("PASS: generation evidence load negative executes pinned source after parent swap")
+
+
+def prove_pinned_module_unsafe_sources() -> None:
+    """Reject oversized source, symlink, FIFO, and unavailable safety flags."""
+    with tempfile.TemporaryDirectory(prefix=".generation-evidence-unsafe-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        good = sandbox / "good.py"
+        good.write_text("VALUE = 'safe'\n", encoding="utf-8")
+        oversized = sandbox / "oversized.py"
+        oversized.write_bytes(b"x" * (MAX_MODULE_BYTES + 1))
+        link = sandbox / "linked.py"
+        link.symlink_to(good)
+        fifo = sandbox / "fifo.py"
+        os.mkfifo(fifo)
+
+        def rejected(label: str, candidate: Path) -> None:
+            try:
+                load_module(candidate, "generation_import_unsafe")
+            except Fail as exc:
+                require(str(exc) == "cannot load generation evidence authority"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        "generation import unsafe " + label + " leaked private error")
+            else:
+                raise Fail("generation import unsafe " + label + " accepted")
+
+        for label, candidate in (("oversized", oversized), ("symlink", link), ("FIFO", fifo)):
+            rejected(label, candidate)
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original = getattr(os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(os, flag, invalid)
+                    rejected(flag + " unsupported", good)
+            finally:
+                setattr(os, flag, original)
+        require(load_module(good, "generation_import_unsafe_restored").VALUE == "safe",
+                "generation import unsafe canonical restoration failed")
+    print("PASS: generation evidence pinned loader rejects oversized/symlink/FIFO/unsafe flags")
+
+
+def prove_pinned_module_fd_cleanup() -> None:
+    """Injected fdopen/close errors must release every owned descriptor."""
+    for fault in ("fdopen", "close"):
+        original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
+        opened = []
+        injected = False
+
+        def tracked_open(*args, **kwargs):
+            descriptor = original_open(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor
+
+        def broken_fdopen(descriptor, *args, **kwargs):
+            nonlocal injected
+            if fault == "fdopen" and not injected:
+                injected = True
+                raise OSError(errno.EIO, "PRIVATE_GENERATION_FDOPEN_CANARY")
+            return original_fdopen(descriptor, *args, **kwargs)
+
+        def broken_close(descriptor):
+            nonlocal injected
+            if fault == "close" and descriptor in opened and not injected:
+                injected = True
+                original_close(descriptor)
+                raise OSError(errno.EIO, "PRIVATE_GENERATION_CLOSE_CANARY")
+            return original_close(descriptor)
+
+        try:
+            os.open, os.fdopen, os.close = tracked_open, broken_fdopen, broken_close
+            try:
+                load_module(VALIDATOR, "generation_import_fd_fault")
+            except Fail as exc:
+                require(str(exc) == "cannot load generation evidence authority"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        "generation import " + fault + " leaked private exception")
+            else:
+                raise Fail("generation import " + fault + " fault accepted")
+        finally:
+            os.open, os.fdopen, os.close = original_open, original_fdopen, original_close
+        require(injected and len(opened) >= 3,
+                "generation import " + fault + " injection not reached")
+        for descriptor in opened:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        "generation import " + fault + " unexpected descriptor error")
+            else:
+                raise Fail("generation import " + fault + " leaked descriptor")
+    require(callable(getattr(load_module(VALIDATOR, "generation_import_fd_restored"), "main", None)),
+            "generation import FD fault canonical restoration failed")
+    print("PASS: generation evidence pinned loader fdopen/close faults clean owned descriptors")
 
 
 def pin_checked_helper_parent(path: Path) -> int:
@@ -1002,6 +1095,8 @@ def main() -> int:
     prove_helper_parent_swap_after_pin_uses_original_source()
     prove_helper_ancestor_swap_during_fd_walk_rejected()
     prove_pinned_module_import()
+    prove_pinned_module_unsafe_sources()
+    prove_pinned_module_fd_cleanup()
     writer = load_module(WRITER, "memory_os_generation_evidence_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_generation_evidence_validator_load_negative")
     prove_generation_evidence_writer_json_reader(writer)
