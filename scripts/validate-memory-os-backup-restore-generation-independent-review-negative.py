@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+from ops_independent_review_fixture_loader import load_pinned_module
 """Negative suite for typed, append-only generation candidate reviews."""
 
 from __future__ import annotations
@@ -1024,11 +1026,7 @@ def prove_runtime_review_pair_controls() -> None:
             "commit", "-qm", "synthetic post-source reviews", commit_time="2026-08-01T00:02:00+00:00")
 
         validator_path = root / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
-        spec = importlib.util.spec_from_file_location("isolated_generation_review_pair_runtime", validator_path)
-        require(spec is not None and spec.loader is not None,
-                "cannot load isolated generation review pair validator")
-        isolated = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(isolated)
+        isolated = load_pinned_module(root, validator_path, "isolated_generation_review_pair_runtime")
         require(isolated.candidate_reviews_approved(row) is True,
                 "valid synthetic independent Security/Operability review pair not approved")
 

@@ -476,13 +476,37 @@ def require_pair_negative_harness_binding(tree: ast.Module) -> None:
     require(len(runtime_indices) == 1 and runtime_indices[0] == 3,
             "candidate pair runtime negative proof not fourth direct main step")
 
+    imported = [node for node in tree.body if isinstance(node, ast.ImportFrom)
+                and node.module == "ops_independent_review_fixture_loader"
+                and any(alias.name == "load_pinned_module" for alias in node.names)]
+    require(len(imported) == 1, "candidate pair runtime fixture loader import drift")
+    assignments = [node for node in ast.walk(runtime_proofs[0])
+                   if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "isolated"
+                           for target in node.targets)]
+    require(len(assignments) == 1, "candidate pair runtime fixture importer must be descriptor-pinned")
+    call = assignments[0].value
+    require(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+            and call.func.id == "load_pinned_module" and len(call.args) == 3
+            and all(isinstance(arg, ast.Name) and arg.id == name
+                    for arg, name in zip(call.args[:2], ("root", "validator_path")))
+            and isinstance(call.args[2], ast.Constant)
+            and call.args[2].value == "isolated_generation_review_pair_runtime",
+            "candidate pair runtime fixture importer must be descriptor-pinned")
+    require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "spec_from_file_location"
+                    for node in ast.walk(runtime_proofs[0])),
+            "candidate pair runtime fixture importer must be descriptor-pinned")
+
+
 
 def prove_pair_negative_harness_reachability() -> None:
     path = ROOT / PAIR_NEGATIVE_REL
     require(path.is_file() and not path.is_symlink()
             and path.resolve(strict=True) == ROOT.resolve(strict=True) / PAIR_NEGATIVE_REL,
             "candidate pair negative harness executable missing or substituted")
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
     require_pair_negative_harness_binding(tree)
     cases = (
         ("omit proof call", "remove", "candidate pair negative harness proof not second direct main step"),
@@ -541,6 +565,23 @@ def prove_pair_negative_harness_reachability() -> None:
         else:
             raise Fail(f"candidate pair harness mutation accepted: {label}")
     print(f"PASS: external candidate pair negative harness reachability rejects {len(cases)} bypasses")
+    old = 'isolated = load_pinned_module(root, validator_path, "isolated_generation_review_pair_runtime")'
+    require(source.count(old) == 1, "candidate pair pinned fixture import anchor drift")
+    import_line = "from ops_independent_review_fixture_loader import load_pinned_module\n"
+    require(source.count(import_line) == 1, "candidate pair pinned helper import anchor drift")
+    for label, mutant in (
+        ("remove pinned call", source.replace(old, "isolated = None", 1)),
+        ("restore default loader", source.replace(old,
+            'isolated = importlib.util.spec_from_file_location("unsafe", validator_path)', 1)),
+        ("remove checked helper import", source.replace(import_line, "", 1)),
+    ):
+        require(mutant != source, "candidate pair pinned fixture mutation inert: " + label)
+        try:
+            require_pair_negative_harness_binding(ast.parse(mutant))
+        except Fail:
+            continue
+        raise Fail("candidate pair pinned fixture mutation accepted: " + label)
+    print("PASS: independent candidate pair fixture import rejects 3 source mutations")
 
 
 def prove_source_order_json_reader() -> None:
