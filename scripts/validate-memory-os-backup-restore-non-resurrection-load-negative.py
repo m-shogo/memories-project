@@ -798,6 +798,31 @@ def prove_typed_json_reader_descriptor_faults(validator: Any) -> None:
     print("PASS: actual typed admission JSON reader close/fdopen private faults clean all descriptors")
 
 
+def prove_typed_json_reader_platform_flags(validator: Any) -> None:
+    """Missing and ineffective directory/nofollow flags cannot admit typed JSON."""
+    with guarded_temporary_directory(".tmp-typed-json-flags-", TMP_PARENT) as raw:
+        path = Path(raw) / "positive.json"
+        path.write_bytes(b'{"safe":true}')
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original = getattr(os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(os, flag, invalid)
+                    try:
+                        validator.load(path)
+                    except validator.Fail as exc:
+                        require(str(exc) == "typed admission JSON nofollow support required"
+                                and exc.__suppress_context__ and exc.__cause__ is None,
+                                f"typed JSON {flag} unsafe platform failure class drift")
+                    else:
+                        raise Fail(f"typed JSON accepted unsafe {flag}")
+            finally:
+                setattr(os, flag, original)
+        require(validator.load(path) == {"safe": True},
+                "typed JSON reader failed after platform flag restoration")
+    print("PASS: typed JSON missing/zero nofollow, nonblock and directory flags rejected")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -829,6 +854,7 @@ def main() -> int:
     prove_typed_json_reader(validator)
     prove_typed_json_reader_fd_races(validator)
     prove_typed_json_reader_descriptor_faults(validator)
+    prove_typed_json_reader_platform_flags(validator)
     require(writer.canonical_repo_file(WRITER, "typed evidence writer") == WRITER, "canonical typed writer path rejected")
 
     prove_reconcile_runtime_authorities()
