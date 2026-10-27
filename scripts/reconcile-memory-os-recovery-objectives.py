@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -186,14 +187,20 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
+    """Load only the canonical objective writer without forwarding import output."""
     require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
-    spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_reconcile_writer", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load recovery objective writer")
     try:
+        spec = importlib.util.spec_from_file_location(
+            "memory_os_recovery_objectives_reconcile_writer", WRITER,
+        )
+        require(spec is not None and spec.loader is not None,
+                "recovery objective canonical writer import failed")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load recovery objective writer: {exc}") from exc
+        with open(os.devnull, "w", encoding="utf-8") as sink:
+            with redirect_stdout(sink), redirect_stderr(sink):
+                spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("recovery objective canonical writer import failed") from None
     return module
 
 
