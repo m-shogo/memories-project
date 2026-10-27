@@ -95,10 +95,14 @@ def prove_close_failure_releases_lock(writer) -> None:
             writer.os.close = close_then_fail
             try:
                 writer.main()
-            except OSError as exc:
+            except writer.Fail as exc:
                 require(
-                    "synthetic recovery objective lock close failure" in str(exc),
-                    f"unexpected recovery objective close failure: {exc}",
+                    str(exc) == "recovery objectives registry lock cleanup failed",
+                    "recovery objective lock close failure class drift",
+                )
+                require(
+                    exc.__suppress_context__ and "synthetic recovery objective lock close failure" not in str(exc),
+                    "recovery objective lock close failure leaked private OS diagnostics",
                 )
             else:
                 raise Fail("recovery objective close failure was accepted")

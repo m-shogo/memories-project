@@ -540,13 +540,19 @@ def main() -> int:
         ]
         write_registry_transactionally(registry)
     finally:
+        cleanup_failed = False
         try:
             os.close(lock_fd)
-        finally:
-            try:
-                LOCK.unlink()
-            except FileNotFoundError:
-                pass
+        except OSError:
+            cleanup_failed = True
+        try:
+            LOCK.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("recovery objectives registry lock cleanup failed") from None
     print(f"Registered recovery objectives: {record['objectiveId']}")
     print("Typed Recovery Owner/Operability approvals bound to objective: true")
     print("Approval evidence content SHA-256 bound: true")
