@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-promotion-review-readonly.yml"
-REVIEWED_WORKFLOW_BLOB_SHA = "23c7047cc3d37aec0ac6f652b1de395a741a4984"
+REVIEWED_WORKFLOW_BLOB_SHA = "3f87571068b519994fe67ef2a816fd71caefafed"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -29,6 +29,7 @@ REQUIRED = (
     ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", 1),
     ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
     ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
+    ("writer self-trigger", "      - 'scripts/register-memory-os-backup-restore-promotion-review.py'\n", 2),
 )
 
 
@@ -87,6 +88,7 @@ def main() -> int:
         ("injected shell command", "          set -euo pipefail\n", "          set -euo pipefail\n          echo UNREVIEWED\n"),
         ("injected action", "      - name: Assert exact clean promotion-review source\n", "      - uses: unreviewed/action@v1\n      - name: Assert exact clean promotion-review source\n"),
         ("removed PR self-trigger", "      - \x27scripts/validate-memory-os-backup-restore-promotion-review-readonly-workflow-negative.py\x27\n", ""),
+        ("removed writer trigger", REQUIRED[17][1], ""),
     )
     for label, old, replacement in cases:
         if old not in source:
