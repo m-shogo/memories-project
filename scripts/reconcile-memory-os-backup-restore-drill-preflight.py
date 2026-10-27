@@ -249,7 +249,7 @@ def load_validator_module():
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError):
+    except Exception:
         raise Fail("preflight reconcile validator import unavailable") from None
     return module
 
