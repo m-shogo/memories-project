@@ -354,6 +354,19 @@ def main() -> int:
 
     valid = base_record()
     writer.validate_record(valid)
+    private_field = "PRIVATE_OBJECTIVE_FIELD_NAME_CANARY"
+    for label, mutated in (
+        ("unexpected private key", {**valid, private_field: True}),
+        ("missing required key", {key: value for key, value in valid.items() if key != "ownerRef"}),
+    ):
+        try:
+            writer.validate_record(mutated)
+        except writer.Fail as exc:
+            require(str(exc) == "record field set drift" and private_field not in str(exc),
+                    f"objective record {label} diagnostic disclosed untrusted field name")
+        else:
+            raise Fail(f"objective record {label} unexpectedly accepted")
+    print("PASS: objective record field set fixed private diagnostic (2 negatives)")
     print("PASS accept: explicit typed reviewed recovery objective")
     exercise_registry_corruption(writer)
 
