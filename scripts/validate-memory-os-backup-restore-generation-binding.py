@@ -96,11 +96,10 @@ def load(path: Path) -> dict[str, Any]:
         raise Fail("generation binding JSON path unsafe") from None
     require(lexical == resolved and not path.is_symlink(), "generation binding JSON path unsafe")
 
-    require(type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0
-            and type(getattr(os, "O_NONBLOCK", None)) is int and os.O_NONBLOCK > 0,
-            "generation binding JSON nofollow support required")
-    require(type(getattr(os, "O_DIRECTORY", None)) is int and os.O_DIRECTORY > 0,
-            "generation binding JSON nofollow support required")
+    if not (type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0
+            and type(getattr(os, "O_NONBLOCK", None)) is int and os.O_NONBLOCK > 0
+            and type(getattr(os, "O_DIRECTORY", None)) is int and os.O_DIRECTORY > 0):
+        raise Fail("generation binding JSON nofollow support required") from None
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     directory_flags = flags | os.O_DIRECTORY
     directories: list[int] = []
