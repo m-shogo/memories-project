@@ -29,6 +29,8 @@ REQUIRED = (
     ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", 1),
     ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
     ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
+    ("root read-only permission", "permissions:\n  contents: read\n", 1),
+    ("no contents write permission", "contents: write", 0),
 )
 
 
@@ -87,7 +89,12 @@ def main() -> int:
         ("injected shell command", "          set -euo pipefail\n", "          set -euo pipefail\n          echo UNREVIEWED\n"),
         ("injected action", "      - name: Assert exact clean review source\n", "      - uses: unreviewed/action@v1\n      - name: Assert exact clean review source\n"),
         ("removed PR self-trigger", "      - \x27scripts/validate-memory-os-backup-restore-review-source-order-readonly-workflow-negative.py\x27\n", ""),
+        ("root permission escalation", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
+        ("job permission escalation", "jobs:\n  validate:\n", "jobs:\n  validate:\n    permissions:\n      contents: write\n"),
     )
+    if len(cases) != 22:
+        raise SystemExit("review-source-order readonly negative inventory drift")
+    digest_only = frozenset({"injected shell command", "injected action"})
     semantic_count = 0
     blob_only_count = 0
     for label, old, replacement in cases:
@@ -98,6 +105,8 @@ def main() -> int:
             raise SystemExit(f"review-source-order readonly mutation unchanged: {label}")
         semantic = any(mutated.count(token) != source.count(token)
                        for _, token, _ in REQUIRED)
+        if semantic == (label in digest_only):
+            raise SystemExit("review-source-order readonly mutation classification drift: " + label)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
         try:
@@ -105,7 +114,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"review-source-order readonly accepted forbidden mutation: {label}")
-    if (semantic_count, blob_only_count) != (len(cases) - 2, 2):
+    if (semantic_count, blob_only_count) != (20, 2):
         raise SystemExit("review-source-order readonly semantic/blob mutation coverage drift")
     print(f"PASS: review-source-order readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
