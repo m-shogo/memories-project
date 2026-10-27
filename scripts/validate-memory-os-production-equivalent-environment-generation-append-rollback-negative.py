@@ -402,8 +402,10 @@ def prove_failed_registration_releases_lock_for_retry(writer) -> None:
             try:
                 try:
                     writer.main()
-                except OSError as exc:
-                    require("synthetic generation lock close failure" in str(exc), "unexpected generation lock close failure")
+                except writer.Fail as exc:
+                    require(str(exc) == "environment generation registry lock cleanup failed"
+                            and exc.__suppress_context__,
+                            "generation lock close failure leaked private details")
                 else:
                     raise Fail("generation lock close failure was accepted")
             finally:
@@ -411,6 +413,56 @@ def prove_failed_registration_releases_lock_for_retry(writer) -> None:
             require(not lock.exists(), "generation lock close failure stranded its lock")
             require(writer.main() == 0, "generation registration retry did not complete after close failure cleanup")
             require(not lock.exists(), "generation registration retry after close failure stranded its lock")
+
+            original_write = writer.os.write
+            writer.os.write = lambda *_args: 0
+            try:
+                try:
+                    writer.main()
+                except writer.Fail as exc:
+                    require(str(exc) == "environment generation registry lock initialization failed",
+                            "environment generation short lock write wrong rejection class")
+                else:
+                    raise Fail("environment generation short lock write unexpectedly accepted")
+            finally:
+                writer.os.write = original_write
+            require(not lock.exists(), "environment generation short lock write stranded lock")
+
+            original_fsync = writer.os.fsync
+            def reject_lock_fsync(*_args):
+                raise OSError("PRIVATE_GENERATION_LOCK_FSYNC_CANARY")
+            writer.os.fsync = reject_lock_fsync
+            try:
+                try:
+                    writer.main()
+                except writer.Fail as exc:
+                    require(str(exc) == "environment generation registry lock initialization failed"
+                            and exc.__suppress_context__,
+                            "environment generation lock fsync leaked private details")
+                else:
+                    raise Fail("environment generation lock fsync failure unexpectedly accepted")
+            finally:
+                writer.os.fsync = original_fsync
+            require(not lock.exists(), "environment generation lock fsync stranded lock")
+
+            original_open = writer.os.open
+            def reject_lock_open(path, *args, **kwargs):
+                if Path(path) == lock:
+                    raise OSError("PRIVATE_GENERATION_LOCK_OPEN_CANARY")
+                return original_open(path, *args, **kwargs)
+            writer.os.open = reject_lock_open
+            try:
+                try:
+                    writer.main()
+                except writer.Fail as exc:
+                    require(str(exc) == "environment generation registry lock acquisition failed"
+                            and exc.__suppress_context__,
+                            "environment generation lock acquisition leaked private details")
+                else:
+                    raise Fail("environment generation lock acquisition failure unexpectedly accepted")
+            finally:
+                writer.os.open = original_open
+            require(not lock.exists(), "environment generation lock acquisition stranded lock")
 
             lock.write_bytes(b"existing-owner\n")
             lock.chmod(0o600)
