@@ -464,6 +464,65 @@ def prove_reconcile_reader_race_negative_removal_rejected() -> None:
     print("PASS: preflight and typed reconcile bounded FD race negative deletion rejected")
 
 
+def require_reconcile_strict_json_negative_reachable(source: str, function_name: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("reconcile strict JSON negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target, main = functions.get(function_name), functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("reconcile strict JSON negative missing")
+    invocations = [node for node in ast.walk(main)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id == function_name]
+    if len(invocations) != 1:
+        raise SystemExit("reconcile strict JSON negative invocation drift")
+    loads = [node for node in ast.walk(target) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Attribute)
+             and isinstance(node.func.value, ast.Name)
+             and node.func.value.id == "reconciler" and node.func.attr == "load"]
+    if len(loads) != 2:
+        raise SystemExit("reconcile strict JSON positive/negative reader calls missing")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if not {"duplicate", "NaN", "Infinity", "float overflow",
+            "129 digit integer", "invalid UTF-8", "nonobject root"}.issubset(strings):
+        raise SystemExit("reconcile strict JSON negative matrix incomplete")
+
+
+def prove_reconcile_strict_json_negative_removal_rejected() -> None:
+    for relative, function_name, invocation in (
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py",
+         "prove_preflight_reconcile_strict_json",
+         "    prove_preflight_reconcile_strict_json(reconciler)\n"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_reconcile_strict_json",
+         "    prove_typed_reconcile_strict_json()\n"),
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        require_reconcile_strict_json_negative_reachable(source, function_name)
+        if source.count(invocation) != 1:
+            raise SystemExit("reconcile strict JSON invocation anchor drift")
+        without_invocation = source.replace(invocation, "    pass\n", 1)
+        try:
+            require_reconcile_strict_json_negative_reachable(without_invocation, function_name)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("reconcile strict JSON invocation deletion accepted")
+        without_negative = mutate_named_function(
+            source, function_name, "                reconciler.load(path)\n", "                pass\n"
+        )
+        try:
+            require_reconcile_strict_json_negative_reachable(without_negative, function_name)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("reconcile strict JSON negative reader call deletion accepted")
+    print("PASS: preflight and typed reconcile strict JSON negative deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -475,6 +534,7 @@ def main() -> int:
     prove_json_descriptor_fault_negative_removal_rejected()
     prove_json_platform_flag_negative_removal_rejected()
     prove_reconcile_reader_race_negative_removal_rejected()
+    prove_reconcile_strict_json_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
