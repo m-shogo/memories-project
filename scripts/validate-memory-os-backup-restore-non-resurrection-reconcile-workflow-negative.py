@@ -29,6 +29,7 @@ REQUIRED = (
     ("self-execution", '          python scripts/validate-memory-os-backup-restore-non-resurrection-reconcile-workflow-negative.py\n', 1),
     ("PR base ref", '            test "${GITHUB_BASE_REF:-}" = "so"\n', 1),
     ("PR target filter", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
+    ("material delta review trigger", '      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"\n', 2),
 )
 
 
@@ -137,6 +138,7 @@ def main() -> int:
         ("clean source", REQUIRED[11][1], ""),
         ("self-trigger", REQUIRED[12][1], ""),
         ("self-execution", REQUIRED[13][1], ""),
+        ("material delta review trigger", REQUIRED[16][1], ""),
     )
     for label, old, replacement in cases:
         if old not in source:
@@ -172,9 +174,6 @@ def main() -> int:
         ("extra executable step", source.replace(
             "      - name: Prove transactional typed non-resurrection reconciliation\n",
             "      - run: echo unreviewed\n      - name: Prove transactional typed non-resurrection reconciliation\n", 1)),
-        ("missing domain trigger", source.replace(
-            '      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"\n',
-            "", 1)),
     ):
         if mutated == source:
             raise SystemExit("typed non-resurrection reconcile source digest negative anchor missing: " + label)
@@ -183,7 +182,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("typed non-resurrection reconcile accepted whole-source mutation: " + label)
-    print(f"PASS: typed non-resurrection reconcile workflow source admission ({len(cases) + 2} semantic anchor negatives; 3 complete-source/terminator negatives)")
+    print(f"PASS: typed non-resurrection reconcile workflow source admission ({len(cases) + 2} semantic anchor negatives; 2 complete-source/terminator negatives)")
     return 0
 
 
