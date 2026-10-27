@@ -96,7 +96,10 @@ def load(path: Path) -> dict[str, Any]:
         raise Fail("generation binding JSON path unsafe") from None
     require(lexical == resolved and not path.is_symlink(), "generation binding JSON path unsafe")
 
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    require(type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0
+            and type(getattr(os, "O_NONBLOCK", None)) is int and os.O_NONBLOCK > 0,
+            "generation binding JSON nofollow support required")
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     fd = -1
     try:
         fd = os.open(path, flags)
