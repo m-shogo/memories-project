@@ -1075,6 +1075,19 @@ def prove_preflight_private_path_negative_reachability() -> None:
                       "validator.ELIGIBILITY_HELPER = original_path"):
             require(token in pinned_body, "preflight pinned helper race guard removed")
 
+        unsafe_target = functions.get("prove_preflight_pinned_helper_fail_closed")
+        require(unsafe_target is not None, "preflight pinned helper unsafe negative missing")
+        unsafe_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "prove_preflight_pinned_helper_fail_closed"]
+        require(len(unsafe_calls) == 1, "preflight pinned helper unsafe negative not executed exactly once")
+        unsafe_body = ast.get_source_segment(candidate, unsafe_target)
+        require(isinstance(unsafe_body, str), "preflight pinned helper unsafe body unavailable")
+        for token in ("oversized.write_bytes", "for invalid in (None, 0):",
+                      "exc.__suppress_context__", "validator.ELIGIBILITY_HELPER = original_path",
+                      "validator.load_eligibility_helper().derive_registry({})"):
+            require(token in unsafe_body, "preflight pinned helper unsafe guard removed")
+
         semantic_target = functions.get("prove_private_semantic_helper_domain_failure")
         require(semantic_target is not None, "preflight semantic helper private negative missing")
         semantic_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
@@ -1107,6 +1120,16 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("pinned helper canary", "prove_pinned_preflight_helper_import",
          '            require(canary.read_text(encoding="utf-8") ==\n',
          '            require(False and\n'),
+        ("pinned unsafe invocation", "main",
+         "    prove_preflight_pinned_helper_fail_closed(validator)\n", "    pass\n"),
+        ("pinned unsafe size", "prove_preflight_pinned_helper_fail_closed",
+         '        oversized.write_bytes(b"x" * (validator.MAX_JSON_BYTES + 1))\n', "        pass\n"),
+        ("pinned unsafe flags", "prove_preflight_pinned_helper_fail_closed",
+         "                    for invalid in (None, 0):\n", "                    for invalid in ():\n"),
+        ("pinned unsafe context", "prove_preflight_pinned_helper_fail_closed",
+         "exc.__suppress_context__", "False"),
+        ("pinned unsafe restore", "prove_preflight_pinned_helper_fail_closed",
+         "            validator.ELIGIBILITY_HELPER = original_path\n", "            pass\n"),
         ("semantic invocation", "main", "    prove_private_semantic_helper_domain_failure(validator)\n", "    pass\n"),
         ("semantic failure injection", "prove_private_semantic_helper_domain_failure", "            raise SyntheticHelper.Fail(private)\n", "            return {}\n"),
         ("semantic context assertion", "prove_private_semantic_helper_domain_failure", "exc.__suppress_context__", "False"),
