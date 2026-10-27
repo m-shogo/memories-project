@@ -221,7 +221,7 @@ def main() -> int:
             raise SystemExit(f"semantic preflight reconcile negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=False)
         except SystemExit:
             continue
         raise SystemExit(f"semantic preflight reconcile accepted forbidden mutation: {label}")
@@ -234,7 +234,7 @@ def main() -> int:
         source[second_sha + len(sha_token):]
     )
     try:
-        validate(mutated_second_sha)
+        validate(mutated_second_sha, check_blob=False)
     except SystemExit:
         pass
     else:
@@ -254,7 +254,7 @@ def main() -> int:
         if old not in source:
             raise SystemExit("semantic preflight reconcile PR branch negative anchor missing: " + label)
         try:
-            validate(source.replace(old, replacement, 1))
+            validate(source.replace(old, replacement, 1), check_blob=False)
         except SystemExit:
             continue
         raise SystemExit("semantic preflight reconcile accepted forbidden PR branch mutation: " + label)
@@ -269,7 +269,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("semantic preflight reconcile accepted forbidden whole-source mutation: " + label)
-    print(f"PASS: semantic preflight reconcile workflow source admission ({len(cases) + 6} negatives)")
+    print(f"PASS: semantic preflight reconcile workflow source admission ({len(cases) + 3} semantic anchor negatives; 3 complete-source/terminator negatives)")
     return 0
 
 
