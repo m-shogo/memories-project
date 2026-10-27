@@ -114,32 +114,54 @@ def main() -> int:
             require(mode(registry) == before_mode == 0o640, "candidate replace rejection changed canonical registry mode")
             require(not residue(root), "candidate replace rejection left temporary residue")
 
+            primary_marker = "PRIVATE_OBJECTIVE_POST_APPEND_CANARY"
+            rollback_marker = "PRIVATE_OBJECTIVE_ROLLBACK_CANARY"
+
             def reject_after_write(_value):
-                raise writer.Fail("synthetic post-append registry validation failure")
+                raise writer.Fail(primary_marker)
 
             writer.validate_registry_for_append = reject_after_write
             try:
                 writer.write_registry_transactionally({"sentinel": "after"})
             except writer.Fail as exc:
-                require("synthetic post-append" in str(exc), "unexpected transactional append failure")
+                require(str(exc) == "recovery objectives append failed; rollback completed"
+                        and exc.__suppress_context__ and primary_marker not in str(exc),
+                        "post-append rollback-completed diagnostic wrong or private")
             else:
                 raise Fail("post-append registry validation failure was accepted")
             require(registry.read_bytes() == original, "failed objective append did not restore original registry bytes")
             require(mode(registry) == 0o640, "failed objective append did not restore original registry mode")
             require(not residue(root), "objective append rollback left temporary residue")
 
+            def reject_unexpected_after_write(_value):
+                raise TypeError("PRIVATE_OBJECTIVE_UNEXPECTED_POST_APPEND_CANARY")
+
+            writer.validate_registry_for_append = reject_unexpected_after_write
+            try:
+                writer.write_registry_transactionally({"sentinel": "unexpected-after"})
+            except writer.Fail as exc:
+                require(str(exc) == "recovery objectives append failed; rollback completed"
+                        and exc.__suppress_context__
+                        and "PRIVATE_OBJECTIVE_UNEXPECTED" not in str(exc),
+                        "unexpected post-append fault disclosed private detail")
+            else:
+                raise Fail("unexpected post-append failure was accepted")
+            require(registry.read_bytes() == original and mode(registry) == 0o640
+                    and not residue(root), "unexpected post-append rollback left mutation")
+            writer.validate_registry_for_append = reject_after_write
+
             def reject_rollback_restore(_payload, _mode):
-                raise writer.Fail("synthetic objective rollback restore failure")
+                raise writer.Fail(rollback_marker)
 
             writer.atomic_restore = reject_rollback_restore
             try:
                 writer.write_registry_transactionally({"sentinel": "rollback-failure"})
             except writer.Fail as exc:
-                text = str(exc)
-                require("primary failure" in text, "rollback failure lost primary failure marker")
-                require("synthetic post-append registry validation failure" in text, "rollback failure lost primary validator diagnostic")
-                require("rollback incomplete" in text, "rollback failure missing incomplete rollback marker")
-                require("synthetic objective rollback restore failure" in text, "rollback failure diagnostic missing restore cause")
+                require(str(exc) == "recovery objectives append failed; rollback incomplete"
+                        and exc.__suppress_context__
+                        and primary_marker not in str(exc)
+                        and rollback_marker not in str(exc),
+                        "rollback-incomplete diagnostic wrong or private")
             else:
                 raise Fail("objective append rollback restore failure was accepted")
             finally:
@@ -185,7 +207,7 @@ def main() -> int:
     print("successful append registry mode preservation: enforced")
     print("candidate replace rejection preserves canonical bytes/mode: enforced")
     print("failed append registry rollback: exact bytes and mode")
-    print("rollback failure preserves primary and rollback diagnostics: enforced")
+    print("rollback completion/incomplete classes private and preserved: enforced")
     print("candidate/rollback temporary residue: none")
     print("CLI contract/registry/approval-directory/lock substitution accepted: false")
     print("objective created: false")
