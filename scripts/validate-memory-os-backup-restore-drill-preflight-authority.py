@@ -41,12 +41,10 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     try:
         lexical = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} missing or escapes repository") from exc
-    require(
-        lexical == resolved and path.is_file() and not path.is_symlink(),
-        f"{field} must be canonical repository file",
-    )
+        safe = lexical == resolved and path.is_file() and not path.is_symlink()
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} missing or escapes repository") from None
+    require(safe, f"{field} must be canonical repository file")
     return path
 
 
@@ -147,6 +145,43 @@ def prove_pinned_authority_import() -> None:
         finally:
             importlib.util.spec_from_file_location = original_spec
     print("PASS: preflight authority module import executes pinned bytes after parent swap")
+
+
+def prove_private_authority_path_errors() -> None:
+    """Canonical path metadata failures cannot disclose private filesystem context."""
+    original_resolve, original_is_file = Path.resolve, Path.is_file
+    private = "SYNTHETIC_PRIVATE_PREFLIGHT_AUTHORITY_PATH_CANARY"
+
+    def fault_resolve(self, *args, **kwargs):
+        if self == VALIDATOR:
+            raise OSError(private)
+        return original_resolve(self, *args, **kwargs)
+
+    def fault_is_file(self, *args, **kwargs):
+        if self == VALIDATOR:
+            raise OSError(private)
+        return original_is_file(self, *args, **kwargs)
+
+    for fault in ("resolve", "is_file"):
+        try:
+            if fault == "resolve":
+                Path.resolve = fault_resolve
+            else:
+                Path.is_file = fault_is_file
+            try:
+                canonical_repo_file(VALIDATOR, "synthetic preflight authority")
+            except Fail as exc:
+                require(str(exc) == "synthetic preflight authority missing or escapes repository"
+                        and exc.__suppress_context__ and exc.__cause__ is None
+                        and private not in str(exc),
+                        "preflight authority private path fault leaked details: " + fault)
+            else:
+                raise Fail("preflight authority private path fault accepted: " + fault)
+        finally:
+            Path.resolve, Path.is_file = original_resolve, original_is_file
+    require(canonical_repo_file(VALIDATOR, "synthetic preflight authority") == VALIDATOR,
+            "preflight authority canonical path positive failed")
+    print("PASS: preflight authority private path metadata and exception contexts suppressed")
 
 
 def require_module_authority(module: object, name: str, expected: Path, field: str) -> None:
@@ -299,6 +334,7 @@ def require_atomic_diagnostic_publication() -> None:
 
 def main() -> int:
     prove_pinned_authority_import()
+    prove_private_authority_path_errors()
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_authority_validator", "restore drill preflight validator")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_authority_reconciler", "restore drill preflight reconciler")
 
