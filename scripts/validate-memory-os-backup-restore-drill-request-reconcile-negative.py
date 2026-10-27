@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import importlib.machinery
 import importlib.util
 import io
 import json
@@ -177,11 +178,15 @@ def load_pinned_fixture_guard(path: Path, name: str):
                 source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)
             require(len(source) <= MAX_HELPER_SOURCE_BYTES,
                     "fixture guard pinned source oversized")
-            spec = importlib.util.spec_from_file_location(name, path)
+            class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+                def get_code(self, fullname):
+                    require(fullname == name, "fixture guard module identity drift")
+                    return compile(source, str(path), "exec")
+            spec = importlib.util.spec_from_file_location(name, path, loader=PinnedSourceLoader(name, str(path)))
             require(spec is not None and spec.loader is not None,
                     "drill request fixture guard cannot load")
             module = importlib.util.module_from_spec(spec)
-            exec(compile(source, str(path), "exec"), module.__dict__)
+            spec.loader.exec_module(module)
             return module
         except OSError as exc:
             raise Fail("drill request fixture guard pinned source read failed") from exc

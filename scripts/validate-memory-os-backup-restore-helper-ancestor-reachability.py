@@ -988,7 +988,7 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         ).body[0], include_attributes=False)
         and ast.dump(read_try.body[-2], include_attributes=False)
         == ast.dump(ast.parse(
-            "exec(compile(source, str(path), 'exec'), module.__dict__)"
+            "spec.loader.exec_module(module)"
         ).body[0], include_attributes=False)
         and ast.dump(read_try.body[4], include_attributes=False)
         == ast.dump(ast.parse(
@@ -999,6 +999,16 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         and read_try.body[-1].value.id == "module",
         "loader source execution not pinned to FD",
     )
+    loader_text = ast.get_source_segment(source, loaders[0]) or ""
+    for token in (
+        "class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+        "def get_code(self, fullname):",
+        'require(fullname == name, "fixture guard module identity drift")',
+        'return compile(source, str(path), "exec")',
+        "loader=PinnedSourceLoader(name, str(path))",
+        "spec.loader.exec_module(module)",
+    ):
+        require(token in loader_text, "loader source execution not pinned to FD")
     require(
         len(read_try.finalbody) == 1
         and ast.dump(read_try.finalbody[0], include_attributes=False)
@@ -1156,11 +1166,17 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ('            with os.fdopen(os.dup(fd), "rb") as stream:\n',
          '            with open(path, "rb") as stream:\n',
          "loader source execution not pinned to FD"),
-        ('            exec(compile(source, str(path), "exec"), module.__dict__)\n',
-         '            exec(compile(path.read_bytes(), str(path), "exec"), module.__dict__)\n',
+        ('                    return compile(source, str(path), "exec")\n',
+         '                    return compile(path.read_bytes(), str(path), "exec")\n',
          "loader source execution not pinned to FD"),
-        ('            exec(compile(source, str(path), "exec"), module.__dict__)\n',
-         '            exec(compile(source, str(path), "exec"), globals())\n',
+        ('            spec.loader.exec_module(module)\n',
+         '            pass  # synthetic skipped pinned loader execution\n',
+         "loader source execution not pinned to FD"),
+        ('            spec = importlib.util.spec_from_file_location(name, path, loader=PinnedSourceLoader(name, str(path)))\n',
+         '            spec = importlib.util.spec_from_file_location(name, path)\n',
+         "loader source execution not pinned to FD"),
+        ('                    require(fullname == name, "fixture guard module identity drift")\n',
+         '                    require(True, "fixture guard module identity drift")\n',
          "loader source execution not pinned to FD"),
         ("            require(len(source) <= MAX_HELPER_SOURCE_BYTES,\n",
          "            require(True,\n",
@@ -2177,7 +2193,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 48 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 50 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
