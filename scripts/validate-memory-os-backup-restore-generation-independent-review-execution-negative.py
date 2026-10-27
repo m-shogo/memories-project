@@ -442,12 +442,18 @@ def require_pair_negative_harness_binding(tree: ast.Module) -> None:
               and node.name == "prove_candidate_pair_source_binding"]
     runtime_proofs = [node for node in tree.body if isinstance(node, ast.FunctionDef)
                       and node.name == "prove_runtime_review_pair_controls"]
+    reader_proofs = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                     and node.name == "prove_checked_source_reader"]
+    source_readers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                      and node.name == "read_checked_source"]
     mains = [node for node in tree.body if isinstance(node, ast.FunctionDef)
              and node.name == "main"]
     require(len(proofs) == 1 and len(mains) == 1,
             "candidate pair negative harness definition drift")
     require(len(runtime_proofs) == 1,
             "candidate pair runtime negative harness definition drift")
+    require(len(reader_proofs) == 1 and len(source_readers) == 1,
+            "candidate pair pinned source reader definition drift")
     for node in tree.body:
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
@@ -475,6 +481,20 @@ def require_pair_negative_harness_binding(tree: ast.Module) -> None:
                        ast.dump(runtime_call, include_attributes=False)]
     require(len(runtime_indices) == 1 and runtime_indices[0] == 3,
             "candidate pair runtime negative proof not fourth direct main step")
+
+    reader_call = ast.parse("prove_checked_source_reader()").body[0]
+    reader_indices = [index for index, node in enumerate(body)
+                      if ast.dump(node, include_attributes=False) ==
+                      ast.dump(reader_call, include_attributes=False)]
+    require(len(reader_indices) == 1 and reader_indices[0] == 4,
+            "candidate pair pinned reader proof not fifth direct main step")
+    pinned_calls = [node for node in ast.walk(source_readers[0])
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "read_pinned_source"]
+    require(len(pinned_calls) == 1 and len(pinned_calls[0].args) == 2
+            and all(isinstance(arg, ast.Name) and arg.id == name
+                    for arg, name in zip(pinned_calls[0].args, ("ROOT", "path"))),
+            "candidate pair pinned source reader binding drift")
 
     imported = [node for node in tree.body if isinstance(node, ast.ImportFrom)
                 and node.module == "ops_independent_review_fixture_loader"
@@ -520,6 +540,10 @@ def prove_pair_negative_harness_reachability() -> None:
         ("duplicate runtime proof", "duplicate_runtime", "candidate pair runtime negative proof not fourth direct main step"),
         ("remove runtime definition", "remove_runtime_def", "candidate pair runtime negative harness definition drift"),
         ("shadow runtime proof", "shadow_runtime", "candidate pair runtime negative harness proof shadowed"),
+        ("remove pinned reader proof", "remove_reader", "candidate pair pinned reader proof not fifth direct main step"),
+        ("dead pinned reader proof", "dead_reader", "candidate pair pinned reader proof not fifth direct main step"),
+        ("remove pinned reader definition", "remove_reader_def", "candidate pair pinned source reader definition drift"),
+        ("restore unchecked source read", "unsafe_reader", "candidate pair pinned source reader binding drift"),
     )
     for label, action, expected in cases:
         mutant = copy.deepcopy(tree)
@@ -531,6 +555,12 @@ def prove_pair_negative_harness_reachability() -> None:
         runtime_proof = next(node for node in mutant.body
                              if isinstance(node, ast.FunctionDef)
                              and node.name == "prove_runtime_review_pair_controls")
+        reader_proof = next(node for node in mutant.body
+                            if isinstance(node, ast.FunctionDef)
+                            and node.name == "prove_checked_source_reader")
+        source_reader = next(node for node in mutant.body
+                             if isinstance(node, ast.FunctionDef)
+                             and node.name == "read_checked_source")
         if action == "remove":
             main.body.pop(1)
         elif action == "move":
@@ -557,6 +587,18 @@ def prove_pair_negative_harness_reachability() -> None:
             mutant.body.append(ast.Assign(targets=[ast.Name(id="prove_runtime_review_pair_controls",
                                                               ctx=ast.Store())],
                                           value=ast.Constant(None)))
+        elif action == "remove_reader":
+            main.body.pop(4)
+        elif action == "dead_reader":
+            main.body[4] = ast.If(test=ast.Constant(False), body=[main.body[4]], orelse=[])
+        elif action == "remove_reader_def":
+            mutant.body.remove(reader_proof)
+        elif action == "unsafe_reader":
+            pinned = [node for node in ast.walk(source_reader)
+                      if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                      and node.func.id == "read_pinned_source"]
+            require(len(pinned) == 1, "pinned reader mutation fixture drift")
+            pinned[0].func.id = "read_unchecked_source"
         try:
             require_pair_negative_harness_binding(mutant)
         except Fail as exc:

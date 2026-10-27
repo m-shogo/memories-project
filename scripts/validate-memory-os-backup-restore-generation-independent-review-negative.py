@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from ops_independent_review_fixture_loader import load_pinned_module
+from ops_independent_review_fixture_loader import FixtureImportFail, read_pinned_source
 
 import ast
 import copy
@@ -36,6 +37,44 @@ def require(condition: bool, message: str) -> None:
 
 
 EXECUTION_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py"
+
+
+
+def read_checked_source(path: Path) -> str:
+    """Read canonical negative source through the shared pinned, bounded reader."""
+    try:
+        return read_pinned_source(ROOT, path).decode("utf-8")
+    except (FixtureImportFail, UnicodeDecodeError):
+        raise Fail("independent review negative source rejected") from None
+
+
+def prove_checked_source_reader() -> None:
+    """Exercise the actual pinned reader against unsafe disposable source fixtures."""
+    with tempfile.TemporaryDirectory(prefix=".independent-review-source-", dir=ROOT) as raw:
+        parent = Path(raw)
+        source = parent / "source.py"
+        source.write_text("VALUE = 7\n", encoding="utf-8")
+        require(read_checked_source(source) == "VALUE = 7\n",
+                "independent review negative pinned reader positive drift")
+        link = parent / "symlink.py"
+        link.symlink_to(source)
+        fifo = parent / "fifo.py"
+        os.mkfifo(fifo)
+        oversized = parent / "oversized.py"
+        oversized.write_bytes(b"x" * (1024 * 1024 + 1))
+        for unsafe in (link, fifo, oversized):
+            try:
+                read_checked_source(unsafe)
+            except Fail as exc:
+                require(str(exc) == "independent review negative source rejected"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        "independent review negative pinned reader private failure drift")
+            else:
+                raise Fail("independent review negative pinned reader accepted unsafe source")
+        require(read_checked_source(source) == "VALUE = 7\n",
+                "independent review negative pinned reader restoration drift")
+    print("PASS: independent review negative pinned source reader rejects symlink FIFO oversize")
+
 
 
 def require_pinned_execution_negative_source(code: str) -> None:
@@ -116,7 +155,7 @@ def require_pinned_execution_negative_source(code: str) -> None:
 
 
 def prove_pinned_execution_negative_mutations_rejected() -> None:
-    code = EXECUTION_NEGATIVE.read_text(encoding="utf-8")
+    code = read_checked_source(EXECUTION_NEGATIVE)
     require_pinned_execution_negative_source(code)
     mutations = (
         ("load_checked_module", "stream.read(MAX_REVIEW_MODULE_BYTES + 1)", "stream.read()"),
@@ -791,7 +830,7 @@ def require_external_source_order_guard_negative_proof() -> None:
     require(EXECUTION_NEGATIVE.resolve(strict=True) ==
             ROOT.resolve(strict=True) / "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py",
             "external source-order AST negative executable path drift")
-    tree = ast.parse(EXECUTION_NEGATIVE.read_text(encoding="utf-8"))
+    tree = ast.parse(read_checked_source(EXECUTION_NEGATIVE))
     require_external_source_order_guard(tree)
     cases = (
         ("omit main guard call", "external source-order AST guard not first direct main step"),
@@ -872,7 +911,7 @@ def require_candidate_pair_source_binding(tree: ast.Module) -> None:
 
 
 def prove_candidate_pair_source_binding() -> None:
-    tree = ast.parse(VALIDATOR.read_text(encoding="utf-8"))
+    tree = ast.parse(read_checked_source(VALIDATOR))
     require_candidate_pair_source_binding(tree)
 
     def candidate(mutant):
@@ -1491,6 +1530,7 @@ def main() -> int:
     prove_candidate_pair_source_binding()
     module = load_validator()
     prove_runtime_review_pair_controls()
+    prove_checked_source_reader()
     prove_pinned_execution_negative_mutations_rejected()
     prove_pinned_pair_validator_import()
     prove_pair_import_unsafe_sources()
