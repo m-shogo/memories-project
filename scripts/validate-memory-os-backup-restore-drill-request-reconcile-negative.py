@@ -396,6 +396,51 @@ def prove_atomic_write_failure(reconciler: Any, contract_before: bytes, registry
     print("PASS boundary: drill-request atomic write preserves mode; failed replace preserves bytes/mode and cleans temporary files")
 
 
+def prove_atomic_descriptor_cleanup(reconciler: Any) -> None:
+    """Pre-fdopen errors must close descriptors and remove private temp files."""
+    with guarded_temporary_directory(".memory-os-drill-request-atomic-fd-", ROOT) as tmp:
+        fixture = Path(tmp) / CONTRACT.name
+        shutil.copy2(CONTRACT, fixture)
+        fixture.chmod(0o640)
+        original_bytes = fixture.read_bytes()
+        marker = "synthetic-secret-drill-request-atomic-fd"
+        for operation in ("fchmod", "fdopen"):
+            original_operation = getattr(reconciler.os, operation)
+            captured: list[int] = []
+
+            def reject(fd: int, *_args: Any, **_kwargs: Any) -> None:
+                captured.append(fd)
+                raise OSError(marker)
+
+            setattr(reconciler.os, operation, reject)
+            try:
+                try:
+                    reconciler.write_text(fixture, original_bytes.decode("utf-8") + " ")
+                except reconciler.Fail as exc:
+                    require(str(exc) == "cannot atomically write drill request authority (raw error withheld)",
+                            f"{operation}: wrong fixed atomic failure class")
+                    require(marker not in str(exc), f"{operation}: private atomic error leaked")
+                else:
+                    raise Fail(f"{operation}: pre-fdopen failure unexpectedly accepted")
+            finally:
+                setattr(reconciler.os, operation, original_operation)
+
+            require(len(captured) == 1, f"{operation}: descriptor fault injection was not reached")
+            try:
+                os.fstat(captured[0])
+            except OSError:
+                pass
+            else:
+                raise Fail(f"{operation}: temporary descriptor leaked")
+            require(fixture.read_bytes() == original_bytes,
+                    f"{operation}: atomic descriptor failure changed fixture bytes")
+            require(mode(fixture) == 0o640,
+                    f"{operation}: atomic descriptor failure changed fixture mode")
+            require(not list(fixture.parent.glob(f".{fixture.name}.*.tmp")),
+                    f"{operation}: atomic descriptor failure left temp residue")
+    print("PASS: drill request atomic fchmod/fdopen failure closes descriptor and removes temp without private output")
+
+
 def prove_rollback_attempts_all_restores(reconciler: Any) -> None:
     with guarded_temporary_directory(".memory-os-drill-request-restore-failure-", ROOT) as tmp:
         tmp_path = Path(tmp)
@@ -547,6 +592,7 @@ def main() -> int:
         )
 
     prove_atomic_write_failure(reconciler, canonical_contract, canonical_registry, canonical_status)
+    prove_atomic_descriptor_cleanup(reconciler)
     prove_rollback_attempts_all_restores(reconciler)
     prove_primary_and_rollback_diagnostics(reconciler)
 

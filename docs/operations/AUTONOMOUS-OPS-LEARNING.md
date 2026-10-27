@@ -14999,3 +14999,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Bounded drill-request reconciler reads and negative controls passed exact-source read-only CI at `d67a5ce1`.
 - **Why safe/reusable mechanism:** Descriptor-pinned bounded reads reject special files without creating requests or modifying protected authorities; tests use disposable fixtures and assert canonical authority bytes unchanged.
 - **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract blobs were unchanged. `productionDecision=NO_GO`, distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning cannot satisfy readiness or recovery gates.
+
+## 2026-10-27 — Drill-request reconciler rejects ambiguous JSON independently
+
+### Material failure
+- **Symptom/evidence:** At `1f445911c871414d7db58138a54272028001d261`, `reconcile-memory-os-backup-restore-drill-request.py::load` used plain `json.loads`, accepting duplicate keys, nonfinite numbers and huge integers while exposing parser details. This independent consumer derives planning authority from the same registries as stricter validators. No forged production authority or real ambiguous JSON was observed.
+- **Verified root cause:** The reconciler had no independent strict JSON parser; assuming later validators would protect an earlier authority read was unsafe. **Failed approach:** plain `json.loads` with only a top-level dictionary check.
+- **Correction:** `5a3d9b1c780181cab6e68f9ce20c1a9aebcb689d` adds duplicate-key, NaN/Infinity, floating overflow, huge-integer and malformed JSON rejection with fixed classes.
+- **Executable recurrence guard:** CI-reached actual-function negative suite exercises a valid nested object and nine ambiguous/malformed cases, asserts no private marker or authority drift. Exact-source Backup Restore Unreadable Authority Negatives `40443033353`, Backup Restore Drill Request Reconcile Rollback `40443033611`, Backup Restore Drill Request Admission `40443033352`, and Autonomous Learning Guard `40443033297` completed SUCCESS.
+- **Retry condition:** Revisit only on observed parser regression or reviewed JSON grammar policy change, not on unchanged human approval or external-evidence blockers.
+
+### Material success
+- **Outcome/evidence:** Independent reconciler JSON admission is strict and exact-source negative/admission CI passed.
+- **Why safe/reusable mechanism:** Reuse the canonical strict-parser approach at every independent JSON consumer, using disposable fixtures rather than registering evidence.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remained unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain required. Learning and CI cannot satisfy readiness or recovery gates.

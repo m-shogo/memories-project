@@ -144,6 +144,7 @@ def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
     temp_name: str | None = None
+    fd: int | None = None
     try:
         target_mode = path.stat().st_mode & 0o7777
         fd, temp_name = tempfile.mkstemp(
@@ -152,23 +153,32 @@ def write_text(path: Path, text: str) -> None:
             dir=path.parent,
             text=True,
         )
+        os.fchmod(fd, target_mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            os.fchmod(handle.fileno(), target_mode)
+            fd = None  # The context manager now owns and closes the descriptor.
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, path)
         temp_name = None
-    except OSError as exc:
-        raise Fail(f"cannot atomically write {relative}: {exc}") from exc
+    except (OSError, UnicodeError, ValueError):
+        raise Fail("cannot atomically write drill request authority (raw error withheld)") from None
     finally:
+        cleanup_failed = False
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                cleanup_failed = True
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
             except FileNotFoundError:
                 pass
             except OSError:
-                pass
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("drill request reconcile atomic cleanup incomplete (raw error withheld)") from None
 
 
 def restore_original_text(original_text: dict[Path, str]) -> None:
