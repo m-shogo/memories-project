@@ -89,6 +89,67 @@ def prove_atomic_replace_rejection_preserves_registry(writer) -> None:
     print("PASS boundary: rejected atomic generation append preserves registry bytes/mode and leaves no temporary residue")
 
 
+def prove_short_restore_write_rejected(writer) -> None:
+    """Exercise the real rollback writer through the canonical CI-reached suite."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-short-restore-") as tmp:
+        registry = Path(tmp) / "generation-registry.v1.json"
+        original = b'{"sentinel":"before"}\\n'.replace(b"\\\\n", b"\\n")
+        registry.write_bytes(original)
+        registry.chmod(0o640)
+        original_mode = file_mode(registry)
+        original_registry = writer.REGISTRY
+        original_fdopen = writer.os.fdopen
+
+        class ShortRestoreHandle:
+            def __init__(self, descriptor: int):
+                self.source = original_fdopen(descriptor, "wb")
+
+            def __enter__(self):
+                self.source.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.source.__exit__(*args)
+
+            def fileno(self):
+                return self.source.fileno()
+
+            def write(self, payload: bytes) -> int:
+                short_count = max(1, len(payload) // 2)
+                self.source.write(payload[:short_count])
+                return short_count
+
+            def flush(self) -> None:
+                self.source.flush()
+
+        def short_fdopen(descriptor, mode, *args, **kwargs):
+            if mode == "wb":
+                return ShortRestoreHandle(descriptor)
+            return original_fdopen(descriptor, mode, *args, **kwargs)
+
+        writer.REGISTRY = registry
+        writer.os.fdopen = short_fdopen
+        try:
+            try:
+                writer.atomic_restore(original, original_mode)
+            except writer.Fail as exc:
+                require(str(exc) == "environment generation registry atomic restore failed"
+                        and exc.__suppress_context__,
+                        "environment generation short restore error class or privacy drift")
+            else:
+                raise Fail("environment generation short restore unexpectedly accepted")
+        finally:
+            writer.os.fdopen = original_fdopen
+            writer.REGISTRY = original_registry
+        require(registry.read_bytes() == original,
+                "environment generation short restore published truncated bytes")
+        require(file_mode(registry) == original_mode == 0o640,
+                "environment generation short restore changed registry mode")
+        require(not generation_temp_files(registry),
+                "environment generation short restore left temporary residue")
+    print("PASS reject: short environment-generation rollback write cannot publish")
+
+
 def prove_post_append_validation_rollback(writer) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-append-rollback-") as tmp:
         registry = Path(tmp) / "generation-registry.v1.json"
@@ -275,6 +336,7 @@ def main() -> int:
 
     prove_successful_atomic_write_preserves_mode(writer)
     prove_atomic_replace_rejection_preserves_registry(writer)
+    prove_short_restore_write_rejected(writer)
     prove_post_append_validation_rollback(writer)
     prove_post_append_rollback_failure_preserves_diagnostics(writer)
     prove_failed_registration_releases_lock_for_retry(writer)
