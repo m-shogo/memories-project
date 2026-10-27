@@ -200,6 +200,57 @@ def prove_pinned_preflight_helper_import(validator: Any) -> None:
     print("PASS: preflight eligibility helper uses descriptor-pinned bytes after parent swap")
 
 
+def prove_preflight_pinned_helper_fail_closed(validator: Any) -> None:
+    """Actual pinned eligibility loader rejects oversized source and unsafe OS flags."""
+    original_path = validator.ELIGIBILITY_HELPER
+    original_rel = validator.ELIGIBILITY_HELPER_REL
+
+    def rejected(label: str) -> None:
+        try:
+            validator.load_eligibility_helper()
+        except validator.Fail as exc:
+            require(str(exc) == "preflight eligibility helper import unavailable"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
+                    "preflight pinned helper leaked implementation details: " + label)
+        else:
+            raise Fail("preflight pinned helper accepted unsafe input: " + label)
+
+    with tempfile.TemporaryDirectory(prefix=".preflight-pinned-reject-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        good = sandbox / "helper.py"
+        good.write_text("class Fail(RuntimeError):\n    pass\n"
+                        "def derive_registry(_registry):\n    return {'source': 'safe'}\n",
+                        encoding="utf-8")
+        oversized = sandbox / "oversized.py"
+        oversized.write_bytes(b"x" * (validator.MAX_JSON_BYTES + 1))
+        try:
+            validator.ELIGIBILITY_HELPER = good
+            validator.ELIGIBILITY_HELPER_REL = good.relative_to(ROOT)
+            require(validator.load_eligibility_helper().derive_registry({}) == {"source": "safe"},
+                    "preflight pinned helper positive unavailable")
+            validator.ELIGIBILITY_HELPER = oversized
+            validator.ELIGIBILITY_HELPER_REL = oversized.relative_to(ROOT)
+            rejected("oversized")
+            validator.ELIGIBILITY_HELPER = good
+            validator.ELIGIBILITY_HELPER_REL = good.relative_to(ROOT)
+            for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+                original = getattr(os, flag)
+                try:
+                    for invalid in (None, 0):
+                        setattr(os, flag, invalid)
+                        rejected(flag + "_missing_or_zero")
+                finally:
+                    setattr(os, flag, original)
+            require(validator.load_eligibility_helper().derive_registry({}) == {"source": "safe"},
+                    "preflight pinned helper flags restoration failed")
+        finally:
+            validator.ELIGIBILITY_HELPER = original_path
+            validator.ELIGIBILITY_HELPER_REL = original_rel
+    require(callable(getattr(validator.load_eligibility_helper(), "derive_registry", None)),
+            "preflight pinned helper canonical restoration failed")
+    print("PASS: preflight pinned helper oversized source and unsafe flags rejected")
+
+
 def expect_strict_preflight_json_reader(validator: Any) -> None:
     """Actual preflight reader rejects noncanonical, unsafe or oversized JSON evidence."""
     require(isinstance(validator.load(CONTRACT), dict), "preflight JSON canonical positive failed")
@@ -607,6 +658,7 @@ def main() -> int:
     prove_private_preflight_path_errors(validator)
     prove_private_preflight_import_errors(validator)
     prove_pinned_preflight_helper_import(validator)
+    prove_preflight_pinned_helper_fail_closed(validator)
     prove_private_semantic_helper_domain_failure(validator)
     canonical = load(CONTRACT)
     generations = load(GEN_REGISTRY)
