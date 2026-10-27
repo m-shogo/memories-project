@@ -257,6 +257,46 @@ def prove_bounded_generation_validator_load() -> None:
     print("PASS reject: generation validator authority bounded read, symlink, FIFO and descriptor faults")
 
 
+def prove_strict_generation_validator_json() -> None:
+    """Exercise the real generation validator strict JSON authority parser."""
+    validator = load_module(GEN_VALIDATOR, "memory_os_generation_validator_strict_json_negative")
+    previous_root = validator.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-json-") as tmp:
+        parent = Path(tmp)
+        validator.ROOT = parent
+        path = parent / "authority.json"
+        try:
+            path.write_bytes(b'{"sentinel":"safe"}\n')
+            require(validator.load(path) == {"sentinel": "safe"},
+                    "generation validator strict JSON positive control failed")
+            cases = (
+                ("duplicate", b'{"a":1,"a":2}',
+                 "environment generation authority JSON duplicate key refused"),
+                ("nan", b'{"a":NaN}',
+                 "environment generation authority JSON nonfinite number refused"),
+                ("overflow-float", b'{"a":1e999}',
+                 "environment generation authority JSON nonfinite number refused"),
+                ("huge-int", b'{"a":' + b"9" * 129 + b"}",
+                 "environment generation authority JSON integer too large"),
+                ("invalid-json", b'{"a":',
+                 "environment generation authority JSON invalid"),
+                ("array-root", b"[]",
+                 "environment generation authority root must be object"),
+            )
+            for label, payload, expected in cases:
+                path.write_bytes(payload)
+                try:
+                    validator.load(path)
+                except validator.Fail as exc:
+                    require(str(exc) == expected,
+                            f"generation validator strict JSON {label} wrong rejection class")
+                else:
+                    raise Fail(f"generation validator strict JSON {label} accepted")
+        finally:
+            validator.ROOT = previous_root
+    print("PASS reject: generation validator strict duplicate/nonfinite/huge JSON authorities")
+
+
 def main() -> int:
     global EXPECTED_FAILURES
     require(WRITER.is_file() and ENV_VALIDATOR.is_file(), "generation validation foundation missing")
@@ -265,6 +305,7 @@ def main() -> int:
     EXPECTED_FAILURES = (writer.Fail, env_validator.Fail)
     prove_private_generation_suite_transport()
     prove_bounded_generation_validator_load()
+    prove_strict_generation_validator_json()
     commit_sha = head_sha()
 
     planned = planned_env()
