@@ -189,7 +189,7 @@ def prove_rollback_attempts_all_restores(reconciler: object) -> None:
     def reject_first_restore(path: Path, text: str) -> None:
         observed.append(path)
         if len(observed) == 1:
-            raise reconciler.Fail("synthetic first objective rollback restore rejection")
+            raise reconciler.Fail("PRIVATE_OBJECTIVE_ROLLBACK_RESTORE_CANARY")
 
     reconciler.write_text = reject_first_restore
     try:
@@ -197,7 +197,7 @@ def prove_rollback_attempts_all_restores(reconciler: object) -> None:
             "first recovery objective rollback restore rejection",
             lambda: reconciler.restore_original_text(originals),
             reconciler.Fail,
-            "synthetic first objective rollback restore rejection",
+            "recovery objective rollback incomplete",
         )
     finally:
         reconciler.write_text = original_write
@@ -211,10 +211,10 @@ def prove_primary_and_rollback_failures_are_preserved(reconciler: object) -> Non
     original_restore = reconciler.restore_original_text
 
     def fail_primary(path: Path, label: str) -> None:
-        raise reconciler.Fail("synthetic recovery objective primary validator rejection")
+        raise reconciler.Fail("PRIVATE_OBJECTIVE_PRIMARY_CANARY")
 
     def fail_rollback(original_text: dict[Path, str]) -> None:
-        raise reconciler.Fail("synthetic recovery objective rollback restore rejection")
+        raise reconciler.Fail("PRIVATE_OBJECTIVE_ROLLBACK_CANARY")
 
     reconciler.run_validator = fail_primary
     reconciler.restore_original_text = fail_rollback
@@ -224,20 +224,18 @@ def prove_primary_and_rollback_failures_are_preserved(reconciler: object) -> Non
         except reconciler.Fail as exc:
             text = str(exc)
             require(
-                "synthetic recovery objective primary validator rejection" in text,
-                f"primary recovery objective failure lost from rollback diagnostic: {exc}",
+                text == "recovery objective reconcile transaction failed (Fail); rollback incomplete"
+                and exc.__suppress_context__
+                and "PRIVATE_OBJECTIVE_PRIMARY_CANARY" not in text
+                and "PRIVATE_OBJECTIVE_ROLLBACK_CANARY" not in text,
+                "recovery objective primary/rollback diagnostic wrong or private",
             )
-            require(
-                "synthetic recovery objective rollback restore rejection" in text,
-                f"recovery objective rollback failure lost from combined diagnostic: {exc}",
-            )
-            require("rollback incomplete" in text, f"combined recovery objective rollback diagnostic missing marker: {exc}")
         else:
             raise Fail("synthetic recovery objective primary+rollback failure unexpectedly accepted")
     finally:
         reconciler.run_validator = original_run_validator
         reconciler.restore_original_text = original_restore
-    print("PASS rollback: recovery objective reconcile preserves primary and rollback failure diagnostics")
+    print("PASS rollback: recovery objective reconcile primary/rollback diagnostics private and incomplete marker preserved")
 
 
 def prove_second_replace_transaction_rollback(reconciler: object) -> None:
@@ -256,7 +254,7 @@ def prove_second_replace_transaction_rollback(reconciler: object) -> None:
             "recovery objective second authority replace rejection",
             reconciler.main,
             reconciler.Fail,
-            "cannot atomically write",
+            "recovery objective reconcile transaction failed (Fail); rollback completed",
         )
     finally:
         reconciler.os.replace = original_replace
@@ -290,7 +288,7 @@ def prove_aggregate_validator_rollback(reconciler: object) -> None:
             "post-write aggregate operability rejection",
             reconciler.main,
             reconciler.Fail,
-            "aggregate operability validator failed",
+            "recovery objective reconcile transaction failed (Fail); rollback completed",
         )
     finally:
         reconciler.run_validator = original_run_validator
