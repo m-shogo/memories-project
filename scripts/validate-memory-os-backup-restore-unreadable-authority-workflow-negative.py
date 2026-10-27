@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
 REVIEWED_WORKFLOW_BLOB_SHA = "f1a8c3d7b2503c5192ca3de57892ae31ab521ba7"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
@@ -60,10 +62,46 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: unreadable-authority negative PR/push branch guard runtime (6 cases)")
 
 
+
+def require_generation_json_negative_reachable(code: str) -> None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise SystemExit("generation evidence load negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    if "prove_generation_evidence_json_reader" not in functions or "main" not in functions:
+        raise SystemExit("generation evidence JSON reader negative missing")
+    calls = [
+        node for node in ast.walk(functions["main"])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "prove_generation_evidence_json_reader"
+    ]
+    if len(calls) != 1:
+        raise SystemExit("generation evidence JSON reader negative invocation drift")
+
+
+def prove_generation_json_negative_removal_rejected() -> None:
+    code = LOAD_NEGATIVE.read_text(encoding="utf-8")
+    require_generation_json_negative_reachable(code)
+    anchor = "    prove_generation_evidence_json_reader(validator)\n"
+    if code.count(anchor) != 1:
+        raise SystemExit("generation evidence JSON reader negative removal anchor drift")
+    mutated = code.replace(anchor, "    pass\n", 1)
+    try:
+        require_generation_json_negative_reachable(mutated)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation evidence JSON reader negative deletion accepted")
+    print("PASS: generation evidence JSON reader negative execution deletion rejected")
+
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
+    prove_generation_json_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
