@@ -46,8 +46,57 @@ def expect_rejected(module: Any, label: str, mutate: Callable[[], None], restore
         restore()
 
 
+
+def prove_private_bounded_child_execution(module: Any) -> None:
+    """Exercise the real child runner with synthetic secret-bearing failures."""
+    original_run = module.subprocess.run
+    canary = "private-generation-evidence-child-canary"
+    cases = ("success", "nonzero", "timeout", "oserror", "missing-result", "boolean-code")
+    try:
+        for case in cases:
+            def fake_run(argv: list[str], **kwargs: Any) -> Any:
+                require(argv == [module.sys.executable, str(module.INDEPENDENT_REVIEW_VALIDATOR)],
+                        "generation evidence child source identity drift")
+                require(kwargs.get("cwd") == module.ROOT, "generation evidence child cwd drift")
+                require(kwargs.get("stdout") == module.subprocess.DEVNULL and
+                        kwargs.get("stderr") == module.subprocess.DEVNULL,
+                        "generation evidence child output not private")
+                require(kwargs.get("timeout") == 90 and kwargs.get("check") is False,
+                        "generation evidence child execution not bounded")
+                if case == "timeout":
+                    raise module.subprocess.TimeoutExpired(argv, 90, output=canary, stderr=canary)
+                if case == "oserror":
+                    raise OSError(canary)
+                if case == "missing-result":
+                    return None
+                if case == "boolean-code":
+                    return module.subprocess.CompletedProcess(argv, False)
+                return module.subprocess.CompletedProcess(argv, 0 if case == "success" else 1,
+                                                          stdout=canary, stderr=canary)
+
+            module.subprocess.run = fake_run
+            if case == "success":
+                module.run_validator(module.INDEPENDENT_REVIEW_VALIDATOR,
+                                     module.INDEPENDENT_REVIEW_VALIDATOR_REL, "independent review")
+                continue
+            try:
+                module.run_validator(module.INDEPENDENT_REVIEW_VALIDATOR,
+                                     module.INDEPENDENT_REVIEW_VALIDATOR_REL, "independent review")
+            except module.Fail as exc:
+                require(str(exc) == "generation evidence child validator failed",
+                        "generation evidence child exposed non-private diagnostic")
+                require(canary not in str(exc), "generation evidence child leaked canary")
+                require(exc.__suppress_context__, "generation evidence child exception context exposed")
+            else:
+                raise Fail("generation evidence child accepted invalid outcome: " + case)
+    finally:
+        module.subprocess.run = original_run
+
+
+
 def main() -> int:
     module = load_validator()
+    prove_private_bounded_child_execution(module)
 
     original_guard = module.enforce_execution_transport
     expect_rejected(
