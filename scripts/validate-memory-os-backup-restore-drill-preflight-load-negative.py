@@ -1272,6 +1272,19 @@ def prove_preflight_private_path_negative_reachability() -> None:
                       "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
                       'load_module(source, "preflight_authority_fd_restored"'):
             require(token in fd_body, "preflight authority pinned FD proof removed")
+        fourth = main.body[3] if len(main.body) > 3 else None
+        require(isinstance(fourth, ast.Expr) and isinstance(fourth.value, ast.Call)
+                and isinstance(fourth.value.func, ast.Name)
+                and fourth.value.func.id == "prove_pinned_authority_unsafe_sources",
+                "preflight authority unsafe proof must precede canonical validation")
+        unsafe_proof = functions.get("prove_pinned_authority_unsafe_sources")
+        require(unsafe_proof is not None, "preflight authority unsafe source proof missing")
+        unsafe_body = ast.get_source_segment(candidate, unsafe_proof)
+        require(isinstance(unsafe_body, str), "preflight authority unsafe source proof unavailable")
+        for token in ("oversized.write_bytes", "link.symlink_to(good)", "os.mkfifo(fifo)",
+                      "for invalid in (None, 0):", "exc.__suppress_context__",
+                      'load_module(good, "preflight_authority_unsafe_restored"'):
+            require(token in unsafe_body, "preflight authority unsafe source proof removed")
         loader_body = ast.get_source_segment(candidate, loader)
         proof_body = ast.get_source_segment(candidate, proof)
         require(isinstance(loader_body, str) and isinstance(proof_body, str),
@@ -1322,6 +1335,18 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("FD proof leak check", "prove_pinned_authority_fd_cleanup",
          "errno.EBADF", "None"),
         ("FD proof context", "prove_pinned_authority_fd_cleanup",
+         "exc.__suppress_context__", "False"),
+        ("unsafe proof invocation", "main",
+         "    prove_pinned_authority_unsafe_sources()\n", "    pass\n"),
+        ("unsafe source size", "prove_pinned_authority_unsafe_sources",
+         '        oversized.write_bytes(b"x" * (MAX_MODULE_BYTES + 1))\n', "        pass\n"),
+        ("unsafe source symlink", "prove_pinned_authority_unsafe_sources",
+         "        link.symlink_to(good)\n", "        pass\n"),
+        ("unsafe source fifo", "prove_pinned_authority_unsafe_sources",
+         "        os.mkfifo(fifo)\n", "        pass\n"),
+        ("unsafe source flags", "prove_pinned_authority_unsafe_sources",
+         "                for invalid in (None, 0):\n", "                for invalid in ():\n"),
+        ("unsafe source context", "prove_pinned_authority_unsafe_sources",
          "exc.__suppress_context__", "False"),
     ):
         parsed = ast.parse(authority_source)
