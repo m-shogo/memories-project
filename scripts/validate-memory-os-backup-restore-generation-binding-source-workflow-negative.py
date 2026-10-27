@@ -377,9 +377,11 @@ def prove_binding_json_parent_swap_negative_deletion_rejected() -> None:
     require_binding_json_parent_swap_negative_reachable(code)
     start = '        with tempfile.TemporaryDirectory(prefix="memory-os-binding-json-parent-canary-") as outside:\n'
     end = '        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):\n'
-    if code.count(start) != 1 or code.count(end) != 1:
+    if code.count(start) != 1:
         raise SystemExit("generation binding JSON parent swap negative deletion anchor drift")
     left = code.index(start)
+    if code[left:].count(end) != 1:
+        raise SystemExit("generation binding JSON parent swap negative deletion anchor drift")
     right = code.index(end, left)
     mutated = code[:left] + code[right:]
     try:
