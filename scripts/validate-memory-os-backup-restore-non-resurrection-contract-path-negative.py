@@ -509,7 +509,7 @@ def prove_private_typed_admission_paths(validator: object) -> None:
         ref = missing.relative_to(ROOT).as_posix()
         reject("missing canonical ref", lambda: validator.canonical_repo_file_ref(ref, "negative.private"),
                "negative.private artifact missing or escapes repository")
-    require(validator.repo_relative(validator.CONTRACT) == CONTRACT.relative_to(ROOT),
+    require(validator.repo_relative(validator.CONTRACT) == validator.CONTRACT.relative_to(ROOT),
             "typed admission repo_relative positive failed after private fault")
     print("PASS: typed admission private path/ref errors and exception contexts suppressed")
 
