@@ -580,6 +580,62 @@ def prove_drill_request_json_reader(validator) -> None:
     print("PASS: actual drill request JSON reader positive and 16 fail-closed negatives")
 
 
+def prove_reconciler_bounded_reader(reconciler) -> None:
+    """Check no-follow, regular-file and byte limits on the actual reconciler."""
+    protected = (reconciler.CONTRACT, reconciler.REGISTRY, reconciler.STATUS)
+    before = tuple(path.read_bytes() for path in protected)
+    with guarded_temporary_directory(".tmp-drill-reconcile-bounded-reader-", TMP_PARENT) as raw:
+        directory = Path(raw)
+        candidate = directory / "candidate.json"
+        positive = b'{"safe":true}\n'
+        candidate.write_bytes(positive)
+        require(reconciler.read_text(candidate) == positive.decode("utf-8"),
+                "drill reconcile reader positive control failed")
+
+        def rejected(path, expected, label):
+            try:
+                reconciler.read_text(path)
+            except reconciler.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong drill reconcile reader rejection class")
+                require("synthetic-secret" not in str(exc), f"{label}: private marker disclosed")
+            else:
+                raise Fail(f"{label}: unsafe drill reconcile authority accepted")
+
+        candidate.write_bytes(b"x" * (reconciler.MAX_AUTHORITY_BYTES + 1))
+        rejected(candidate, "drill request reconcile authority exceeds 1 MiB", "oversized authority")
+        candidate.write_bytes(b"{\xff}")
+        rejected(candidate, "drill request reconcile authority read invalid or unavailable", "invalid UTF-8")
+        candidate.write_bytes(positive)
+
+        alias = directory / "alias.json"
+        alias.symlink_to(candidate)
+        rejected(alias, "drill request reconcile authority read invalid or unavailable", "symlink")
+        rejected(directory, "drill request reconcile authority not regular file", "directory")
+        fifo = directory / "fifo.json"
+        os.mkfifo(fifo)
+        rejected(fifo, "drill request reconcile authority not regular file", "FIFO")
+
+        original_open = reconciler.os.open
+        marker = "synthetic-secret-raced-open"
+        def raced_open(path, flags, *args, **kwargs):
+            if Path(path) == candidate:
+                require(flags & reconciler.os.O_NOFOLLOW and flags & reconciler.os.O_NONBLOCK,
+                        "drill reconcile reader missing no-follow/nonblocking flags")
+                raise OSError(marker)
+            return original_open(path, flags, *args, **kwargs)
+        try:
+            reconciler.os.open = raced_open
+            rejected(candidate, "drill request reconcile authority read invalid or unavailable", "raced open")
+        finally:
+            reconciler.os.open = original_open
+        require(reconciler.read_text(candidate) == positive.decode("utf-8"),
+                "drill reconcile reader post-race positive control failed")
+        require(candidate.read_bytes() == positive, "drill reconcile reader mutated positive fixture")
+    require(tuple(path.read_bytes() for path in protected) == before,
+            "drill reconcile reader mutated protected authorities")
+    print("PASS: drill reconcile reader positive, oversized, UTF-8, symlink, FIFO, directory and raced-open negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "drill-request writer missing")
     require(VALIDATOR.is_file(), "drill-request validator missing")
@@ -595,6 +651,7 @@ def main() -> int:
     prove_drill_request_json_reader(validator)
     prove_negative_subprocess_redaction(validator)
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
+    prove_reconciler_bounded_reader(reconciler)
     require(writer.canonical_repo_file(writer.ELIGIBILITY_HELPER, "environment generation eligibility helper") == writer.ELIGIBILITY_HELPER, "canonical eligibility helper rejected")
     exercise_registry_corruption(writer)
     exercise_validator_execution_transport(validator)

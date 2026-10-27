@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -106,12 +107,36 @@ def enforce_runtime_authorities() -> None:
         require_exact_repo_file(path, expected, field)
 
 
+MAX_AUTHORITY_BYTES = 1024 * 1024
+
+
 def read_text(path: Path) -> str:
-    relative = repo_relative(path)
+    """Read only bounded regular authority bytes from a no-follow descriptor."""
+    repo_relative(path)
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "drill request reconcile safe authority reader unsupported")
+    fd = None
     try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise Fail(f"cannot read {relative}: {exc}") from exc
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(stat.S_ISREG(os.fstat(fd).st_mode),
+                "drill request reconcile authority not regular file")
+        raw = bytearray()
+        while len(raw) <= MAX_AUTHORITY_BYTES:
+            part = os.read(fd, min(65536, MAX_AUTHORITY_BYTES + 1 - len(raw)))
+            if not part:
+                break
+            raw.extend(part)
+        require(len(raw) <= MAX_AUTHORITY_BYTES,
+                "drill request reconcile authority exceeds 1 MiB")
+        return raw.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise Fail("drill request reconcile authority read invalid or unavailable") from None
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                raise Fail("drill request reconcile authority descriptor cleanup failed") from None
 
 
 def write_text(path: Path, text: str) -> None:
