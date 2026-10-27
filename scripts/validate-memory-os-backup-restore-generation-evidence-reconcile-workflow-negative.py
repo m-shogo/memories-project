@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-reconcile-negative.yml"
+TRANSPORT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "563c543233e125f37b1661f865ae275ccab7de90"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
@@ -46,6 +48,42 @@ def validate(source: str, *, check_blob: bool = True) -> None:
             raise SystemExit("generation evidence reconcile workflow complete source blob drift")
 
 
+
+def require_private_child_negative_reachable(source: str) -> None:
+    """Require the real transport negative's private child check to execute in main."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("generation evidence transport negative invalid syntax") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    if "prove_private_bounded_child_execution" not in functions or "main" not in functions:
+        raise SystemExit("generation evidence private child negative missing")
+    calls = [
+        node for node in ast.walk(functions["main"])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "prove_private_bounded_child_execution"
+    ]
+    if len(calls) != 1:
+        raise SystemExit("generation evidence private child negative execution drift")
+
+
+def prove_private_child_negative_removal_rejected() -> None:
+    source = TRANSPORT_NEGATIVE.read_text(encoding="utf-8")
+    require_private_child_negative_reachable(source)
+    anchor = "    prove_private_bounded_child_execution(module)\n"
+    if source.count(anchor) != 1:
+        raise SystemExit("generation evidence private child negative removal anchor drift")
+    mutated = source.replace(anchor, "    pass\n", 1)
+    try:
+        require_private_child_negative_reachable(mutated)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation evidence private child negative deletion accepted")
+    print("PASS: generation evidence private child negative execution deletion rejected")
+
+
+
 def prove_branch_guards_runtime() -> None:
     """Execute the reviewed shell predicates against disposable synthetic refs."""
     cases = (
@@ -68,6 +106,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
+    prove_private_child_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
