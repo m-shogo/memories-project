@@ -231,7 +231,7 @@ def prove_review_import_fd_cleanup() -> None:
                 raise Fail("independent review execution " + fault + " leaked descriptor")
     require(callable(getattr(load_checked_module(VALIDATOR, "independent_review_fd_restored"), "main", None)),
             "independent review execution FD fault canonical restoration failed")
-    print("PASS: drill request pinned loader fdopen/close faults clean owned descriptors")
+    print("PASS: independent review execution pinned loader fdopen/close faults clean owned descriptors")
 
 
 def expect_candidate_rejected(module: Any, field: str, replacement: Any) -> None:
