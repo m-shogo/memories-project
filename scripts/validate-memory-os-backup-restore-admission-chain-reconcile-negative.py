@@ -180,6 +180,10 @@ def load_pinned_fixture_guard(path: Path, name: str):
             return module
         except OSError:
             raise Fail("admission-chain fixture guard pinned source read failed") from None
+        except RuntimeError as exc:
+            if isinstance(exc, Fail):
+                raise
+            raise Fail("admission-chain fixture guard pinned source read failed") from None
         finally:
             try:
                 os.close(fd)

@@ -1388,7 +1388,7 @@ except (Exception, SystemExit):
     )
     read_handlers = read_try.handlers
     require(
-        len(read_handlers) == 1
+        len(read_handlers) == 2
         and isinstance(read_handlers[0].type, ast.Name)
         and read_handlers[0].type.id == "OSError"
         and read_handlers[0].name is None
@@ -1404,6 +1404,20 @@ except (Exception, SystemExit):
         and isinstance(read_handlers[0].body[0].exc.args[0].value, str)
         and read_handlers[0].body[0].exc.args[0].value.endswith("pinned source read failed"),
         "loader read failure not private",
+    )
+    expected_runtime_read = (
+        "try:\n"
+        "    pass\n"
+        "except RuntimeError as exc:\n"
+        "    if isinstance(exc, Fail):\n"
+        "        raise\n"
+        f"    raise Fail({read_handlers[0].body[0].exc.args[0].value!r}) from None\n"
+    )
+    require(
+        ast.dump(read_handlers[1], include_attributes=False)
+        == ast.dump(ast.parse(expected_runtime_read).body[0].handlers[0],
+                    include_attributes=False),
+        "loader runtime read failure not private",
     )
     # Classify untrusted parent paths before any descriptor is opened.
     # Intentional outside-root ValueError remains a distinct domain failure.
@@ -1708,6 +1722,25 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader read failure not private"),
         (read_privacy, read_privacy.replace("except OSError:", "except FileNotFoundError:"),
          "loader read failure not private"),
+    )
+    runtime_read_privacy = read_privacy.replace(
+        "        except OSError:\n",
+        "        except RuntimeError as exc:\n"
+        "            if isinstance(exc, Fail):\n"
+        "                raise\n",
+    )
+    require(source.count(runtime_read_privacy) == 1,
+            "loader runtime read failure not private")
+    replacements += (
+        (runtime_read_privacy, runtime_read_privacy.replace(
+            "except RuntimeError as exc:", "except ValueError as exc:"),
+         "loader runtime read failure not private"),
+        (runtime_read_privacy, runtime_read_privacy.replace(
+            "if isinstance(exc, Fail):", "if False:"),
+         "loader runtime read failure not private"),
+        (runtime_read_privacy, runtime_read_privacy.replace(
+            " from None", ""),
+         "loader runtime read failure not private"),
     )
     replacements += (
         ("            try:\n                spec.loader.exec_module(module)\n            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module execution failed\") from None\n",
@@ -3372,6 +3405,36 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     finally:
         os.open = original_open
 
+    original_dup = os.dup
+    for fault_class in (OSError, RuntimeError):
+        def fault_source_dup(descriptor):
+            raise fault_class("PRIVATE_SOURCE_DUP_CANARY")
+        os.dup = fault_source_dup
+        try:
+            try:
+                loader(good, "pinned_source_dup_negative_" + fault_class.__name__)
+            except Fail as exc:
+                assert str(exc).endswith("pinned source read failed")
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_SOURCE_DUP_CANARY" not in str(exc)
+            else:
+                raise AssertionError("source duplicate failure accepted")
+        finally:
+            os.dup = original_dup
+
+    def fault_source_dup_domain(descriptor):
+        raise Fail("intentional source-dup domain")
+    os.dup = fault_source_dup_domain
+    try:
+        try:
+            loader(good, "pinned_source_dup_domain_negative")
+        except Fail as exc:
+            assert str(exc) == "intentional source-dup domain"
+        else:
+            raise AssertionError("source-dup domain Fail was masked")
+    finally:
+        os.dup = original_dup
+
     original_fstat = os.fstat
     injected_unexpected_parent_close = {"done": False}
     def fault_unexpected_parent_stat(descriptor):
@@ -3530,7 +3593,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 127 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 130 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

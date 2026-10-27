@@ -175,6 +175,10 @@ def load_pinned_fixture_helper(path: Path, name: str):
             return module
         except OSError:
             raise Fail("typed transport fixture guard pinned source read failed") from None
+        except RuntimeError as exc:
+            if isinstance(exc, Fail):
+                raise
+            raise Fail("typed transport fixture guard pinned source read failed") from None
         finally:
             try:
                 os.close(fd)
