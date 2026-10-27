@@ -346,7 +346,9 @@ def atomic_restore(payload: bytes, mode: int) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".environment-generation-rollback.", suffix=".tmp", dir=REGISTRY.parent)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            handle.write(payload)
+            written = handle.write(payload)
+            if type(written) is not int or written != len(payload):
+                raise Fail("environment generation registry atomic restore failed") from None
             handle.flush()
             os.fchmod(handle.fileno(), mode)
             os.fsync(handle.fileno())
