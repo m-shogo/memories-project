@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import importlib.util
 import json
 import os
@@ -249,6 +250,76 @@ def prove_preflight_pinned_helper_fail_closed(validator: Any) -> None:
     require(callable(getattr(validator.load_eligibility_helper(), "derive_registry", None)),
             "preflight pinned helper canonical restoration failed")
     print("PASS: preflight pinned helper oversized source and unsafe flags rejected")
+
+
+def prove_preflight_pinned_helper_fd_cleanup(validator: Any) -> None:
+    """Actual eligibility helper import releases every owned FD after injected faults."""
+    original_path = validator.ELIGIBILITY_HELPER
+    original_rel = validator.ELIGIBILITY_HELPER_REL
+    private = "SYNTHETIC_PRIVATE_PREFLIGHT_MODULE_FD_CANARY"
+    with tempfile.TemporaryDirectory(prefix=".preflight-module-fd-", dir=ROOT) as raw:
+        source = Path(raw) / "helper.py"
+        source.write_text("class Fail(RuntimeError):\n    pass\n"
+                          "def derive_registry(_registry):\n    return {'source': 'safe'}\n",
+                          encoding="utf-8")
+        try:
+            validator.ELIGIBILITY_HELPER = source
+            validator.ELIGIBILITY_HELPER_REL = source.relative_to(ROOT)
+            for fault in ("fdopen", "close"):
+                original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
+                opened: list[int] = []
+                close_faulted = False
+
+                def tracked_open(*args, **kwargs):
+                    fd = original_open(*args, **kwargs)
+                    opened.append(fd)
+                    return fd
+
+                def broken_fdopen(_fd, *args, **kwargs):
+                    raise OSError(private)
+
+                def broken_close(fd):
+                    nonlocal close_faulted
+                    original_close(fd)
+                    if not close_faulted:
+                        close_faulted = True
+                        raise OSError(private)
+
+                try:
+                    os.open = tracked_open
+                    if fault == "fdopen":
+                        os.fdopen = broken_fdopen
+                    else:
+                        os.close = broken_close
+                    try:
+                        validator.load_eligibility_helper()
+                    except validator.Fail as exc:
+                        require(str(exc) == "preflight eligibility helper import unavailable"
+                                and exc.__suppress_context__ and exc.__cause__ is None
+                                and private not in str(exc),
+                                "preflight pinned helper FD fault leaked details: " + fault)
+                    else:
+                        raise Fail("preflight pinned helper FD fault unexpectedly accepted: " + fault)
+                finally:
+                    os.open, os.fdopen, os.close = original_open, original_fdopen, original_close
+                require(len(opened) >= 2 and (fault != "close" or close_faulted),
+                        "preflight pinned helper FD fault not exercised: " + fault)
+                for fd in opened:
+                    try:
+                        os.fstat(fd)
+                    except OSError as exc:
+                        require(exc.errno == errno.EBADF,
+                                "preflight pinned helper FD fault raised unexpected fstat error")
+                    else:
+                        raise Fail("preflight pinned helper FD leaked after " + fault)
+            require(validator.load_eligibility_helper().derive_registry({}) == {"source": "safe"},
+                    "preflight pinned helper FD restoration positive failed")
+        finally:
+            validator.ELIGIBILITY_HELPER = original_path
+            validator.ELIGIBILITY_HELPER_REL = original_rel
+    require(callable(getattr(validator.load_eligibility_helper(), "derive_registry", None)),
+            "preflight pinned helper FD canonical restoration failed")
+    print("PASS: preflight pinned helper fdopen/close faults clean every owned descriptor")
 
 
 def expect_strict_preflight_json_reader(validator: Any) -> None:
@@ -659,6 +730,7 @@ def main() -> int:
     prove_private_preflight_import_errors(validator)
     prove_pinned_preflight_helper_import(validator)
     prove_preflight_pinned_helper_fail_closed(validator)
+    prove_preflight_pinned_helper_fd_cleanup(validator)
     prove_private_semantic_helper_domain_failure(validator)
     canonical = load(CONTRACT)
     generations = load(GEN_REGISTRY)
