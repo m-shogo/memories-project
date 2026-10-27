@@ -508,6 +508,41 @@ def prove_status_reconcile_boundaries() -> None:
     print("PASS rollback: generation status restored byte-for-byte after forced backup and operability validator failures")
 
 
+
+def prove_private_writer_import_failures(module: Any) -> None:
+    """Exercise the actual binding writer loader with private filesystem canaries."""
+    original_spec = module.importlib.util.spec_from_file_location
+    original_module = module.importlib.util.module_from_spec
+    canary = "private-generation-binding-writer-import-canary"
+
+    def fail_private(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError(canary)
+
+    try:
+        for target in ("spec", "module"):
+            if target == "spec":
+                module.importlib.util.spec_from_file_location = fail_private
+            else:
+                module.importlib.util.spec_from_file_location = original_spec
+                module.importlib.util.module_from_spec = fail_private
+            try:
+                module.load_evidence_writer()
+            except module.Fail as exc:
+                require(str(exc) == "generation evidence writer import unavailable",
+                        "generation binding writer import disclosed private failure")
+                require(canary not in str(exc) and exc.__suppress_context__,
+                        "generation binding writer import leaked exception context")
+            else:
+                raise Fail("generation binding writer import accepted private failure: " + target)
+    finally:
+        module.importlib.util.spec_from_file_location = original_spec
+        module.importlib.util.module_from_spec = original_module
+    require(callable(getattr(module.load_evidence_writer(), "validate_record", None)),
+            "generation binding writer real import positive control failed")
+    print("PASS: generation binding writer import private failures and real positive")
+
+
+
 def main() -> int:
     prove_symlink_parent_rejected()
     prove_helper_source_symlink_rejected()
@@ -515,6 +550,7 @@ def main() -> int:
     prove_helper_parent_swap_after_pin_uses_original_source()
     prove_helper_ancestor_swap_during_fd_walk_rejected()
     module = load_module()
+    prove_private_writer_import_failures(module)
     state = candidate_state(module)
 
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
