@@ -111,6 +111,11 @@ def main() -> int:
         ("injected executable action", "      - name: Prove generation evidence authorities are byte and mode immutable\n", "      - uses: unreviewed/action@v1\n      - name: Prove generation evidence authorities are byte and mode immutable\n"),
         ("removed push self-trigger", "      - \"scripts/validate-memory-os-backup-restore-generation-evidence-readonly-workflow-negative.py\"\n", ""),
     )
+    # Preserve the distinction between independently proven REQUIRED anchors
+    # and the two anchor-preserving executable injections bound by Git blob.
+    digest_only = frozenset({"injected shell command", "injected executable action"})
+    if len(cases) != 21:
+        raise SystemExit("generation evidence readonly mutation inventory drift")
     semantic_count = 0
     blob_only_count = 0
     for label, old, replacement in cases:
@@ -121,6 +126,8 @@ def main() -> int:
             raise SystemExit("generation evidence readonly mutation unchanged: " + label)
         semantic = any(mutated.count(token) != source.count(token)
                        for _, token, _ in REQUIRED)
+        if semantic == (label in digest_only):
+            raise SystemExit("generation evidence readonly mutation classification drift: " + label)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
         try:
@@ -128,7 +135,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("generation evidence readonly accepted forbidden mutation: " + label)
-    if (semantic_count, blob_only_count) != (len(cases) - 2, 2):
+    if (semantic_count, blob_only_count) != (19, 2):
         raise SystemExit("generation evidence readonly semantic/blob mutation coverage drift")
     print(f"PASS: generation evidence readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
