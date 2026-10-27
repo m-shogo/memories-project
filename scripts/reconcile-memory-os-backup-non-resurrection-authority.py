@@ -260,7 +260,7 @@ def load_module(path: Path, name: str):
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError):
+    except Exception:
         raise Fail("typed reconcile validator module import unavailable") from None
     return module
 
