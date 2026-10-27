@@ -683,6 +683,7 @@ def require_pair_pinned_import_source(code: str) -> None:
             "def tracked_open(",
             "def broken_fdopen(",
             "def broken_close(",
+            'for fault in ("fdopen", "close", "close_runtime", "close_exit"):',
             '"close_runtime"',
             '"close_exit"',
             "PRIVATE_REVIEW_PAIR_CLOSE_RUNTIME_CANARY",
