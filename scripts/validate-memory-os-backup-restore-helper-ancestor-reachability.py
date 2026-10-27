@@ -3709,23 +3709,24 @@ def prove_private_entrypoint_failures() -> int:
 import ast
 import contextlib
 import io
+import os
 import runpy
 import sys
 from pathlib import Path
 
 target = sys.argv[1]
 for fault in ("syntax", "read"):
-    original_parse, original_read_text = ast.parse, Path.read_text
+    original_parse, original_open = ast.parse, os.open
     if fault == "syntax":
         def fault_parse(*args, **kwargs):
             raise SyntaxError("PRIVATE_VALIDATOR_SYNTAX_CANARY")
         ast.parse = fault_parse
     else:
-        def fault_read_text(self, *args, **kwargs):
-            if self.name == "backup-restore-helper-ancestor-reachability.yml":
+        def fault_open(file, *args, **kwargs):
+            if Path(file).name == "backup-restore-helper-ancestor-reachability.yml":
                 raise OSError("PRIVATE_VALIDATOR_PATH_CANARY")
-            return original_read_text(self, *args, **kwargs)
-        Path.read_text = fault_read_text
+            return original_open(file, *args, **kwargs)
+        os.open = fault_open
     stdout, stderr = io.StringIO(), io.StringIO()
     try:
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
@@ -3736,7 +3737,7 @@ for fault in ("syntax", "read"):
             else:
                 raise AssertionError("unexpected validator fault was accepted")
     finally:
-        ast.parse, Path.read_text = original_parse, original_read_text
+        ast.parse, os.open = original_parse, original_open
     combined = stdout.getvalue() + stderr.getvalue()
     assert stdout.getvalue().strip() == (
         "HELPER ANCESTOR REACHABILITY FAILED: unexpected validator input failure"
@@ -3848,14 +3849,14 @@ def prove_bounded_target_source_negative() -> int:
 
 
 def main() -> int:
-    workflow_source = (
+    workflow_source = read_bounded_target_source(
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
-    ).read_text(encoding="utf-8")
+    )
     validate_target_matrix(TARGETS, workflow_source)
     validate_workflow_runtime_reachability(workflow_source)
-    learning_workflow_source = (
+    learning_workflow_source = read_bounded_target_source(
         ROOT / ".github/workflows/autonomous-learning-guard.yml"
-    ).read_text(encoding="utf-8")
+    )
     validate_independent_learning_workflow(learning_workflow_source)
     total = 0
     for filename, diagnostic in TARGETS.items():
