@@ -509,6 +509,18 @@ def prove_private_typed_admission_paths(validator: object) -> None:
         ref = missing.relative_to(ROOT).as_posix()
         reject("missing canonical ref", lambda: validator.canonical_repo_file_ref(ref, "negative.private"),
                "negative.private artifact missing or escapes repository")
+    original_is_file = Path.is_file
+
+    def private_is_file(_path):
+        raise OSError(private)
+
+    try:
+        Path.is_file = private_is_file
+        reject("canonical ref stat", lambda: validator.canonical_repo_file_ref(
+            VALIDATOR.relative_to(ROOT).as_posix(), "negative.private"),
+            "negative.private artifact missing or escapes repository")
+    finally:
+        Path.is_file = original_is_file
     require(validator.repo_relative(validator.CONTRACT) == validator.CONTRACT.relative_to(ROOT),
             "typed admission repo_relative positive failed after private fault")
     print("PASS: typed admission private path/ref errors and exception contexts suppressed")

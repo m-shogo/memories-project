@@ -70,7 +70,12 @@ def canonical_repo_file_ref(value: Any, field: str) -> Path:
     relative = Path(value)
     require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == value, f"{field} must be a canonical repository-relative path")
     path = ROOT / relative
-    require(repo_relative(path) == relative and path.is_file(), f"{field} artifact missing or escapes repository")
+    require(repo_relative(path) == relative, f"{field} artifact missing or escapes repository")
+    try:
+        is_file = path.is_file()
+    except (OSError, RuntimeError):
+        raise Fail(f"{field} artifact missing or escapes repository") from None
+    require(is_file, f"{field} artifact missing or escapes repository")
     return path
 
 MAX_JSON_BYTES = 1024 * 1024

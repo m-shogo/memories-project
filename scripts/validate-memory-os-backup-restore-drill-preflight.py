@@ -203,13 +203,16 @@ def require_exact_executable(path: Path, expected_relative: Path, field: str) ->
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError):
         raise Fail(f"{field} missing or escapes repository") from None
-    require(
-        lexical == expected_relative
-        and resolved == expected_relative
-        and path.is_file()
-        and not path.is_symlink(),
-        f"{field} authority drift",
-    )
+    try:
+        safe = (
+            lexical == expected_relative
+            and resolved == expected_relative
+            and path.is_file()
+            and not path.is_symlink()
+        )
+    except (OSError, RuntimeError):
+        raise Fail(f"{field} authority drift") from None
+    require(safe, f"{field} authority drift")
 
 
 def load_eligibility_helper():

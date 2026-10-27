@@ -105,6 +105,18 @@ def prove_private_preflight_path_errors(validator: Any) -> None:
     reject("outside path canary",
            lambda: validator.repo_relative(Path(tempfile.gettempdir()) / private),
            "preflight artifact path missing or escapes repository")
+    original_is_file = Path.is_file
+
+    def private_is_file(_path):
+        raise OSError(private)
+
+    try:
+        Path.is_file = private_is_file
+        reject("exact executable stat", lambda: validator.require_exact_executable(
+            VALIDATOR, VALIDATOR.relative_to(ROOT), "synthetic executable"),
+            "synthetic executable authority drift")
+    finally:
+        Path.is_file = original_is_file
     require(validator.repo_relative(CONTRACT) == CONTRACT.relative_to(ROOT),
             "preflight repo_relative positive failed after private fault")
     validator.require_exact_executable(VALIDATOR, VALIDATOR.relative_to(ROOT), "synthetic executable")
