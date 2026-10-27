@@ -7,6 +7,8 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -342,6 +344,49 @@ def prove_aggregate_validator_rollback(reconciler: object) -> None:
     print("PASS rollback: aggregate operability failure restores fixture generation authorities")
 
 
+def prove_private_child_validator(reconciler: object) -> None:
+    """Real child invocation refuses private output, timeout and failed exit."""
+    original_run = reconciler.subprocess.run
+    private_canary = "PRIVATE_GENERATION_CHILD_VALIDATOR_CANARY"
+    try:
+        for scenario in ("positive", "exit", "timeout", "os-error", "wrong-type"):
+            def fake_run(args, **kwargs):
+                require(args == [sys.executable, str(reconciler.VALIDATOR)]
+                        and kwargs.get("cwd") == reconciler.ROOT
+                        and kwargs.get("stdout") == subprocess.DEVNULL
+                        and kwargs.get("stderr") == subprocess.DEVNULL
+                        and kwargs.get("timeout") == reconciler.VALIDATOR_TIMEOUT_SECONDS
+                        and kwargs.get("check") is False,
+                        "environment generation child validator output/timeout boundary drift")
+                if scenario == "timeout":
+                    raise subprocess.TimeoutExpired(args, reconciler.VALIDATOR_TIMEOUT_SECONDS)
+                if scenario == "os-error":
+                    raise OSError(private_canary)
+                if scenario == "wrong-type":
+                    return subprocess.CompletedProcess(args, True)
+                return subprocess.CompletedProcess(args, 0 if scenario == "positive" else 23)
+            reconciler.subprocess.run = fake_run
+            if scenario == "positive":
+                reconciler.run_validator(
+                    reconciler.VALIDATOR, reconciler.VALIDATOR_REL, "generation validator")
+                continue
+            try:
+                reconciler.run_validator(
+                    reconciler.VALIDATOR, reconciler.VALIDATOR_REL, "generation validator")
+            except reconciler.Fail as exc:
+                require(str(exc) == "environment generation child validator failed"
+                        and private_canary not in str(exc),
+                        f"generation child {scenario} leaked private diagnostics")
+                if scenario in ("timeout", "os-error"):
+                    require(exc.__suppress_context__,
+                            f"generation child {scenario} leaked exception context")
+            else:
+                raise Fail(f"generation child {scenario} unexpectedly accepted")
+    finally:
+        reconciler.subprocess.run = original_run
+    print("PASS reject: environment generation child validator timeout/output/exit classes remain private")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(WORKFLOW.is_file(), "environment generation workflow missing")
@@ -446,6 +491,7 @@ def main() -> int:
     require(values == [old, prefix + " duplicate"], "duplicate generation evidence rejection mutated ordering")
     print("PASS preserve: environment generation evidence ordering is deterministic")
 
+    prove_private_child_validator(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     with isolated_authorities(reconciler):
         prove_atomic_write_failure(reconciler)

@@ -192,17 +192,22 @@ def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
         values.append(value)
 
 
+VALIDATOR_TIMEOUT_SECONDS = 90
+
+
 def run_validator(path: Path, expected_relative: Path, label: str) -> None:
+    """Execute a canonical child with bounded time and no captured private output."""
     require_exact_repo_file(path, expected_relative, label)
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)], cwd=ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=VALIDATOR_TIMEOUT_SECONDS, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("environment generation child validator failed") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            "environment generation child validator failed")
 
 
 def main() -> int:
