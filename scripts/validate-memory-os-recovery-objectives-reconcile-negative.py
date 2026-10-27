@@ -398,6 +398,53 @@ def prove_private_writer_import(reconciler: object) -> None:
     print("PASS: recovery objective writer import output and errors private")
 
 
+def prove_reference_path_identity(reconciler: object) -> None:
+    """Evidence references must name canonical files, never aliases or private paths."""
+    with isolated_authorities(reconciler):
+        relative = Path(".github/workflows/recovery-objectives-admission.yml")
+        canonical = reconciler.ROOT / relative
+        require(reconciler.require_repo_file(canonical, "missing canonical reference") == relative,
+                "recovery objective canonical evidence reference positive control failed")
+        marker = "PRIVATE_RECOVERY_OBJECTIVE_REFERENCE_PATH_CANARY"
+        with tempfile.TemporaryDirectory(prefix="objective-reference-outside-") as tmp:
+            outside = Path(tmp) / "private.json"
+            outside.write_text(marker, encoding="utf-8")
+            external_alias = reconciler.ROOT / "external-reference-alias.json"
+            external_alias.symlink_to(outside)
+            internal_alias = reconciler.ROOT / "internal-reference-alias.json"
+            internal_alias.symlink_to(canonical)
+            parent_alias = reconciler.ROOT / "parent-reference-alias"
+            parent_alias.symlink_to(reconciler.ROOT / "contracts/operations",
+                                    target_is_directory=True)
+            registry_name = "recovery-objectives-registry.v1.json"
+            cases = (
+                ("external", outside, "recovery objective authority reference path unsafe"),
+                ("external alias", external_alias, "recovery objective authority reference path unsafe"),
+                ("internal alias", internal_alias, "recovery objective authority reference path unsafe"),
+                ("parent alias", parent_alias / registry_name,
+                 "recovery objective authority reference path unsafe"),
+                ("traversal", reconciler.ROOT / "contracts/operations/../operations" / registry_name,
+                 "recovery objective authority reference path unsafe"),
+                ("relative", relative, "recovery objective authority reference path unsafe"),
+                ("non-path", str(canonical), "recovery objective authority reference path unsafe"),
+                ("missing", reconciler.ROOT / "missing-reference.json", "reference missing"),
+                ("directory", reconciler.ROOT / "contracts/operations", "reference missing"),
+            )
+            for label, path, expected in cases:
+                try:
+                    reconciler.require_repo_file(path, "reference missing")
+                except reconciler.Fail as exc:
+                    require(str(exc) == expected and marker not in str(exc),
+                            f"recovery objective reference {label} wrong/private rejection")
+                    require(exc.__context__ is None or exc.__suppress_context__,
+                            f"recovery objective reference {label} retained exception context")
+                else:
+                    raise Fail(f"recovery objective reference {label} unexpectedly accepted")
+            require(outside.read_text(encoding="utf-8") == marker,
+                    "recovery objective external reference canary changed")
+    print("PASS: recovery objective evidence reference path identity (9 negatives)")
+
+
 def prove_private_authority_path_diagnostics(reconciler: object) -> None:
     """Canonical path failures must not retain private filesystem context."""
     with isolated_authorities(reconciler):
@@ -689,6 +736,7 @@ def main() -> int:
 
     prove_strict_objective_json(reconciler)
     prove_private_writer_import(reconciler)
+    prove_reference_path_identity(reconciler)
     prove_private_authority_path_diagnostics(reconciler)
     prove_private_delegated_registry_errors(reconciler)
     prove_private_post_reconcile_transport(reconciler)
