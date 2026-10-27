@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -64,8 +65,66 @@ def expect_rejected(writer: Any, name: str, action: Callable[[], Any]) -> None:
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def prove_private_bounded_digest(writer: Any) -> None:
+    """Hash only canonical bounded approval files without exposing private paths."""
+    positive_ref = f"{APPROVAL_REF}/recovery-owner.valid.json"
+    positive = writer.approval_sha256(positive_ref)
+    require(len(positive) == 64, "canonical recovery objective digest positive control failed")
+    marker = "PRIVATE_OBJECTIVE_DIGEST_CANARY"
+    oversized = APPROVAL_DIR / ".objective-digest-oversized-negative.json"
+    external_alias = APPROVAL_DIR / ".objective-digest-external-alias.json"
+    internal_alias = APPROVAL_DIR / ".objective-digest-internal-alias.json"
+    parent_alias = APPROVAL_DIR / ".objective-digest-parent-alias"
+    with tempfile.TemporaryDirectory(prefix="objective-digest-outside-") as tmp:
+        outside = Path(tmp) / "private.json"
+        outside.write_text(marker, encoding="utf-8")
+        oversized.write_bytes(b"x" * (writer.MAX_JSON_BYTES + 1))
+        external_alias.symlink_to(outside)
+        internal_alias.symlink_to(ROOT / positive_ref)
+        parent_alias.symlink_to(APPROVAL_DIR, target_is_directory=True)
+        cases = (
+            ("oversized", oversized.relative_to(ROOT).as_posix(),
+             "approval evidence digest size limit exceeded"),
+            ("external alias", external_alias.relative_to(ROOT).as_posix(),
+             "approval evidence digest path unsafe"),
+            ("internal alias", internal_alias.relative_to(ROOT).as_posix(),
+             "approval evidence digest path unsafe"),
+            ("parent alias", (parent_alias / "recovery-owner.valid.json").relative_to(ROOT).as_posix(),
+             "approval evidence digest path unsafe"),
+            ("outside approval directory", "contracts/operations/recovery-objectives-registry.v1.json",
+             "approval evidence digest path unsafe"),
+            ("missing", f"{APPROVAL_REF}/PRIVATE_OBJECTIVE_DIGEST_MISSING.json",
+             "approval evidence digest path unsafe"),
+            ("directory", APPROVAL_REF, "approval evidence digest path unsafe"),
+            ("traversal", f"{APPROVAL_REF}/../recovery-owner.valid.json",
+             "approval evidence digest reference invalid"),
+            ("absolute", str(ROOT / positive_ref), "approval evidence digest reference invalid"),
+            ("non-string", None, "approval evidence digest reference invalid"),
+        )
+        try:
+            for label, ref, expected in cases:
+                try:
+                    writer.approval_sha256(ref)
+                except writer.Fail as exc:
+                    require(str(exc) == expected and marker not in str(exc),
+                            f"recovery objective digest {label} wrong/private rejection")
+                    require(exc.__context__ is None or exc.__suppress_context__,
+                            f"recovery objective digest {label} retained exception context")
+                else:
+                    raise Fail(f"recovery objective digest {label} unexpectedly accepted")
+            require(outside.read_text(encoding="utf-8") == marker,
+                    "recovery objective digest external canary changed")
+        finally:
+            for path in (oversized, external_alias, internal_alias, parent_alias):
+                path.unlink(missing_ok=True)
+    require(writer.approval_sha256(positive_ref) == positive,
+            "canonical recovery objective digest changed after negatives")
+    print("PASS: bounded canonical recovery objective approval digest (10 negatives)")
+
+
 def main() -> int:
     writer = load_writer()
+    prove_private_bounded_digest(writer)
     row = record()
     writer.validate_record(row)
     refs = row["approvalEvidenceRefs"]
