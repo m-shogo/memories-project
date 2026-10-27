@@ -159,9 +159,9 @@ def load(path: Path) -> dict[str, Any]:
         return int(value)
 
     try:
-        require(type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0
-                and type(getattr(os, "O_NONBLOCK", None)) is int and os.O_NONBLOCK > 0,
-                "generation recovery JSON nofollow support required")
+        if not (type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0
+                and type(getattr(os, "O_NONBLOCK", None)) is int and os.O_NONBLOCK > 0):
+            raise Fail("generation recovery JSON nofollow support required") from None
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         try:
             require(stat.S_ISREG(os.fstat(fd).st_mode), "generation recovery JSON path unsafe")
