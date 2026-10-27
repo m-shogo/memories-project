@@ -29,6 +29,7 @@ REQUIRED = (
     ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", 1),
     ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
     ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
+    ("workflow self-trigger", '      - ".github/workflows/backup-restore-non-resurrection-readonly.yml"\n', 2),
 )
 
 
@@ -88,6 +89,11 @@ def main() -> int:
         ("injected unreviewed action", "      - name: Prove canonical authority bytes and modes are immutable\n", "      - uses: unreviewed/action@v1\n      - name: Prove canonical authority bytes and modes are immutable\n"),
         ("removed PR self-trigger", '      - ".github/workflows/backup-restore-non-resurrection-readonly.yml"\n', ""),
     )
+    # The workflow's own PR/push trigger is a REQUIRED reachability guard.
+    # Only the two anchor-preserving executable injections may rely on the Git blob.
+    digest_only = frozenset({"injected unreviewed shell", "injected unreviewed action"})
+    if len(cases) != 20:
+        raise SystemExit("typed readonly mutation inventory drift")
     semantic_count = 0
     blob_only_count = 0
     for label, old, replacement in cases:
@@ -98,6 +104,8 @@ def main() -> int:
             raise SystemExit(f"typed readonly mutation unchanged: {label}")
         semantic = any(mutated.count(token) != source.count(token)
                        for _, token, _ in REQUIRED)
+        if semantic == (label in digest_only):
+            raise SystemExit("typed readonly mutation classification drift: " + label)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
         try:
@@ -105,7 +113,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit(f"typed readonly accepted forbidden mutation: {label}")
-    if (semantic_count, blob_only_count) != (len(cases) - 3, 3):
+    if (semantic_count, blob_only_count) != (18, 2):
         raise SystemExit("typed readonly semantic/blob mutation coverage drift")
     print(f"PASS: typed non-resurrection readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
