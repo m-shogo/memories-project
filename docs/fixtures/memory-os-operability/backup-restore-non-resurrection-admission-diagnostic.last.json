@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-non-resurrection-admission",
+  "sourceCommitSha": "5ea2d374cc5259c2fff7944015a83642d9c577f4",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "REDACTED: typed non-resurrection validation failed; consult CI job logs",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
