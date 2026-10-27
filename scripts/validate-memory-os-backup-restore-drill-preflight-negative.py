@@ -140,6 +140,59 @@ def expect_strict_preflight_json_reader(validator: Any) -> None:
     print("PASS: preflight strict JSON 4 positives and 16 unsafe/nonfinite negatives")
 
 
+def expect_pinned_preflight_json_reader(validator: Any) -> None:
+    """Real-reader parent and ancestor swaps must never redirect JSON reads."""
+    protected = (CONTRACT.read_bytes(), GEN_REGISTRY.read_bytes(), OBJECTIVES.read_bytes(), DRILL_REGISTRY.read_bytes())
+    with tempfile.TemporaryDirectory(prefix=".preflight-json-fd-race-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        for case in ("parent", "ancestor"):
+            checked = sandbox / (case + "-checked")
+            parked = sandbox / (case + "-parked")
+            redirect = sandbox / (case + "-redirect")
+            checked.mkdir()
+            redirect.mkdir()
+            if case == "ancestor":
+                (checked / "nested").mkdir()
+                (redirect / "nested").mkdir()
+                checked_leaf = checked / "nested/candidate.json"
+                redirect_leaf = redirect / "nested/candidate.json"
+                trigger = "nested"
+            else:
+                checked_leaf = checked / "candidate.json"
+                redirect_leaf = redirect / "candidate.json"
+                trigger = "candidate.json"
+            checked_leaf.write_bytes(b'{"source":"pinned"}')
+            redirect_leaf.write_bytes(b'{"source":"redirected","secret":"SYNTHETIC_EXTERNAL_CANARY"}')
+            original_open = os.open
+            swapped = False
+
+            def swap_during_walk(target, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and target == trigger and kwargs.get("dir_fd") is not None:
+                    swapped = True
+                    checked.rename(parked)
+                    checked.symlink_to(redirect, target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            try:
+                require(validator.load(checked_leaf) == {"source": "pinned"},
+                        f"preflight {case} reader positive control failed")
+                os.open = swap_during_walk
+                result = validator.load(checked_leaf)
+                require(swapped, f"preflight {case} race injection not reached")
+                require(result == {"source": "pinned"},
+                        f"preflight {case} race read redirected JSON")
+                require(redirect_leaf.read_bytes() == b'{"source":"redirected","secret":"SYNTHETIC_EXTERNAL_CANARY"}',
+                        f"preflight {case} race changed external canary")
+            finally:
+                os.open = original_open
+    require(
+        (CONTRACT.read_bytes(), GEN_REGISTRY.read_bytes(), OBJECTIVES.read_bytes(), DRILL_REGISTRY.read_bytes()) == protected,
+        "preflight JSON race negative mutated protected authorities",
+    )
+    print("PASS: actual preflight JSON reader parent and ancestor swap retain pinned original source")
+
+
 def expect_state_rejected(
     validator: Any,
     generations: dict[str, Any],
@@ -426,6 +479,7 @@ def main() -> int:
     )
     expect_helper_authority_substitution_rejected(validator, generations, objectives, drill_registry)
     expect_strict_preflight_json_reader(validator)
+    expect_pinned_preflight_json_reader(validator)
     expect_upstream_validator_substitutions_rejected(validator)
     expect_upstream_validator_output_redacted(validator)
     expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
