@@ -475,6 +475,59 @@ def exercise_validator_execution_transport(validator) -> None:
         validator.enforce_execution_transport = original_guard
 
 
+def prove_negative_subprocess_redaction(validator) -> None:
+    """Exercise the actual negative runner without leaking private subprocess data."""
+    original_run = validator.subprocess.run
+    marker = "synthetic-secret-in-drill-request-negative-log"
+    observed = []
+
+    def fake_run(exit_code):
+        def run(argv, **kwargs):
+            require(argv == [validator.sys.executable, str(validator.NEGATIVE)],
+                    "drill request negative runner target drift")
+            require(kwargs.get("cwd") == validator.ROOT,
+                    "drill request negative runner cwd drift")
+            require(kwargs.get("stdout") == validator.subprocess.DEVNULL
+                    and kwargs.get("stderr") == validator.subprocess.DEVNULL,
+                    "drill request negative runner captured private output")
+            require(kwargs.get("timeout") == 120 and kwargs.get("check") is False,
+                    "drill request negative runner budget drift")
+            observed.append(exit_code)
+            return validator.subprocess.CompletedProcess(argv, exit_code, marker, marker)
+        return run
+
+    try:
+        validator.subprocess.run = fake_run(0)
+        validator.run_negative()
+        validator.subprocess.run = fake_run(1)
+        try:
+            validator.run_negative()
+        except validator.Fail as exc:
+            require(str(exc) == "drill request negative suite failed (raw output withheld)",
+                    "drill request negative runner leaked output or lost fixed failure class")
+            require(marker not in str(exc), "drill request private marker disclosed")
+        else:
+            raise Fail("drill request negative subprocess failure accepted")
+
+        for failure in (OSError(marker), validator.subprocess.TimeoutExpired(["synthetic"], 120)):
+            def raise_failure(*_args, **_kwargs):
+                raise failure
+            validator.subprocess.run = raise_failure
+            try:
+                validator.run_negative()
+            except validator.Fail as exc:
+                require(str(exc) == "drill request negative suite unavailable or timed out (raw output withheld)",
+                        "drill request negative runner leaked exception or lost fixed unavailable class")
+                require(marker not in str(exc), "drill request private exception disclosed")
+            else:
+                raise Fail("drill request negative subprocess unavailable/timeout accepted")
+    finally:
+        validator.subprocess.run = original_run
+
+    require(observed == [0, 1], "drill request negative runner positive/failure controls missing")
+    print("PASS: drill request negative subprocess bounded execution and fixed private failure classes")
+
+
 def prove_drill_request_json_reader(validator) -> None:
     """Exercise the actual drill planning reader with no protected-authority writes."""
     protected_paths = (validator.CONTRACT, validator.REGISTRY, validator.GEN_REGISTRY, validator.OBJECTIVES_REGISTRY)
@@ -540,6 +593,7 @@ def main() -> int:
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     prove_drill_request_json_reader(validator)
+    prove_negative_subprocess_redaction(validator)
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
     require(writer.canonical_repo_file(writer.ELIGIBILITY_HELPER, "environment generation eligibility helper") == writer.ELIGIBILITY_HELPER, "canonical eligibility helper rejected")
     exercise_registry_corruption(writer)

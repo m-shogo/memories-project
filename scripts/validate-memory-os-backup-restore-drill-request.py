@@ -169,8 +169,18 @@ def load_module(path: Path, name: str):
 
 def run_negative() -> None:
     require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "drill request negative validator")
-    completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"drill request negative suite failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(NEGATIVE)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("drill request negative suite unavailable or timed out (raw output withheld)") from None
+    require(completed.returncode == 0, "drill request negative suite failed (raw output withheld)")
 
 
 CANONICAL_SUBPROCESS_RUN = subprocess.run
