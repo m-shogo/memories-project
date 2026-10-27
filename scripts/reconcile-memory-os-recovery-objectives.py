@@ -271,7 +271,7 @@ def main() -> int:
     except RuntimeError as exc:
         if exc.__class__.__name__ != "Fail":
             raise
-        raise Fail(f"append-only recovery objective authority invalid before reconcile: {exc}") from exc
+        raise Fail("append-only recovery objective authority invalid before reconcile") from None
 
     count = registry.get("approvedObjectiveCount")
     current_id = registry.get("currentObjectiveId")
