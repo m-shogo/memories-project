@@ -28,6 +28,103 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+EXECUTION_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py"
+
+
+def require_pinned_execution_negative_source(code: str) -> None:
+    """Independently enforce the execution-negative's real pinned source proof."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise Fail("independent review execution negative pinned source syntax drift") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    requirements = {
+        "load_checked_module": (
+            "stream.read(MAX_REVIEW_MODULE_BYTES + 1)",
+            "require(len(source) <= MAX_REVIEW_MODULE_BYTES",
+            "os.open(component, directory_flags, dir_fd=parent_fd)",
+            "os.open(relative.name,",
+            "os.O_NOFOLLOW | os.O_NONBLOCK",
+            "for directory_fd in reversed(directory_fds):",
+            "class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+            'return compile(source, str(path), "exec")',
+            "spec.loader.exec_module(module)",
+            'raise Fail("independent review negative source rejected") from None',
+        ),
+        "prove_pinned_validator_import": (
+            'load_checked_module(source, "independent_review_import_positive")',
+            'load_checked_module(source, "independent_review_import_parent_swap")',
+            "parent.rename(parked)",
+            "parent.symlink_to(redirected",
+            'loaded.VALUE == "pinned"',
+            'require(canary.read_text(encoding="utf-8") ==',
+            "PRIVATE_INDEPENDENT_REVIEW_IMPORT_CANARY",
+            "importlib.util.spec_from_file_location = original_spec",
+        ),
+        "load_validator": (
+            "return load_checked_module(VALIDATOR,",
+        ),
+        "main": (
+            "prove_pinned_validator_import()",
+            "module = load_validator()",
+        ),
+    }
+    for name, tokens in requirements.items():
+        node = functions.get(name)
+        require(node is not None, "independent review pinned source function missing: " + name)
+        fragment = ast.get_source_segment(code, node) or ""
+        for token in tokens:
+            require(token in fragment, "independent review pinned source guard drift: " + name)
+    main = ast.get_source_segment(code, functions["main"]) or ""
+    require(main.index("prove_pinned_validator_import()") < main.index("module = load_validator()"),
+            "independent review pinned source proof not reached before import")
+
+
+def prove_pinned_execution_negative_mutations_rejected() -> None:
+    code = EXECUTION_NEGATIVE.read_text(encoding="utf-8")
+    require_pinned_execution_negative_source(code)
+    mutations = (
+        ("load_checked_module", "stream.read(MAX_REVIEW_MODULE_BYTES + 1)", "stream.read()"),
+        ("load_checked_module", "os.open(component, directory_flags, dir_fd=parent_fd)",
+         "os.open(path.parent, directory_flags)"),
+        ("load_checked_module", 'return compile(source, str(path), "exec")',
+         'return compile(path.read_bytes(), str(path), "exec")'),
+        ("load_checked_module", "for directory_fd in reversed(directory_fds):",
+         "for directory_fd in ():"),
+        ("load_checked_module", 'raise Fail("independent review negative source rejected") from None',
+         'raise Fail("independent review negative source rejected")'),
+        ("prove_pinned_validator_import", "parent.symlink_to(redirected",
+         "parent.symlink_to(parked"),
+        ("prove_pinned_validator_import", 'loaded.VALUE == "pinned"',
+         'loaded.VALUE == "redirected"'),
+        ("prove_pinned_validator_import", 'require(canary.read_text(encoding="utf-8") ==',
+         'require(False and canary.read_text(encoding="utf-8") =='),
+        ("prove_pinned_validator_import",
+         'load_checked_module(source, "independent_review_import_parent_swap")',
+         'load_checked_module(source, "independent_review_import_positive")'),
+        ("load_validator", "return load_checked_module(VALIDATOR,",
+         "return load_checked_module(SUBSTITUTE,"),
+        ("main", "prove_pinned_validator_import()",
+         "pass  # synthetic pinned import proof removed"),
+    )
+    for name, original, replacement in mutations:
+        tree = ast.parse(code)
+        matches = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name]
+        require(len(matches) == 1, "independent review pinned mutation function drift")
+        lines = code.splitlines(keepends=True)
+        node = matches[0]
+        fragment = "".join(lines[node.lineno - 1:node.end_lineno])
+        require(fragment.count(original) == 1, "independent review pinned mutation anchor drift: " + name)
+        mutated = ("".join(lines[:node.lineno - 1]) + fragment.replace(original, replacement, 1)
+                   + "".join(lines[node.end_lineno:]))
+        try:
+            require_pinned_execution_negative_source(mutated)
+        except Fail:
+            continue
+        raise Fail("independent review pinned source weakening accepted: " + name)
+    print(f"PASS: independent review execution negative pinned import {len(mutations)} mutations rejected")
+
+
 def load_validator():
     spec = importlib.util.spec_from_file_location("memory_os_generation_independent_review_validator_negative", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load independent review validator")
@@ -1123,6 +1220,7 @@ def prove_source_order_bounded_commit_checks(module) -> None:
 def main() -> int:
     require_external_source_order_guard_negative_proof()
     prove_candidate_pair_source_binding()
+    prove_pinned_execution_negative_mutations_rejected()
     module = load_validator()
     prove_runtime_review_pair_controls()
     prove_source_order_bounded_git_output(module)
