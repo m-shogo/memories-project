@@ -21,6 +21,7 @@ CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.js
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 PREFLIGHT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+PREFLIGHT_AUTHORITY = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-authority.py"
 
 
 class Fail(RuntimeError):
@@ -1219,6 +1220,69 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("preflight pinned loader source weakening accepted: " + label)
+    authority_source = PREFLIGHT_AUTHORITY.read_text(encoding="utf-8")
+
+    def verify_authority_loader(candidate: str) -> None:
+        try:
+            tree = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("preflight authority pinned loader syntax invalid") from None
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        loader = functions.get("load_module")
+        proof = functions.get("prove_pinned_authority_import")
+        main = functions.get("main")
+        require(loader is not None and proof is not None and main is not None,
+                "preflight authority pinned loader/proof/main missing")
+        first = main.body[0] if main.body else None
+        require(isinstance(first, ast.Expr) and isinstance(first.value, ast.Call)
+                and isinstance(first.value.func, ast.Name)
+                and first.value.func.id == "prove_pinned_authority_import",
+                "preflight authority pinned proof must precede canonical validation")
+        loader_body = ast.get_source_segment(candidate, loader)
+        proof_body = ast.get_source_segment(candidate, proof)
+        require(isinstance(loader_body, str) and isinstance(proof_body, str),
+                "preflight authority pinned loader source unavailable")
+        for token in ("class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+                      'return compile(source, str(path), "exec")',
+                      "loader=PinnedSourceLoader(name, str(path))",
+                      "spec.loader.exec_module(module)",
+                      "source = stream.read(MAX_MODULE_BYTES + 1)",
+                      "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)"):
+            require(token in loader_body, "preflight authority pinned source binding removed")
+        for token in ("parent.rename(parked)", "parent.symlink_to(redirected",
+                      "importlib.util.spec_from_file_location = swap_after_read",
+                      'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
+                      "importlib.util.spec_from_file_location = original_spec"):
+            require(token in proof_body, "preflight authority pinned race proof removed")
+        require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in {"exec", "eval"} for node in ast.walk(loader)),
+                "preflight authority direct dynamic execution refused")
+
+    verify_authority_loader(authority_source)
+    for label, scope, old, replacement in (
+        ("proof invocation", "main", "    prove_pinned_authority_import()\n", "    pass\n"),
+        ("source loader", "load_module", "loader=PinnedSourceLoader(name, str(path))", "loader=None"),
+        ("pinned code", "load_module", 'return compile(source, str(path), "exec")', "return None"),
+        ("parent substitution", "prove_pinned_authority_import",
+         "                parent.symlink_to(redirected, target_is_directory=True)\n",
+         "                pass\n"),
+        ("pinned value assertion", "prove_pinned_authority_import",
+         'loaded.VALUE == "pinned"', "False"),
+    ):
+        parsed = ast.parse(authority_source)
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        function = functions.get(scope)
+        require(function is not None, "preflight authority pinned mutation scope missing")
+        lines = authority_source.splitlines(keepends=True)
+        span = "".join(lines[function.lineno - 1:function.end_lineno])
+        require(span.count(old) == 1, "preflight authority pinned mutation anchor drift: " + label)
+        lines[function.lineno - 1:function.end_lineno] = [span.replace(old, replacement, 1)]
+        try:
+            verify_authority_loader("".join(lines))
+        except Fail:
+            continue
+        raise Fail("preflight authority pinned loader weakening accepted: " + label)
+    print("PASS: preflight authority pinned loader and five source weakening mutations rejected")
     print("PASS: preflight pinned source loader and four weakening mutations rejected")
     print("PASS: preflight private path/import fault, context and invocation deletion rejected")
 
