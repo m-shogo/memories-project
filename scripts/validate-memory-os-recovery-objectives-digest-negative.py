@@ -71,6 +71,29 @@ def prove_private_bounded_digest(writer: Any) -> None:
     positive = writer.approval_sha256(positive_ref)
     require(len(positive) == 64, "canonical recovery objective digest positive control failed")
     marker = "PRIVATE_OBJECTIVE_DIGEST_CANARY"
+    original_open = writer.os.open
+
+    def raced_open(candidate, flags, *_args, **_kwargs):
+        require(candidate == ROOT / positive_ref
+                and flags & writer.os.O_NOFOLLOW
+                and flags & writer.os.O_NONBLOCK,
+                "approval digest lost no-follow/nonblocking descriptor flags")
+        raise OSError(marker)
+
+    writer.os.open = raced_open
+    try:
+        try:
+            writer.approval_sha256(positive_ref)
+        except writer.Fail as exc:
+            require(str(exc) == "approval evidence digest unreadable"
+                    and exc.__suppress_context__ and marker not in str(exc),
+                    "approval digest raced-open diagnostic wrong or private")
+        else:
+            raise Fail("approval digest raced-open failure unexpectedly accepted")
+    finally:
+        writer.os.open = original_open
+    require(writer.approval_sha256(positive_ref) == positive,
+            "approval digest raced-open negative changed canonical positive bytes")
     oversized = APPROVAL_DIR / ".objective-digest-oversized-negative.json"
     external_alias = APPROVAL_DIR / ".objective-digest-external-alias.json"
     internal_alias = APPROVAL_DIR / ".objective-digest-internal-alias.json"
@@ -119,7 +142,7 @@ def prove_private_bounded_digest(writer: Any) -> None:
                 path.unlink(missing_ok=True)
     require(writer.approval_sha256(positive_ref) == positive,
             "canonical recovery objective digest changed after negatives")
-    print("PASS: bounded canonical recovery objective approval digest (10 negatives)")
+    print("PASS: bounded canonical recovery objective approval digest (11 negatives)")
 
 
 def main() -> int:
