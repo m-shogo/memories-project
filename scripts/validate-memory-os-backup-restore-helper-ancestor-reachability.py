@@ -703,6 +703,44 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
     main = named_function(tree, "main")
     proof = named_function(tree, PROOF)
     pin = named_function(tree, PIN)
+    # Classify untrusted parent paths before any descriptor is opened.
+    # Intentional outside-root ValueError remains a distinct domain failure.
+    expected_classification = ast.parse("""try:
+    anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
+except (OSError, RuntimeError):
+    raise Fail("fixture guard parent classification failed") from None
+""").body[0]
+    expected_relative_assignment = ast.parse(
+        "relative = path.parent.relative_to(anchor)"
+    ).body[0]
+    expected_relative_handler = ast.parse("""try:
+    pass
+except (OSError, RuntimeError):
+    raise Fail("fixture guard parent classification failed") from None
+""").body[0].handlers[0]
+    pin_live = [
+        node for node in pin.body
+        if not (isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str))
+    ]
+    relative_guard = pin_live[2] if len(pin_live) > 2 else None
+    require(
+        len(pin_live) >= 4
+        and ast.dump(pin_live[1], include_attributes=False)
+            == ast.dump(expected_classification, include_attributes=False)
+        and isinstance(relative_guard, ast.Try)
+        and len(relative_guard.body) == 1
+        and ast.dump(relative_guard.body[0], include_attributes=False)
+            == ast.dump(expected_relative_assignment, include_attributes=False)
+        and len(relative_guard.handlers) == 2
+        and isinstance(relative_guard.handlers[0].type, ast.Name)
+        and relative_guard.handlers[0].type.id == "ValueError"
+        and ast.dump(relative_guard.handlers[1], include_attributes=False)
+            == ast.dump(expected_relative_handler, include_attributes=False)
+        and not relative_guard.orelse and not relative_guard.finalbody,
+        "loader parent classification fault not private",
+    )
     expected_parent_failure_cleanup = ast.parse("""try:
     os.close(fd)
 except (Exception, SystemExit):
@@ -1747,6 +1785,43 @@ def negative_cases(source: str, diagnostic: str) -> int:
              metadata_diagnostic),
             (metadata, metadata.replace(".lstat()", ".stat()"), metadata_diagnostic),
         )
+    anchor_classification = """    try:
+        anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
+    except (OSError, RuntimeError):
+        raise Fail("fixture guard parent classification failed") from None
+"""
+    relative_start = "    try:\n        relative = path.parent.relative_to(anchor)\n"
+    relative_end = "    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n"
+    require(source.count(anchor_classification) == 1
+            and source.count(relative_start) == 1
+            and source.count(relative_end) == 1,
+            "loader parent classification fault not private")
+    relative_begin = source.index(relative_start)
+    relative_finish = source.index(relative_end, relative_begin)
+    relative_classification = source[relative_begin:relative_finish]
+    require(relative_classification.count(
+        'raise Fail("fixture guard parent classification failed") from None'
+    ) == 1, "loader parent classification fault not private")
+    replacements += (
+        (anchor_classification, anchor_classification.replace(
+            "except (OSError, RuntimeError):", "except OSError:"),
+         "loader parent classification fault not private"),
+        (anchor_classification, anchor_classification.replace(" from None", ""),
+         "loader parent classification fault not private"),
+        (anchor_classification, anchor_classification.replace(
+            "path.is_relative_to(ROOT)", "True"),
+         "loader parent classification fault not private"),
+        (relative_classification, relative_classification.replace(
+            "except (OSError, RuntimeError):", "except OSError:"),
+         "loader parent classification fault not private"),
+        (relative_classification, relative_classification.replace(
+            'raise Fail("fixture guard parent classification failed") from None',
+            'raise Fail("fixture guard parent classification failed")'),
+         "loader parent classification fault not private"),
+        (relative_classification, relative_classification.replace(
+            "path.parent.relative_to(anchor)", "Path('.')"),
+         "loader parent classification fault not private"),
+    )
     base_cleanup_anchor = (
         "    except BaseException:\n"
         "        try:\n"
@@ -2872,6 +2947,29 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
             os.open, os.close = original_open, original_close
         assert "leaf" in tracked and "parent" in tracked
 
+    original_is_relative_to, original_relative_to = Path.is_relative_to, Path.relative_to
+    for fault in ("is_relative_to", "relative_to"):
+        def fault_classification(self, *args, **kwargs):
+            if ((fault == "is_relative_to" and self == good)
+                    or (fault == "relative_to" and self == parent)):
+                raise RuntimeError("PRIVATE_PARENT_CLASSIFICATION_CANARY")
+            return (original_is_relative_to(self, *args, **kwargs)
+                    if fault == "is_relative_to"
+                    else original_relative_to(self, *args, **kwargs))
+        setattr(Path, fault, fault_classification)
+        try:
+            try:
+                loader(good, "pinned_classification_negative_" + fault)
+            except Fail as exc:
+                assert str(exc) == "fixture guard parent classification failed"
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_PARENT_CLASSIFICATION_CANARY" not in str(exc)
+            else:
+                raise AssertionError("parent classification fault accepted")
+        finally:
+            setattr(Path, fault, original_is_relative_to
+                    if fault == "is_relative_to" else original_relative_to)
+
     original_is_dir, original_is_symlink = Path.is_dir, Path.is_symlink
     for fault in ("is_dir", "is_symlink"):
         def fault_anchor_predicate(self):
@@ -3186,7 +3284,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 103 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 109 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

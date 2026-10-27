@@ -251,11 +251,16 @@ def pin_checked_helper_parent(path: Path) -> int:
     """Walk from a trusted repository/temp anchor, never through a symlinked ancestor."""
     require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
             "generation-binding fixture guard no-follow directory open unsupported")
-    anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
+    try:
+        anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
+    except (OSError, RuntimeError):
+        raise Fail("fixture guard parent classification failed") from None
     try:
         relative = path.parent.relative_to(anchor)
     except ValueError:
         raise Fail("generation-binding fixture guard parent outside trusted roots") from None
+    except (OSError, RuntimeError):
+        raise Fail("fixture guard parent classification failed") from None
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
         anchor_ok = anchor.is_dir() and not anchor.is_symlink()
