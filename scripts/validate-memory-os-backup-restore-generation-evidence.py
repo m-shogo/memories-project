@@ -162,15 +162,37 @@ def load(path: Path) -> dict[str, Any]:
         if not (type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0
                 and type(getattr(os, "O_NONBLOCK", None)) is int and os.O_NONBLOCK > 0):
             raise Fail("generation recovery JSON nofollow support required") from None
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        if type(getattr(os, "O_DIRECTORY", None)) is not int or os.O_DIRECTORY <= 0:
+            raise Fail("generation recovery JSON nofollow support required") from None
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+        directories: list[int] = []
+        fd = -1
         try:
+            # Pin every ancestor from the repository root before opening the leaf.
+            parent_fd = os.open(ROOT, directory_flags)
+            directories.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directories.append(parent_fd)
+            fd = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
             require(stat.S_ISREG(os.fstat(fd).st_mode), "generation recovery JSON path unsafe")
             with os.fdopen(fd, "rb") as source:
                 fd = -1
                 raw = source.read(MAX_JSON_BYTES + 1)
         finally:
+            cleanup_failed = False
             if fd >= 0:
-                os.close(fd)
+                try:
+                    os.close(fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directories):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            if cleanup_failed:
+                raise Fail("generation recovery JSON cleanup failed") from None
         require(len(raw) <= MAX_JSON_BYTES, "generation recovery JSON size limit exceeded")
         value = json.loads(
             raw.decode("utf-8"),
