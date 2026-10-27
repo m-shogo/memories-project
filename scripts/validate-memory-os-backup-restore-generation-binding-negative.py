@@ -162,22 +162,24 @@ def prove_target_import_unsafe_sources() -> None:
                         "generation binding target unsafe source leaked private diagnostics")
             else:
                 raise Fail("generation binding target accepted unsafe source")
-        original_flag = os.O_NONBLOCK
-        try:
-            os.O_NONBLOCK = 0
-            try:
-                load_target(good, "binding_target_unsupported_flag")
-            except Fail as exc:
-                require(str(exc) == "generation binding target import rejected"
-                        and exc.__suppress_context__,
-                        "generation binding target missing flag leaked private diagnostics")
-            else:
-                raise Fail("generation binding target accepted unsupported platform flag")
-        finally:
-            os.O_NONBLOCK = original_flag
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original_flag = getattr(os, flag)
+            for unsupported in (0, None):
+                try:
+                    setattr(os, flag, unsupported)
+                    try:
+                        load_target(good, "binding_target_unsupported_flag")
+                    except Fail as exc:
+                        require(str(exc) == "generation binding target import rejected"
+                                and exc.__suppress_context__,
+                                "generation binding target unsafe flag leaked private diagnostics")
+                    else:
+                        raise Fail("generation binding target accepted unsupported platform flag")
+                finally:
+                    setattr(os, flag, original_flag)
         require(load_target(good, "binding_target_unsafe_restored").VALUE == "safe",
                 "generation binding target unsafe fixture restoration failed")
-    print("PASS: generation binding target unsafe sources and missing flag rejected")
+    print("PASS: generation binding target unsafe sources and six platform flag cases rejected")
 
 
 def prove_target_import_fd_cleanup() -> None:
