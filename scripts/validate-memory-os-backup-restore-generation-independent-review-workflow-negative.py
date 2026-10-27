@@ -196,7 +196,7 @@ def require_helper_semantic_proof(source: bytes) -> None:
                for node in ast.walk(reader)):
         raise SystemExit("independent-review fixture helper bounded read weakened")
     flags = {"O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"}
-    flag_loops = [node for node in ast.walk(reader) if isinstance(node, ast.For)
+    flag_loops = [node for node in ast.walk(reader) if isinstance(node, ast.comprehension)
                   and isinstance(node.iter, ast.Tuple)
                   and {elt.value for elt in node.iter.elts if isinstance(elt, ast.Constant)}
                   == flags]
