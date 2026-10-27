@@ -1206,6 +1206,54 @@ def prove_typed_reconcile_private_path_diagnostics() -> None:
     print("PASS: typed reconcile private path and module import errors suppressed")
 
 
+def prove_typed_reconcile_repo_refs() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_repo_ref_negative")
+    protected = (CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-typed-ref-alias-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real"
+        real.mkdir()
+        file = real / "evidence.json"
+        file.write_bytes(b'{"safe":true}')
+        require(reconciler.require_repo_file(file, "synthetic ref unsafe") == file.relative_to(ROOT),
+                "typed reconcile canonical evidence ref rejected")
+        alias = sandbox / "alias.json"
+        alias.symlink_to(file)
+        parent_alias = sandbox / "parent-alias"
+        parent_alias.symlink_to(real, target_is_directory=True)
+        loop = sandbox / "loop.json"
+        loop.symlink_to(loop.name)
+        for label, candidate, expected in (
+            ("leaf alias", alias, "synthetic ref unsafe"),
+            ("ancestor alias", parent_alias / file.name, "synthetic ref unsafe"),
+            ("symlink loop", loop, "typed reconcile repository file unsafe"),
+            ("missing", sandbox / "missing.json", "typed reconcile repository file unsafe"),
+        ):
+            try:
+                reconciler.require_repo_file(candidate, "synthetic ref unsafe")
+            except reconciler.Fail as exc:
+                require(str(exc) == expected, f"typed reconcile {label} wrong ref rejection")
+            else:
+                raise Fail(f"typed reconcile {label} ref accepted")
+        with tempfile.TemporaryDirectory(prefix="typed-ref-outside-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(b'{"private":"SYNTHETIC_PRIVATE_CANARY"}')
+            escaped = sandbox / "escaped.json"
+            escaped.symlink_to(canary)
+            try:
+                reconciler.require_repo_file(escaped, "synthetic ref unsafe")
+            except reconciler.Fail as exc:
+                require(str(exc) == "typed reconcile repository file unsafe",
+                        "typed reconcile escaped ref leaked private path")
+            else:
+                raise Fail("typed reconcile escaped ref accepted")
+            require(canary.read_bytes() == b'{"private":"SYNTHETIC_PRIVATE_CANARY"}',
+                    "typed reconcile ref negative changed external canary")
+    require((CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes()) == protected,
+            "typed reconcile ref negative changed protected authorities")
+    print("PASS: typed reconcile canonical evidence ref and five symlink/alias negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -1248,6 +1296,7 @@ def main() -> int:
     prove_typed_reconcile_writer_ownership()
     prove_typed_reconcile_child_validator()
     prove_typed_reconcile_private_path_diagnostics()
+    prove_typed_reconcile_repo_refs()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
