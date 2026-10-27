@@ -87,7 +87,7 @@ def load_checked_module(path: Path, name: str) -> Any:
                 "independent review negative source rejected")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except Exception:
+    except (Exception, SystemExit):
         raise Fail("independent review negative source rejected") from None
     return module
 
@@ -162,6 +162,17 @@ def prove_review_import_unsafe_sources() -> None:
                         "independent review execution unsafe source leaked private diagnostics")
             else:
                 raise Fail("independent review execution accepted unsafe source")
+        exit_source = sandbox / "exit.py"
+        exit_source.write_text("raise SystemExit('PRIVATE_REVIEW_EXECUTION_EXIT_CANARY')\n",
+                               encoding="utf-8")
+        try:
+            load_checked_module(exit_source, "independent_review_system_exit")
+        except Fail as exc:
+            require(str(exc) == "independent review negative source rejected"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
+                    "independent review execution SystemExit leaked private diagnostics")
+        else:
+            raise Fail("independent review execution accepted SystemExit source")
         for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
             original_flag = getattr(os, flag)
             for unsupported in (0, None):
