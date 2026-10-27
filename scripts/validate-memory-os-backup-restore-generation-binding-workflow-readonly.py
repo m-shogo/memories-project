@@ -97,16 +97,18 @@ SOURCE_REQUIRED = (
     ("PR target", "  pull_request:\n    branches: [so]\n    paths:\n", 1),
     ("PR base environment", "          PR_BASE_REF: ${{ github.base_ref }}\n", 1),
     ("PR base assertion", '            test "${PR_BASE_REF:-}" = "so"\n', 1),
+    ("root read-only permission", "permissions:\n  contents: read\n", 1),
+    ("no contents write permission", "contents: write", 0),
 )
 
 
-def validate_source_admission(source: str) -> None:
+def validate_source_admission(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in SOURCE_REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"generation-binding readonly source admission drift: {label}")
     payload = source.encode("utf-8")
     blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
-    if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
+    if check_blob and hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
         raise SystemExit("generation-binding readonly complete workflow source drift")
 
 
@@ -130,17 +132,34 @@ def prove_source_admission_negatives(source: str) -> None:
         ("PR base assertion", SOURCE_REQUIRED[15][1], '            test -n "${PR_BASE_REF:-}"\n'),
         ("injected shell command", "          python scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py\n", "          echo UNREVIEWED\n          python scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py\n"),
         ("injected action", "      - name: Prove generation binding authorities remain read-only\n", "      - uses: unreviewed/action@v1\n      - name: Prove generation binding authorities remain read-only\n"),
+        ("root permission escalation", "permissions:\n  contents: read\n", "permissions:\n  contents: write\n"),
+        ("job permission escalation", "jobs:\n  validate:\n", "jobs:\n  validate:\n    permissions:\n      contents: write\n"),
     )
+    if len(cases) != 20:
+        raise SystemExit("generation-binding readonly negative inventory drift")
+    digest_only = frozenset({"injected shell command", "injected action"})
+    semantic_count = 0
+    blob_only_count = 0
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit(f"generation-binding source negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
+        if mutated == source:
+            raise SystemExit(f"generation-binding source mutation unchanged: {label}")
+        semantic = any(mutated.count(token) != source.count(token)
+                       for _, token, _ in SOURCE_REQUIRED)
+        if semantic == (label in digest_only):
+            raise SystemExit("generation-binding readonly mutation classification drift: " + label)
+        semantic_count += int(semantic)
+        blob_only_count += int(not semantic)
         try:
-            validate_source_admission(mutated)
+            validate_source_admission(mutated, check_blob=not semantic)
         except SystemExit:
             continue
         raise SystemExit(f"generation-binding source admission accepted mutation: {label}")
-    print(f"PASS: generation-binding readonly source admission ({len(cases)} negatives)")
+    if (semantic_count, blob_only_count) != (18, 2):
+        raise SystemExit("generation-binding readonly semantic/blob mutation coverage drift")
+    print(f"PASS: generation-binding readonly source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
 
 
 
