@@ -660,6 +660,37 @@ def prove_preflight_reconcile_pinned_reader(reconciler: object) -> None:
     print("PASS: preflight reconciler bounded JSON snapshot and parent/ancestor FD race negatives")
 
 
+def prove_preflight_reconcile_strict_json(reconciler: object) -> None:
+    protected = (CANONICAL_CONTRACT.read_bytes(), CANONICAL_STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-preflight-reconcile-json-", TMP_PARENT) as raw:
+        path = Path(raw) / "candidate.json"
+        path.write_bytes(b'{"nested":{"count":1}}')
+        require(reconciler.load(path) == {"nested": {"count": 1}},
+                "preflight reconcile JSON positive failed")
+        for label, payload, expected in (
+            ("duplicate", b'{"nested":{"key":1,"key":2}}',
+             "preflight reconcile JSON duplicate key refused"),
+            ("NaN", b'{"value":NaN}', "preflight reconcile JSON nonfinite number refused"),
+            ("Infinity", b'{"value":Infinity}', "preflight reconcile JSON nonfinite number refused"),
+            ("float overflow", b'{"value":1e999}', "preflight reconcile JSON nonfinite number refused"),
+            ("129 digit integer", b'{"value":' + b"9" * 129 + b"}",
+             "preflight reconcile JSON integer too large"),
+            ("invalid UTF-8", b'{"value":"\xff"}', "preflight reconcile authority invalid UTF-8"),
+            ("nonobject root", b"[]", "preflight reconcile JSON root must be object"),
+        ):
+            path.write_bytes(payload)
+            try:
+                reconciler.load(path)
+            except reconciler.Fail as exc:
+                require(str(exc) == expected and "SYNTHETIC_PRIVATE_" not in str(exc),
+                        f"preflight reconcile JSON {label} wrong rejection")
+            else:
+                raise Fail(f"preflight reconcile JSON {label} accepted")
+    require((CANONICAL_CONTRACT.read_bytes(), CANONICAL_STATUS.read_bytes()) == protected,
+            "preflight reconcile strict JSON changed protected authorities")
+    print("PASS: preflight reconciler strict JSON positive and seven ambiguity negatives")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -673,6 +704,7 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
     prove_preflight_reconcile_pinned_reader(reconciler)
+    prove_preflight_reconcile_strict_json(reconciler)
 
     prove_data_and_executable_authority_rejection(reconciler)
     prove_post_reconcile_output_suppression(reconciler)
