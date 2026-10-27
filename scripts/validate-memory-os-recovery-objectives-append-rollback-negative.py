@@ -158,6 +158,33 @@ def main() -> int:
             require(registry.read_bytes() == before_bytes and not residue(root),
                     "atomic fdopen rejection changed fixture or left residue")
 
+            original_close = writer.os.close
+
+            def close_then_fail(fd):
+                original_close(fd)
+                raise OSError(marker)
+
+            writer.os.fdopen = reject_fdopen
+            writer.os.close = close_then_fail
+            try:
+                for label, action in (
+                    ("write", lambda: writer.atomic_write({"sentinel": "not-written"}, before_mode)),
+                    ("restore", lambda: writer.atomic_restore(before_bytes, before_mode)),
+                ):
+                    try:
+                        action()
+                    except writer.Fail as exc:
+                        require(str(exc) == "recovery objective registry temporary cleanup failed"
+                                and exc.__suppress_context__ and marker not in str(exc),
+                                f"atomic {label} close failure diagnostic wrong or private")
+                    else:
+                        raise Fail(f"atomic {label} close failure was accepted")
+                    require(registry.read_bytes() == before_bytes and not residue(root),
+                            f"atomic {label} close failure skipped temporary unlink")
+            finally:
+                writer.os.fdopen = original_fdopen
+                writer.os.close = original_close
+
             def reject_restore_replace(_source, _destination):
                 raise OSError(marker)
 
