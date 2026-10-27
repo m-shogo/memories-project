@@ -15554,3 +15554,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Compare cd979308..455d316a changed only environment-generation writer and its canonical append/rollback negative. Rollback completed vs incomplete remains distinct without exposing primary/restore details.
 - **Why safe/reusable mechanism:** Reuses the reviewed fixed-class transactional pattern with isolated registry fixtures. No generation was registered, no semantic eligibility was promoted and no human approval was fabricated.
 - **Protected-authority check:** `productionDecision=NO_GO`; OPS-P0-007 blocked. Registered vs semantically eligible unsuperseded distinct environments, current human-approved objective, executable reviewed request for new evidence, complete typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning/CI never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-27 — Environment-generation registry lock initialization and cleanup are private
+
+### Material failure/risk
+- **Symptom/evidence:** At cc81fa4c, environment-generation writer lock acquisition handled only FileExistsError, did not verify the returned `os.write` count, and exposed raw fsync/close/unlink exceptions. A short lock metadata write could proceed to registry publication, and cleanup failures could leak filesystem details. No actual stranded production lock or registration was observed.
+- **Verified root cause:** Legacy lock lifecycle had not adopted the reviewed generation/typed registry exact-write and private fixed-class pattern. **Failed approach:** relying on one `os.write` and nested `finally` cleanup without checking count or classifying exceptions.
+- **Correction:** 63ef4445 adds fixed acquisition, initialization and cleanup classes, exact lock write-count verification, suppressed raw OSError context and unlink attempt after close failure.
+- **Executable recurrence guard:** 0f934a18 updates the canonical CI-invoked append-rollback negative to require private close-failure class and adds actual-writer short lock write, fsync private-canary and acquisition private-canary failures, no stranded lock and subsequent retry behavior. Exact-source CI SUCCESS remains **unverified**.
+- **Retry condition:** Revisit on exact-source CI failure or reviewed lock protocol change. Do not retry unchanged human recovery-evidence or external MinIO blockers.
+
+### Material success (source-level; CI pending)
+- **Outcome/evidence:** Compare cc81fa4c..0f934a18 changed only environment-generation writer and its canonical negative suite. Exclusive O_EXCL lock semantics and cleanup-on-failure remain, with private fixed classes and exact lock write count.
+- **Why safe/reusable mechanism:** Negative tests use disposable lock/registry fixtures and mocked admission; no real environment generation or production readiness was registered.
+- **Protected-authority check:** `productionDecision=NO_GO`; OPS-P0-007 remains blocked. Distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request for new evidence, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning/CI never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
