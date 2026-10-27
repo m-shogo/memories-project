@@ -209,11 +209,13 @@ def pin_checked_helper_parent(path: Path) -> int:
         except (Exception, SystemExit):
             raise Fail("fixture guard pinned descriptor cleanup failed") from None
         raise Fail("preflight fixture guard parent open failed") from None
-    except BaseException:
+    except BaseException as exc:
         try:
             os.close(fd)
         except (Exception, SystemExit):
             raise Fail("fixture guard pinned descriptor cleanup failed") from None
+        if isinstance(exc, RuntimeError) and not isinstance(exc, Fail):
+            raise Fail("fixture guard parent runtime open failed") from None
         raise
 
 

@@ -716,13 +716,17 @@ except (Exception, SystemExit):
     ]
     require(
         len(base_handlers) == 1
-        and base_handlers[0].name is None
-        and len(base_handlers[0].body) == 2
+        and base_handlers[0].name == "exc"
+        and len(base_handlers[0].body) == 3
         and ast.dump(base_handlers[0].body[0], include_attributes=False)
             == ast.dump(expected_parent_failure_cleanup, include_attributes=False)
-        and isinstance(base_handlers[0].body[1], ast.Raise)
-        and base_handlers[0].body[1].exc is None
-        and base_handlers[0].body[1].cause is None,
+        and ast.dump(base_handlers[0].body[1], include_attributes=False)
+            == ast.dump(ast.parse("""if isinstance(exc, RuntimeError) and not isinstance(exc, Fail):
+    raise Fail("fixture guard parent runtime open failed") from None
+""").body[0], include_attributes=False)
+        and isinstance(base_handlers[0].body[2], ast.Raise)
+        and base_handlers[0].body[2].exc is None
+        and base_handlers[0].body[2].cause is None,
         "loader parent unexpected cleanup not private",
     )
     expected_anchor_condition = ast.parse(
@@ -1837,11 +1841,13 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader parent classification fault not private"),
     )
     base_cleanup_anchor = (
-        "    except BaseException:\n"
+        "    except BaseException as exc:\n"
         "        try:\n"
         "            os.close(fd)\n"
         "        except (Exception, SystemExit):\n"
         '            raise Fail("fixture guard pinned descriptor cleanup failed") from None\n'
+        "        if isinstance(exc, RuntimeError) and not isinstance(exc, Fail):\n"
+        '            raise Fail("fixture guard parent runtime open failed") from None\n'
         "        raise\n"
     )
     require(source.count(base_cleanup_anchor) == 1,
@@ -1863,6 +1869,20 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader parent unexpected cleanup not private"),
         (base_cleanup_anchor, base_cleanup_anchor.replace(
             "        raise\n", "        return fd\n"),
+         "loader parent unexpected cleanup not private"),
+        (base_cleanup_anchor, base_cleanup_anchor.replace(
+            "not isinstance(exc, Fail)", "True"),
+         "loader parent unexpected cleanup not private"),
+        (base_cleanup_anchor, base_cleanup_anchor.replace(
+            "isinstance(exc, RuntimeError)", "False"),
+         "loader parent unexpected cleanup not private"),
+        (base_cleanup_anchor, base_cleanup_anchor.replace(
+            'raise Fail("fixture guard parent runtime open failed") from None',
+            'raise Fail("fixture guard parent runtime open failed")'),
+         "loader parent unexpected cleanup not private"),
+        (base_cleanup_anchor, base_cleanup_anchor.replace(
+            'raise Fail("fixture guard parent runtime open failed") from None',
+            'raise'),
          "loader parent unexpected cleanup not private"),
     )
     setup_start = (
@@ -3077,6 +3097,39 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     else:
         raise AssertionError("outside parent accepted")
 
+    def fault_parent_runtime_open(file, flags, *args, **kwargs):
+        if file == parent.name and kwargs.get("dir_fd") is not None:
+            raise RuntimeError("PRIVATE_PARENT_RUNTIME_CANARY")
+        return original_open(file, flags, *args, **kwargs)
+    os.open = fault_parent_runtime_open
+    try:
+        try:
+            loader(good, "pinned_parent_runtime_negative")
+        except Fail as exc:
+            assert str(exc) == "fixture guard parent runtime open failed"
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_PARENT_RUNTIME_CANARY" not in str(exc)
+        else:
+            raise AssertionError("parent runtime fault accepted")
+    finally:
+        os.open = original_open
+
+    original_is_dir = Path.is_dir
+    def deny_ancestor(self):
+        if self == parent:
+            return False
+        return original_is_dir(self)
+    Path.is_dir = deny_ancestor
+    try:
+        try:
+            loader(good, "pinned_parent_domain_negative")
+        except Fail as exc:
+            assert str(exc).endswith("fixture guard ancestor missing or symlinked")
+        else:
+            raise AssertionError("missing ancestor accepted")
+    finally:
+        Path.is_dir = original_is_dir
+
     def fault_anchor_runtime_open(file, flags, *args, **kwargs):
         if Path(file) == Path(sys.argv[2]):
             raise RuntimeError("PRIVATE_ANCHOR_RUNTIME_CANARY")
@@ -3315,7 +3368,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 110 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 114 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
