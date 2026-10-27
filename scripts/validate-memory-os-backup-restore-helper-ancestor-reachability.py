@@ -1032,13 +1032,23 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         and not compile_try.orelse and not compile_try.finalbody,
         "loader compilation failure not private",
     )
+    expected_leaf_cleanup = ast.parse("""try:
+    os.close(fd)
+except (Exception, SystemExit):
+    raise Fail("fixture guard pinned descriptor cleanup failed") from None
+""").body[0]
+    expected_parent_cleanup = ast.parse("""try:
+    os.close(parent_fd)
+except (Exception, SystemExit):
+    raise Fail("fixture guard pinned descriptor cleanup failed") from None
+""").body[0]
     require(
         len(read_try.finalbody) == 1
         and ast.dump(read_try.finalbody[0], include_attributes=False)
-        == ast.dump(ast.parse("os.close(fd)").body[0], include_attributes=False)
+        == ast.dump(expected_leaf_cleanup, include_attributes=False)
         and len(loader_try.finalbody) == 1
         and ast.dump(loader_try.finalbody[0], include_attributes=False)
-        == ast.dump(ast.parse("os.close(parent_fd)").body[0], include_attributes=False),
+        == ast.dump(expected_parent_cleanup, include_attributes=False),
         "loader FD cleanup not guaranteed",
     )
     require(
@@ -1207,11 +1217,23 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ("MAX_HELPER_SOURCE_BYTES = 1024 * 1024\n",
          "MAX_HELPER_SOURCE_BYTES = 1024 * 1024 * 1024\n",
          "loader source execution not pinned to FD"),
-        ("        finally:\n            os.close(fd)\n    finally:\n",
+        ("        finally:\n            try:\n                os.close(fd)\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned descriptor cleanup failed\") from None\n    finally:\n",
          "        finally:\n            pass  # synthetic leaked leaf FD\n    finally:\n",
          "loader FD cleanup not guaranteed"),
-        ("    finally:\n        os.close(parent_fd)\n",
+        ("    finally:\n        try:\n            os.close(parent_fd)\n        except (Exception, SystemExit):\n            raise Fail(\"fixture guard pinned descriptor cleanup failed\") from None",
          "    finally:\n        pass  # synthetic leaked parent FD\n",
+         "loader FD cleanup not guaranteed"),
+        ("        finally:\n            try:\n                os.close(fd)\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned descriptor cleanup failed\") from None\n    finally:\n",
+         "        finally:\n            try:\n                os.close(fd)\n            except OSError:\n                raise Fail(\"fixture guard pinned descriptor cleanup failed\") from None\n    finally:\n",
+         "loader FD cleanup not guaranteed"),
+        ("    finally:\n        try:\n            os.close(parent_fd)\n        except (Exception, SystemExit):\n            raise Fail(\"fixture guard pinned descriptor cleanup failed\") from None",
+         "    finally:\n        try:\n            os.close(parent_fd)\n        except OSError:\n            raise Fail(\"fixture guard pinned descriptor cleanup failed\") from None",
+         "loader FD cleanup not guaranteed"),
+        ("        finally:\n            try:\n                os.close(fd)\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned descriptor cleanup failed\") from None\n    finally:\n",
+         "        finally:\n            try:\n                os.close(fd)\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned descriptor cleanup failed\")\n    finally:\n",
+         "loader FD cleanup not guaranteed"),
+        ("    finally:\n        try:\n            os.close(parent_fd)\n        except (Exception, SystemExit):\n            raise Fail(\"fixture guard pinned descriptor cleanup failed\") from None",
+         "    finally:\n        try:\n            os.close(parent_fd)\n        except (Exception, SystemExit):\n            raise Fail(\"fixture guard pinned descriptor cleanup failed\")",
          "loader FD cleanup not guaranteed"),
     )
     replacements += (
@@ -2227,6 +2249,34 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
         assert "PRIVATE_COMPILE_CANARY" not in str(exc)
     else:
         raise AssertionError("malformed helper was executed")
+
+    import os
+    original_open, original_close = os.open, os.close
+    for fault in ("leaf", "parent"):
+        tracked = {}
+        def watched_open(file, flags, *args, **kwargs):
+            descriptor = original_open(file, flags, *args, **kwargs)
+            if file == good.name and kwargs.get("dir_fd") is not None:
+                tracked["leaf"] = descriptor
+                tracked["parent"] = kwargs["dir_fd"]
+            return descriptor
+        def fault_close(descriptor):
+            original_close(descriptor)
+            if descriptor == tracked.get(fault):
+                raise OSError("PRIVATE_CLOSE_CANARY")
+        os.open, os.close = watched_open, fault_close
+        try:
+            try:
+                loader(good, "pinned_close_negative_" + fault)
+            except Fail as exc:
+                assert str(exc) == "fixture guard pinned descriptor cleanup failed"
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_CLOSE_CANARY" not in str(exc)
+            else:
+                raise AssertionError("descriptor close failure accepted")
+        finally:
+            os.open, os.close = original_open, original_close
+        assert "leaf" in tracked and "parent" in tracked
 """
     result = subprocess.run(
         [sys.executable, "-c", script, str(ROOT / "scripts" / filename), str(ROOT)],
@@ -2265,7 +2315,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 53 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 57 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

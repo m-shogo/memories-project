@@ -232,9 +232,16 @@ def load_pinned_fixture_helper(path: Path, name: str):
         except OSError as exc:
             raise Fail("typed contract path fixture guard pinned source read failed") from exc
         finally:
-            os.close(fd)
+            try:
+                os.close(fd)
+            except (Exception, SystemExit):
+                raise Fail("fixture guard pinned descriptor cleanup failed") from None
     finally:
-        os.close(parent_fd)
+    finally:
+        try:
+            os.close(parent_fd)
+        except (Exception, SystemExit):
+            raise Fail("fixture guard pinned descriptor cleanup failed") from None
 
 
 def guarded_temporary_directory(prefix: str, parent: Path):
