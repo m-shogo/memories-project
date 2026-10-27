@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import ast
 import copy
+import importlib.machinery
 import importlib.util
+import stat
 import io
 import json
 import os
@@ -126,13 +128,118 @@ def prove_pinned_execution_negative_mutations_rejected() -> None:
     print(f"PASS: independent review execution negative pinned import {len(mutations)} mutations rejected")
 
 
-def load_validator():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_independent_review_validator_negative", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load independent review validator")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+MAX_PAIR_MODULE_BYTES = 1024 * 1024
+
+
+def load_checked_pair_module(path: Path, name: str):
+    """Import only bounded FD-captured repository source bytes."""
+    try:
+        relative = path.relative_to(ROOT)
+        require(path.resolve(strict=True) == ROOT.resolve() / relative,
+                "independent review pair module rejected")
+        checked = path.lstat()
+        require(stat.S_ISREG(checked.st_mode), "independent review pair module rejected")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                "independent review pair module rejected")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(relative.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    "independent review pair module rejected")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_PAIR_MODULE_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            require(not cleanup_failed, "independent review pair module rejected")
+        require(len(source) <= MAX_PAIR_MODULE_BYTES,
+                "independent review pair module rejected")
+
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == name, "independent review pair module rejected")
+                return compile(source, str(path), "exec")
+
+        spec = importlib.util.spec_from_file_location(
+            name, path, loader=PinnedSourceLoader(name, str(path)))
+        require(spec is not None and spec.loader is not None,
+                "independent review pair module rejected")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("independent review pair module rejected") from None
     return module
 
+
+def load_validator():
+    return load_checked_pair_module(VALIDATOR, "memory_os_generation_independent_review_validator_negative")
+
+
+def prove_pinned_pair_validator_import() -> None:
+    """After-capture parent substitution must not redirect imported code."""
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".independent-review-execution-import-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "module.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "module.py"
+        source.write_text("VALUE = 'pinned'\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_INDEPENDENT_REVIEW_PAIR_CANARY')\n",
+                          encoding="utf-8")
+        swapped = False
+        try:
+            require(load_checked_pair_module(source, "review_pair_import_positive").VALUE == "pinned",
+                    "independent review pair pinned import positive failed")
+
+            def swap_after_read(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = load_checked_pair_module(source, "review_pair_import_parent_swap")
+            require(swapped and loaded.VALUE == "pinned",
+                    "independent review pair import executed redirected source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_INDEPENDENT_REVIEW_PAIR_CANARY')\n",
+                    "independent review pair import modified external canary")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    require(callable(getattr(load_validator(), "main", None)),
+            "independent review pair canonical import restoration failed")
+    print("PASS: independent review execution negative import pins source across parent swap")
 
 def head_sha() -> str:
     completed = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -1224,6 +1331,7 @@ def main() -> int:
     module = load_validator()
     prove_runtime_review_pair_controls()
     prove_pinned_execution_negative_mutations_rejected()
+    prove_pinned_pair_validator_import()
     prove_source_order_bounded_git_output(module)
     prove_source_order_bounded_creation_blob(module)
     prove_source_order_bounded_current_blob(module)
