@@ -1009,6 +1009,29 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         "spec.loader.exec_module(module)",
     ):
         require(token in loader_text, "loader source execution not pinned to FD")
+    # A malformed helper cannot leak source/path details through compile().
+    pinned_classes = [node for node in ast.walk(loaders[0])
+                      if isinstance(node, ast.ClassDef) and node.name == "PinnedSourceLoader"]
+    require(len(pinned_classes) == 1, "loader compilation failure not private")
+    get_code_methods = [node for node in pinned_classes[0].body
+                        if isinstance(node, ast.FunctionDef) and node.name == "get_code"]
+    require(len(get_code_methods) == 1 and len(get_code_methods[0].body) == 2,
+            "loader compilation failure not private")
+    compile_try = get_code_methods[0].body[1]
+    require(
+        isinstance(compile_try, ast.Try)
+        and len(compile_try.body) == 1
+        and ast.dump(compile_try.body[0], include_attributes=False)
+        == ast.dump(ast.parse('return compile(source, str(path), "exec")').body[0], include_attributes=False)
+        and len(compile_try.handlers) == 1
+        and isinstance(compile_try.handlers[0].type, ast.Name)
+        and compile_try.handlers[0].type.id == "Exception"
+        and len(compile_try.handlers[0].body) == 1
+        and ast.dump(compile_try.handlers[0].body[0], include_attributes=False)
+        == ast.dump(ast.parse('raise Fail("fixture guard pinned source compilation failed") from None').body[0], include_attributes=False)
+        and not compile_try.orelse and not compile_try.finalbody,
+        "loader compilation failure not private",
+    )
     require(
         len(read_try.finalbody) == 1
         and ast.dump(read_try.finalbody[0], include_attributes=False)
@@ -1190,6 +1213,17 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ("    finally:\n        os.close(parent_fd)\n",
          "    finally:\n        pass  # synthetic leaked parent FD\n",
          "loader FD cleanup not guaranteed"),
+    )
+    replacements += (
+        ('                    except Exception:\n',
+         '                    except SyntaxError:\n',
+         "loader compilation failure not private"),
+        ('                        raise Fail("fixture guard pinned source compilation failed") from None\n',
+         '                        raise Fail("fixture guard pinned source compilation failed")\n',
+         "loader compilation failure not private"),
+        ('                        raise Fail("fixture guard pinned source compilation failed") from None\n',
+         '                        raise Fail("synthetic raw compilation failure") from None\n',
+         "loader compilation failure not private"),
     )
     count = 0
     for original, mutation, expected in replacements:
@@ -2193,7 +2227,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 50 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 53 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

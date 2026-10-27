@@ -219,7 +219,10 @@ def load_pinned_fixture_helper(path: Path, name: str):
             class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
                 def get_code(self, fullname):
                     require(fullname == name, "fixture guard module identity drift")
-                    return compile(source, str(path), "exec")
+                    try:
+                        return compile(source, str(path), "exec")
+                    except Exception:
+                        raise Fail("fixture guard pinned source compilation failed") from None
             spec = importlib.util.spec_from_file_location(name, path, loader=PinnedSourceLoader(name, str(path)))
             require(spec is not None and spec.loader is not None,
                     "typed contract path fixture guard cannot load")
