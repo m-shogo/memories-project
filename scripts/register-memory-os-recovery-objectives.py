@@ -363,18 +363,21 @@ def atomic_write(value: dict[str, Any], mode: int) -> None:
     except (OSError, ValueError, TypeError, UnicodeError):
         raise Fail("recovery objective registry atomic write failed") from None
     finally:
+        cleanup_failed = False
         if descriptor is not None:
             try:
                 os.close(descriptor)
             except OSError:
-                raise Fail("recovery objective registry temporary cleanup failed") from None
+                cleanup_failed = True
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
             except FileNotFoundError:
                 pass
             except OSError:
-                raise Fail("recovery objective registry temporary cleanup failed") from None
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("recovery objective registry temporary cleanup failed") from None
 
 
 def atomic_restore(payload: bytes, mode: int) -> None:
@@ -394,18 +397,21 @@ def atomic_restore(payload: bytes, mode: int) -> None:
     except (OSError, ValueError, TypeError):
         raise Fail("recovery objective registry atomic restore failed") from None
     finally:
+        cleanup_failed = False
         if descriptor is not None:
             try:
                 os.close(descriptor)
             except OSError:
-                raise Fail("recovery objective registry temporary cleanup failed") from None
+                cleanup_failed = True
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
             except FileNotFoundError:
                 pass
             except OSError:
-                raise Fail("recovery objective registry temporary cleanup failed") from None
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("recovery objective registry temporary cleanup failed") from None
 
 
 def write_registry_transactionally(value: dict[str, Any]) -> None:
