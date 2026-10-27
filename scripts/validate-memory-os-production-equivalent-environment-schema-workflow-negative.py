@@ -32,14 +32,15 @@ REQUIRED = (
 )
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, count in REQUIRED:
         if source.count(token) != count:
             raise SystemExit("environment schema workflow source drift: " + label)
-    payload = source.encode("utf-8")
-    git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
-    if hashlib.sha1(git_blob).hexdigest() != REVIEWED_WORKFLOW_GIT_BLOB_SHA:
-        raise SystemExit("environment schema complete workflow source drift")
+    if check_blob:
+        payload = source.encode("utf-8")
+        git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        if hashlib.sha1(git_blob).hexdigest() != REVIEWED_WORKFLOW_GIT_BLOB_SHA:
+            raise SystemExit("environment schema complete workflow source drift")
 
 
 def prove_runtime_branch_guards() -> None:
@@ -86,6 +87,9 @@ def main() -> int:
         ("injected shell step", "      - name: Install pinned JSON Schema validator\n", "      - run: echo unreviewed\n      - name: Install pinned JSON Schema validator\n"),
         ("injected Action step", "      - name: Install pinned JSON Schema validator\n", "      - uses: unreviewed/action@v1\n      - name: Install pinned JSON Schema validator\n"),
     )
+    blob_only = {"injected shell step", "injected Action step"}
+    if len(cases) != 19 or sum(label in blob_only for label, _, _ in cases) != 2:
+        raise SystemExit("environment schema workflow negative inventory drift")
     for label, old, new in cases:
         if old not in source:
             raise SystemExit("environment schema negative fixture missing: " + label)
@@ -93,11 +97,11 @@ def main() -> int:
         if mutated == source:
             raise SystemExit("environment schema negative fixture unchanged: " + label)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=label in blob_only)
         except SystemExit:
             continue
         raise SystemExit("environment schema accepted unreviewed source mutation: " + label)
-    print(f"PASS: environment schema workflow source admission ({len(cases)} negatives)")
+    print(f"PASS: environment schema workflow source admission ({len(cases) - 2} semantic anchor + 2 blob-only negatives)")
     return 0
 
 
