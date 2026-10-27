@@ -922,6 +922,53 @@ def prove_preflight_reconcile_private_path_diagnostics(reconciler: object) -> No
     print("PASS: preflight reconcile private path and validator import errors suppressed")
 
 
+def prove_preflight_reconcile_repo_refs(reconciler: object) -> None:
+    protected = (CANONICAL_CONTRACT.read_bytes(), CANONICAL_STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-preflight-ref-alias-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        real = sandbox / "real"
+        real.mkdir()
+        file = real / "evidence.json"
+        file.write_bytes(b'{"safe":true}')
+        require(reconciler.require_repo_file(file, "synthetic ref unsafe") == file.relative_to(ROOT),
+                "preflight reconcile canonical evidence ref rejected")
+        alias = sandbox / "alias.json"
+        alias.symlink_to(file)
+        parent_alias = sandbox / "parent-alias"
+        parent_alias.symlink_to(real, target_is_directory=True)
+        loop = sandbox / "loop.json"
+        loop.symlink_to(loop.name)
+        for label, candidate, expected in (
+            ("leaf alias", alias, "synthetic ref unsafe"),
+            ("ancestor alias", parent_alias / file.name, "synthetic ref unsafe"),
+            ("symlink loop", loop, "preflight reconcile repository file unsafe"),
+            ("missing", sandbox / "missing.json", "preflight reconcile repository file unsafe"),
+        ):
+            try:
+                reconciler.require_repo_file(candidate, "synthetic ref unsafe")
+            except reconciler.Fail as exc:
+                require(str(exc) == expected, f"preflight reconcile {label} wrong ref rejection")
+            else:
+                raise Fail(f"preflight reconcile {label} ref accepted")
+        with tempfile.TemporaryDirectory(prefix="preflight-ref-outside-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(b'{"private":"SYNTHETIC_PRIVATE_CANARY"}')
+            escaped = sandbox / "escaped.json"
+            escaped.symlink_to(canary)
+            try:
+                reconciler.require_repo_file(escaped, "synthetic ref unsafe")
+            except reconciler.Fail as exc:
+                require(str(exc) == "preflight reconcile repository file unsafe",
+                        "preflight reconcile escaped ref leaked private path")
+            else:
+                raise Fail("preflight reconcile escaped ref accepted")
+            require(canary.read_bytes() == b'{"private":"SYNTHETIC_PRIVATE_CANARY"}',
+                    "preflight reconcile ref negative changed external canary")
+    require((CANONICAL_CONTRACT.read_bytes(), CANONICAL_STATUS.read_bytes()) == protected,
+            "preflight reconcile ref negative changed protected authorities")
+    print("PASS: preflight reconcile canonical evidence ref and five symlink/alias negatives")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -944,6 +991,7 @@ def main() -> int:
     prove_atomic_write_failure(reconciler)
     prove_preflight_reconcile_writer_ownership(reconciler)
     prove_preflight_reconcile_private_path_diagnostics(reconciler)
+    prove_preflight_reconcile_repo_refs(reconciler)
 
     with guarded_temporary_directory(".tmp-preflight-load-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
