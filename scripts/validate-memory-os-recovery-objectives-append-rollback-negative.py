@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import stat
 import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,8 +40,8 @@ def expect_rejected(name: str, action, failure_type: type[BaseException]) -> Non
     except failure_type:
         print(f"PASS reject: {name}")
         return
-    except Exception as exc:
-        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+    except Exception:
+        raise Fail(f"{name} leaked non-domain exception") from None
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
@@ -54,6 +56,35 @@ def residue(root: Path) -> list[Path]:
         if path.name.startswith(".recovery-objectives.")
         or path.name.startswith(".recovery-objectives-rollback.")
     )
+
+
+def prove_private_negative_classifier(writer) -> None:
+    """Unexpected fixture errors must never expose private exception text."""
+    marker = "PRIVATE_OBJECTIVE_APPEND_NEGATIVE_CANARY"
+
+    def raise_fault(fault):
+        raise fault
+
+    for label, fault, expected_output in (
+        ("unexpected", TypeError(marker), ""),
+        ("expected", writer.Fail(marker), "PASS reject: private classifier\\n"),
+    ):
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            if label == "expected":
+                expect_rejected("private classifier", lambda: raise_fault(fault), writer.Fail)
+            else:
+                try:
+                    expect_rejected("private classifier", lambda: raise_fault(fault), writer.Fail)
+                except Fail as exc:
+                    require(str(exc) == "private classifier leaked non-domain exception"
+                            and exc.__suppress_context__ and marker not in str(exc),
+                            "objective append negative classifier disclosed private exception")
+                else:
+                    raise Fail("objective append negative classifier accepted unexpected fault")
+        require(captured.getvalue() == expected_output and marker not in captured.getvalue(),
+                f"objective append negative classifier {label} output drift")
+    print("PASS: objective append negative classifier private failure redaction")
 
 
 def prove_bounded_registry_snapshot(writer) -> None:
@@ -120,6 +151,7 @@ def main() -> int:
     )
 
     writer = load_writer()
+    prove_private_negative_classifier(writer)
     require(callable(getattr(writer, "write_registry_transactionally", None)), "transactional registry writer missing")
     require(callable(getattr(writer, "require_actual_cli_authorities", None)), "recovery-objective CLI authority guard missing")
     writer.require_actual_cli_authorities()
