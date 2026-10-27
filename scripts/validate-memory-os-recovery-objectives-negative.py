@@ -100,6 +100,63 @@ def exercise_registry_corruption(writer: Any) -> None:
         expect_rejected(writer, name, lambda mutated=mutated: writer.validate_registry_for_append(mutated))
 
 
+def prove_writer_json_reader(writer) -> None:
+    """Exercise the real objective writer reader without admitting approval evidence."""
+    before = (writer.CONTRACT.read_bytes(), writer.REGISTRY.read_bytes())
+    with tempfile.TemporaryDirectory(prefix="memory-os-objective-writer-json-") as tmp:
+        path = Path(tmp) / "candidate.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        path.write_bytes(positive)
+        require(writer.load(path) == {"safe": True, "nested": {"count": 1}},
+                "recovery objective writer JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}',
+             "recovery objective writer JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"a":1,"a":2}}',
+             "recovery objective writer JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "recovery objective writer JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "recovery objective writer JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}',
+             "recovery objective writer JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}',
+             "recovery objective writer JSON nonfinite number refused"),
+            ("large integer", b'{"number":' + b"9" * 5000 + b"}",
+             "recovery objective writer JSON integer too large"),
+            ("oversized JSON", b'{"data":"' + b"x" * writer.MAX_JSON_BYTES + b'"}',
+             "recovery objective writer JSON size limit exceeded"),
+            ("invalid UTF-8", b'{"private":"\xff"}',
+             "recovery objective writer JSON unreadable or invalid"),
+            ("malformed private", b'{"private":"PRIVATE_WRITER_JSON_CANARY",',
+             "recovery objective writer JSON unreadable or invalid"),
+            ("nonobject root", b"[]", "recovery objective writer JSON root must be object"),
+        )
+
+        def rejected(candidate, expected: str, label: str) -> None:
+            try:
+                writer.load(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == expected and "PRIVATE_WRITER" not in str(exc),
+                        f"writer JSON {label} wrong/private rejection")
+            else:
+                raise Fail(f"writer JSON {label} unexpectedly accepted")
+
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            rejected(path, expected, label)
+        path.write_bytes(positive)
+        rejected(Path(tmp) / "missing.json",
+                 "recovery objective writer JSON unreadable or invalid", "missing")
+        rejected(Path(tmp), "recovery objective writer JSON unreadable or invalid", "directory")
+        rejected(Path("relative.json"), "recovery objective writer JSON path invalid", "relative")
+        rejected("not-a-path", "recovery objective writer JSON path invalid", "non-Path")
+        rejected(Path(tmp) / "PRIVATE_WRITER_PATH_CANARY.json",
+                 "recovery objective writer JSON unreadable or invalid", "private missing path")
+        require(path.read_bytes() == positive, "writer JSON reader mutated positive fixture")
+    require((writer.CONTRACT.read_bytes(), writer.REGISTRY.read_bytes()) == before,
+            "writer JSON reader mutated canonical recovery objective authorities")
+    print("PASS: recovery objective writer JSON reader positive and 16 fail-closed negatives")
+
+
 def prove_recovery_objective_json_reader(validator) -> None:
     """Exercise the real objective reader without creating human approval evidence."""
     before = (validator.CONTRACT.read_bytes(), validator.REGISTRY.read_bytes())
@@ -205,6 +262,7 @@ def main() -> int:
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
     writer = load_writer()
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
+    prove_writer_json_reader(writer)
     prove_recovery_objective_json_reader(validator)
     prove_negative_subprocess_redaction(validator)
 
