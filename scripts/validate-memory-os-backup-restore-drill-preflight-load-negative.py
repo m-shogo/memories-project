@@ -1475,6 +1475,21 @@ def prove_preflight_private_path_negative_reachability() -> None:
                       "exc.__suppress_context__",
                       'load_module(good, "drill_import_unsafe_restored")'):
             require(token in unsafe_body, "drill request unsafe pinned proof removed")
+        fd_proof = functions.get("prove_pinned_module_fd_cleanup")
+        require(fd_proof is not None, "drill request pinned FD proof missing")
+        fd_body = ast.get_source_segment(candidate, fd_proof)
+        require(isinstance(fd_body, str), "drill request pinned FD proof unavailable")
+        require(main_body.count("prove_pinned_module_fd_cleanup()") == 1
+                and main_body.index("prove_pinned_module_fd_cleanup()") <
+                    main_body.index("writer = load_module(WRITER"),
+                "drill request pinned FD proof must run before canonical imports")
+        for token in ('raise OSError(errno.EIO, "PRIVATE_DRILL_FDOPEN_CANARY")',
+                      'raise OSError(errno.EIO, "PRIVATE_DRILL_CLOSE_CANARY")',
+                      "os.open, os.fdopen, os.close = tracked_open, broken_fdopen, broken_close",
+                      "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+                      "exc.__suppress_context__", "errno.EBADF",
+                      'load_module(VALIDATOR, "drill_import_fd_restored")'):
+            require(token in fd_body, "drill request pinned FD proof removed")
         require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                         and node.func.id in {"exec", "eval"} for node in ast.walk(loader)),
                 "drill request direct dynamic execution refused")
@@ -1513,6 +1528,19 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("unsafe positive", "prove_pinned_module_unsafe_sources",
          'load_module(good, "drill_import_unsafe_restored")',
          'load_module(good, "drill_import_unsafe")'),
+        ("FD invocation", "main", "    prove_pinned_module_fd_cleanup()\n", "    pass\n"),
+        ("FD fdopen fault", "prove_pinned_module_fd_cleanup",
+         'raise OSError(errno.EIO, "PRIVATE_DRILL_FDOPEN_CANARY")', "pass"),
+        ("FD close fault", "prove_pinned_module_fd_cleanup",
+         'raise OSError(errno.EIO, "PRIVATE_DRILL_CLOSE_CANARY")', "pass"),
+        ("FD EBADF", "prove_pinned_module_fd_cleanup", "errno.EBADF", "None"),
+        ("FD context", "prove_pinned_module_fd_cleanup", "exc.__suppress_context__", "False"),
+        ("FD restore patch", "prove_pinned_module_fd_cleanup",
+         "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+         "pass"),
+        ("FD positive", "prove_pinned_module_fd_cleanup",
+         'load_module(VALIDATOR, "drill_import_fd_restored")',
+         'load_module(VALIDATOR, "drill_import_fd_fault")'),
     ):
         parsed = ast.parse(drill_source)
         functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
@@ -1528,7 +1556,7 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("drill request pinned loader weakening accepted: " + label)
-    print("PASS: drill request pinned loader and eighteen source mutations rejected")
+    print("PASS: drill request pinned loader and twenty-five source mutations rejected")
     print("PASS: preflight reconcile negative pinned loader and five source mutations rejected")
     print("PASS: preflight authority pinned loader/private path/FD/unsafe source and 21 mutations rejected")
     print("PASS: preflight pinned source loader and four weakening mutations rejected")
