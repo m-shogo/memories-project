@@ -488,7 +488,8 @@ def prove_private_typed_admission_paths(validator: object) -> None:
         try:
             operation()
         except validator.Fail as exc:
-            require(str(exc) == expected and exc.__cause__ is None and exc.__suppress_context__,
+            require(str(exc) == expected and exc.__cause__ is None
+                    and (exc.__suppress_context__ or exc.__context__ is None),
                     f"typed admission {label} leaked private exception context")
             require(private not in str(exc), f"typed admission {label} leaked private path")
         else:
