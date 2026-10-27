@@ -131,6 +131,32 @@ def require_transport_path_proof(source: bytes) -> None:
         raise SystemExit("independent-review transport fixture cleanup proof missing")
     if len(calls(main, "prove_validator_path_failures")) != 1:
         raise SystemExit("independent-review transport path proof not reachable")
+    if not {"read_authority", "prove_source_order_import_guard"} <= functions.keys():
+        raise SystemExit("independent-review transport authority reader proof missing")
+    authority_reader = functions["read_authority"]
+    source_order = functions["prove_source_order_import_guard"]
+    if len(calls(authority_reader, "read_pinned_source")) != 1:
+        raise SystemExit("independent-review transport authority read not pinned")
+    if not any(isinstance(node, ast.ExceptHandler) and isinstance(node.type, ast.Name)
+               and node.type.id == "FixtureImportFail"
+               for node in ast.walk(authority_reader)):
+        raise SystemExit("independent-review transport authority private read handler missing")
+    if not any(isinstance(node, ast.Raise) and isinstance(node.cause, ast.Constant)
+               and node.cause.value is None
+               for node in ast.walk(authority_reader)):
+        raise SystemExit("independent-review transport authority private read suppression missing")
+    if len(calls(source_order, "read_pinned_source")) != 1 or len(calls(main, "prove_source_order_import_guard")) != 1:
+        raise SystemExit("independent-review transport source-order pinned proof weakened")
+    main_assignments = {target.id: ast.unparse(node.value)
+                        for node in ast.walk(main) if isinstance(node, ast.Assign)
+                        for target in node.targets if isinstance(target, ast.Name)}
+    if (main_assignments.get("canonical_contract") != "read_authority(module.CONTRACT)"
+            or main_assignments.get("canonical_registry") != "read_authority(module.REGISTRY)"):
+        raise SystemExit("independent-review transport canonical authority snapshot not pinned")
+    main_checks = {ast.unparse(call.args[0]) for call in calls(main, "require") if call.args}
+    if not {"read_authority(module.CONTRACT) == canonical_contract",
+            "read_authority(module.REGISTRY) == canonical_registry"} <= main_checks:
+        raise SystemExit("independent-review transport canonical authority postcondition weakened")
 
 
 def validate_transport_source(source: bytes, *, check_blob: bool = True) -> None:
@@ -394,6 +420,30 @@ def main() -> int:
          b'    pass  # path proof removed\n'),
         ("remove final root restoration", b'    finally:\n        ROOT = original_root',
          b'    finally:\n        pass  # root restoration removed'),
+        ("restore unpinned source-order read",
+         b'raw = read_pinned_source(ROOT, SOURCE_ORDER_EXECUTION_NEGATIVE)',
+         b'raw = SOURCE_ORDER_EXECUTION_NEGATIVE.read_bytes()'),
+        ("restore unpinned authority reader",
+         b'return read_pinned_source(ROOT, path)',
+         b'return path.read_bytes()'),
+        ("remove authority read privacy suppression",
+         b'raise Fail("transport authority read rejected") from None',
+         b'raise Fail("transport authority read rejected")'),
+        ("restore unbounded contract snapshot",
+         b'canonical_contract = read_authority(module.CONTRACT)',
+         b'canonical_contract = module.CONTRACT.read_bytes()'),
+        ("restore unbounded registry snapshot",
+         b'canonical_registry = read_authority(module.REGISTRY)',
+         b'canonical_registry = module.REGISTRY.read_bytes()'),
+        ("skip contract postcondition",
+         b'require(read_authority(module.CONTRACT) == canonical_contract',
+         b'require(True or read_authority(module.CONTRACT) == canonical_contract'),
+        ("skip registry postcondition",
+         b'require(read_authority(module.REGISTRY) == canonical_registry',
+         b'require(True or read_authority(module.REGISTRY) == canonical_registry'),
+        ("remove source-order proof reachability",
+         b'    prove_source_order_import_guard()\n',
+         b'    pass  # source-order proof removed\n'),
     ):
         if transport_source.count(old) != 1:
             raise SystemExit("independent-review transport semantic mutation anchor drift: " + label)
@@ -403,7 +453,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("independent-review transport semantic weakening accepted: " + label)
-    print("PASS independent-review transport 12 semantic path-proof mutations")
+    print("PASS independent-review transport 20 semantic path-and-authority mutations")
 
     for label, old, new in (
         ("restore mutable transport source read", b"raw = read_pinned_source(ROOT, SOURCE_ORDER_EXECUTION_NEGATIVE)", b"raw = SOURCE_ORDER_EXECUTION_NEGATIVE.read_bytes()"),
