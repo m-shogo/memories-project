@@ -43,6 +43,7 @@ def prove_close_failure_releases_lock(writer) -> None:
     original_validate_record = writer.validate_record
     original_write = writer.os.write
     original_close = writer.os.close
+    original_fsync = writer.os.fsync
     original_argv = sys.argv[:]
 
     with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-lock-") as tmp:
@@ -66,18 +67,46 @@ def prove_close_failure_releases_lock(writer) -> None:
         try:
             try:
                 writer.main()
-            except OSError as exc:
-                require("synthetic non-resurrection lock close failure" in str(exc), f"unexpected close failure: {exc}")
+            except writer.Fail as exc:
+                require(str(exc) == "typed non-resurrection registry lock cleanup failed"
+                        and exc.__suppress_context__,
+                        "typed lock close failure leaked raw exception")
             else:
                 raise Fail("synthetic non-resurrection lock close failure unexpectedly accepted")
             require(not lock.exists(), "typed non-resurrection lock stranded after close failure")
 
             writer.os.close = original_close
+            writer.os.write = lambda *_args: 0
+            try:
+                writer.main()
+            except writer.Fail as exc:
+                require(str(exc) == "typed non-resurrection registry lock initialization failed",
+                        "typed short lock write rejected at wrong boundary")
+            else:
+                raise Fail("typed short lock write unexpectedly accepted")
+            require(not lock.exists(), "typed short lock write stranded lock")
+
+            writer.os.write = original_write
+            def reject_lock_fsync(*_args) -> None:
+                raise OSError("PRIVATE_TYPED_LOCK_CANARY fsync")
+            writer.os.fsync = reject_lock_fsync
+            try:
+                writer.main()
+            except writer.Fail as exc:
+                require(str(exc) == "typed non-resurrection registry lock initialization failed"
+                        and exc.__suppress_context__,
+                        "typed lock fsync failure leaked private exception")
+            else:
+                raise Fail("typed lock fsync failure unexpectedly accepted")
+            finally:
+                writer.os.fsync = original_fsync
+            require(not lock.exists(), "typed lock fsync failure stranded lock")
+
             retry_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             os.close(retry_fd)
             lock.unlink()
             require(not lock.exists(), "typed non-resurrection lock retry cleanup failed")
-            print("PASS cleanup: close failure still unlinks typed non-resurrection lock and permits immediate reacquisition")
+            print("PASS cleanup: typed lock close, short-write and fsync failures permit immediate reacquisition")
         finally:
             writer.LOCK = original_lock
             writer.require_cli_authorities = original_require_cli_authorities
@@ -85,6 +114,7 @@ def prove_close_failure_releases_lock(writer) -> None:
             writer.validate_record = original_validate_record
             writer.os.write = original_write
             writer.os.close = original_close
+            writer.os.fsync = original_fsync
             sys.argv = original_argv
 
 
