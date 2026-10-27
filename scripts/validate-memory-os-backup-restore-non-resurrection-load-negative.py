@@ -1344,6 +1344,20 @@ def prove_typed_private_path_negative_reachability() -> None:
                       "exc.__suppress_context__", "typed admission module import unavailable"):
             require(token in import_body, "typed admission private import negative guard removed")
 
+        pinned_target = functions.get("prove_pinned_typed_admission_module_import")
+        require(pinned_target is not None, "typed admission pinned import race negative missing")
+        pinned_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "prove_pinned_typed_admission_module_import"]
+        require(len(pinned_calls) == 1, "typed admission pinned import race negative not executed exactly once")
+        pinned_body = ast.get_source_segment(candidate, pinned_target)
+        require(isinstance(pinned_body, str), "typed admission pinned import race body unavailable")
+        for token in ("validator.load_module(source", "parent.rename(parked)",
+                      "parent.symlink_to(redirected", "importlib.util.spec_from_file_location = swap_after_read",
+                      'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
+                      "PRIVATE_TYPED_MODULE_SWAP_CANARY", "importlib.util.spec_from_file_location = original_spec"):
+            require(token in pinned_body, "typed admission pinned import race guard removed")
+
         lock_target = functions.get("prove_private_typed_append_lock_metadata")
         require(lock_target is not None, "typed admission lock metadata negative missing")
         lock_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
@@ -1366,6 +1380,16 @@ def prove_typed_private_path_negative_reachability() -> None:
         ("import invocation", "main", "    prove_private_typed_admission_import_errors(validator)\n", "    pass\n"),
         ("import fault injection", "prove_private_typed_admission_import_errors", "            importlib.util.module_from_spec = private_import\n", "            pass\n"),
         ("import context assertion", "prove_private_typed_admission_import_errors", "exc.__suppress_context__", "False"),
+        ("pinned import invocation", "main",
+         "    prove_pinned_typed_admission_module_import(validator)\n", "    pass\n"),
+        ("pinned import swap", "prove_pinned_typed_admission_module_import",
+         "            importlib.util.spec_from_file_location = swap_after_read\n", "            pass\n"),
+        ("pinned import parent swap", "prove_pinned_typed_admission_module_import",
+         "                parent.symlink_to(redirected, target_is_directory=True)\n", "                pass\n"),
+        ("pinned import source assertion", "prove_pinned_typed_admission_module_import",
+         'loaded.VALUE == "pinned"', "False"),
+        ("pinned import canary", "prove_pinned_typed_admission_module_import",
+         '            require(canary.read_text(encoding="utf-8") ==\n', '            require(False and\n'),
         ("lock invocation", "main", "    prove_private_typed_append_lock_metadata(validator)\n", "    pass\n"),
         ("lock symlink fault", "prove_private_typed_append_lock_metadata", "                Path.is_symlink = fault\n", "                pass\n"),
         ("lock exists fault", "prove_private_typed_append_lock_metadata", "                Path.exists = fault\n", "                pass\n"),
