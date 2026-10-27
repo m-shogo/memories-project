@@ -258,6 +258,65 @@ def prove_atomic_write_failure(reconciler: object) -> None:
     print("PASS boundary: failed atomic recovery objective write preserves fixture bytes/mode and cleans temporary files")
 
 
+def prove_atomic_descriptor_cleanup(reconciler: object) -> None:
+    """fchmod/fdopen faults must close descriptors and unlink temporary files."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        before = path.read_bytes()
+        before_mode = file_mode(path)
+        original_mkstemp = reconciler.tempfile.mkstemp
+        original_fchmod = reconciler.os.fchmod
+        original_fdopen = reconciler.os.fdopen
+        marker = "PRIVATE_OBJECTIVE_RECONCILE_DESCRIPTOR_CANARY"
+        opened = []
+
+        def track_mkstemp(*args, **kwargs):
+            descriptor, name = original_mkstemp(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor, name
+
+        def reject(*_args, **_kwargs):
+            raise OSError(marker)
+
+        reconciler.tempfile.mkstemp = track_mkstemp
+        try:
+            for label in ("fchmod", "fdopen"):
+                opened.clear()
+                if label == "fchmod":
+                    reconciler.os.fchmod = reject
+                else:
+                    reconciler.os.fdopen = reject
+                try:
+                    reconciler.write_text(path, '{"synthetic":true}')
+                except reconciler.Fail as exc:
+                    require(str(exc) == "recovery objective reconcile authority atomic write failed"
+                            and exc.__suppress_context__ and marker not in str(exc),
+                            f"atomic descriptor {label} private failure drift")
+                else:
+                    raise Fail(f"atomic descriptor {label} failure unexpectedly accepted")
+                finally:
+                    reconciler.os.fchmod = original_fchmod
+                    reconciler.os.fdopen = original_fdopen
+                require(len(opened) == 1, f"atomic descriptor {label} fixture did not open exactly once")
+                for descriptor in opened:
+                    try:
+                        os.fstat(descriptor)
+                    except OSError:
+                        pass
+                    else:
+                        os.close(descriptor)
+                        raise Fail(f"atomic descriptor {label} remained open")
+                require(path.read_bytes() == before and file_mode(path) == before_mode,
+                        f"atomic descriptor {label} mutated authority fixture")
+                require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                        f"atomic descriptor {label} left temporary residue")
+        finally:
+            reconciler.tempfile.mkstemp = original_mkstemp
+            reconciler.os.fchmod = original_fchmod
+            reconciler.os.fdopen = original_fdopen
+    print("PASS: recovery objective reconciler fchmod/fdopen descriptor cleanup (2 negatives)")
+
+
 def prove_rollback_attempts_all_restores(reconciler: object) -> None:
     originals = {
         CONTRACT: "contract\n",
@@ -793,6 +852,7 @@ def main() -> int:
     prove_private_post_reconcile_transport(reconciler)
     prove_private_atomic_write_path_guards(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
+    prove_atomic_descriptor_cleanup(reconciler)
     with isolated_authorities(reconciler):
         prove_atomic_write_failure(reconciler)
     prove_rollback_attempts_all_restores(reconciler)
