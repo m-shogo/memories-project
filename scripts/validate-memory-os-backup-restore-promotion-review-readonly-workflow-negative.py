@@ -33,13 +33,13 @@ REQUIRED = (
 )
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"promotion-review readonly workflow source boundary drift: {label}")
     payload = source.encode("utf-8")
     blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
-    if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
+    if check_blob and hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
         raise SystemExit("readonly workflow complete Git source drift")
 
 
@@ -90,16 +90,26 @@ def main() -> int:
         ("removed PR self-trigger", "      - \x27scripts/validate-memory-os-backup-restore-promotion-review-readonly-workflow-negative.py\x27\n", ""),
         ("removed writer trigger", REQUIRED[17][1], ""),
     )
+    semantic_count = 0
+    blob_only_count = 0
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit(f"promotion-review readonly negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
+        if mutated == source:
+            raise SystemExit(f"promotion-review readonly mutation unchanged: {label}")
+        semantic = any(mutated.count(token) != source.count(token)
+                       for _, token, _ in REQUIRED)
+        semantic_count += int(semantic)
+        blob_only_count += int(not semantic)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=not semantic)
         except SystemExit:
             continue
         raise SystemExit(f"promotion-review readonly accepted forbidden mutation: {label}")
-    print(f"PASS: promotion-review readonly workflow source admission ({len(cases)} negatives)")
+    if (semantic_count, blob_only_count) != (len(cases) - 2, 2):
+        raise SystemExit("promotion-review readonly semantic/blob mutation coverage drift")
+    print(f"PASS: promotion-review readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
 
 
