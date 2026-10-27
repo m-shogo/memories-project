@@ -412,6 +412,62 @@ def exercise_registry_transaction_transport() -> None:
         assert_no_registry_temp_residue(parent)
 
 
+def exercise_writer_snapshot_transport() -> None:
+    """Reject unsafe registry snapshots without touching canonical authority."""
+    writer = load_module(WRITER, "memory_os_typed_snapshot_transport_negative")
+    base = {
+        "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
+        "appendOnly": True, "registeredRecordCount": 0, "completeRecordCount": 0,
+        "candidateCoveredCount": 0, "records": [], "productionEvidence": False,
+        "productionReady": False,
+    }
+    with guarded_temporary_directory(".memory-os-nonres-snapshot-negative-", TEMP_PARENT) as tmp:
+        parent = Path(tmp)
+        registry = parent / "registry.json"
+        registry.write_text(json.dumps(base) + "\n", encoding="utf-8")
+        registry.chmod(0o640)
+        writer.REGISTRY = registry
+        original = registry.read_bytes()
+        require(writer.snapshot_registry_for_append() == (original, 0o640),
+                "typed registry pinned snapshot positive control failed")
+
+        registry.write_bytes(b"x" * (writer.MAX_JSON_BYTES + 1))
+        try:
+            writer.snapshot_registry_for_append()
+        except writer.Fail as exc:
+            require(str(exc) == "typed non-resurrection registry snapshot size limit exceeded",
+                    "typed oversized registry rejected at wrong boundary")
+        else:
+            raise Fail("typed oversized registry snapshot unexpectedly accepted")
+        registry.write_bytes(original)
+
+        external = parent / "canary.json"
+        external.write_bytes(b"PRIVATE_TYPED_SNAPSHOT_CANARY")
+        alias = parent / "registry-alias.json"
+        alias.symlink_to(external)
+        writer.REGISTRY = alias
+        expect_rejected("typed snapshot symlink", writer.snapshot_registry_for_append, writer.Fail)
+        require(external.read_bytes() == b"PRIVATE_TYPED_SNAPSHOT_CANARY",
+                "typed snapshot symlink mutated external canary")
+
+        fifo = parent / "registry-fifo.json"
+        os.mkfifo(fifo)
+        writer.REGISTRY = fifo
+        try:
+            writer.snapshot_registry_for_append()
+        except writer.Fail as exc:
+            require(str(exc) == "typed non-resurrection registry snapshot path unsafe",
+                    "typed snapshot FIFO rejected at wrong boundary")
+        else:
+            raise Fail("typed registry FIFO snapshot unexpectedly accepted")
+        writer.REGISTRY = registry
+        require(writer.snapshot_registry_for_append() == (original, 0o640),
+                "typed registry pinned snapshot positive control changed")
+        require(registry.read_bytes() == original, "typed registry snapshot mutated fixture")
+        assert_no_registry_temp_residue(parent)
+    print("PASS reject: typed registry pinned bounded snapshot, symlink and FIFO")
+
+
 def exercise_reconciler_transaction_transport() -> None:
     require(RECONCILER.is_file() and not RECONCILER.is_symlink(), "canonical typed reconciler missing or symlinked")
     reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_transport_negative")
@@ -1554,6 +1610,7 @@ def main() -> int:
         validator.enforce_execution_transport = original_guard
 
     exercise_registry_transaction_transport()
+    exercise_writer_snapshot_transport()
     exercise_reconciler_transaction_transport()
     prove_typed_transport_fixture_parent_guard()
 

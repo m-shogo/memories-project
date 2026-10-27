@@ -453,12 +453,34 @@ def atomic_restore(payload: bytes, mode: int) -> None:
         except FileNotFoundError:
             pass
 
-def write_registry_transactionally(value: dict[str, Any]) -> None:
+def snapshot_registry_for_append() -> tuple[bytes, int]:
+    """Pin registry bytes and mode to the same bounded regular-file descriptor."""
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "typed non-resurrection registry snapshot safe open unavailable")
+    fd = -1
     try:
-        original = REGISTRY.read_bytes()
-        original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
-    except OSError as exc:
-        raise Fail("cannot snapshot typed non-resurrection registry before append") from exc
+        fd = os.open(REGISTRY, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(fd)
+        require(stat.S_ISREG(metadata.st_mode),
+                "typed non-resurrection registry snapshot path unsafe")
+        with os.fdopen(fd, "rb") as source:
+            fd = -1
+            original = source.read(MAX_JSON_BYTES + 1)
+    except OSError:
+        raise Fail("cannot snapshot typed non-resurrection registry before append") from None
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                raise Fail("typed non-resurrection registry snapshot descriptor cleanup failed") from None
+    require(len(original) <= MAX_JSON_BYTES,
+            "typed non-resurrection registry snapshot size limit exceeded")
+    return original, stat.S_IMODE(metadata.st_mode)
+
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    original, original_mode = snapshot_registry_for_append()
     atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
