@@ -1069,6 +1069,35 @@ except (Exception, SystemExit):
     raise Fail("fixture guard pinned descriptor cleanup failed") from None
 """).body[0]
     setup_try = read_try.body[-3]
+    expected_spec_assignment = ast.parse(
+        'spec = importlib.util.spec_from_file_location(name, path, loader=PinnedSourceLoader(name, str(path)))'
+    ).body[0]
+    expected_module_assignment = ast.parse(
+        'module = importlib.util.module_from_spec(spec)'
+    ).body[0]
+    expected_setup_condition = ast.parse(
+        'spec is not None and spec.loader is not None', mode='eval'
+    ).body
+    require(
+        isinstance(setup_try, ast.Try)
+        and len(setup_try.body) == 3
+        and ast.dump(setup_try.body[0], include_attributes=False)
+            == ast.dump(expected_spec_assignment, include_attributes=False)
+        and ast.dump(setup_try.body[2], include_attributes=False)
+            == ast.dump(expected_module_assignment, include_attributes=False)
+        and isinstance(setup_try.body[1], ast.Expr)
+        and isinstance(setup_try.body[1].value, ast.Call)
+        and isinstance(setup_try.body[1].value.func, ast.Name)
+        and setup_try.body[1].value.func.id == "require"
+        and len(setup_try.body[1].value.args) == 2
+        and not setup_try.body[1].value.keywords
+        and ast.dump(setup_try.body[1].value.args[0], include_attributes=False)
+            == ast.dump(expected_setup_condition, include_attributes=False)
+        and isinstance(setup_try.body[1].value.args[1], ast.Constant)
+        and isinstance(setup_try.body[1].value.args[1].value, str)
+        and setup_try.body[1].value.args[1].value.endswith("fixture guard cannot load"),
+        "loader module setup binding drift",
+    )
     expected_setup_handlers = ast.parse("""try:
     pass
 except Fail:
@@ -1369,6 +1398,34 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ("            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module setup failed\") from None\n",
          "            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module setup failed\") from None\n",
          "loader module setup failure not private"),
+    )
+    setup_start = (
+        "                spec = importlib.util.spec_from_file_location("
+        "name, path, loader=PinnedSourceLoader(name, str(path)))\n"
+    )
+    setup_end = "                module = importlib.util.module_from_spec(spec)\n"
+    require(source.count(setup_start) == 1,
+            "loader module setup binding drift")
+    setup_tail = source.split(setup_start, 1)[1]
+    require(setup_end in setup_tail,
+            "loader module setup binding drift")
+    setup_anchor = setup_start + setup_tail.split(setup_end, 1)[0] + setup_end
+    require(setup_anchor.count(
+        "                require(spec is not None and spec.loader is not None,") == 1,
+        "loader module setup binding drift")
+    replacements += (
+        (setup_anchor, setup_anchor.replace(
+            "spec_from_file_location(name, path, loader=",
+            'spec_from_file_location("synthetic_wrong_name", path, loader='),
+         "loader module setup binding drift"),
+        (setup_anchor, setup_anchor.replace(
+            "require(spec is not None and spec.loader is not None,",
+            "require(True,"),
+         "loader module setup binding drift"),
+        (setup_anchor, setup_anchor.replace(
+            "module = importlib.util.module_from_spec(spec)",
+            "module = object()"),
+         "loader module setup binding drift"),
     )
     count = 0
     for original, mutation, expected in replacements:
@@ -2522,7 +2579,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 67 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 70 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
