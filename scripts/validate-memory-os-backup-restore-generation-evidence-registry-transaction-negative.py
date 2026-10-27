@@ -265,14 +265,89 @@ def main() -> int:
             writer.os.replace = reject_replace
             try:
                 writer.write_registry_transactionally(candidate_value)
-            except OSError as exc:
-                require("synthetic generation evidence replace rejection" in str(exc), "replace rejection failed at wrong boundary")
+            except writer.Fail as exc:
+                require(str(exc) == "generation evidence registry atomic write failed"
+                        and exc.__suppress_context__,
+                        "generation evidence replace rejection leaked private details")
             else:
                 raise Fail("generation evidence candidate replace rejection unexpectedly accepted")
             require(registry.read_bytes() == original_bytes, "replace rejection changed generation evidence registry bytes")
             require(mode(registry) == original_mode, "replace rejection changed generation evidence registry mode")
             require(not residue(directory), "replace rejection left generation evidence temp residue")
             print("PASS preserve: replace rejection left generation evidence bytes and mode unchanged")
+            writer.os.replace = original_replace
+
+            def expect_private(label: str, action, expected: str) -> None:
+                try:
+                    action()
+                except writer.Fail as exc:
+                    require(str(exc) == expected and exc.__suppress_context__,
+                            f"{label} leaked raw error or wrong failure class")
+                    require("PRIVATE_GENERATION_ATOMIC_CANARY" not in str(exc),
+                            f"{label} leaked private canary")
+                else:
+                    raise Fail(f"{label} unexpectedly accepted")
+                require(registry.read_bytes() == original_bytes and mode(registry) == original_mode,
+                        f"{label} changed registry bytes or mode")
+                require(not residue(directory), f"{label} left temporary file residue")
+                print(f"PASS reject: {label}")
+
+            original_mkstemp = writer.tempfile.mkstemp
+            def reject_mkstemp(*_args, **_kwargs):
+                raise OSError("PRIVATE_GENERATION_ATOMIC_CANARY mkstemp")
+            writer.tempfile.mkstemp = reject_mkstemp
+            try:
+                expect_private("generation atomic mkstemp failure",
+                               lambda: writer.atomic_write(candidate_value, original_mode),
+                               "generation evidence registry atomic write failed")
+            finally:
+                writer.tempfile.mkstemp = original_mkstemp
+
+            original_fdopen = writer.os.fdopen
+            captured_fd: int | None = None
+            def capture_mkstemp(*args, **kwargs):
+                nonlocal captured_fd
+                captured_fd, name = original_mkstemp(*args, **kwargs)
+                return captured_fd, name
+            def reject_fdopen(*_args, **_kwargs):
+                raise OSError("PRIVATE_GENERATION_ATOMIC_CANARY fdopen")
+            writer.tempfile.mkstemp = capture_mkstemp
+            writer.os.fdopen = reject_fdopen
+            try:
+                expect_private("generation atomic fdopen failure",
+                               lambda: writer.atomic_write(candidate_value, original_mode),
+                               "generation evidence registry atomic write failed")
+            finally:
+                writer.os.fdopen = original_fdopen
+                writer.tempfile.mkstemp = original_mkstemp
+            require(captured_fd is not None, "generation fdopen negative did not create descriptor")
+            try:
+                os.fstat(captured_fd)
+            except OSError:
+                pass
+            else:
+                raise Fail("generation fdopen failure leaked descriptor")
+
+            original_fchmod = writer.os.fchmod
+            def reject_fchmod(*_args, **_kwargs):
+                raise OSError("PRIVATE_GENERATION_ATOMIC_CANARY fchmod")
+            writer.os.fchmod = reject_fchmod
+            try:
+                expect_private("generation atomic fchmod failure",
+                               lambda: writer.atomic_write(candidate_value, original_mode),
+                               "generation evidence registry atomic write failed")
+            finally:
+                writer.os.fchmod = original_fchmod
+
+            def reject_restore_replace(*_args, **_kwargs):
+                raise OSError("PRIVATE_GENERATION_ATOMIC_CANARY restore replace")
+            writer.os.replace = reject_restore_replace
+            try:
+                expect_private("generation atomic restore replace failure",
+                               lambda: writer.atomic_restore(original_bytes, original_mode),
+                               "generation evidence registry atomic restore failed")
+            finally:
+                writer.os.replace = original_replace
         finally:
             writer.os.replace = original_replace
             writer.REGISTRY = original_registry
