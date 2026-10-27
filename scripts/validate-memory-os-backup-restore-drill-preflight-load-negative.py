@@ -748,6 +748,30 @@ def prove_preflight_reconcile_descriptor_faults(reconciler: object) -> None:
     print("PASS: preflight reconcile close/fdopen private faults close all descriptors")
 
 
+def prove_preflight_reconcile_platform_flags(reconciler: object) -> None:
+    with guarded_temporary_directory(".tmp-preflight-reconcile-flags-", TMP_PARENT) as raw:
+        path = Path(raw) / "positive.json"
+        path.write_bytes(b'{"safe":true}')
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original = getattr(os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(os, flag, invalid)
+                    try:
+                        reconciler.read_text(path)
+                    except reconciler.Fail as exc:
+                        require(str(exc) == "preflight reconcile authority nofollow support required"
+                                and exc.__suppress_context__ and exc.__cause__ is None,
+                                f"preflight reconcile {flag} unsafe platform class drift")
+                    else:
+                        raise Fail(f"preflight reconcile accepted unsafe {flag}")
+            finally:
+                setattr(os, flag, original)
+        require(reconciler.read_text(path) == '{"safe":true}',
+                "preflight reconcile platform flag restoration positive failed")
+    print("PASS: preflight reconcile None/zero safety flags rejected")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -763,6 +787,7 @@ def main() -> int:
     prove_preflight_reconcile_pinned_reader(reconciler)
     prove_preflight_reconcile_strict_json(reconciler)
     prove_preflight_reconcile_descriptor_faults(reconciler)
+    prove_preflight_reconcile_platform_flags(reconciler)
 
     prove_data_and_executable_authority_rejection(reconciler)
     prove_post_reconcile_output_suppression(reconciler)
