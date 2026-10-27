@@ -252,7 +252,7 @@ def approval_document(ref: str, record: dict[str, Any], approved_at: datetime) -
     require(document.get("schemaVersion") == APPROVAL_SCHEMA, "approval evidence schemaVersion drift")
     require(document.get("decision") == "APPROVED", "approval evidence decision must be APPROVED")
     role = document.get("reviewRole")
-    require(role in APPROVAL_ROLES, "approval evidence reviewRole invalid")
+    require(isinstance(role, str) and role in APPROVAL_ROLES, "approval evidence reviewRole invalid")
     reviewer = document.get("reviewerPseudonym")
     require(isinstance(reviewer, str), "approval evidence reviewerPseudonym required")
     canonical_reviewer = reviewer.strip()
@@ -268,6 +268,7 @@ def approval_document(ref: str, record: dict[str, Any], approved_at: datetime) -
 
 def evidence_refs(value: Any, record: dict[str, Any], approved_at: datetime) -> list[str]:
     require(isinstance(value, list) and len(value) == 2, "exactly two typed approvalEvidenceRefs required")
+    require(all(isinstance(ref, str) and ref for ref in value), "approvalEvidenceRefs must be non-empty strings")
     require(len(value) == len(set(value)), "approvalEvidenceRefs must be distinct")
     refs = [approval_ref(ref) for ref in value]
     approvals = [approval_document(ref, record, approved_at) for ref in refs]
