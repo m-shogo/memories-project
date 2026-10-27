@@ -154,12 +154,54 @@ def prove_generation_json_parent_swap_negative_removal_rejected() -> None:
     print("PASS: generation recovery JSON ancestor swap negative deletion rejected")
 
 
+def require_generation_json_descriptor_fault_negative_reachable(code: str) -> None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise SystemExit("generation recovery JSON descriptor fault negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target = functions.get("prove_generation_evidence_json_reader")
+    if target is None:
+        raise SystemExit("generation recovery JSON descriptor fault negative missing")
+    nested = {node.name for node in ast.walk(target) if isinstance(node, ast.FunctionDef)}
+    if not {"close_then_fail", "fdopen_then_fail"}.issubset(nested):
+        raise SystemExit("generation recovery JSON descriptor fault injection missing")
+    injections = {node.value.id for node in ast.walk(target)
+                  if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
+                  and any(isinstance(entry, ast.Attribute) and entry.attr in {"close", "fdopen"}
+                          for entry in node.targets)}
+    if not {"close_then_fail", "fdopen_then_fail"}.issubset(injections):
+        raise SystemExit("generation recovery JSON descriptor fault injection unreachable")
+    messages = {node.value for node in ast.walk(target)
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if not {"generation recovery JSON cleanup failed", "generation recovery JSON unreadable or invalid"}.issubset(messages):
+        raise SystemExit("generation recovery JSON descriptor fault classifications missing")
+
+
+def prove_generation_json_descriptor_fault_negative_deletion_rejected() -> None:
+    code = LOAD_NEGATIVE.read_text(encoding="utf-8")
+    require_generation_json_descriptor_fault_negative_reachable(code)
+    start = '        # A directory close error must not silently certify an unsafe read.\n'
+    end = '        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):\n'
+    if code.count(start) != 1 or code.count(end) != 1:
+        raise SystemExit("generation recovery JSON descriptor fault deletion anchor drift")
+    mutated = code[:code.index(start)] + code[code.index(end, code.index(start)):]
+    try:
+        require_generation_json_descriptor_fault_negative_reachable(mutated)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation recovery JSON descriptor fault negative deletion accepted")
+    print("PASS: generation recovery JSON descriptor fault negative deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
     prove_generation_json_negative_removal_rejected()
     prove_generation_json_parent_swap_negative_removal_rejected()
+    prove_generation_json_descriptor_fault_negative_deletion_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
