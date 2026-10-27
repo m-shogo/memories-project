@@ -40,6 +40,70 @@ def generation_temp_files(path: Path) -> list[Path]:
     return list(path.parent.glob(".environment-generation*.tmp"))
 
 
+def prove_bounded_registry_snapshot(writer) -> None:
+    """Reject oversized and unsafe registry nodes before any atomic candidate write."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-snapshot-") as tmp:
+        parent = Path(tmp)
+        registry = parent / "generation-registry.v1.json"
+        original = b'{"sentinel":"before"}\\n'
+        registry.write_bytes(original)
+        registry.chmod(0o640)
+        original_registry = writer.REGISTRY
+        try:
+            writer.REGISTRY = registry
+            require(writer.snapshot_registry_for_append() == (original, 0o640),
+                    "environment generation pinned snapshot positive control failed")
+            registry.write_bytes(b"x" * (writer.MAX_JSON_BYTES + 1))
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail as exc:
+                require(str(exc) == "environment generation registry snapshot size limit exceeded",
+                        "environment generation oversized snapshot wrong failure class")
+            else:
+                raise Fail("environment generation oversized snapshot accepted")
+            registry.write_bytes(original)
+
+            external = parent / "external-canary.json"
+            external.write_bytes(b"PRIVATE_GENERATION_SNAPSHOT_CANARY")
+            alias = parent / "registry-alias.json"
+            alias.symlink_to(external)
+            writer.REGISTRY = alias
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail:
+                pass
+            else:
+                raise Fail("environment generation symlinked snapshot accepted")
+            require(external.read_bytes() == b"PRIVATE_GENERATION_SNAPSHOT_CANARY",
+                    "environment generation symlink snapshot changed canary")
+
+            fifo = parent / "registry-fifo.json"
+            os.mkfifo(fifo)
+            writer.REGISTRY = fifo
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail as exc:
+                require(str(exc) == "environment generation registry snapshot path unsafe",
+                        "environment generation FIFO snapshot wrong failure class")
+            else:
+                raise Fail("environment generation FIFO snapshot accepted")
+
+            writer.REGISTRY = parent
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail as exc:
+                require(str(exc) == "environment generation registry snapshot path unsafe",
+                        "environment generation directory snapshot wrong failure class")
+            else:
+                raise Fail("environment generation directory snapshot accepted")
+            writer.REGISTRY = registry
+            require(writer.snapshot_registry_for_append() == (original, 0o640),
+                    "environment generation snapshot positive control changed")
+        finally:
+            writer.REGISTRY = original_registry
+    print("PASS reject: bounded pinned generation snapshot rejects oversized, symlink, FIFO and directory")
+
+
 def prove_successful_atomic_write_preserves_mode(writer) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-append-mode-") as tmp:
         registry = Path(tmp) / "generation-registry.v1.json"
@@ -334,6 +398,7 @@ def main() -> int:
     require(callable(getattr(writer, "write_registry_transactionally", None)), "transactional generation registry writer missing")
     require(callable(getattr(writer, "atomic_write", None)), "atomic generation registry writer missing")
 
+    prove_bounded_registry_snapshot(writer)
     prove_successful_atomic_write_preserves_mode(writer)
     prove_atomic_replace_rejection_preserves_registry(writer)
     prove_short_restore_write_rejected(writer)
