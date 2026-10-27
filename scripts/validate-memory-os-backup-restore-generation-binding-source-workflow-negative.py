@@ -86,7 +86,7 @@ def source(relative: str) -> str:
         raise SystemExit("generation binding CI source missing or substituted: " + relative) from exc
 
 
-def validate(publisher: str, independent: str) -> None:
+def validate(publisher: str, independent: str, *, check_blob: bool = True) -> None:
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -96,7 +96,7 @@ def validate(publisher: str, independent: str) -> None:
                 raise SystemExit("generation binding " + name + " source drift: " + label)
         data = content.encode("utf-8")
         blob = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
-        if hashlib.sha1(blob).hexdigest() != digest:
+        if check_blob and hashlib.sha1(blob).hexdigest() != digest:
             raise SystemExit("generation binding " + name + " complete source drift")
 
 
@@ -264,6 +264,8 @@ def negatives(publisher: str, independent: str) -> None:
         ("injected Action", "      - name: Prove generation binding source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove generation binding source admission\n"),
         ("injected shell", "      - name: Prove generation binding source admission\n", "      - run: echo unreviewed\n      - name: Prove generation binding source admission\n"),
     )
+    semantic_counts = {"publisher": 0, "independent": 0}
+    blob_counts = {"publisher": 0, "independent": 0}
     for target, cases in (("publisher", publisher_cases), ("independent", independent_cases)):
         for label, old, new in cases:
             original = publisher if target == "publisher" else independent
@@ -272,12 +274,20 @@ def negatives(publisher: str, independent: str) -> None:
             mutated = original.replace(old, new, 1)
             if mutated == original:
                 raise SystemExit("generation binding negative fixture unchanged: " + target + " " + label)
+            required = MAIN_REQUIRED if target == "publisher" else INDEPENDENT_REQUIRED
+            # Anchor-changing mutations must fail the REQUIRED guard without a blob shortcut.
+            semantic = any(mutated.count(token) != original.count(token)
+                           for _, token, _ in required)
+            counts = semantic_counts if semantic else blob_counts
+            counts[target] += 1
             try:
-                validate(mutated, independent) if target == "publisher" else validate(publisher, mutated)
+                validate(mutated, independent, check_blob=not semantic) if target == "publisher" else validate(publisher, mutated, check_blob=not semantic)
             except SystemExit:
                 continue
             raise SystemExit("generation binding accepted source mutation: " + target + " " + label)
-    print(f"PASS: generation binding publisher source admission ({len(publisher_cases)} negatives), independent source admission ({len(independent_cases)} negatives)")
+    if semantic_counts["publisher"] < 15 or semantic_counts["independent"] < 9 or not all(blob_counts.values()):
+        raise SystemExit("generation binding semantic/blob mutation coverage drift")
+    print(f"PASS: generation binding source mutations: publisher {semantic_counts['publisher']} semantic + {blob_counts['publisher']} blob-only; independent {semantic_counts['independent']} semantic + {blob_counts['independent']} blob-only")
 
 
 
