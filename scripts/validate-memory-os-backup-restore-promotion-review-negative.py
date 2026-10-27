@@ -695,6 +695,39 @@ def main() -> int:
             require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")),
                     "promotion registry fsync failure left temporary residue")
 
+            original_atomic_write = writer.atomic_write
+            original_path_read_bytes = Path.read_bytes
+
+            def overwrite_oversize_then_fail(_value, _mode):
+                temp_registry.write_bytes(b"Z" * (writer.MAX_JSON_BYTES + 1))
+                raise OSError(private_marker)
+
+            def forbid_unbounded_registry_reread(path):
+                if path == temp_registry:
+                    raise AssertionError("unbounded registry rollback comparison read")
+                return original_path_read_bytes(path)
+
+            writer.atomic_write = overwrite_oversize_then_fail
+            Path.read_bytes = forbid_unbounded_registry_reread
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == "promotion review registry atomic write failed; rollback completed"
+                        and exc.__suppress_context__ and private_marker not in str(exc),
+                        "promotion oversized failed-write rollback disclosed private diagnostics")
+                print("PASS rollback: oversized failed-write registry comparison is bounded")
+            else:
+                raise Fail("promotion oversized failed-write rollback unexpectedly accepted")
+            finally:
+                Path.read_bytes = original_path_read_bytes
+                writer.atomic_write = original_atomic_write
+            require(temp_registry.read_bytes() == before,
+                    "promotion oversized failed-write rollback did not restore original")
+            require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode,
+                    "promotion oversized failed-write rollback changed mode")
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")),
+                    "promotion oversized failed-write rollback left temporary residue")
+
             original_unlink = writer.os.unlink
             def reject_post_replace_cleanup(path, *args, **kwargs):
                 if ".backup-restore-promotion-review." in str(path) and str(path).endswith(".tmp"):

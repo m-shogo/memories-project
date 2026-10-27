@@ -475,9 +475,15 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
         atomic_write(value, original_mode)
     except Exception:
         try:
-            unchanged = (REGISTRY.read_bytes() == original
-                         and stat.S_IMODE(REGISTRY.stat().st_mode) == original_mode)
-        except OSError:
+            resolved = REGISTRY.resolve(strict=True)
+            if resolved != REGISTRY or not REGISTRY.is_file() or REGISTRY.is_symlink():
+                unchanged = False
+            else:
+                with REGISTRY.open("rb") as source:
+                    current = source.read(MAX_JSON_BYTES + 1)
+                unchanged = (len(current) <= MAX_JSON_BYTES and current == original
+                             and stat.S_IMODE(REGISTRY.stat().st_mode) == original_mode)
+        except (OSError, RuntimeError, ValueError):
             unchanged = False
         if unchanged:
             raise Fail("promotion review registry atomic write failed; original preserved") from None
