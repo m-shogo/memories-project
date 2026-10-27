@@ -669,6 +669,68 @@ def prove_typed_reconcile_child_negative_removal_rejected() -> None:
     print("PASS: typed reconcile child privacy/timeout negative deletion rejected")
 
 
+def require_reconcile_private_path_negative_reachable(source: str, function_name: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("reconcile private path negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target, main = functions.get(function_name), functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("reconcile private path negative missing")
+    invocations = [node for node in ast.walk(main)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id == function_name]
+    if len(invocations) != 1:
+        raise SystemExit("reconcile private path negative invocation drift")
+    nested = {node.name for node in ast.walk(target) if isinstance(node, ast.FunctionDef)}
+    if not {"fail_private_resolve", "fail_private_import", "require_private_fail"}.issubset(nested):
+        raise SystemExit("reconcile private path negative fault functions missing")
+    assignments = {(item.attr, node.value.id)
+                   for node in ast.walk(target) if isinstance(node, ast.Assign)
+                   and isinstance(node.value, ast.Name)
+                   for item in node.targets if isinstance(item, ast.Attribute)}
+    if not {("resolve", "fail_private_resolve"),
+            ("module_from_spec", "fail_private_import")}.issubset(assignments):
+        raise SystemExit("reconcile private path/import fault injection not applied")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if "SYNTHETIC_PRIVATE_PATH_CANARY" not in strings:
+        raise SystemExit("reconcile private path canary missing")
+
+
+def prove_reconcile_private_path_negative_removal_rejected() -> None:
+    for relative, function_name, invocation in (
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py",
+         "prove_preflight_reconcile_private_path_diagnostics",
+         "    prove_preflight_reconcile_private_path_diagnostics(reconciler)\n"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_reconcile_private_path_diagnostics",
+         "    prove_typed_reconcile_private_path_diagnostics()\n"),
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        require_reconcile_private_path_negative_reachable(source, function_name)
+        for label, anchor, replacement in (
+            ("invocation", invocation, "    pass\n"),
+            ("path injection", "        Path.resolve = fail_private_resolve\n", "        pass\n"),
+            ("import injection", "        reconciler.importlib.util.module_from_spec = fail_private_import\n",
+             "        pass\n"),
+        ):
+            if label == "invocation":
+                if source.count(anchor) != 1:
+                    raise SystemExit("reconcile private path invocation anchor drift")
+                mutated = source.replace(anchor, replacement, 1)
+            else:
+                mutated = mutate_named_function(source, function_name, anchor, replacement)
+            try:
+                require_reconcile_private_path_negative_reachable(mutated, function_name)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("reconcile private path negative deletion accepted: " + label)
+    print("PASS: preflight and typed reconcile private path/import negative deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -683,6 +745,7 @@ def main() -> int:
     prove_reconcile_strict_json_negative_removal_rejected()
     prove_reconcile_writer_negative_removal_rejected()
     prove_typed_reconcile_child_negative_removal_rejected()
+    prove_reconcile_private_path_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
