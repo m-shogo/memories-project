@@ -803,11 +803,19 @@ def main() -> int:
 
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError as exc:
-        raise Fail("backup/restore generation evidence registry lock already exists") from exc
+    except FileExistsError:
+        raise Fail("backup/restore generation evidence registry lock already exists") from None
+    except OSError:
+        raise Fail("generation evidence registry lock acquisition failed") from None
     try:
-        os.write(lock_fd, (record["evidenceId"] + "\n").encode("ascii"))
-        os.fsync(lock_fd)
+        lock_payload = (record["evidenceId"] + "\n").encode("ascii")
+        try:
+            written = os.write(lock_fd, lock_payload)
+            require(type(written) is int and written == len(lock_payload),
+                    "generation evidence registry lock initialization failed")
+            os.fsync(lock_fd)
+        except OSError:
+            raise Fail("generation evidence registry lock initialization failed") from None
         registry = load(REGISTRY)
         rows = validate_registry_for_append(registry)
         require(all(row.get("evidenceId") != record["evidenceId"] for row in rows), "evidenceId already registered")
@@ -831,13 +839,19 @@ def main() -> int:
         ]
         write_registry_transactionally(registry)
     finally:
+        cleanup_failed = False
         try:
             os.close(lock_fd)
-        finally:
-            try:
-                LOCK.unlink()
-            except FileNotFoundError:
-                pass
+        except OSError:
+            cleanup_failed = True
+        try:
+            LOCK.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("generation evidence registry lock cleanup failed") from None
 
     print(f"Registered generation-bound backup/restore evidence: {record['evidenceId']}")
     print(f"drill request bound: {record['drillRequestId']}")
