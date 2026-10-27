@@ -2199,6 +2199,43 @@ def prove_ancestor_pr_head_negative(source: str) -> int:
             f"ancestor PR head runtime positive control failed: {result.stderr}")
     return 4
 
+
+def prove_compilation_failure_runtime(filename: str) -> None:
+    """Run the actual canonical pinned loader on valid and malformed fixtures."""
+    script = """
+import runpy
+import sys
+import tempfile
+from pathlib import Path
+
+namespace = runpy.run_path(sys.argv[1], run_name="__pinned_fixture_compile_probe__")
+loader = namespace.get("load_pinned_fixture_guard") or namespace.get("load_pinned_fixture_helper")
+assert callable(loader)
+Fail = namespace["Fail"]
+with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2]) as raw:
+    parent = Path(raw)
+    good = parent / "valid.py"
+    good.write_text("VALUE = 7" + chr(10), encoding="utf-8")
+    assert loader(good, "pinned_fixture_positive").VALUE == 7
+    malformed = parent / "malformed.py"
+    malformed.write_text("def broken(" + chr(10) + "PRIVATE_COMPILE_CANARY = 1" + chr(10), encoding="utf-8")
+    try:
+        loader(malformed, "pinned_fixture_negative")
+    except Fail as exc:
+        assert str(exc) == "fixture guard pinned source compilation failed"
+        assert exc.__cause__ is None and exc.__suppress_context__
+        assert "PRIVATE_COMPILE_CANARY" not in str(exc)
+    else:
+        raise AssertionError("malformed helper was executed")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(ROOT / "scripts" / filename), str(ROOT)],
+        cwd=ROOT, capture_output=True, text=True, timeout=15, check=False,
+    )
+    require(result.returncode == 0,
+            f"pinned helper compilation runtime negative failed: {filename}")
+
+
 def main() -> int:
     workflow_source = (
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
@@ -2213,6 +2250,7 @@ def main() -> int:
     for filename, diagnostic in TARGETS.items():
         source = (ROOT / "scripts" / filename).read_text(encoding="utf-8")
         validate_source(source, diagnostic)
+        prove_compilation_failure_runtime(filename)
         if "--negative" in sys.argv[1:]:
             total += negative_cases(source, diagnostic)
     if "--negative" in sys.argv[1:]:
