@@ -777,12 +777,12 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
     atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
-    except Exception as exc:
+    except Exception:
         try:
             atomic_restore(original, original_mode)
-        except Exception as rollback_exc:
-            raise Fail(f"{exc}; rollback incomplete: {rollback_exc}") from exc
-        raise
+        except Exception:
+            raise Fail("generation evidence append failed; rollback incomplete") from None
+        raise Fail("generation evidence append failed; rollback completed") from None
 
 
 def main() -> int:
