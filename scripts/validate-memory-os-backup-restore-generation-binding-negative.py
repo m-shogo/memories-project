@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import importlib.machinery
 import importlib.util
 import os
 import stat
@@ -29,12 +30,153 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+MAX_TARGET_MODULE_BYTES = 1024 * 1024
+
+
 def load_target(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    """Execute bounded repository source captured from checked directory/leaf FDs."""
+    try:
+        relative = path.relative_to(ROOT)
+        require(path.resolve(strict=True) == ROOT.resolve() / relative,
+                "generation binding target import rejected")
+        checked = path.lstat()
+        require(stat.S_ISREG(checked.st_mode), "generation binding target import rejected")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                "generation binding target import rejected")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(relative.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    "generation binding target import rejected")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_TARGET_MODULE_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            require(not cleanup_failed, "generation binding target import rejected")
+        require(len(source) <= MAX_TARGET_MODULE_BYTES,
+                "generation binding target import rejected")
+
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == name, "generation binding target import rejected")
+                return compile(source, str(path), "exec")
+
+        spec = importlib.util.spec_from_file_location(
+            name, path, loader=PinnedSourceLoader(name, str(path)))
+        require(spec is not None and spec.loader is not None,
+                "generation binding target import rejected")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("generation binding target import rejected") from None
     return module
+
+
+def prove_pinned_target_import() -> None:
+    """An after-capture parent substitution cannot redirect executable bytes."""
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".generation-binding-target-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "module.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "module.py"
+        source.write_text("VALUE = 'pinned'\\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_GENERATION_BINDING_TARGET_CANARY')\\n",
+                          encoding="utf-8")
+        swapped = False
+        try:
+            require(load_target(source, "binding_target_positive").VALUE == "pinned",
+                    "generation binding target positive import failed")
+
+            def swap_after_read(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = load_target(source, "binding_target_parent_swap")
+            require(swapped and loaded.VALUE == "pinned",
+                    "generation binding target import executed redirected source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_GENERATION_BINDING_TARGET_CANARY')\\n",
+                    "generation binding target import changed external canary")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    require(callable(getattr(load_target(VALIDATOR, "binding_target_restored"), "main", None)),
+            "generation binding target canonical restoration failed")
+    print("PASS: generation binding target import uses pinned source after parent swap")
+
+
+def prove_target_import_unsafe_sources() -> None:
+    """Oversized source, symlink, FIFO and unsupported flags are fail-closed."""
+    with tempfile.TemporaryDirectory(prefix=".generation-binding-target-unsafe-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        good = sandbox / "good.py"
+        good.write_text("VALUE = 'safe'\\n", encoding="utf-8")
+        oversized = sandbox / "oversized.py"
+        oversized.write_bytes(b"x" * (MAX_TARGET_MODULE_BYTES + 1))
+        linked = sandbox / "linked.py"
+        linked.symlink_to(good.name)
+        fifo = sandbox / "pipe.py"
+        os.mkfifo(fifo)
+        for candidate in (oversized, linked, fifo):
+            try:
+                load_target(candidate, "binding_target_unsafe")
+            except Fail as exc:
+                require(str(exc) == "generation binding target import rejected"
+                        and exc.__suppress_context__,
+                        "generation binding target unsafe source leaked private diagnostics")
+            else:
+                raise Fail("generation binding target accepted unsafe source")
+        original_flag = os.O_NONBLOCK
+        try:
+            os.O_NONBLOCK = 0
+            try:
+                load_target(good, "binding_target_unsupported_flag")
+            except Fail as exc:
+                require(str(exc) == "generation binding target import rejected"
+                        and exc.__suppress_context__,
+                        "generation binding target missing flag leaked private diagnostics")
+            else:
+                raise Fail("generation binding target accepted unsupported platform flag")
+        finally:
+            os.O_NONBLOCK = original_flag
+        require(load_target(good, "binding_target_unsafe_restored").VALUE == "safe",
+                "generation binding target unsafe fixture restoration failed")
+    print("PASS: generation binding target unsafe sources and missing flag rejected")
 
 
 def pin_checked_helper_parent(path: Path) -> int:
@@ -579,6 +721,8 @@ def prove_private_authority_file_diagnostic(module: Any) -> None:
 
 
 def main() -> int:
+    prove_pinned_target_import()
+    prove_target_import_unsafe_sources()
     prove_symlink_parent_rejected()
     prove_helper_source_symlink_rejected()
     prove_helper_source_swap_during_import_is_pinned()
