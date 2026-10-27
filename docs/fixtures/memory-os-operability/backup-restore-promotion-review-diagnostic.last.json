@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-promotion-review",
+  "sourceCommitSha": "aa6d5fce7aab6ceaf81e940f9177318ec5fc8967",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "REDACTED: promotion review validation failed; consult CI job logs",
+  "containsSecrets": false,
+  "reviewCreated": false,
+  "trafficChanged": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
