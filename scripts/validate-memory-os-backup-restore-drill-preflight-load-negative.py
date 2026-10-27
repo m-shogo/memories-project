@@ -1298,7 +1298,7 @@ def prove_preflight_private_path_negative_reachability() -> None:
          "exc.__suppress_context__", "False"),
         ("private canonical suppression", "canonical_repo_file",
          'raise Fail(f"{field} missing or escapes repository") from None',
-         'raise Fail(f"{field} missing or escapes repository") from None if False else None'),
+         'raise Fail(f"{field} missing or escapes repository") from exc'),
     ):
         parsed = ast.parse(authority_source)
         functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
