@@ -142,14 +142,64 @@ def validate_atomic_diagnostic_publication() -> None:
     print("PASS boundary: recovery objective failure diagnostic publication is crash-safe and mode-preserving")
 
 
+def prove_private_atomic_write_path_guards(reconciler: object) -> None:
+    """Reject external, symlinked and unreviewed targets without touching canaries."""
+    with isolated_authorities(reconciler):
+        original = reconciler.CONTRACT.read_bytes()
+        marker = "PRIVATE_RECOVERY_OBJECTIVE_RECONCILE_WRITE_CANARY"
+        with tempfile.TemporaryDirectory(prefix="objective-reconcile-write-external-") as tmp:
+            outside = Path(tmp) / "private.json"
+            outside.write_text(marker, encoding="utf-8")
+            alias = reconciler.ROOT / "objective-write-alias.json"
+            alias.symlink_to(outside)
+            unreviewed = reconciler.ROOT / "unreviewed.json"
+            unreviewed.write_text(marker, encoding="utf-8")
+            directory = reconciler.ROOT / "unreviewed-directory"
+            directory.mkdir()
+            cases = (
+                ("external", outside, "recovery objective reconcile write path unsafe"),
+                ("symlink", alias, "recovery objective reconcile write path unsafe"),
+                ("directory", directory, "recovery objective reconcile write path unsafe"),
+                ("unreviewed", unreviewed, "recovery objective reconcile write target unreviewed"),
+            )
+            for label, path, expected in cases:
+                try:
+                    reconciler.write_text(path, "changed")
+                except reconciler.Fail as exc:
+                    require(str(exc) == expected and marker not in str(exc),
+                            f"recovery objective reconcile write {label} wrong/private rejection")
+                else:
+                    raise Fail(f"recovery objective reconcile write {label} unexpectedly accepted")
+            require(outside.read_text(encoding="utf-8") == marker
+                    and unreviewed.read_text(encoding="utf-8") == marker,
+                    "recovery objective reconcile write canary changed")
+        try:
+            reconciler.write_text(reconciler.CONTRACT, "x" * (reconciler.MAX_AUTHORITY_BYTES + 1))
+        except reconciler.Fail as exc:
+            require(str(exc) == "recovery objective reconcile write size limit exceeded",
+                    "recovery objective reconcile write oversized input wrong rejection")
+        else:
+            raise Fail("recovery objective reconcile write oversized input accepted")
+        require(reconciler.CONTRACT.read_bytes() == original,
+                "recovery objective reconcile write negatives mutated fixture contract")
+    print("PASS: recovery objective reconcile atomic write path and size guards (5 negatives)")
+
+
 def prove_atomic_write_mode_preservation(reconciler: object) -> None:
-    with tempfile.TemporaryDirectory(prefix=".tmp-objective-mode-", dir=TMP_PARENT) as tmpdir:
-        path = Path(tmpdir) / "authority.json"
-        path.write_text('{"before":true}\n', encoding="utf-8")
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        original = path.read_bytes()
+        original_mode = file_mode(path)
         os.chmod(path, 0o640)
-        reconciler.write_text(path, '{"after":true}\n')
-        require(path.read_text(encoding="utf-8") == '{"after":true}\n', "objective mode-preservation fixture payload drift")
-        require(file_mode(path) == 0o640, "atomic recovery objective authority replace changed existing file mode")
+        reconciler.write_text(path, '{"synthetic":true}\n')
+        require(path.read_text(encoding="utf-8") == '{"synthetic":true}\n',
+                "objective mode-preservation fixture payload drift")
+        require(file_mode(path) == 0o640,
+                "atomic recovery objective authority replace changed existing file mode")
+        reconciler.write_text(path, original.decode("utf-8"))
+        os.chmod(path, original_mode)
+        require(path.read_bytes() == original and file_mode(path) == original_mode,
+                "objective mode-preservation fixture restoration drift")
         leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
         require(not leftovers, "mode-preserving recovery objective write left temporary files")
     print("PASS boundary: atomic recovery objective authority replace preserves existing file mode")
@@ -168,7 +218,7 @@ def prove_atomic_write_failure(reconciler: object) -> None:
             "recovery objective atomic replace rejection",
             lambda: reconciler.write_text(reconciler.CONTRACT, contract_bytes.decode("utf-8") + " "),
             reconciler.Fail,
-            "cannot atomically write",
+            "recovery objective reconcile authority atomic write failed",
         )
     finally:
         reconciler.os.replace = original_replace
@@ -597,6 +647,7 @@ def main() -> int:
     prove_private_writer_import(reconciler)
     prove_private_authority_path_diagnostics(reconciler)
     prove_private_post_reconcile_transport(reconciler)
+    prove_private_atomic_write_path_guards(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     with isolated_authorities(reconciler):
         prove_atomic_write_failure(reconciler)
