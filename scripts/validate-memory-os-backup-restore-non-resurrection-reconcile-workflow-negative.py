@@ -143,7 +143,7 @@ def main() -> int:
             raise SystemExit(f"typed non-resurrection reconcile negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=False)
         except SystemExit:
             continue
         raise SystemExit(f"typed non-resurrection reconcile accepted forbidden mutation: {label}")
@@ -163,7 +163,7 @@ def main() -> int:
             raise SystemExit("typed non-resurrection reconcile PR branch negative anchor missing: " + label)
         mutated = source.replace(old, replacement, 1)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=False)
         except SystemExit:
             continue
         raise SystemExit("typed non-resurrection reconcile accepted forbidden PR branch mutation: " + label)
@@ -183,7 +183,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("typed non-resurrection reconcile accepted whole-source mutation: " + label)
-    print(f"PASS: typed non-resurrection reconcile workflow source admission ({len(cases) + 5} negatives)")
+    print(f"PASS: typed non-resurrection reconcile workflow source admission ({len(cases) + 2} semantic anchor negatives; 3 complete-source/terminator negatives)")
     return 0
 
 
