@@ -163,7 +163,14 @@ def main() -> int:
             try:
                 writer.write_registry_transactionally(candidate)
             except writer.Fail as exc:
-                require("synthetic objective post-publication rejection" in str(exc), f"objective rollback rejected at wrong boundary: {exc}")
+                require(
+                    str(exc) == "recovery objectives append failed; rollback completed",
+                    "objective post-publication rejection did not report completed rollback",
+                )
+                require(
+                    exc.__suppress_context__ and "synthetic objective post-publication rejection" not in str(exc),
+                    "objective rollback exposed private validator diagnostics",
+                )
             else:
                 raise Fail("forced objective post-publication rejection unexpectedly accepted")
             finally:
@@ -183,8 +190,15 @@ def main() -> int:
             writer.os.replace = reject_replace
             try:
                 writer.write_registry_transactionally(copy.deepcopy(baseline))
-            except OSError as exc:
-                require("synthetic objective replace rejection" in str(exc), f"objective replace rejection surfaced at wrong boundary: {exc}")
+            except writer.Fail as exc:
+                require(
+                    str(exc) == "recovery objective registry atomic write failed",
+                    "objective replace rejection did not report private atomic failure",
+                )
+                require(
+                    exc.__suppress_context__ and "synthetic objective replace rejection" not in str(exc),
+                    "objective atomic replace exposed private OS diagnostics",
+                )
             else:
                 raise Fail("forced objective replace rejection unexpectedly accepted")
             finally:
