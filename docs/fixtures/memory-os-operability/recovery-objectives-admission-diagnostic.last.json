@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "recovery-objectives-admission",
+  "sourceCommitSha": "8eb0662a06ecff23756d6eae2281440b691df9e8",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "REDACTED: recovery objective validation failed; consult CI job logs",
+  "containsSecrets": false,
+  "objectiveCreated": false,
+  "objectiveValueChosenOrDefaulted": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
