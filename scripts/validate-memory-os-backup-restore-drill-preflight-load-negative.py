@@ -691,6 +691,63 @@ def prove_preflight_reconcile_strict_json(reconciler: object) -> None:
     print("PASS: preflight reconciler strict JSON positive and seven ambiguity negatives")
 
 
+def prove_preflight_reconcile_descriptor_faults(reconciler: object) -> None:
+    with guarded_temporary_directory(".tmp-preflight-reconcile-fd-fault-", TMP_PARENT) as raw:
+        path = Path(raw) / "positive.json"
+        path.write_bytes(b'{"safe":true}')
+        for fault, expected in (
+            ("close", "preflight reconcile authority cleanup failed"),
+            ("fdopen", "preflight reconcile authority unreadable"),
+        ):
+            original_open, original_close, original_fdopen = os.open, os.close, os.fdopen
+            opened: list[int] = []
+            faulted = False
+
+            def capture_open(*args, **kwargs):
+                descriptor = original_open(*args, **kwargs)
+                opened.append(descriptor)
+                return descriptor
+
+            def close_then_fail(descriptor):
+                nonlocal faulted
+                original_close(descriptor)
+                if not faulted:
+                    faulted = True
+                    raise OSError("SYNTHETIC_PRIVATE_CLOSE_CANARY")
+
+            def fdopen_then_fail(descriptor, *args, **kwargs):
+                nonlocal faulted
+                faulted = True
+                raise OSError("SYNTHETIC_PRIVATE_FDOPEN_CANARY")
+
+            try:
+                os.open = capture_open
+                if fault == "close":
+                    os.close = close_then_fail
+                else:
+                    os.fdopen = fdopen_then_fail
+                try:
+                    reconciler.read_text(path)
+                except reconciler.Fail as exc:
+                    require(str(exc) == expected and exc.__suppress_context__ and exc.__cause__ is None,
+                            f"preflight reconcile {fault} leaked private descriptor fault")
+                else:
+                    raise Fail(f"preflight reconcile {fault} fault unexpectedly accepted")
+            finally:
+                os.open, os.close, os.fdopen = original_open, original_close, original_fdopen
+            require(faulted and opened, f"preflight reconcile {fault} fault injection not reached")
+            for descriptor in opened:
+                try:
+                    os.fstat(descriptor)
+                except OSError:
+                    pass
+                else:
+                    raise Fail(f"preflight reconcile {fault} leaked descriptor")
+            require(reconciler.read_text(path) == '{"safe":true}',
+                    f"preflight reconcile {fault} recovery positive failed")
+    print("PASS: preflight reconcile close/fdopen private faults close all descriptors")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -705,6 +762,7 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
     prove_preflight_reconcile_pinned_reader(reconciler)
     prove_preflight_reconcile_strict_json(reconciler)
+    prove_preflight_reconcile_descriptor_faults(reconciler)
 
     prove_data_and_executable_authority_rejection(reconciler)
     prove_post_reconcile_output_suppression(reconciler)
