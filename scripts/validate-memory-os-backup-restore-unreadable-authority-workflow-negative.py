@@ -315,6 +315,66 @@ def prove_json_descriptor_fault_negative_removal_rejected() -> None:
     print("PASS: preflight and typed JSON descriptor fault invocation/injection deletion rejected")
 
 
+def require_json_platform_flag_negative_reachable(source: str, function_name: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("JSON platform flag negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target, main = functions.get(function_name), functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("JSON platform flag negative missing")
+    calls = [node for node in ast.walk(main)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == function_name]
+    if len(calls) != 1:
+        raise SystemExit("JSON platform flag negative invocation drift")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if not {"O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"}.issubset(strings):
+        raise SystemExit("JSON platform flag matrix incomplete")
+    mutations = [node for node in ast.walk(target)
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                 and node.func.id == "setattr" and len(node.args) == 3
+                 and isinstance(node.args[2], ast.Name) and node.args[2].id == "invalid"]
+    restorations = [node for node in ast.walk(target)
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "setattr" and len(node.args) == 3
+                    and isinstance(node.args[2], ast.Name) and node.args[2].id == "original"]
+    if len(mutations) != 1 or len(restorations) != 1:
+        raise SystemExit("JSON platform flag mutation/restoration missing")
+    invalid_values = {node.value for node in ast.walk(target)
+                      if isinstance(node, ast.Constant) and node.value in (None, 0)}
+    if None not in invalid_values or 0 not in invalid_values:
+        raise SystemExit("JSON platform flag None/zero cases missing")
+
+
+def prove_json_platform_flag_negative_removal_rejected() -> None:
+    for relative, function_name in (
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
+         "expect_preflight_json_platform_flags"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_json_reader_platform_flags"),
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        require_json_platform_flag_negative_reachable(source, function_name)
+        for label, anchor, replacement in (
+            ("invocation", f"    {function_name}(validator)\n", "    pass\n"),
+            ("invalid flag injection", "                    setattr(os, flag, invalid)\n", "                    pass\n"),
+            ("flag restoration", "                setattr(os, flag, original)\n", "                pass\n"),
+        ):
+            if source.count(anchor) != 1:
+                raise SystemExit("JSON platform flag deletion anchor drift: " + label)
+            mutated = source.replace(anchor, replacement, 1)
+            try:
+                require_json_platform_flag_negative_reachable(mutated, function_name)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("JSON platform flag negative deletion accepted: " + label)
+    print("PASS: preflight and typed JSON platform flag matrix/invocation deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -324,6 +384,7 @@ def main() -> int:
     prove_generation_json_descriptor_fault_negative_deletion_rejected()
     prove_pinned_json_race_negative_removal_rejected()
     prove_json_descriptor_fault_negative_removal_rejected()
+    prove_json_platform_flag_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
