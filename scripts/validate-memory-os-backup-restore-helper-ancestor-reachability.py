@@ -1375,6 +1375,7 @@ except (Exception, SystemExit):
 
 
 def negative_cases(source: str, diagnostic: str) -> int:
+    original_proof_diagnostic = diagnostic
     replacements = (
         ("    prove_helper_ancestor_swap_during_fd_walk_rejected()\n",
          "    pass  # synthetic dropped proof\n", "main missing direct ancestor proof"),
@@ -1733,18 +1734,18 @@ def negative_cases(source: str, diagnostic: str) -> int:
     require(source.count(anchor_metadata) == 1
             and source.count(cursor_metadata) == 1,
             "loader parent metadata fault not private")
-    for metadata, diagnostic in (
+    for metadata, metadata_diagnostic in (
         (anchor_metadata, "loader anchor metadata fault not private"),
         (cursor_metadata, "loader ancestor metadata fault not private"),
     ):
         replacements += (
             (metadata, metadata.replace(
                 "except (OSError, RuntimeError):", "except OSError:"),
-             diagnostic),
-            (metadata, metadata.replace(" from None", ""), diagnostic),
+             metadata_diagnostic),
+            (metadata, metadata.replace(" from None", ""), metadata_diagnostic),
             (metadata, metadata.replace("os.fstat(fd)", "os.stat(fd)"),
-             diagnostic),
-            (metadata, metadata.replace(".lstat()", ".stat()"), diagnostic),
+             metadata_diagnostic),
+            (metadata, metadata.replace(".lstat()", ".stat()"), metadata_diagnostic),
         )
     base_cleanup_anchor = (
         "    except BaseException:\n"
@@ -1837,6 +1838,8 @@ def negative_cases(source: str, diagnostic: str) -> int:
                     "combined import/marker mutation rejected at wrong boundary")
         else:
             raise GuardFailure("combined import/marker mutation unexpectedly accepted")
+    require(diagnostic == original_proof_diagnostic,
+            "negative proof diagnostic shadowed")
     count = 0
     for case_index, (original, mutation, expected) in enumerate(replacements):
         require(original in source, f"negative mutation anchor absent: {expected}")
