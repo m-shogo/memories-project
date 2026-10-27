@@ -140,6 +140,77 @@ def prove_close_failure_releases_lock(writer: Any) -> None:
             sys.argv = original_argv
 
 
+def prove_pinned_registry_snapshot(writer: Any) -> None:
+    """Exercise the actual writer snapshot against disposable regular and special files."""
+    original_registry = writer.REGISTRY
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-snapshot-negative-") as raw:
+        parent = Path(raw)
+        registry = parent / "registry.json"
+        registry.write_bytes(b'{"records": []}\n')
+        registry.chmod(0o640)
+        expected = registry.read_bytes()
+        try:
+            writer.REGISTRY = registry
+            require(writer.snapshot_registry_for_append() == (expected, 0o640),
+                    "generation registry descriptor snapshot positive control failed")
+            registry.write_bytes(b"x" * (writer.MAX_JSON_BYTES + 1))
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail as exc:
+                require(str(exc) == "generation evidence registry snapshot size limit exceeded",
+                        "oversized generation registry rejected at wrong boundary")
+            else:
+                raise Fail("oversized generation registry snapshot accepted")
+            registry.write_bytes(expected)
+            registry.chmod(0o640)
+
+            canary = parent / "outside-canary.json"
+            canary.write_bytes(b"PRIVATE_GENERATION_SNAPSHOT_CANARY")
+            alias = parent / "registry-alias.json"
+            alias.symlink_to(canary)
+            writer.REGISTRY = alias
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail as exc:
+                require(str(exc) == "cannot snapshot generation evidence registry before append",
+                        "generation registry symlink rejected at wrong boundary")
+            else:
+                raise Fail("generation registry symlink snapshot accepted")
+            require(canary.read_bytes() == b"PRIVATE_GENERATION_SNAPSHOT_CANARY",
+                    "generation registry symlink negative changed external canary")
+
+            fifo = parent / "registry-fifo.json"
+            os.mkfifo(fifo)
+            writer.REGISTRY = fifo
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail as exc:
+                require(str(exc) == "generation evidence registry snapshot path unsafe",
+                        "generation registry FIFO rejected at wrong boundary")
+            else:
+                raise Fail("generation registry FIFO snapshot accepted")
+
+            writer.REGISTRY = parent
+            try:
+                writer.snapshot_registry_for_append()
+            except writer.Fail as exc:
+                require(str(exc) in {
+                    "generation evidence registry snapshot path unsafe",
+                    "cannot snapshot generation evidence registry before append",
+                }, "generation registry directory rejected at wrong boundary")
+            else:
+                raise Fail("generation registry directory snapshot accepted")
+            writer.REGISTRY = registry
+            require(writer.snapshot_registry_for_append() == (expected, 0o640),
+                    "generation registry snapshot changed after negative controls")
+            require(registry.read_bytes() == expected and mode(registry) == 0o640,
+                    "generation registry snapshot changed fixture bytes or mode")
+            require(not residue(parent), "generation snapshot left temporary publication residue")
+        finally:
+            writer.REGISTRY = original_registry
+    print("PASS reject: generation registry pinned bounded snapshot, symlink, FIFO and directory")
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
     writer = load_writer()
@@ -207,6 +278,7 @@ def main() -> int:
             writer.REGISTRY = original_registry
             writer.validate_registry_for_append = original_validator
 
+    prove_pinned_registry_snapshot(writer)
     prove_close_failure_releases_lock(writer)
 
     print("generation evidence registry transaction negative PASS")
