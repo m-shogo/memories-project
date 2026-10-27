@@ -375,6 +375,70 @@ def prove_json_platform_flag_negative_removal_rejected() -> None:
     print("PASS: preflight and typed JSON platform flag matrix/invocation deletion rejected")
 
 
+def require_reconcile_reader_race_negative_reachable(source: str, function_name: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("reconcile reader race negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target, main = functions.get(function_name), functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("reconcile reader race negative missing")
+    calls = [node for node in ast.walk(main)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == function_name]
+    if len(calls) != 1:
+        raise SystemExit("reconcile reader race negative invocation drift")
+    nested = {node.name for node in ast.walk(target) if isinstance(node, ast.FunctionDef)}
+    if "swap_during_walk" not in nested:
+        raise SystemExit("reconcile reader race injection missing")
+    assignments = [node for node in ast.walk(target)
+                   if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
+                   and node.value.id == "swap_during_walk"
+                   and any(isinstance(item, ast.Attribute) and isinstance(item.value, ast.Name)
+                           and item.value.id == "os" and item.attr == "open" for item in node.targets)]
+    if len(assignments) != 1:
+        raise SystemExit("reconcile reader race injection not applied")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    byte_literals = [node.value for node in ast.walk(target)
+                     if isinstance(node, ast.Constant) and isinstance(node.value, bytes)]
+    if not {"parent", "ancestor", "pinned"}.issubset(strings) or not any(
+        b"SYNTHETIC_PRIVATE_CANARY" in value for value in byte_literals
+    ):
+        raise SystemExit("reconcile reader race positive/canary coverage missing")
+    if not any(isinstance(node, ast.Attribute) and node.attr == "MAX_AUTHORITY_BYTES"
+               for node in ast.walk(target)):
+        raise SystemExit("reconcile reader bounded negative missing")
+
+
+def prove_reconcile_reader_race_negative_removal_rejected() -> None:
+    for relative, function_name, invocation in (
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py",
+         "prove_preflight_reconcile_pinned_reader",
+         "    prove_preflight_reconcile_pinned_reader(reconciler)\n"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_reconcile_pinned_reader",
+         "    prove_typed_reconcile_pinned_reader()\n"),
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        require_reconcile_reader_race_negative_reachable(source, function_name)
+        for label, anchor, replacement in (
+            ("invocation", invocation, "    pass\n"),
+            ("race injection", "                os.open = swap_during_walk\n", "                pass\n"),
+        ):
+            if source.count(anchor) != 1:
+                raise SystemExit("reconcile reader race deletion anchor drift: " + label)
+            mutated = source.replace(anchor, replacement, 1)
+            try:
+                require_reconcile_reader_race_negative_reachable(mutated, function_name)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("reconcile reader race negative deletion accepted: " + label)
+    print("PASS: preflight and typed reconcile bounded FD race negative deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -385,6 +449,7 @@ def main() -> int:
     prove_pinned_json_race_negative_removal_rejected()
     prove_json_descriptor_fault_negative_removal_rejected()
     prove_json_platform_flag_negative_removal_rejected()
+    prove_reconcile_reader_race_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
