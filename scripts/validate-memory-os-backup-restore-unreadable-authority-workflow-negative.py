@@ -195,6 +195,67 @@ def prove_generation_json_descriptor_fault_negative_deletion_rejected() -> None:
     print("PASS: generation recovery JSON descriptor fault negative deletion rejected")
 
 
+def require_pinned_json_race_negative_reachable(source: str, function_name: str) -> None:
+    """Independent AST proof that both real-reader races are executed."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("pinned JSON race negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target = functions.get(function_name)
+    main = functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("pinned JSON race negative function missing")
+    calls = [node for node in ast.walk(main)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == function_name]
+    if len(calls) != 1:
+        raise SystemExit("pinned JSON race negative main invocation drift")
+    nested = {node.name for node in ast.walk(target) if isinstance(node, ast.FunctionDef)}
+    if "swap_during_walk" not in nested:
+        raise SystemExit("pinned JSON race injection function missing")
+    assignments = [
+        node for node in ast.walk(target)
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
+        and node.value.id == "swap_during_walk"
+        and any(isinstance(item, ast.Attribute) and isinstance(item.value, ast.Name)
+                and item.value.id == "os" and item.attr == "open" for item in node.targets)
+    ]
+    if len(assignments) != 1:
+        raise SystemExit("pinned JSON race injection not applied")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if not {"parent", "ancestor", "pinned", "SYNTHETIC_EXTERNAL_CANARY"}.issubset(
+        strings | {part for value in strings for part in value.split('"')}
+    ):
+        raise SystemExit("pinned JSON race positive/canary coverage missing")
+
+
+def prove_pinned_json_race_negative_removal_rejected() -> None:
+    for relative, function_name in (
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
+         "expect_pinned_preflight_json_reader"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_json_reader_fd_races"),
+    ):
+        code = (ROOT / relative).read_text(encoding="utf-8")
+        require_pinned_json_race_negative_reachable(code, function_name)
+        for label, anchor in (
+            ("invocation", f"    {function_name}(validator)\n"),
+            ("race injection", "                os.open = swap_during_walk\n"),
+        ):
+            if code.count(anchor) != 1:
+                raise SystemExit("pinned JSON race deletion anchor drift: " + label)
+            mutated = code.replace(anchor, "    pass\n" if label == "invocation" else "                pass\n", 1)
+            try:
+                require_pinned_json_race_negative_reachable(mutated, function_name)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("pinned JSON race deletion accepted: " + label)
+    print("PASS: preflight and typed JSON race negative invocation/injection deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -202,6 +263,7 @@ def main() -> int:
     prove_generation_json_negative_removal_rejected()
     prove_generation_json_parent_swap_negative_removal_rejected()
     prove_generation_json_descriptor_fault_negative_deletion_rejected()
+    prove_pinned_json_race_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
