@@ -9,6 +9,7 @@ import json
 import math
 import os
 import re
+import stat
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -414,12 +415,38 @@ def atomic_restore(payload: bytes, mode: int) -> None:
             raise Fail("recovery objective registry temporary cleanup failed") from None
 
 
-def write_registry_transactionally(value: dict[str, Any]) -> None:
+def snapshot_registry_for_append() -> tuple[bytes, int]:
+    """Pin a bounded regular registry snapshot before any candidate write."""
+    require(isinstance(REGISTRY, Path) and REGISTRY.is_absolute(),
+            "recovery objective registry snapshot path invalid")
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "recovery objective registry snapshot platform unsafe")
+    descriptor: int | None = None
     try:
-        original = REGISTRY.read_bytes()
-        original_mode = REGISTRY.stat().st_mode & 0o7777
-    except OSError as exc:
-        raise Fail("cannot snapshot recovery objectives registry before append") from exc
+        descriptor = os.open(REGISTRY, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(descriptor)
+        require(stat.S_ISREG(metadata.st_mode),
+                "recovery objective registry snapshot unsafe file type")
+        require(metadata.st_size <= MAX_JSON_BYTES,
+                "recovery objective registry snapshot size limit exceeded")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
+            original = source.read(MAX_JSON_BYTES + 1)
+        require(len(original) <= MAX_JSON_BYTES,
+                "recovery objective registry snapshot size limit exceeded")
+        return original, stat.S_IMODE(metadata.st_mode)
+    except (OSError, ValueError, TypeError):
+        raise Fail("recovery objective registry snapshot unreadable or unsafe") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("recovery objective registry snapshot cleanup failed") from None
+
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    original, original_mode = snapshot_registry_for_append()
     atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
