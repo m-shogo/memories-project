@@ -1436,6 +1436,46 @@ def prove_typed_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("typed admission private path negative deletion accepted: " + label)
+    validator_source = VALIDATOR.read_text(encoding="utf-8")
+
+    def verify_pinned_loader(candidate: str) -> None:
+        try:
+            tree = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("typed pinned loader source syntax invalid") from None
+        helpers = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == "load_module"]
+        require(len(helpers) == 1, "typed pinned loader function missing")
+        helper = helpers[0]
+        body = ast.get_source_segment(candidate, helper)
+        require(isinstance(body, str), "typed pinned loader source unavailable")
+        for token in ("class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+                      'return compile(source, str(path), "exec")',
+                      "loader=PinnedSourceLoader(name, str(path))",
+                      "spec.loader.exec_module(module)",
+                      "source = stream.read(MAX_MODULE_BYTES + 1)",
+                      "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)"):
+            require(token in body, "typed pinned loader source binding removed")
+        require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in {"exec", "eval"} for node in ast.walk(helper)),
+                "typed pinned loader direct dynamic execution refused")
+
+    verify_pinned_loader(validator_source)
+    for label, old, replacement in (
+        ("loader binding", "loader=PinnedSourceLoader(name, str(path))", "loader=None"),
+        ("pinned source code", 'return compile(source, str(path), "exec")', "return None"),
+        ("stdlib module execution", "spec.loader.exec_module(module)", "pass"),
+        ("descriptor-relative leaf", "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)"),
+    ):
+        require(validator_source.count(old) == 1,
+                "typed pinned loader mutation anchor drift: " + label)
+        try:
+            verify_pinned_loader(validator_source.replace(old, replacement, 1))
+        except Fail:
+            continue
+        raise Fail("typed pinned loader source weakening accepted: " + label)
+    print("PASS: typed pinned source loader and four weakening mutations rejected")
     print("PASS: typed admission private path/import fault, context and invocation deletion rejected")
 
 
