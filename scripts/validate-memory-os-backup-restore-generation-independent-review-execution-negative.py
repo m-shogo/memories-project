@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import errno
 import importlib.machinery
 import importlib.util
 import os
@@ -177,6 +178,60 @@ def prove_review_import_unsafe_sources() -> None:
         require(load_checked_module(good, "independent_review_unsafe_restored").VALUE == "safe",
                 "independent review execution unsafe fixture restoration failed")
     print("PASS: independent review execution unsafe sources and missing flag rejected")
+
+
+def prove_review_import_fd_cleanup() -> None:
+    """Failed fdopen/close must not leak any descriptor owned by the loader."""
+    for fault in ("fdopen", "close"):
+        original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
+        opened = []
+        injected = False
+
+        def tracked_open(*args, **kwargs):
+            descriptor = original_open(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor
+
+        def broken_fdopen(descriptor, *args, **kwargs):
+            nonlocal injected
+            if fault == "fdopen" and not injected:
+                injected = True
+                raise OSError(errno.EIO, "PRIVATE_REVIEW_EXECUTION_FDOPEN_CANARY")
+            return original_fdopen(descriptor, *args, **kwargs)
+
+        def broken_close(descriptor):
+            nonlocal injected
+            if fault == "close" and descriptor in opened and not injected:
+                injected = True
+                original_close(descriptor)
+                raise OSError(errno.EIO, "PRIVATE_REVIEW_EXECUTION_CLOSE_CANARY")
+            return original_close(descriptor)
+
+        try:
+            os.open, os.fdopen, os.close = tracked_open, broken_fdopen, broken_close
+            try:
+                load_checked_module(VALIDATOR, "independent_review_fd_fault")
+            except Fail as exc:
+                require(str(exc) == "independent review negative source rejected"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        "independent review execution " + fault + " leaked private exception")
+            else:
+                raise Fail("independent review execution " + fault + " fault accepted")
+        finally:
+            os.open, os.fdopen, os.close = original_open, original_fdopen, original_close
+        require(injected and len(opened) >= 3,
+                "independent review execution " + fault + " injection not reached")
+        for descriptor in opened:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        "independent review execution " + fault + " unexpected descriptor error")
+            else:
+                raise Fail("independent review execution " + fault + " leaked descriptor")
+    require(callable(getattr(load_checked_module(VALIDATOR, "independent_review_fd_restored"), "main", None)),
+            "independent review execution FD fault canonical restoration failed")
+    print("PASS: drill request pinned loader fdopen/close faults clean owned descriptors")
 
 
 def expect_candidate_rejected(module: Any, field: str, replacement: Any) -> None:
@@ -660,6 +715,7 @@ def main() -> int:
     prove_pair_pinned_import_mutations_rejected()
     prove_pinned_validator_import()
     prove_review_import_unsafe_sources()
+    prove_review_import_fd_cleanup()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
     canonical_registry = module.REGISTRY.read_bytes()
