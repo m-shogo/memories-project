@@ -883,6 +883,38 @@ def prove_typed_reconcile_pinned_reader() -> None:
     print("PASS: typed reconcile bounded JSON snapshot and parent/ancestor FD race negatives")
 
 
+def prove_typed_reconcile_strict_json() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_strict_json_negative")
+    protected = (CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-typed-reconcile-json-", TMP_PARENT) as raw:
+        path = Path(raw) / "candidate.json"
+        path.write_bytes(b'{"nested":{"count":1}}')
+        require(reconciler.load(path) == {"nested": {"count": 1}},
+                "typed reconcile JSON positive failed")
+        for label, payload, expected in (
+            ("duplicate", b'{"nested":{"key":1,"key":2}}',
+             "typed reconcile JSON duplicate key refused"),
+            ("NaN", b'{"value":NaN}', "typed reconcile JSON nonfinite number refused"),
+            ("Infinity", b'{"value":Infinity}', "typed reconcile JSON nonfinite number refused"),
+            ("float overflow", b'{"value":1e999}', "typed reconcile JSON nonfinite number refused"),
+            ("129 digit integer", b'{"value":' + b"9" * 129 + b"}",
+             "typed reconcile JSON integer too large"),
+            ("invalid UTF-8", b'{"value":"\xff"}', "typed reconcile authority invalid UTF-8"),
+            ("nonobject root", b"[]", "typed reconcile JSON root must be object"),
+        ):
+            path.write_bytes(payload)
+            try:
+                reconciler.load(path)
+            except reconciler.Fail as exc:
+                require(str(exc) == expected and "SYNTHETIC_PRIVATE_" not in str(exc),
+                        f"typed reconcile JSON {label} wrong rejection")
+            else:
+                raise Fail(f"typed reconcile JSON {label} accepted")
+    require((CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes()) == protected,
+            "typed reconcile strict JSON changed protected authorities")
+    print("PASS: typed reconciler strict JSON positive and seven ambiguity negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -919,6 +951,7 @@ def main() -> int:
 
     prove_reconcile_runtime_authorities()
     prove_typed_reconcile_pinned_reader()
+    prove_typed_reconcile_strict_json()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
