@@ -58,8 +58,8 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     try:
         lexical = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} missing or escapes repository") from None
     require(
         lexical == expected_relative and resolved == expected_relative and path.is_file(),
         f"{field} authority drift",

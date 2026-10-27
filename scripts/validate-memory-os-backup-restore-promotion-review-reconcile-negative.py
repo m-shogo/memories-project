@@ -691,6 +691,37 @@ def prove_private_writer_import(reconciler: Any) -> None:
     print("PASS: promotion reconcile writer import output and errors private")
 
 
+
+def prove_private_authority_path_diagnostics(reconciler: Any) -> None:
+    """Canonical authority path errors must not chain private filesystem details."""
+    with isolated_reconcile_authorities(reconciler):
+        marker = "PRIVATE_PROMOTION_RECONCILE_AUTHORITY_PATH_CANARY"
+        with tempfile.TemporaryDirectory(prefix="promotion-reconcile-authority-external-") as tmp:
+            external = Path(tmp) / "private.json"
+            external.write_text(marker, encoding="utf-8")
+            alias = reconciler.ROOT / "contracts/operations/promotion-authority-alias.json"
+            alias.symlink_to(external)
+            missing = reconciler.ROOT / "contracts/operations/missing-promotion-authority.json"
+            for label, path in (("external-symlink", alias), ("missing", missing)):
+                try:
+                    reconciler.require_exact_repo_file(
+                        path, reconciler.REGISTRY_REL, "promotion review registry",
+                    )
+                except reconciler.Fail as exc:
+                    require(str(exc) == "promotion review registry missing or escapes repository"
+                            and exc.__suppress_context__ and marker not in str(exc),
+                            f"promotion reconcile {label} authority path diagnostic drift")
+                else:
+                    raise Fail(f"promotion reconcile {label} authority path accepted")
+            require(external.read_text(encoding="utf-8") == marker,
+                    "promotion reconcile authority path canary changed")
+        require(reconciler.require_exact_repo_file(
+                    reconciler.REGISTRY, reconciler.REGISTRY_REL,
+                    "promotion review registry") == reconciler.REGISTRY,
+                "promotion reconcile authority path positive control failed")
+    print("PASS: promotion reconcile canonical authority path private diagnostics (2 negatives)")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
@@ -699,6 +730,7 @@ def main() -> int:
     prove_strict_reconcile_json(reconciler)
     prove_private_delegated_generation_registry(reconciler)
     prove_private_writer_import(reconciler)
+    prove_private_authority_path_diagnostics(reconciler)
     prove_private_post_reconcile_transport(reconciler)
 
     expect_authority_substitution_rejected(reconciler, "CONTRACT", reconciler.REGISTRY, "promotion review contract substitution", "promotion review contract authority drift", original_contract, original_registry)
