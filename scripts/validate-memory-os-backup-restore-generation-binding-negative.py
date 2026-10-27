@@ -535,6 +535,35 @@ def main() -> int:
         loop_authority.symlink_to(loop_authority.name)
         expect_rejected(module, "generation binding authority symlink loop", lambda: module.load(loop_authority))
 
+        valid_json = tmp / "valid-authority.json"
+        valid_json.write_text('{"nested":{"value":1}}', encoding="utf-8")
+        require(module.load(valid_json) == {"nested": {"value": 1}},
+                "generation binding strict JSON reader positive control failed")
+        linked_json = tmp / "linked-authority.json"
+        linked_json.symlink_to(valid_json)
+        expect_rejected(module, "generation binding JSON symlink", lambda: module.load(linked_json))
+        fifo_json = tmp / "fifo-authority.json"
+        os.mkfifo(fifo_json)
+        expect_rejected(module, "generation binding JSON FIFO", lambda: module.load(fifo_json))
+        for label, payload in (
+            ("duplicate nested keys", b'{"nested":{"a":1,"a":2}}'),
+            ("nonfinite NaN", b'{"value":NaN}'),
+            ("nonfinite Infinity", b'{"value":Infinity}'),
+            ("nonfinite float overflow", b'{"value":1e999}'),
+            ("oversized integer", ('{"value":' + '9' * 129 + '}').encode()),
+            ("malformed JSON", b'{"value":'),
+            ("nonobject root", b'[1,2]'),
+            ("oversized authority", b' ' * (module.MAX_JSON_BYTES + 1)),
+        ):
+            target = tmp / (label.replace(" ", "-") + ".json")
+            target.write_bytes(payload)
+            before = target.read_bytes()
+            expect_rejected(module, "generation binding JSON " + label,
+                            lambda path=target: module.load(path))
+            require(target.read_bytes() == before,
+                    "generation binding JSON negative mutated fixture: " + label)
+        print("PASS: generation binding strict JSON reader positive and 10 additional negatives")
+
     outside_path = Path(tempfile.gettempdir()) / "memory-os-generation-binding-outside-root.json"
     expect_rejected(
         module,
