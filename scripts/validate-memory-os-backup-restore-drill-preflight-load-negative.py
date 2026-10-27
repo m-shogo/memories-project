@@ -1050,14 +1050,22 @@ def prove_preflight_private_path_negative_reachability() -> None:
             require(token in body, "preflight private path negative guard removed")
 
     verify(source)
-    for label, old, replacement in (
-        ("invocation", "    prove_private_preflight_path_errors(validator)\n", "    pass\n"),
-        ("fault injection", "        Path.resolve = private_resolve\n", "        pass\n"),
-        ("context assertion", "exc.__suppress_context__", "False"),
+    for label, scope, old, replacement in (
+        ("invocation", "main", "    prove_private_preflight_path_errors(validator)\n", "    pass\n"),
+        ("fault injection", "prove_private_preflight_path_errors", "        Path.resolve = private_resolve\n", "        pass\n"),
+        ("context assertion", "prove_private_preflight_path_errors", "exc.__suppress_context__", "False"),
     ):
-        require(source.count(old) == 1, "preflight private path deletion anchor drift: " + label)
+        # A source-wide anchor can repeat in unrelated tests; mutate only the named AST function.
+        parsed = ast.parse(source)
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        function = functions.get(scope)
+        require(function is not None, "preflight private path mutation scope missing")
+        lines = source.splitlines(keepends=True)
+        span = "".join(lines[function.lineno - 1:function.end_lineno])
+        require(span.count(old) == 1, "preflight private path scoped deletion anchor drift: " + label)
+        lines[function.lineno - 1:function.end_lineno] = [span.replace(old, replacement, 1)]
         try:
-            verify(source.replace(old, replacement, 1))
+            verify("".join(lines))
         except Fail:
             continue
         raise Fail("preflight private path negative deletion accepted: " + label)
