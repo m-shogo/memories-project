@@ -257,10 +257,66 @@ def prove_negative_subprocess_redaction(validator) -> None:
     print("PASS: objective negative subprocess fail-closed redaction and bounded execution")
 
 
+def prove_private_reference_failure_classes(writer) -> None:
+    """Reject untrusted path/timestamp errors without leaking private exceptions."""
+    marker = "PRIVATE_OBJECTIVE_REFERENCE_CANARY"
+    original_root = writer.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-objective-reference-privacy-") as tmp:
+        root = Path(tmp)
+        owner = root / "owner.json"
+        owner.write_text("{}\\n", encoding="utf-8")
+        subdir = root / "approved"
+        subdir.mkdir()
+        with tempfile.TemporaryDirectory(prefix="memory-os-objective-private-external-") as external:
+            external_path = Path(external) / (marker + ".json")
+            external_path.write_text(marker, encoding="utf-8")
+            alias = root / "alias.json"
+            alias.symlink_to(external_path)
+            writer.ROOT = root
+            try:
+                require(writer.repo_ref("owner.json", "ownerRef") == "owner.json",
+                        "objective reference privacy positive control failed")
+                require(writer.canonical_repo_file(owner, "owner") == owner,
+                        "objective file authority privacy positive control failed")
+                require(writer.canonical_repo_directory(subdir, "directory") == subdir,
+                        "objective directory authority privacy positive control failed")
+                cases = (
+                    ("missing ref", lambda: writer.repo_ref(marker + ".json", "ownerRef"),
+                     "ownerRef evidence missing or escapes repository"),
+                    ("external alias", lambda: writer.repo_ref("alias.json", "ownerRef"),
+                     "ownerRef evidence missing or escapes repository"),
+                    ("missing file", lambda: writer.canonical_repo_file(root / (marker + ".json"), "owner"),
+                     "owner missing or escapes repository"),
+                    ("missing directory", lambda: writer.canonical_repo_directory(root / (marker + "-dir"), "directory"),
+                     "directory missing or escapes repository"),
+                    ("private timestamp", lambda: writer.parse_utc_timestamp(marker, "approvedAt"),
+                     "approvedAt must be UTC RFC3339 ending in Z"),
+                    ("private malformed timestamp", lambda: writer.parse_utc_timestamp(marker + "Z", "approvedAt"),
+                     "approvedAt must be UTC RFC3339 date-time"),
+                )
+                for label, action, expected in cases:
+                    try:
+                        action()
+                    except writer.Fail as exc:
+                        require(str(exc) == expected and marker not in str(exc),
+                                f"objective reference privacy {label} diagnostic drift")
+                        if label != "private timestamp":
+                            require(exc.__suppress_context__,
+                                    f"objective reference privacy {label} chained private exception")
+                    else:
+                        raise Fail(f"objective reference privacy {label} unexpectedly accepted")
+                require(external_path.read_text(encoding="utf-8") == marker,
+                        "objective reference privacy external canary changed")
+            finally:
+                writer.ROOT = original_root
+    print("PASS: recovery objective reference privacy positive and six fail-closed negatives")
+
+
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
     writer = load_writer()
+    prove_private_reference_failure_classes(writer)
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
     prove_writer_json_reader(writer)
     prove_recovery_objective_json_reader(validator)
