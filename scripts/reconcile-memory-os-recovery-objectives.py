@@ -51,10 +51,17 @@ def require(condition: bool, message: str) -> None:
 
 
 def repo_relative(path: Path) -> Path:
+    """Reject aliases and traversal rather than silently normalizing evidence refs."""
+    if not isinstance(path, Path) or not path.is_absolute():
+        raise Fail("recovery objective authority reference path unsafe") from None
     try:
-        return path.resolve(strict=False).relative_to(ROOT.resolve())
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"authority path escapes repository: {path}") from exc
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("recovery objective authority reference path unsafe") from None
+    require(lexical == resolved and lexical != Path("."),
+            "recovery objective authority reference path unsafe")
+    return lexical
 
 
 def require_repo_file(path: Path, message: str) -> Path:
