@@ -1254,6 +1254,62 @@ def prove_typed_reconcile_repo_refs() -> None:
     print("PASS: typed reconcile canonical evidence ref and five symlink/alias negatives")
 
 
+def prove_typed_reconcile_writer_preopen_faults() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_writer_preopen_negative")
+    with guarded_temporary_directory(".tmp-typed-write-preopen-", TMP_PARENT) as raw:
+        path = Path(raw) / "candidate.json"
+        positive = b'{"safe":true}'
+        path.write_bytes(positive)
+        path.chmod(0o640)
+        original_mkstemp, original_fchmod = tempfile.mkstemp, os.fchmod
+        for fault in ("mkstemp", "fchmod"):
+            opened: list[int] = []
+            injected = False
+
+            def fault_mkstemp(*args, **kwargs):
+                nonlocal injected
+                if fault == "mkstemp":
+                    injected = True
+                    raise OSError("SYNTHETIC_PRIVATE_MKSTEMP_CANARY")
+                descriptor, name = original_mkstemp(*args, **kwargs)
+                opened.append(descriptor)
+                return descriptor, name
+
+            def fault_fchmod(descriptor, value):
+                nonlocal injected
+                injected = True
+                raise OSError("SYNTHETIC_PRIVATE_FCHMOD_CANARY")
+
+            try:
+                tempfile.mkstemp = fault_mkstemp
+                if fault == "fchmod":
+                    os.fchmod = fault_fchmod
+                try:
+                    reconciler.write_text(path, '{"safe":false}')
+                except reconciler.Fail as exc:
+                    require(str(exc) == "typed reconcile atomic write failed"
+                            and exc.__suppress_context__ and exc.__cause__ is None,
+                            f"typed writer {fault} leaked private preopen exception")
+                else:
+                    raise Fail(f"typed writer {fault} preopen fault accepted")
+            finally:
+                tempfile.mkstemp, os.fchmod = original_mkstemp, original_fchmod
+            require(injected and len(opened) == (1 if fault == "fchmod" else 0),
+                    f"typed writer {fault} fault injection not reached")
+            for descriptor in opened:
+                try:
+                    os.fstat(descriptor)
+                except OSError:
+                    pass
+                else:
+                    raise Fail(f"typed writer {fault} leaked descriptor")
+            require(path.read_bytes() == positive and (path.stat().st_mode & 0o7777) == 0o640,
+                    f"typed writer {fault} changed fixture bytes/mode")
+            require(not list(path.parent.glob(".candidate.json.*.tmp")),
+                    f"typed writer {fault} left temporary file")
+    print("PASS: typed reconcile mkstemp/fchmod private preopen faults clean FD/temp")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -1297,6 +1353,7 @@ def main() -> int:
     prove_typed_reconcile_child_validator()
     prove_typed_reconcile_private_path_diagnostics()
     prove_typed_reconcile_repo_refs()
+    prove_typed_reconcile_writer_preopen_faults()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
