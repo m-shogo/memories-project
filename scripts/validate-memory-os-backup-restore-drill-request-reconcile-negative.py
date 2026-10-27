@@ -114,15 +114,15 @@ def pin_checked_helper_parent(path: Path) -> int:
     anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
     try:
         relative = path.parent.relative_to(anchor)
-    except ValueError as exc:
-        raise Fail("drill request fixture guard parent outside trusted roots") from exc
+    except ValueError:
+        raise Fail("drill request fixture guard parent outside trusted roots") from None
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     require(anchor.is_dir() and not anchor.is_symlink(),
             "drill request fixture guard trusted anchor missing or symlinked")
     try:
         fd = os.open(anchor, flags)
-    except OSError as exc:
-        raise Fail("drill request fixture guard anchor open failed") from exc
+    except OSError:
+        raise Fail("drill request fixture guard anchor open failed") from None
     try:
         opened = os.fstat(fd)
         entry = anchor.lstat()
@@ -147,9 +147,9 @@ def pin_checked_helper_parent(path: Path) -> int:
                 "drill request fixture guard ancestor identity drift",
             )
         return fd
-    except OSError as exc:
+    except OSError:
         os.close(fd)
-        raise Fail("drill request fixture guard parent open failed") from exc
+        raise Fail("drill request fixture guard parent open failed") from None
     except BaseException:
         os.close(fd)
         raise

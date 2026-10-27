@@ -703,6 +703,38 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
     main = named_function(tree, "main")
     proof = named_function(tree, PROOF)
     pin = named_function(tree, PIN)
+    for suffix, expected_type, expected_count in (
+        ("fixture guard parent outside trusted roots", "ValueError", 1),
+        ("fixture guard anchor open failed", "OSError", 1),
+        ("fixture guard parent open failed", "OSError", 2),
+    ):
+        matches = [
+            handler for node in ast.walk(pin) if isinstance(node, ast.Try)
+            for handler in node.handlers
+            if handler.body
+            and isinstance(handler.body[-1], ast.Raise)
+            and isinstance(handler.body[-1].exc, ast.Call)
+            and isinstance(handler.body[-1].exc.func, ast.Name)
+            and handler.body[-1].exc.func.id == "Fail"
+            and len(handler.body[-1].exc.args) == 1
+            and isinstance(handler.body[-1].exc.args[0], ast.Constant)
+            and isinstance(handler.body[-1].exc.args[0].value, str)
+            and handler.body[-1].exc.args[0].value.endswith(suffix)
+        ]
+        require(
+            len(matches) == 1
+            and isinstance(matches[0].type, ast.Name)
+            and matches[0].type.id == expected_type
+            and matches[0].name is None
+            and len(matches[0].body) == expected_count
+            and isinstance(matches[0].body[-1].cause, ast.Constant)
+            and matches[0].body[-1].cause.value is None
+            and (expected_count == 1 or ast.dump(
+                matches[0].body[0], include_attributes=False)
+                == ast.dump(ast.parse("os.close(fd)").body[0],
+                            include_attributes=False)),
+            "loader parent pin failure not private",
+        )
     loaders = [
         node for node in tree.body
         if isinstance(node, ast.FunctionDef)
@@ -1399,6 +1431,24 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module setup failed\") from None\n",
          "loader module setup failure not private"),
     )
+    pin_privacy_cases = (
+        (r'    except ValueError:\n        raise Fail\("[^"]+ fixture guard parent outside trusted roots"\) from None\n',
+         "except ValueError:", "except TypeError:"),
+        (r'    except OSError:\n        raise Fail\("[^"]+ fixture guard anchor open failed"\) from None\n',
+         "except OSError:", "except FileNotFoundError:"),
+        (r'    except OSError:\n        os.close\(fd\)\n        raise Fail\("[^"]+ fixture guard parent open failed"\) from None\n',
+         "except OSError:", "except FileNotFoundError:"),
+    )
+    for pattern, original_handler, narrowed_handler in pin_privacy_cases:
+        anchors = re.findall(pattern, source)
+        require(len(anchors) == 1, "loader parent pin failure not private")
+        anchor = anchors[0]
+        replacements += (
+            (anchor, anchor.replace(" from None", ""),
+             "loader parent pin failure not private"),
+            (anchor, anchor.replace(original_handler, narrowed_handler),
+             "loader parent pin failure not private"),
+        )
     setup_start = (
         "                spec = importlib.util.spec_from_file_location("
         "name, path, loader=PinnedSourceLoader(name, str(path)))\n"
@@ -2458,6 +2508,39 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
             os.open, os.close = original_open, original_close
         assert "leaf" in tracked and "parent" in tracked
 
+    outside = Path("/PRIVATE_OUTSIDE_CANARY/fixture.py")
+    try:
+        loader(outside, "pinned_outside_negative")
+    except Fail as exc:
+        assert str(exc).endswith("fixture guard parent outside trusted roots")
+        assert exc.__cause__ is None and exc.__suppress_context__
+        assert "PRIVATE_OUTSIDE_CANARY" not in str(exc)
+    else:
+        raise AssertionError("outside parent accepted")
+
+    for fault, suffix in (
+        ("anchor", "fixture guard anchor open failed"),
+        ("parent", "fixture guard parent open failed"),
+    ):
+        def fault_parent_open(file, flags, *args, **kwargs):
+            if fault == "anchor" and Path(file) == Path(sys.argv[2]):
+                raise OSError("PRIVATE_ANCHOR_OPEN_CANARY")
+            if fault == "parent" and file == parent.name and kwargs.get("dir_fd") is not None:
+                raise OSError("PRIVATE_PARENT_OPEN_CANARY")
+            return original_open(file, flags, *args, **kwargs)
+        os.open = fault_parent_open
+        try:
+            try:
+                loader(good, "pinned_parent_negative_" + fault)
+            except Fail as exc:
+                assert str(exc).endswith(suffix)
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_" not in str(exc)
+            else:
+                raise AssertionError("parent open failure accepted")
+        finally:
+            os.open = original_open
+
     def fault_source_open(file, flags, *args, **kwargs):
         if file == good.name and kwargs.get("dir_fd") is not None:
             raise OSError("PRIVATE_SOURCE_OPEN_CANARY")
@@ -2579,7 +2662,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 70 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 76 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
