@@ -1154,6 +1154,51 @@ def prove_typed_reconcile_child_validator() -> None:
     print("PASS: typed reconcile child validator bounded private subprocess and five negatives")
 
 
+def prove_typed_reconcile_private_path_diagnostics() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_private_path_negative")
+    original_resolve = Path.resolve
+    original_module_from_spec = reconciler.importlib.util.module_from_spec
+    private = "SYNTHETIC_PRIVATE_PATH_CANARY"
+
+    def fail_private_resolve(self, *args, **kwargs):
+        if self == CONTRACT:
+            raise OSError(private)
+        return original_resolve(self, *args, **kwargs)
+
+    def require_private_fail(action, expected):
+        try:
+            action()
+        except reconciler.Fail as exc:
+            require(str(exc) == expected and exc.__suppress_context__ and exc.__cause__ is None
+                    and private not in str(exc),
+                    "typed reconcile path/import leaked private exception")
+        else:
+            raise Fail("typed reconcile private path/import exception accepted")
+
+    try:
+        Path.resolve = fail_private_resolve
+        require_private_fail(lambda: reconciler.repo_relative(CONTRACT),
+                             "typed reconcile authority path unsafe")
+        require_private_fail(
+            lambda: reconciler.require_exact_repo_file(
+                CONTRACT, reconciler.CONTRACT_REL, "typed non-resurrection contract"),
+            "typed non-resurrection contract missing or escapes repository")
+    finally:
+        Path.resolve = original_resolve
+
+    def fail_private_import(_spec):
+        raise OSError(private)
+
+    try:
+        reconciler.importlib.util.module_from_spec = fail_private_import
+        require_private_fail(
+            lambda: reconciler.load_module(reconciler.TYPED_WRITER, "synthetic_typed_import"),
+            "typed reconcile validator module import unavailable")
+    finally:
+        reconciler.importlib.util.module_from_spec = original_module_from_spec
+    print("PASS: typed reconcile private path and module import errors suppressed")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -1195,6 +1240,7 @@ def main() -> int:
     prove_typed_reconcile_platform_flags()
     prove_typed_reconcile_writer_ownership()
     prove_typed_reconcile_child_validator()
+    prove_typed_reconcile_private_path_diagnostics()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
