@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import importlib.machinery
 import importlib.util
 import os
@@ -177,6 +178,60 @@ def prove_target_import_unsafe_sources() -> None:
         require(load_target(good, "binding_target_unsafe_restored").VALUE == "safe",
                 "generation binding target unsafe fixture restoration failed")
     print("PASS: generation binding target unsafe sources and missing flag rejected")
+
+
+def prove_target_import_fd_cleanup() -> None:
+    """Failed fdopen/close must not leak any descriptor owned by the loader."""
+    for fault in ("fdopen", "close"):
+        original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
+        opened = []
+        injected = False
+
+        def tracked_open(*args, **kwargs):
+            descriptor = original_open(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor
+
+        def broken_fdopen(descriptor, *args, **kwargs):
+            nonlocal injected
+            if fault == "fdopen" and not injected:
+                injected = True
+                raise OSError(errno.EIO, "PRIVATE_BINDING_TARGET_FDOPEN_CANARY")
+            return original_fdopen(descriptor, *args, **kwargs)
+
+        def broken_close(descriptor):
+            nonlocal injected
+            if fault == "close" and descriptor in opened and not injected:
+                injected = True
+                original_close(descriptor)
+                raise OSError(errno.EIO, "PRIVATE_BINDING_TARGET_CLOSE_CANARY")
+            return original_close(descriptor)
+
+        try:
+            os.open, os.fdopen, os.close = tracked_open, broken_fdopen, broken_close
+            try:
+                load_target(VALIDATOR, "binding_target_fd_fault")
+            except Fail as exc:
+                require(str(exc) == "generation binding target import rejected"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        "generation binding target import " + fault + " leaked private exception")
+            else:
+                raise Fail("generation binding target import " + fault + " fault accepted")
+        finally:
+            os.open, os.fdopen, os.close = original_open, original_fdopen, original_close
+        require(injected and len(opened) >= 3,
+                "generation binding target import " + fault + " injection not reached")
+        for descriptor in opened:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        "generation binding target import " + fault + " unexpected descriptor error")
+            else:
+                raise Fail("generation binding target import " + fault + " leaked descriptor")
+    require(callable(getattr(load_target(VALIDATOR, "binding_target_fd_restored"), "main", None)),
+            "generation binding target import FD fault canonical restoration failed")
+    print("PASS: drill request pinned loader fdopen/close faults clean owned descriptors")
 
 
 def pin_checked_helper_parent(path: Path) -> int:
@@ -723,6 +778,7 @@ def prove_private_authority_file_diagnostic(module: Any) -> None:
 def main() -> int:
     prove_pinned_target_import()
     prove_target_import_unsafe_sources()
+    prove_target_import_fd_cleanup()
     prove_symlink_parent_rejected()
     prove_helper_source_symlink_rejected()
     prove_helper_source_swap_during_import_is_pinned()
