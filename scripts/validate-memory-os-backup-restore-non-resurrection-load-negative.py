@@ -738,6 +738,66 @@ def prove_typed_json_reader_fd_races(validator: Any) -> None:
     print("PASS: actual typed admission JSON reader parent and ancestor swap retain pinned original source")
 
 
+def prove_typed_json_reader_descriptor_faults(validator: Any) -> None:
+    """Real typed JSON reader must close all FDs after private close/fdopen faults."""
+    with guarded_temporary_directory(".tmp-typed-json-fd-fault-", TMP_PARENT) as raw:
+        path = Path(raw) / "positive.json"
+        path.write_bytes(b'{"safe":true}')
+        for fault, expected in (
+            ("close", "typed admission JSON cleanup failed"),
+            ("fdopen", "typed admission JSON unreadable or invalid"),
+        ):
+            original_open, original_close, original_fdopen = os.open, os.close, os.fdopen
+            opened: list[int] = []
+            faulted = False
+
+            def capture_open(*args, **kwargs):
+                descriptor = original_open(*args, **kwargs)
+                opened.append(descriptor)
+                return descriptor
+
+            def close_then_fail(descriptor):
+                nonlocal faulted
+                original_close(descriptor)
+                if not faulted:
+                    faulted = True
+                    raise OSError("SYNTHETIC_PRIVATE_FD_CLOSE_CANARY")
+
+            def fdopen_then_fail(descriptor, *args, **kwargs):
+                nonlocal faulted
+                faulted = True
+                raise OSError("SYNTHETIC_PRIVATE_FDOPEN_CANARY")
+
+            try:
+                os.open = capture_open
+                if fault == "close":
+                    os.close = close_then_fail
+                else:
+                    os.fdopen = fdopen_then_fail
+                try:
+                    validator.load(path)
+                except validator.Fail as exc:
+                    require(str(exc) == expected and exc.__suppress_context__ and exc.__cause__ is None,
+                            f"typed JSON {fault} fault leaked or misclassified")
+                    require("SYNTHETIC_PRIVATE_" not in str(exc),
+                            f"typed JSON {fault} private diagnostic leaked")
+                else:
+                    raise Fail(f"typed JSON {fault} fault unexpectedly accepted")
+            finally:
+                os.open, os.close, os.fdopen = original_open, original_close, original_fdopen
+            require(faulted and opened, f"typed JSON {fault} injection not reached")
+            for descriptor in opened:
+                try:
+                    os.fstat(descriptor)
+                except OSError:
+                    pass
+                else:
+                    raise Fail(f"typed JSON {fault} leaked descriptor")
+            require(validator.load(path) == {"safe": True},
+                    f"typed JSON {fault} recovery positive failed")
+    print("PASS: actual typed admission JSON reader close/fdopen private faults clean all descriptors")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -768,6 +828,7 @@ def main() -> int:
     prove_typed_writer_json_reader(writer)
     prove_typed_json_reader(validator)
     prove_typed_json_reader_fd_races(validator)
+    prove_typed_json_reader_descriptor_faults(validator)
     require(writer.canonical_repo_file(WRITER, "typed evidence writer") == WRITER, "canonical typed writer path rejected")
 
     prove_reconcile_runtime_authorities()
