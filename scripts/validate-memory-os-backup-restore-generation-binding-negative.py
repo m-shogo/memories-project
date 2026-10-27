@@ -543,6 +543,23 @@ def prove_private_writer_import_failures(module: Any) -> None:
 
 
 
+
+def prove_private_escaped_path_diagnostic(module: Any) -> None:
+    canary = "private-generation-binding-path-canary"
+    outside = Path(tempfile.gettempdir()) / canary
+    try:
+        module.repo_relative(outside)
+    except module.Fail as exc:
+        require(str(exc) == "artifact path escapes repository root",
+                "generation binding escaped-path diagnostic disclosed private path")
+        require(canary not in str(exc) and exc.__suppress_context__,
+                "generation binding escaped-path exception context exposed")
+    else:
+        raise Fail("generation binding accepted outside private path")
+    print("PASS: generation binding escaped-path diagnostic is private")
+
+
+
 def main() -> int:
     prove_symlink_parent_rejected()
     prove_helper_source_symlink_rejected()
@@ -551,6 +568,7 @@ def main() -> int:
     prove_helper_ancestor_swap_during_fd_walk_rejected()
     module = load_module()
     prove_private_writer_import_failures(module)
+    prove_private_escaped_path_diagnostic(module)
     state = candidate_state(module)
 
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
