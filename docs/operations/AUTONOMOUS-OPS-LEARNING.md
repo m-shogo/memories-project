@@ -14866,3 +14866,24 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Material success/outcome/evidence:** GitHub accepted the bounded reader and two negative cases; the actual reader tests were reached in successful CI at `1c447cac`. The field-name test is committed but its final CI outcome is not yet claimed.
 - **Why safe/reusable mechanism:** Independently pin every JSON file read to a bounded regular descriptor; redact untrusted JSON keys; exercise synthetic aliases, FIFOs and private field canaries without creating approval records.
 - **Protected-authority check:** Production status, recovery objective registry and mandatory learning contract remain separate; learning and CI cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion. Registered versus semantically eligible generations, distinct environments, current human-approved objective, current executable reviewed request, complete typed eight-domain non-resurrection, independent review and human promotion remain strict.
+
+## 2026-10-27 — Unhashable approval fields must be rejected before set membership
+
+### Material failure
+- **Symptom/evidence:** At writer blob `3ad78d4c61cc5cd67308d15284b61e581b4469c8`, `evidence_refs` called `set(value)` before checking individual reference types, and `approval_document` evaluated `role in APPROVAL_ROLES` without a string type check. Malformed JSON lists or mappings could raise raw `TypeError: unhashable type` instead of a fixed domain rejection. No actual human approval corruption was observed.
+- **Verified root cause:** Collection uniqueness/membership was evaluated before the type predicates that make those operations safe. **Failed approach:** assuming a JSON list or typed approval document already contains only hashable strings.
+- **Correction:** `7dfb66ebb272a4ec054aee34c926a8cfa1cb5d3c` enforces nonempty string approval refs before set construction and string review roles before set membership. `4209b70c70055efb601d7a1a7bae98b1fbdea369` adds actual-function negatives for mapping/list references and roles with private canaries, plus no real approval files.
+- **Executable recurrence guard:** The canonical Recovery Objectives Admission workflow executes the existing negative suite. Exact-source run `40438465413` at `4209b70c` completed SUCCESS; source `7dfb66eb` independently passed run `40438445515`. No synthetic objective was admitted.
+- **Retry condition:** Revisit only if an exact-source regression or a reviewed typed-approval schema change is observed; do not retry unchanged external approval/evidence blockers.
+
+### Material success
+- **Outcome/evidence:** Four malformed approval input cases are now rejected by the writer's own `Fail` class; the complete exact-source admission workflow passed.
+- **Why safe:** The negative suite uses in-memory documents and disposable fixtures, never the canonical human approval authority. The correction tightens input typing without supplying an objective or promoting readiness.
+- **Reusable mechanism:** Type-check untrusted JSON values before hashing, set membership or uniqueness checks; exercise dict/list negatives through the actual entrypoints, not only a standalone parser.
+- **Protected-authority check:** `productionDecision=NO_GO`, OPS-P0-007 blocking, zero approved objectives, distinct semantically eligible unsuperseded generations, explicit current human objective, executable reviewed drill request, typed eight-domain non-resurrection, independent review and separate human promotion all remain required. Learning is not production evidence or readiness.
+
+## 2026-10-27 — Exact-source completion update for field-name diagnostic guard
+
+- **Observed outcome/evidence:** The previously pending source `517bf635f3e761729e4ed281991ed70cd5328e46` completed Recovery Objectives Admission run `40438326610` with SUCCESS. Its field-name negative guard was runtime-reachable and did not require changing production authority. The earlier `f2cbb2` run `40438312709` validated `failure_stage=PASS` but refused stale HEAD during publication, which is expected CAS safety and not a failed validator.
+- **Why safe/reusable mechanism:** Distinguish class-only validator success from whole workflow completion, and require exact-source SUCCESS before upgrading the CI claim. No objective, generation, evidence or promotion was created.
+- **Protected-authority check:** Production status blob `f58d9e66eef99c06c23711a472325dacc686282e`, objective registry blob `f4d74f333a4884f9aba2284a31ac011aae8b71bd`, and mandatory learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remain unchanged; `productionDecision=NO_GO`.
