@@ -593,6 +593,62 @@ def main() -> int:
         valid_json.write_text('{"nested":{"value":1}}', encoding="utf-8")
         require(module.load(valid_json) == {"nested": {"value": 1}},
                 "generation binding strict JSON reader positive control failed")
+        with tempfile.TemporaryDirectory(prefix="memory-os-binding-json-parent-canary-") as outside:
+            parent = tmp / "pinned-parent"
+            parked = tmp / "parked-parent"
+            parent.mkdir()
+            child = parent / "candidate.json"
+            original = b'{"inside":true}'
+            canary = Path(outside) / "candidate.json"
+            child.write_bytes(original)
+            canary.write_bytes(b'{"outside":true}')
+            original_open = module.os.open
+            swapped = False
+
+            def swap_before_descent(target, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and target == parent.name and kwargs.get("dir_fd") is not None:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(Path(outside), target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            module.os.open = swap_before_descent
+            try:
+                expect_rejected(module, "generation binding JSON ancestor substitution", lambda: module.load(child))
+            finally:
+                module.os.open = original_open
+                if parent.is_symlink():
+                    require(parent.resolve() == Path(outside), "generation binding JSON canary parent changed")
+                    parent.unlink()
+                if parked.exists():
+                    parked.rename(parent)
+            require(swapped and child.read_bytes() == original,
+                    "generation binding JSON ancestor substitution not exercised safely")
+            swapped = False
+
+            def swap_after_pin(target, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and target == child.name and kwargs.get("dir_fd") is not None:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(Path(outside), target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            module.os.open = swap_after_pin
+            try:
+                require(module.load(child) == {"inside": True},
+                        "generation binding JSON followed substituted parent after pin")
+            finally:
+                module.os.open = original_open
+                if parent.is_symlink():
+                    require(parent.resolve() == Path(outside), "generation binding JSON canary parent changed")
+                    parent.unlink()
+                if parked.exists():
+                    parked.rename(parent)
+            require(swapped and child.read_bytes() == original and canary.read_bytes() == b'{"outside":true}',
+                    "generation binding JSON pinned ancestor test changed original or canary")
+            print("PASS: generation binding JSON ancestor swap rejects before descent and pins after descent")
         for flag in ("O_NOFOLLOW", "O_NONBLOCK"):
             original_flag = getattr(module.os, flag)
             try:
