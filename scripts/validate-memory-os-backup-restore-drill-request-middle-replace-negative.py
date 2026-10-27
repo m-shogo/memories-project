@@ -123,8 +123,9 @@ def main() -> int:
             try:
                 module.main()
             except module.Fail as exc:
-                if "synthetic second authority replace failure" not in str(exc):
-                    raise Fail(f"middle replace failure surfaced at unexpected boundary: {exc}") from exc
+                require_fixed = "cannot atomically write drill request authority (raw error withheld)"
+                if str(exc) != require_fixed or "synthetic second authority replace failure" in str(exc):
+                    raise Fail("middle replace failure lost fixed private diagnostic boundary") from None
             else:
                 raise Fail("synthetic second authority replace failure unexpectedly reconciled")
         finally:
