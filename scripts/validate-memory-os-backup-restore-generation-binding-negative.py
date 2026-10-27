@@ -163,7 +163,7 @@ def prove_target_import_unsafe_sources() -> None:
             else:
                 raise Fail("generation binding target accepted unsafe source")
         exit_source = sandbox / "exit.py"
-        exit_source.write_text("raise SystemExit('PRIVATE_BINDING_TARGET_EXIT_CANARY')\\n",
+        exit_source.write_text("raise SystemExit('PRIVATE_BINDING_TARGET_EXIT_CANARY')\n",
                                encoding="utf-8")
         try:
             load_target(exit_source, "binding_target_system_exit")
