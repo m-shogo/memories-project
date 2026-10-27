@@ -260,7 +260,9 @@ def approval_document(ref: str, record: dict[str, Any], approved_at: datetime) -
     reviewed_at = parse_utc_timestamp(document.get("reviewedAt"), "approval evidence reviewedAt")
     require(reviewed_at <= approved_at, "approval evidence cannot post-date objective approval")
     for field in ("objectiveId", "scope", "rpoSeconds", "rtoSeconds", "maximumObjectDatabaseSkewSeconds"):
-        require(document.get(field) == record.get(field), f"approval evidence {field} binding mismatch")
+        require(type(document.get(field)) is type(record.get(field))
+                and document.get(field) == record.get(field),
+                f"approval evidence {field} binding mismatch")
     for field in ("productionTraffic", "productionCredentials", "automaticPromotion"):
         require(document.get(field) is False, f"approval evidence {field} must remain false")
     return document
