@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import ast
 import copy
+import importlib.machinery
 import importlib.util
+import os
+import stat
 import re
 import tempfile
 from pathlib import Path
@@ -20,17 +23,120 @@ class Fail(RuntimeError):
 
 
 def require(condition: bool, message: str) -> None:
-    if not condition:
-        raise Fail(message)
+   MAX_REVIEW_MODULE_BYTES = 1024 * 1024
+
+
+def load_checked_module(path: Path, name: str) -> Any:
+    """Import only bounded FD-captured repository source bytes."""
+    try:
+        relative = path.relative_to(ROOT)
+        require(path.resolve(strict=True) == ROOT.resolve() / relative,
+                "independent review negative source rejected")
+        checked = path.lstat()
+        require(stat.S_ISREG(checked.st_mode), "independent review negative source rejected")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                "independent review negative source rejected")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(relative.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    "independent review negative source rejected")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_REVIEW_MODULE_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            require(not cleanup_failed, "independent review negative source rejected")
+        require(len(source) <= MAX_REVIEW_MODULE_BYTES,
+                "independent review negative source rejected")
+
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == name, "independent review negative source rejected")
+                return compile(source, str(path), "exec")
+
+        spec = importlib.util.spec_from_file_location(
+            name, path, loader=PinnedSourceLoader(name, str(path)))
+        require(spec is not None and spec.loader is not None,
+                "independent review negative source rejected")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("independent review negative source rejected") from None
+    return module
 
 
 def load_validator() -> Any:
-    require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical independent-review validator missing or symlinked")
-    require(VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve()) == Path("scripts/validate-memory-os-backup-restore-generation-independent-review.py"), "canonical independent-review validator path drift")
-    spec = importlib.util.spec_from_file_location("memory_os_generation_independent_review_execution_negative", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load independent-review validator")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    return load_checked_module(VALIDATOR, "memory_os_generation_independent_review_execution_negative")
+
+
+def prove_pinned_validator_import() -> None:
+    """After-capture parent substitution must not redirect imported code."""
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".independent-review-execution-import-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "module.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "module.py"
+        source.write_text("VALUE = 'pinned'\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_INDEPENDENT_REVIEW_IMPORT_CANARY')\n",
+                          encoding="utf-8")
+        swapped = False
+        try:
+            require(load_checked_module(source, "independent_review_import_positive").VALUE == "pinned",
+                    "independent review pinned import positive failed")
+
+            def swap_after_read(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = load_checked_module(source, "independent_review_import_parent_swap")
+            require(swapped and loaded.VALUE == "pinned",
+                    "independent review executed redirected source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_INDEPENDENT_REVIEW_IMPORT_CANARY')\n",
+                    "independent review changed external canary")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    require(callable(getattr(load_validator(), "main", None)),
+            "independent review canonical import restoration failed")
+    print("PASS: independent review execution negative import pins source across parent swap")
+
+ec.loader.exec_module(module)
     return module
 
 
@@ -388,6 +494,7 @@ def main() -> int:
     require_source_order_main_negative_proof()
     prove_source_order_json_reader()
     prove_pair_negative_harness_reachability()
+    prove_pinned_validator_import()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
     canonical_registry = module.REGISTRY.read_bytes()
