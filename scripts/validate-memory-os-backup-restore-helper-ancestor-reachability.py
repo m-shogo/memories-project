@@ -1079,6 +1079,23 @@ except (Exception, SystemExit):
                 for keyword in walk_loop.body[2].value.keywords),
         "ancestor pin descriptor open not live",
     )
+    expected_handoff = ast.parse("""next_fd = os.open(part, flags, dir_fd=fd)
+previous_fd = fd
+fd = next_fd
+try:
+    os.close(previous_fd)
+except (Exception, SystemExit):
+    raise Fail("fixture guard pinned descriptor cleanup failed") from None
+""").body
+    require(
+        len(walk_loop.body) >= 6
+        and all(
+            ast.dump(actual, include_attributes=False)
+            == ast.dump(expected, include_attributes=False)
+            for actual, expected in zip(walk_loop.body[2:6], expected_handoff)
+        ),
+        "ancestor pin handoff not cleanup-safe",
+    )
     # The checked leaf FD must supply the executed bytes; merely opening a
     # pinned FD before a later pathname read does not prevent import TOCTOU.
     loader_try = live_statements[1]
@@ -1541,6 +1558,30 @@ def negative_cases(source: str, diagnostic: str) -> int:
                 (anchor, anchor.replace(cleanup, "        os.close(fd)\n"),
                  "loader parent pin failure not private"),
             )
+    handoff_anchor = (
+        "            next_fd = os.open(part, flags, dir_fd=fd)\n"
+        "            previous_fd = fd\n"
+        "            fd = next_fd\n"
+        "            try:\n"
+        "                os.close(previous_fd)\n"
+        "            except (Exception, SystemExit):\n"
+        '                raise Fail("fixture guard pinned descriptor cleanup failed") from None\n'
+    )
+    require(source.count(handoff_anchor) == 1,
+            "ancestor pin handoff not cleanup-safe")
+    replacements += (
+        (handoff_anchor, handoff_anchor.replace(
+            "            fd = next_fd\n", "            fd = previous_fd\n"),
+         "ancestor pin handoff not cleanup-safe"),
+        (handoff_anchor, handoff_anchor.replace(
+            "os.close(previous_fd)", "os.close(fd)"),
+         "ancestor pin handoff not cleanup-safe"),
+        (handoff_anchor, handoff_anchor.replace(
+            "except (Exception, SystemExit):", "except OSError:"),
+         "ancestor pin handoff not cleanup-safe"),
+        (handoff_anchor, handoff_anchor.replace(" from None", ""),
+         "ancestor pin handoff not cleanup-safe"),
+    )
     base_cleanup_anchor = (
         "    except BaseException:\n"
         "        try:\n"
@@ -2758,6 +2799,39 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
         os.fstat, os.close = original_fstat, original_close
     assert injected_unexpected_parent_close["done"]
 
+    tracked_handoff = {"child": None, "old": None, "faulted": False}
+    def watch_handoff_open(file, flags, *args, **kwargs):
+        descriptor = original_open(file, flags, *args, **kwargs)
+        if file == parent.name and kwargs.get("dir_fd") is not None:
+            tracked_handoff["child"] = descriptor
+            tracked_handoff["old"] = kwargs["dir_fd"]
+        return descriptor
+    def fault_handoff_close(descriptor):
+        if descriptor == tracked_handoff["old"] and not tracked_handoff["faulted"]:
+            original_close(descriptor)
+            tracked_handoff["faulted"] = True
+            raise OSError("PRIVATE_HANDOFF_CLOSE_CANARY")
+        return original_close(descriptor)
+    os.open, os.close = watch_handoff_open, fault_handoff_close
+    try:
+        try:
+            loader(good, "pinned_handoff_cleanup_negative")
+        except Fail as exc:
+            assert str(exc) == "fixture guard pinned descriptor cleanup failed"
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_HANDOFF_CLOSE_CANARY" not in str(exc)
+        else:
+            raise AssertionError("handoff close failure accepted")
+    finally:
+        os.open, os.close = original_open, original_close
+    assert tracked_handoff["faulted"] and tracked_handoff["child"] is not None
+    try:
+        os.fstat(tracked_handoff["child"])
+    except OSError:
+        pass
+    else:
+        raise AssertionError("handoff child descriptor leaked")
+
     tracked_read = {}
     def watch_read_open(file, flags, *args, **kwargs):
         descriptor = original_open(file, flags, *args, **kwargs)
@@ -2861,7 +2935,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 83 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 87 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

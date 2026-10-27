@@ -261,8 +261,12 @@ def pin_checked_helper_parent(path: Path) -> int:
             require(cursor.is_dir() and not cursor.is_symlink(),
                     "generation-evidence fixture guard ancestor missing or symlinked")
             next_fd = os.open(part, flags, dir_fd=fd)
-            os.close(fd)
+            previous_fd = fd
             fd = next_fd
+            try:
+                os.close(previous_fd)
+            except (Exception, SystemExit):
+                raise Fail("fixture guard pinned descriptor cleanup failed") from None
             opened = os.fstat(fd)
             entry = cursor.lstat()
             require(
