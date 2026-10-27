@@ -45,7 +45,7 @@ def prove_bounded_registry_snapshot(writer) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-snapshot-") as tmp:
         parent = Path(tmp)
         registry = parent / "generation-registry.v1.json"
-        original = b'{"sentinel":"before"}\\n'
+        original = b'{"sentinel":"before"}\n'
         registry.write_bytes(original)
         registry.chmod(0o640)
         original_registry = writer.REGISTRY
