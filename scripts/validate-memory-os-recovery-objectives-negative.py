@@ -454,12 +454,63 @@ def prove_validator_private_path_errors(validator) -> None:
     print("PASS: validator private authority path positive and four fixed negatives")
 
 
+def prove_exact_typed_approval_value_binding(writer) -> None:
+    """Boolean approval values cannot equal integer recovery objectives."""
+    record = base_record()
+    record["rpoSeconds"] = 1
+    record["rtoSeconds"] = 1
+    record["maximumObjectDatabaseSkewSeconds"] = 0
+    approved_at = writer.parse_utc_timestamp(record["approvedAt"], "approvedAt")
+    document = {
+        "schemaVersion": writer.APPROVAL_SCHEMA,
+        "objectiveId": record["objectiveId"],
+        "reviewRole": "RECOVERY_OWNER",
+        "decision": "APPROVED",
+        "scope": record["scope"],
+        "rpoSeconds": 1,
+        "rtoSeconds": 1,
+        "maximumObjectDatabaseSkewSeconds": 0,
+        "reviewedAt": record["approvedAt"],
+        "reviewerPseudonym": "synthetic-reviewer",
+        "productionTraffic": False,
+        "productionCredentials": False,
+        "automaticPromotion": False,
+    }
+    require(set(document) == writer.APPROVAL_FIELDS,
+            "synthetic approval binding positive fixture field drift")
+    original_load = writer.load
+    try:
+        writer.load = lambda _path: document
+        require(writer.approval_document("synthetic-only", record, approved_at) == document,
+                "typed approval binding positive control failed")
+        for label, field, value in (
+            ("boolean RPO", "rpoSeconds", True),
+            ("boolean RTO", "rtoSeconds", True),
+            ("boolean skew", "maximumObjectDatabaseSkewSeconds", False),
+            ("string RPO", "rpoSeconds", "1"),
+        ):
+            mutated = dict(document)
+            mutated[field] = value
+            writer.load = lambda _path, doc=mutated: doc
+            try:
+                writer.approval_document("synthetic-only", record, approved_at)
+            except writer.Fail as exc:
+                require(str(exc) == f"approval evidence {field} binding mismatch",
+                        f"typed approval binding {label} wrong failure class")
+            else:
+                raise Fail(f"typed approval binding {label} unexpectedly accepted")
+    finally:
+        writer.load = original_load
+    print("PASS: exact typed approval RPO/RTO/skew positive and four negatives")
+
+
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
     writer = load_writer()
     prove_private_reference_failure_classes(writer)
     prove_unhashable_approval_inputs(writer)
+    prove_exact_typed_approval_value_binding(writer)
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
     prove_typed_negative_case_authority(validator)
     prove_validator_private_path_errors(validator)
