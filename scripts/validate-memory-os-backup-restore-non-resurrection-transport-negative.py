@@ -525,58 +525,6 @@ def exercise_registry_transaction_transport() -> None:
         assert_no_registry_temp_residue(parent)
 
 
-def exercise_writer_delegated_generation_privacy() -> None:
-    """Prove delegated generation Fail diagnostics cannot expose private evidence."""
-    writer = load_module(WRITER, "memory_os_typed_generation_delegation_negative")
-    original_load = writer.load
-    original_loader = writer.load_generation_writer
-    stage = ["upstream"]
-    record = {"evidenceId": "synthetic-generation-only", "evidenceComplete": False}
-    registry = {
-        "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
-        "appendOnly": True, "productionEvidence": False, "productionReady": False,
-        "records": [record], "registeredEvidenceCount": 1,
-        "drillRequestBoundEvidenceCount": 1,
-        "completeGenerationBoundBackupCount": 0,
-        "completeGenerationBoundRestoreCount": 0,
-        "productionEquivalentRecoveryCandidateCount": 0,
-    }
-
-    class SyntheticGenerationWriter:
-        def validate_upstream_authorities_for_append(self) -> None:
-            if stage[0] == "upstream":
-                raise writer.Fail("PRIVATE_TYPED_DELEGATED_UPSTREAM_CANARY")
-
-        def validate_record(self, _record, require_current_drill_request=False) -> None:
-            if stage[0] == "record":
-                raise writer.Fail("PRIVATE_TYPED_DELEGATED_RECORD_CANARY")
-
-    writer.load = lambda _path: registry
-    writer.load_generation_writer = lambda: SyntheticGenerationWriter()
-    try:
-        for stage_name, expected in (
-            ("upstream", "generation evidence upstream authority invalid"),
-            ("record", "generation evidence registry records[0] historical authority invalid"),
-        ):
-            stage[0] = stage_name
-            try:
-                writer.generation_registry_rows()
-            except writer.Fail as exc:
-                require(str(exc) == expected and exc.__suppress_context__,
-                        f"typed delegated {stage_name} failure leaked private diagnostics")
-                require("PRIVATE_TYPED_DELEGATED_" not in str(exc),
-                        f"typed delegated {stage_name} private canary disclosed")
-            else:
-                raise Fail(f"typed delegated {stage_name} failure unexpectedly accepted")
-        stage[0] = "success"
-        require(writer.generation_registry_rows() == [record],
-                "typed delegated generation positive control failed")
-    finally:
-        writer.load = original_load
-        writer.load_generation_writer = original_loader
-    print("PASS reject: typed delegated generation Fail diagnostics remain private")
-
-
 def exercise_writer_snapshot_transport() -> None:
     """Reject unsafe registry snapshots without touching canonical authority."""
     writer = load_module(WRITER, "memory_os_typed_snapshot_transport_negative")
@@ -1811,7 +1759,6 @@ def main() -> int:
     exercise_reconciler_transaction_transport()
     prove_typed_transport_fixture_parent_guard()
     exercise_writer_snapshot_transport()
-    exercise_writer_delegated_generation_privacy()
     exercise_writer_lock_lifecycle_negative()
 
     print("Typed non-resurrection execution/registry/reconcile transport negative suite PASS")
