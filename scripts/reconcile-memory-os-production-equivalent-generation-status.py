@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -106,11 +107,32 @@ def canonical_repo_ref(ref: object, message: str) -> Path:
 
 
 def read_text(path: Path) -> str:
-    relative = repo_relative(path)
+    """Read a bounded canonical authority from one regular inode."""
+    repo_relative(path)
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "environment generation authority safe read unavailable")
+    descriptor = -1
     try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise Fail(f"cannot read {relative}: {exc}") from exc
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(stat.S_ISREG(os.fstat(descriptor).st_mode),
+                "environment generation authority source is not a regular file")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = -1
+            raw = source.read(MAX_AUTHORITY_BYTES + 1)
+    except OSError:
+        raise Fail("cannot read environment generation authority") from None
+    finally:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("environment generation authority read descriptor cleanup failed") from None
+    require(len(raw) <= MAX_AUTHORITY_BYTES,
+            "environment generation authority source size limit exceeded")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeError:
+        raise Fail("environment generation authority source UTF-8 invalid") from None
 
 
 MAX_AUTHORITY_BYTES = 1024 * 1024

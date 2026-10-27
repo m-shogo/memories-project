@@ -517,6 +517,90 @@ def prove_private_atomic_authority_writer(reconciler: object) -> None:
     print("PASS reject: generation reconciler atomic writer private faults, short writes and symlinks")
 
 
+def prove_private_bounded_authority_reader(reconciler: object) -> None:
+    """Read-only inode, size and descriptor negatives against the real reconciler."""
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-private-read-", dir=TMP_PARENT) as tmp:
+        parent = Path(tmp)
+        source = parent / "authority.json"
+        payload = b'{"sentinel":"before"}\n'
+        source.write_bytes(payload)
+        require(reconciler.read_text(source) == payload.decode("utf-8"),
+                "generation authority reader positive control failed")
+        source.write_bytes(b"x" * (reconciler.MAX_AUTHORITY_BYTES + 1))
+        try:
+            reconciler.read_text(source)
+        except reconciler.Fail as exc:
+            require(str(exc) == "environment generation authority source size limit exceeded",
+                    "oversized generation authority read wrong failure class")
+        else:
+            raise Fail("oversized generation authority read accepted")
+        source.write_bytes(bytes([255]))
+        try:
+            reconciler.read_text(source)
+        except reconciler.Fail as exc:
+            require(str(exc) == "environment generation authority source UTF-8 invalid",
+                    "invalid UTF-8 generation authority wrong failure class")
+        else:
+            raise Fail("invalid UTF-8 generation authority accepted")
+        source.write_bytes(payload)
+
+        external = parent / "external-canary.json"
+        external.write_bytes(b"PRIVATE_GENERATION_READ_CANARY")
+        alias = parent / "authority-alias.json"
+        alias.symlink_to(external)
+        try:
+            reconciler.read_text(alias)
+        except reconciler.Fail as exc:
+            require(str(exc) == "cannot read environment generation authority"
+                    and exc.__suppress_context__,
+                    "generation authority symlink read leaked private diagnostics")
+        else:
+            raise Fail("generation authority reader followed symlink")
+        require(external.read_bytes() == b"PRIVATE_GENERATION_READ_CANARY",
+                "generation authority reader mutated external canary")
+        fifo = parent / "authority-fifo.json"
+        os.mkfifo(fifo)
+        for unsafe in (fifo, parent):
+            try:
+                reconciler.read_text(unsafe)
+            except reconciler.Fail as exc:
+                require(str(exc) == "environment generation authority source is not a regular file",
+                        "generation authority special node wrong failure class")
+            else:
+                raise Fail("generation authority reader accepted special node")
+
+        original_fdopen = reconciler.os.fdopen
+        opened: list[int] = []
+
+        def reject_fdopen(fd, *_args, **_kwargs):
+            opened.append(fd)
+            raise OSError("PRIVATE_GENERATION_READ_FDOPEN_CANARY")
+
+        reconciler.os.fdopen = reject_fdopen
+        try:
+            try:
+                reconciler.read_text(source)
+            except reconciler.Fail as exc:
+                require(str(exc) == "cannot read environment generation authority"
+                        and exc.__suppress_context__,
+                        "generation authority reader fdopen error leaked private details")
+            else:
+                raise Fail("generation authority reader fdopen failure accepted")
+        finally:
+            reconciler.os.fdopen = original_fdopen
+        require(len(opened) == 1, "generation authority fdopen negative not reached")
+        for fd in opened:
+            try:
+                os.fstat(fd)
+            except OSError:
+                pass
+            else:
+                raise Fail("generation authority reader fdopen failure leaked descriptor")
+        require(source.read_bytes() == payload,
+                "generation authority read negative modified source bytes")
+    print("PASS reject: generation authority bounded reader symlink/FIFO/UTF-8/FD cleanup")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(WORKFLOW.is_file(), "environment generation workflow missing")
@@ -622,6 +706,7 @@ def main() -> int:
     print("PASS preserve: environment generation evidence ordering is deterministic")
 
     prove_private_child_validator(reconciler)
+    prove_private_bounded_authority_reader(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_private_atomic_authority_writer(reconciler)
     with isolated_authorities(reconciler):
