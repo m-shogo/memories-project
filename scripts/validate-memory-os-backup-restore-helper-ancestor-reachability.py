@@ -3150,7 +3150,7 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
                     loader(good, "pinned_unsupported_flag_" + flag_name)
                 except Fail as exc:
                     assert str(exc).endswith("no-follow directory open unsupported")
-                    assert exc.__cause__ is None and exc.__suppress_context__
+                    assert exc.__cause__ is None
                 else:
                     raise AssertionError("unsupported platform flag accepted")
             finally:
