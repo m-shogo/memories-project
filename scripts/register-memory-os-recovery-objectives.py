@@ -368,17 +368,12 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
     atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
-    except Exception as primary_exc:
+    except Exception:
         try:
             atomic_restore(original, original_mode)
-        except Exception as rollback_exc:
-            raise Fail(
-                "recovery objectives append failed; primary failure: "
-                + str(primary_exc)
-                + "; rollback incomplete: "
-                + str(rollback_exc)
-            ) from primary_exc
-        raise
+        except Exception:
+            raise Fail("recovery objectives append failed; rollback incomplete") from None
+        raise Fail("recovery objectives append failed; rollback completed") from None
 
 
 def main() -> int:
