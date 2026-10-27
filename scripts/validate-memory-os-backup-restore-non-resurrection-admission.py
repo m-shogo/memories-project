@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -106,10 +108,45 @@ def load(path: Path) -> dict[str, Any]:
         require(len(value.lstrip("-")) <= 128, "typed admission JSON integer too large")
         return int(value)
 
+    if not all(
+        type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")
+    ):
+        raise Fail("typed admission JSON nofollow support required") from None
+
+    directories: list[int] = []
+    fd = -1
     try:
-        with path.open("rb") as source:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+        parent_fd = os.open(ROOT, directory_flags)
+        directories.append(parent_fd)
+        for component in relative.parts[:-1]:
+            parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            directories.append(parent_fd)
+        fd = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+        require(stat.S_ISREG(os.fstat(fd).st_mode), "typed admission JSON path unsafe")
+        with os.fdopen(fd, "rb") as source:
+            fd = -1
             raw = source.read(MAX_JSON_BYTES + 1)
-        require(len(raw) <= MAX_JSON_BYTES, "typed admission JSON size limit exceeded")
+    except (OSError, ValueError):
+        raise Fail("typed admission JSON unreadable or invalid") from None
+    finally:
+        cleanup_failed = False
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                cleanup_failed = True
+        for directory_fd in reversed(directories):
+            try:
+                os.close(directory_fd)
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("typed admission JSON cleanup failed") from None
+
+    require(len(raw) <= MAX_JSON_BYTES, "typed admission JSON size limit exceeded")
+    try:
         value = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=reject_duplicates,
@@ -117,7 +154,7 @@ def load(path: Path) -> dict[str, Any]:
             parse_float=parse_finite_float,
             parse_int=parse_bounded_int,
         )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+    except (UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise Fail("typed admission JSON unreadable or invalid") from None
     require(isinstance(value, dict), "typed admission JSON root must be object")
     return value
