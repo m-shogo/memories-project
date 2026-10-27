@@ -15,7 +15,7 @@ WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-revie
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
 HELPER = ROOT / "scripts/ops_independent_review_fixture_loader.py"
 TRANSPORT = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py"
-REVIEWED_TRANSPORT_GIT_BLOB_SHA = "359a47a8f66a1308b1ef51915cbd5070c531e445"
+REVIEWED_TRANSPORT_GIT_BLOB_SHA = "029aaf34c27c05a3d429252a2978963c4675b3df"
 REVIEWED_HELPER_GIT_BLOB_SHA = "1091ad96042f16bbb538fad2b81050a6f4fa6450"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
@@ -197,6 +197,8 @@ def main() -> int:
     for label, old, new in (
         ("restore mutable transport source read", b"raw = read_pinned_source(ROOT, SOURCE_ORDER_EXECUTION_NEGATIVE)", b"raw = SOURCE_ORDER_EXECUTION_NEGATIVE.read_bytes()"),
         ("remove transport private read failure", b"except (FixtureImportFail, UnicodeDecodeError):", b"except UnicodeDecodeError:"),
+        ("restore unbounded contract read", b"canonical_contract = read_authority(module.CONTRACT)", b"canonical_contract = module.CONTRACT.read_bytes()"),
+        ("skip pinned registry postcondition", b"require(read_authority(module.REGISTRY) == canonical_registry", b"require(True or read_authority(module.REGISTRY) == canonical_registry"),
     ):
         if old not in transport_source:
             raise SystemExit("independent-review transport mutation anchor missing: " + label)

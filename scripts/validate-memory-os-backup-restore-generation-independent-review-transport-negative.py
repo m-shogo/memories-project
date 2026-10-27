@@ -72,6 +72,14 @@ def prove_source_order_import_guard() -> None:
     print("PASS: independent source-order negative importer rejects 2 source mutations")
 
 
+def read_authority(path: Path) -> bytes:
+    """Bound and pin canonical authority bytes before and after transport fault probes."""
+    try:
+        return read_pinned_source(ROOT, path)
+    except FixtureImportFail:
+        raise Fail("transport authority read rejected") from None
+
+
 def expect_transport_rejected(module: Any, mutate: Callable[[], None], restore: Callable[[], None], label: str) -> None:
     mutate()
     try:
@@ -88,8 +96,8 @@ def expect_transport_rejected(module: Any, mutate: Callable[[], None], restore: 
 def main() -> int:
     prove_source_order_import_guard()
     module = load_validator()
-    canonical_contract = module.CONTRACT.read_bytes()
-    canonical_registry = module.REGISTRY.read_bytes()
+    canonical_contract = read_authority(module.CONTRACT)
+    canonical_registry = read_authority(module.REGISTRY)
 
     original_run = module.subprocess.run
     expect_transport_rejected(
@@ -115,8 +123,8 @@ def main() -> int:
         "module_from_spec substitution",
     )
 
-    require(module.CONTRACT.read_bytes() == canonical_contract, "transport substitution mutated canonical generation evidence contract")
-    require(module.REGISTRY.read_bytes() == canonical_registry, "transport substitution mutated canonical generation evidence registry")
+    require(read_authority(module.CONTRACT) == canonical_contract, "transport substitution mutated canonical generation evidence contract")
+    require(read_authority(module.REGISTRY) == canonical_registry, "transport substitution mutated canonical generation evidence registry")
     print("Memory OS generation independent-review transport negative PASS")
     print("subprocess transport substitution accepted: false")
     print("module loader transport substitution accepted: false")
