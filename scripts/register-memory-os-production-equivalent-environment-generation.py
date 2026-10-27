@@ -360,12 +360,37 @@ def atomic_restore(payload: bytes, mode: int) -> None:
             pass
 
 
-def write_registry_transactionally(value: dict[str, Any]) -> None:
+MAX_JSON_BYTES = 1024 * 1024
+
+
+def snapshot_registry_for_append() -> tuple[bytes, int]:
+    """Pin bounded original registry bytes and mode to one safe regular-file FD."""
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "environment generation registry snapshot safe open unavailable")
+    descriptor = -1
     try:
-        original = REGISTRY.read_bytes()
-        original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
-    except OSError as exc:
-        raise Fail("cannot snapshot environment generation registry before append") from exc
+        descriptor = os.open(REGISTRY, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(descriptor)
+        require(stat.S_ISREG(metadata.st_mode),
+                "environment generation registry snapshot path unsafe")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = -1
+            original = source.read(MAX_JSON_BYTES + 1)
+    except OSError:
+        raise Fail("cannot snapshot environment generation registry before append") from None
+    finally:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("environment generation registry snapshot descriptor cleanup failed") from None
+    require(len(original) <= MAX_JSON_BYTES,
+            "environment generation registry snapshot size limit exceeded")
+    return original, stat.S_IMODE(metadata.st_mode)
+
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    original, original_mode = snapshot_registry_for_append()
     atomic_write(value, original_mode)
     try:
         validate_registry_for_append(load(REGISTRY))
