@@ -20,6 +20,7 @@ CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight
 CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
+DRILL_REQUEST_RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
 PREFLIGHT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 PREFLIGHT_AUTHORITY = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-authority.py"
 PREFLIGHT_RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
@@ -1556,6 +1557,69 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("drill request pinned loader weakening accepted: " + label)
+    reconcile_source = DRILL_REQUEST_RECONCILE_NEGATIVE.read_text(encoding="utf-8")
+
+    def verify_drill_reconcile_loader(candidate: str) -> None:
+        try:
+            parsed = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("drill reconcile pinned loader source syntax invalid") from None
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        loader = functions.get("load_reconciler")
+        proof = functions.get("prove_reconciler_pinned_import")
+        main = functions.get("main")
+        require(loader is not None and proof is not None and main is not None,
+                "drill reconcile pinned loader/proof/main missing")
+        loader_body = ast.get_source_segment(candidate, loader)
+        proof_body = ast.get_source_segment(candidate, proof)
+        main_body = ast.get_source_segment(candidate, main)
+        require(all(isinstance(body, str) for body in (loader_body, proof_body, main_body)),
+                "drill reconcile pinned source unavailable")
+        require(main_body.count("prove_reconciler_pinned_import()") == 1
+                and main_body.index("prove_reconciler_pinned_import()") <
+                    main_body.index("reconciler = load_reconciler()"),
+                "drill reconcile pinned proof not run before canonical import")
+        for token in ("load_pinned_fixture_guard(", "helper.load_module(",
+                      'raise Fail("cannot load drill request reconciler") from None'):
+            require(token in loader_body, "drill reconcile pinned loader binding removed")
+        for token in ("parent.rename(parked)", "parent.symlink_to(redirected",
+                      "importlib.util.spec_from_file_location = swap_after_read",
+                      'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
+                      "importlib.util.spec_from_file_location = original_spec",
+                      'getattr(load_reconciler(), "main", None)'):
+            require(token in proof_body, "drill reconcile pinned race proof removed")
+
+    verify_drill_reconcile_loader(reconcile_source)
+    for label, scope, old, replacement in (
+        ("proof invocation", "main", "    prove_reconciler_pinned_import()\n", "    pass\n"),
+        ("shared pinned loader", "load_reconciler", "helper.load_module(", "helper.load_unpinned("),
+        ("pinned helper", "load_reconciler", "load_pinned_fixture_guard(", "load_module("),
+        ("private suppression", "load_reconciler",
+         'raise Fail("cannot load drill request reconciler") from None',
+         'raise Fail("cannot load drill request reconciler") from exc'),
+        ("parent substitution", "prove_reconciler_pinned_import",
+         "parent.symlink_to(redirected, target_is_directory=True)", "pass"),
+        ("pinned value", "prove_reconciler_pinned_import", 'loaded.VALUE == "pinned"', "False"),
+        ("canary", "prove_reconciler_pinned_import",
+         'require(canary.read_text(encoding="utf-8") ==', 'require(False and'),
+        ("canonical restoration", "prove_reconciler_pinned_import",
+         'getattr(load_reconciler(), "main", None)', 'getattr(load_reconciler(), "missing", None)'),
+    ):
+        parsed = ast.parse(reconcile_source)
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        function = functions.get(scope)
+        require(function is not None, "drill reconcile pinned mutation scope missing")
+        lines = reconcile_source.splitlines(keepends=True)
+        span = "".join(lines[function.lineno - 1:function.end_lineno])
+        require(span.count(old) == 1,
+                "drill reconcile pinned scoped mutation anchor drift: " + label)
+        lines[function.lineno - 1:function.end_lineno] = [span.replace(old, replacement, 1)]
+        try:
+            verify_drill_reconcile_loader("".join(lines))
+        except Fail:
+            continue
+        raise Fail("drill reconcile pinned source weakening accepted: " + label)
+    print("PASS: drill reconcile pinned loader and eight source mutations rejected")
     print("PASS: drill request pinned loader and twenty-five source mutations rejected")
     print("PASS: preflight reconcile negative pinned loader and five source mutations rejected")
     print("PASS: preflight authority pinned loader/private path/FD/unsafe source and 21 mutations rejected")
