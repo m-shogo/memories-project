@@ -58,8 +58,8 @@ def require(condition: bool, message: str) -> None:
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve(strict=False).relative_to(ROOT.resolve())
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"authority path missing, unreadable, or escapes repository: {path}") from exc
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("typed reconcile authority path unsafe") from None
 
 def require_repo_file(path: Path, message: str) -> Path:
     relative = repo_relative(path)
@@ -70,8 +70,8 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     try:
         lexical = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} missing or escapes repository") from None
     require(
         lexical == expected_relative and resolved == expected_relative and path.is_file(),
         f"{field} authority drift",
@@ -260,8 +260,8 @@ def load_module(path: Path, name: str):
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+    except (FileNotFoundError, OSError):
+        raise Fail("typed reconcile validator module import unavailable") from None
     return module
 
 def append_once(values: list[Any], value: str) -> None:
