@@ -105,8 +105,8 @@ def require(condition: bool, message: str) -> None:
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve().relative_to(ROOT.resolve())
-    except ValueError as exc:
-        raise Fail(f"artifact path escapes repository root: {path}") from exc
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("preflight artifact path missing or escapes repository") from None
 
 
 MAX_JSON_BYTES = 1024 * 1024
@@ -201,8 +201,8 @@ def require_exact_executable(path: Path, expected_relative: Path, field: str) ->
     try:
         lexical = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"{field} missing or escapes repository") from exc
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail(f"{field} missing or escapes repository") from None
     require(
         lexical == expected_relative
         and resolved == expected_relative

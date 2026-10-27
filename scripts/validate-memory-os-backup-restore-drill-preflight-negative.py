@@ -73,6 +73,44 @@ def expect_path_rejected(validator: Any, name: str, path: Path) -> None:
     raise Fail(f"escaped path unexpectedly accepted: {name}")
 
 
+
+def prove_private_preflight_path_errors(validator: Any) -> None:
+    """Reject filesystem path failures without disclosing private exception context."""
+    private = "SYNTHETIC_PRIVATE_PREFLIGHT_PATH_CANARY"
+    original_resolve = Path.resolve
+
+    def private_resolve(_path, *args, **kwargs):
+        raise OSError(private)
+
+    def reject(label: str, operation: Callable[[], object], expected: str) -> None:
+        try:
+            operation()
+        except validator.Fail as exc:
+            require(str(exc) == expected and exc.__cause__ is None and exc.__suppress_context__,
+                    f"preflight {label} private exception context escaped")
+            require(private not in str(exc), f"preflight {label} leaked private path")
+        else:
+            raise Fail(f"preflight {label} accepted private path failure")
+
+    try:
+        Path.resolve = private_resolve
+        reject("repo_relative OSError", lambda: validator.repo_relative(CONTRACT),
+               "preflight artifact path missing or escapes repository")
+        reject("exact executable OSError",
+               lambda: validator.require_exact_executable(VALIDATOR, VALIDATOR.relative_to(ROOT),
+                                                          "synthetic executable"),
+               "synthetic executable missing or escapes repository")
+    finally:
+        Path.resolve = original_resolve
+    reject("outside path canary",
+           lambda: validator.repo_relative(Path(tempfile.gettempdir()) / private),
+           "preflight artifact path missing or escapes repository")
+    require(validator.repo_relative(CONTRACT) == CONTRACT.relative_to(ROOT),
+            "preflight repo_relative positive failed after private fault")
+    validator.require_exact_executable(VALIDATOR, VALIDATOR.relative_to(ROOT), "synthetic executable")
+    print("PASS: preflight private path errors and exception contexts suppressed")
+
+
 def expect_strict_preflight_json_reader(validator: Any) -> None:
     """Actual preflight reader rejects noncanonical, unsafe or oversized JSON evidence."""
     require(isinstance(validator.load(CONTRACT), dict), "preflight JSON canonical positive failed")
@@ -445,6 +483,7 @@ def main() -> int:
         "preflight negative foundation missing",
     )
     validator = load_validator()
+    prove_private_preflight_path_errors(validator)
     canonical = load(CONTRACT)
     generations = load(GEN_REGISTRY)
     objectives = load(OBJECTIVES)
