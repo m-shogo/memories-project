@@ -3554,6 +3554,55 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     else:
         raise AssertionError("handoff child descriptor leaked")
 
+    # A close that raises before closing has ambiguous ownership. Never
+    # blindly retry an FD number: it may already have been reused. Verify the
+    # fixed fail-closed diagnostic and child cleanup, then explicitly reclaim
+    # the still-open old FD in this isolated, single-threaded fault fixture.
+    tracked_preclose = {"child": None, "old": None, "faulted": False, "calls": 0}
+    def watch_preclose_open(file, flags, *args, **kwargs):
+        descriptor = original_open(file, flags, *args, **kwargs)
+        if file == parent.name and kwargs.get("dir_fd") is not None:
+            tracked_preclose["child"] = descriptor
+            tracked_preclose["old"] = kwargs["dir_fd"]
+        return descriptor
+    def fault_preclose_close(descriptor):
+        if descriptor == tracked_preclose["old"]:
+            tracked_preclose["calls"] += 1
+            if not tracked_preclose["faulted"]:
+                tracked_preclose["faulted"] = True
+                raise RuntimeError("PRIVATE_PRECLOSE_HANDOFF_CANARY")
+        return original_close(descriptor)
+    os.open, os.close = watch_preclose_open, fault_preclose_close
+    try:
+        try:
+            loader(good, "pinned_handoff_preclose_negative")
+        except Fail as exc:
+            assert str(exc) == "fixture guard pinned descriptor cleanup failed"
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_PRECLOSE_HANDOFF_CANARY" not in str(exc)
+        else:
+            raise AssertionError("pre-close handoff failure accepted")
+    finally:
+        os.open, os.close = original_open, original_close
+        old_fd = tracked_preclose["old"]
+        if old_fd is not None:
+            try:
+                os.fstat(old_fd)
+            except OSError as exc:
+                assert exc.errno == errno.EBADF
+            else:
+                # The fixture owns this FD and is single-threaded; this is
+                # test cleanup, not an unsafe retry in the production walker.
+                original_close(old_fd)
+    assert tracked_preclose["faulted"] and tracked_preclose["calls"] == 1
+    assert tracked_preclose["child"] is not None
+    try:
+        os.fstat(tracked_preclose["child"])
+    except OSError as exc:
+        assert exc.errno == errno.EBADF
+    else:
+        raise AssertionError("pre-close handoff child descriptor leaked")
+
     tracked_read = {}
     def watch_read_open(file, flags, *args, **kwargs):
         descriptor = original_open(file, flags, *args, **kwargs)
