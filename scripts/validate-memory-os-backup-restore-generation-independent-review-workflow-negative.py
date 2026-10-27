@@ -192,6 +192,13 @@ def require_helper_semantic_proof(source: bytes) -> None:
                     and any(keyword.arg == "dir_fd" for keyword in node.keywords)]
     if len(pinned_opens) != 2:
         raise SystemExit("independent-review fixture helper ancestor/leaf pinning weakened")
+    directory_flags = [node for node in ast.walk(reader) if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == "directory_flags"
+                               for target in node.targets)
+                       and ast.unparse(node.value)
+                       == "os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK"]
+    if len(directory_flags) != 1:
+        raise SystemExit("independent-review fixture helper safe directory flags weakened")
     if not any(isinstance(node, ast.Call) and ast.unparse(node) == "stream.read(MAX_MODULE_BYTES + 1)"
                for node in ast.walk(reader)):
         raise SystemExit("independent-review fixture helper bounded read weakened")
