@@ -157,14 +157,16 @@ def write_text(path: Path, text: str) -> None:
         raise Fail("recovery objective reconcile write payload invalid") from None
     require(len(payload) <= MAX_AUTHORITY_BYTES,
             "recovery objective reconcile write size limit exceeded")
+    descriptor: int | None = None
     temp_name: str | None = None
     try:
         mode = stat.S_IMODE(path.stat().st_mode)
-        fd, temp_name = tempfile.mkstemp(
+        descriptor, temp_name = tempfile.mkstemp(
             prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
         )
-        os.fchmod(fd, mode)
-        with os.fdopen(fd, "wb") as handle:
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -173,13 +175,21 @@ def write_text(path: Path, text: str) -> None:
     except (OSError, ValueError, TypeError):
         raise Fail("recovery objective reconcile authority atomic write failed") from None
     finally:
+        cleanup_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                cleanup_failed = True
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
             except FileNotFoundError:
                 pass
             except OSError:
-                raise Fail("recovery objective reconcile authority temporary cleanup failed") from None
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("recovery objective reconcile authority temporary cleanup failed") from None
 
 
 def restore_original_text(original_text: dict[Path, str]) -> None:
