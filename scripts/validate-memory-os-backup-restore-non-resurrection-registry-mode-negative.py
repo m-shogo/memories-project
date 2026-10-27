@@ -42,6 +42,7 @@ def prove_close_failure_releases_lock(writer) -> None:
     original_load = writer.load
     original_validate_record = writer.validate_record
     original_write = writer.os.write
+    original_open = writer.os.open
     original_close = writer.os.close
     original_fsync = writer.os.fsync
     original_argv = sys.argv[:]
@@ -101,6 +102,22 @@ def prove_close_failure_releases_lock(writer) -> None:
             finally:
                 writer.os.fsync = original_fsync
             require(not lock.exists(), "typed lock fsync failure stranded lock")
+            def reject_lock_open(path, flags, mode=0o600):
+                if Path(path) == lock:
+                    raise OSError("PRIVATE_TYPED_LOCK_CANARY open")
+                return original_open(path, flags, mode)
+            writer.os.open = reject_lock_open
+            try:
+                writer.main()
+            except writer.Fail as exc:
+                require(str(exc) == "typed non-resurrection registry lock acquisition failed"
+                        and exc.__suppress_context__,
+                        "typed lock acquisition failure leaked private exception")
+            else:
+                raise Fail("typed lock acquisition failure unexpectedly accepted")
+            finally:
+                writer.os.open = original_open
+            require(not lock.exists(), "typed lock acquisition failure stranded lock")
 
             retry_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             os.close(retry_fd)
@@ -113,6 +130,7 @@ def prove_close_failure_releases_lock(writer) -> None:
             writer.load = original_load
             writer.validate_record = original_validate_record
             writer.os.write = original_write
+            writer.os.open = original_open
             writer.os.close = original_close
             writer.os.fsync = original_fsync
             sys.argv = original_argv
