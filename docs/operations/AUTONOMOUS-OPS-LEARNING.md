@@ -15083,3 +15083,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Canonical helper imports are private at the Python stream and exception boundary, with exact-source negative/admission CI success.
 - **Why safe/reusable mechanism:** Reused a verified null-sink import guard while retaining the canonical helper identity and admission logic; synthetic noisy modules never create requests, credentials, traffic or readiness.
 - **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy production or recovery gates.
+
+## 2026-10-27 — Drill-request reconciler helper imports suppress private Python diagnostics
+
+### Material failure
+- **Symptom/evidence:** At `ae986ff2410a87da6b9da8bfdccb0cbe818ba976`, reconciler `load_module` executed canonical helper modules with inherited Python stdout/stderr and interpolated raw import OSError text/context. A noisy import could expose private information before transactional validation. No actual credential leak, request admission or production readiness change was observed.
+- **Verified root cause:** This independent import boundary had not reused the already verified validator/recovery-objective null-sink import guard. **Failed approach:** trusting strict JSON reads and later class-only validator errors to protect earlier import-time diagnostics.
+- **Correction:** `b2f23f953726d9eb24171c7386a8996a38239c84` suppresses Python stdout/stderr during canonical helper import and converts import faults to a fixed private error without exception chaining.
+- **Executable recurrence guard:** Existing CI-invoked reconciler negatives exercise the real canonical writer positive import and synthetic noisy successful/failing loaders, checking fixed errors, no raw context and no Python stream leakage. Exact-source Reconcile Rollback `40444207240`, Unreadable Authority Negatives `40444207184`, Drill Request Admission `40444207171` and Autonomous Learning Guard `40444207273` completed SUCCESS.
+- **Retry condition:** Revisit only for observed import privacy/source regression or reviewed import policy change; do not retry unchanged external/human-evidence blockers.
+
+### Material success
+- **Outcome/evidence:** The reconciler's helper import boundary is class-only and Python-stream-private, verified in exact-source negative and admission CI.
+- **Why safe/reusable mechanism:** Reused the validated null-sink import pattern without changing source authority paths, planning admission semantics or transaction behavior; synthetic tests create no human approval, drill request, recovery evidence, traffic, credentials or readiness.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remained unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, explicit current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy recovery or production gates.
