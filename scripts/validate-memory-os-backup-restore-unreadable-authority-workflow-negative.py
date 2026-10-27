@@ -312,30 +312,40 @@ def require_json_descriptor_fault_negative_reachable(source: str, function_name:
 
 
 def prove_json_descriptor_fault_negative_removal_rejected() -> None:
-    for relative, function_name in (
+    for relative, function_name, invocation in (
         ("scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
-         "expect_preflight_json_descriptor_faults"),
+         "expect_preflight_json_descriptor_faults",
+         "    expect_preflight_json_descriptor_faults(validator)\n"),
         ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
-         "prove_typed_json_reader_descriptor_faults"),
+         "prove_typed_json_reader_descriptor_faults",
+         "    prove_typed_json_reader_descriptor_faults(validator)\n"),
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py",
+         "prove_preflight_reconcile_descriptor_faults",
+         "    prove_preflight_reconcile_descriptor_faults(reconciler)\n"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_reconcile_descriptor_faults",
+         "    prove_typed_reconcile_descriptor_faults()\n"),
     ):
         source = (ROOT / relative).read_text(encoding="utf-8")
         require_json_descriptor_fault_negative_reachable(source, function_name)
         for label, anchor, replacement in (
-            ("invocation", f"    {function_name}(validator)\n", "    pass\n"),
+            ("invocation", invocation, "    pass\n"),
             ("close injection", "                    os.close = close_then_fail\n", "                    pass\n"),
             ("fdopen injection", "                    os.fdopen = fdopen_then_fail\n", "                    pass\n"),
         ):
-            if source.count(anchor) != 1:
-                raise SystemExit("JSON descriptor fault deletion anchor drift: " + label)
-            mutated = source.replace(anchor, replacement, 1)
+            if label == "invocation":
+                if source.count(anchor) != 1:
+                    raise SystemExit("JSON descriptor fault deletion anchor drift: " + label)
+                mutated = source.replace(anchor, replacement, 1)
+            else:
+                mutated = mutate_named_function(source, function_name, anchor, replacement)
             try:
                 require_json_descriptor_fault_negative_reachable(mutated, function_name)
             except SystemExit:
                 pass
             else:
                 raise SystemExit("JSON descriptor fault negative deletion accepted: " + label)
-    print("PASS: preflight and typed JSON descriptor fault invocation/injection deletion rejected")
-
+    print("PASS: admission and reconcile JSON descriptor fault invocation/injection deletion rejected")
 
 def require_json_platform_flag_negative_reachable(source: str, function_name: str) -> None:
     try:
@@ -372,30 +382,40 @@ def require_json_platform_flag_negative_reachable(source: str, function_name: st
 
 
 def prove_json_platform_flag_negative_removal_rejected() -> None:
-    for relative, function_name in (
+    for relative, function_name, invocation in (
         ("scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
-         "expect_preflight_json_platform_flags"),
+         "expect_preflight_json_platform_flags",
+         "    expect_preflight_json_platform_flags(validator)\n"),
         ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
-         "prove_typed_json_reader_platform_flags"),
+         "prove_typed_json_reader_platform_flags",
+         "    prove_typed_json_reader_platform_flags(validator)\n"),
+        ("scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py",
+         "prove_preflight_reconcile_platform_flags",
+         "    prove_preflight_reconcile_platform_flags(reconciler)\n"),
+        ("scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+         "prove_typed_reconcile_platform_flags",
+         "    prove_typed_reconcile_platform_flags()\n"),
     ):
         source = (ROOT / relative).read_text(encoding="utf-8")
         require_json_platform_flag_negative_reachable(source, function_name)
         for label, anchor, replacement in (
-            ("invocation", f"    {function_name}(validator)\n", "    pass\n"),
+            ("invocation", invocation, "    pass\n"),
             ("invalid flag injection", "                    setattr(os, flag, invalid)\n", "                    pass\n"),
             ("flag restoration", "                setattr(os, flag, original)\n", "                pass\n"),
         ):
-            if source.count(anchor) != 1:
-                raise SystemExit("JSON platform flag deletion anchor drift: " + label)
-            mutated = source.replace(anchor, replacement, 1)
+            if label == "invocation":
+                if source.count(anchor) != 1:
+                    raise SystemExit("JSON platform flag deletion anchor drift: " + label)
+                mutated = source.replace(anchor, replacement, 1)
+            else:
+                mutated = mutate_named_function(source, function_name, anchor, replacement)
             try:
                 require_json_platform_flag_negative_reachable(mutated, function_name)
             except SystemExit:
                 pass
             else:
                 raise SystemExit("JSON platform flag negative deletion accepted: " + label)
-    print("PASS: preflight and typed JSON platform flag matrix/invocation deletion rejected")
-
+    print("PASS: admission and reconcile JSON safety flag matrix/invocation deletion rejected")
 
 def require_reconcile_reader_race_negative_reachable(source: str, function_name: str) -> None:
     try:
