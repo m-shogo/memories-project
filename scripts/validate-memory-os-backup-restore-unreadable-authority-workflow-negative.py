@@ -225,8 +225,10 @@ def require_pinned_json_race_negative_reachable(source: str, function_name: str)
         raise SystemExit("pinned JSON race injection not applied")
     strings = {node.value for node in ast.walk(target)
                if isinstance(node, ast.Constant) and isinstance(node.value, str)}
-    if not {"parent", "ancestor", "pinned", "SYNTHETIC_EXTERNAL_CANARY"}.issubset(
-        strings | {part for value in strings for part in value.split('"')}
+    byte_literals = [node.value for node in ast.walk(target)
+                     if isinstance(node, ast.Constant) and isinstance(node.value, bytes)]
+    if not {"parent", "ancestor", "pinned"}.issubset(strings) or not any(
+        b"SYNTHETIC_EXTERNAL_CANARY" in value for value in byte_literals
     ):
         raise SystemExit("pinned JSON race positive/canary coverage missing")
 
