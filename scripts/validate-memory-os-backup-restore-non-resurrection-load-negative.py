@@ -1358,6 +1358,19 @@ def prove_typed_private_path_negative_reachability() -> None:
                       "PRIVATE_TYPED_MODULE_SWAP_CANARY", "importlib.util.spec_from_file_location = original_spec"):
             require(token in pinned_body, "typed admission pinned import race guard removed")
 
+        unsafe_target = functions.get("prove_typed_pinned_module_fail_closed")
+        require(unsafe_target is not None, "typed pinned module rejection negative missing")
+        unsafe_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "prove_typed_pinned_module_fail_closed"]
+        require(len(unsafe_calls) == 1, "typed pinned module rejection negative not executed exactly once")
+        unsafe_body = ast.get_source_segment(candidate, unsafe_target)
+        require(isinstance(unsafe_body, str), "typed pinned module rejection body unavailable")
+        for token in ("oversized.write_bytes", "link.symlink_to(good)", "os.mkfifo(fifo)",
+                      "for invalid in (None, 0):", "exc.__suppress_context__",
+                      'validator.load_module(good, "typed_pinned_rejection_restored")'):
+            require(token in unsafe_body, "typed pinned module rejection guard removed")
+
         lock_target = functions.get("prove_private_typed_append_lock_metadata")
         require(lock_target is not None, "typed admission lock metadata negative missing")
         lock_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
@@ -1390,6 +1403,18 @@ def prove_typed_private_path_negative_reachability() -> None:
          'loaded.VALUE == "pinned"', "False"),
         ("pinned import canary", "prove_pinned_typed_admission_module_import",
          '            require(canary.read_text(encoding="utf-8") ==\n', '            require(False and\n'),
+        ("pinned rejection invocation", "main",
+         "    prove_typed_pinned_module_fail_closed(validator)\n", "    pass\n"),
+        ("pinned rejection oversized", "prove_typed_pinned_module_fail_closed",
+         '        oversized.write_bytes(b"x" * (validator.MAX_MODULE_BYTES + 1))\n', "        pass\n"),
+        ("pinned rejection symlink", "prove_typed_pinned_module_fail_closed",
+         "        link.symlink_to(good)\n", "        pass\n"),
+        ("pinned rejection fifo", "prove_typed_pinned_module_fail_closed",
+         "        os.mkfifo(fifo)\n", "        pass\n"),
+        ("pinned rejection flags", "prove_typed_pinned_module_fail_closed",
+         "                for invalid in (None, 0):\n", "                for invalid in ():\n"),
+        ("pinned rejection context", "prove_typed_pinned_module_fail_closed",
+         "exc.__suppress_context__", "False"),
         ("lock invocation", "main", "    prove_private_typed_append_lock_metadata(validator)\n", "    pass\n"),
         ("lock symlink fault", "prove_private_typed_append_lock_metadata", "                Path.is_symlink = fault\n", "                pass\n"),
         ("lock exists fault", "prove_private_typed_append_lock_metadata", "                Path.exists = fault\n", "                pass\n"),
