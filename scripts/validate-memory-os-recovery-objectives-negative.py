@@ -197,6 +197,23 @@ def prove_recovery_objective_json_reader(validator) -> None:
             path.write_bytes(payload)
             rejected(path, expected, label)
         path.write_bytes(positive)
+        original_open = validator.os.open
+        marker = "PRIVATE_OBJECTIVE_VALIDATOR_OPEN_CANARY"
+
+        def raced_open(candidate, flags, *_args, **_kwargs):
+            require(candidate == path and flags & validator.os.O_NOFOLLOW
+                    and flags & validator.os.O_NONBLOCK,
+                    "objective JSON validator lost no-follow/nonblocking descriptor flags")
+            raise OSError(marker)
+
+        validator.os.open = raced_open
+        try:
+            rejected(path, "recovery objective JSON unreadable or invalid",
+                     "private descriptor open race")
+        finally:
+            validator.os.open = original_open
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}},
+                "objective JSON reader did not recover after descriptor race")
         alias = Path(directory) / "alias.json"
         alias.symlink_to(path)
         rejected(alias, "recovery objective JSON path unsafe", "symlink")
@@ -212,7 +229,7 @@ def prove_recovery_objective_json_reader(validator) -> None:
             require(canary.read_bytes() == positive, "recovery objective JSON modified external canary")
         require(path.read_bytes() == positive, "recovery objective JSON mutated positive fixture")
     require((validator.CONTRACT.read_bytes(), validator.REGISTRY.read_bytes()) == before, "recovery objective JSON mutated protected authorities")
-    print("PASS: actual recovery objective JSON reader positive and 16 fail-closed negatives")
+    print("PASS: actual recovery objective JSON reader positive and 17 fail-closed negatives")
 
 
 def prove_negative_subprocess_redaction(validator) -> None:
