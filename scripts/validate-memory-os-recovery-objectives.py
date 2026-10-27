@@ -6,6 +6,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -159,8 +161,16 @@ def load(path: Path) -> dict[str, Any]:
         require(len(value.lstrip("-")) <= 128, "recovery objective JSON integer too large")
         return int(value)
 
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            "recovery objective JSON platform unsafe")
+    descriptor: int | None = None
     try:
-        with path.open("rb") as source:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(descriptor)
+        require(stat.S_ISREG(metadata.st_mode), "recovery objective JSON path unsafe")
+        require(metadata.st_size <= MAX_JSON_BYTES, "recovery objective JSON size limit exceeded")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
             raw = source.read(MAX_JSON_BYTES + 1)
         require(len(raw) <= MAX_JSON_BYTES, "recovery objective JSON size limit exceeded")
         value = json.loads(
@@ -170,8 +180,15 @@ def load(path: Path) -> dict[str, Any]:
             parse_float=parse_finite_float,
             parse_int=parse_bounded_int,
         )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError,
+            OverflowError, RecursionError):
         raise Fail("recovery objective JSON unreadable or invalid") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail("recovery objective JSON descriptor cleanup failed") from None
     require(isinstance(value, dict), "recovery objective JSON root must be object")
     return value
 
