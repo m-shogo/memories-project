@@ -567,10 +567,20 @@ def require_pair_pinned_import_source(code: str) -> None:
             "os.O_NONBLOCK = 0",
             'load_checked_pair_module(good, "review_pair_unsafe_restored")',
         ),
+        "prove_pair_import_fd_cleanup": (
+            "def tracked_open(",
+            "def broken_fdopen(",
+            "def broken_close(",
+            'load_checked_pair_module(VALIDATOR, "review_pair_fd_fault")',
+            "os.fstat(descriptor)",
+            "errno.EBADF",
+            "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+        ),
         "main": (
             "prove_runtime_review_pair_controls()",
             "prove_pinned_pair_validator_import()",
             "prove_pair_import_unsafe_sources()",
+            "prove_pair_import_fd_cleanup()",
             "prove_source_order_bounded_git_output(module)",
         ),
     }
@@ -584,6 +594,7 @@ def require_pair_pinned_import_source(code: str) -> None:
     require(main.index("prove_runtime_review_pair_controls()")
             < main.index("prove_pinned_pair_validator_import()")
             < main.index("prove_pair_import_unsafe_sources()")
+            < main.index("prove_pair_import_fd_cleanup()")
             < main.index("prove_source_order_bounded_git_output(module)"),
             "independent review pair pinned proof unreachable after canonical main steps")
 
@@ -615,8 +626,12 @@ def prove_pair_pinned_import_mutations_rejected() -> None:
          "os.O_NONBLOCK = original_flag"),
         ("main", "prove_pinned_pair_validator_import()",
          "pass  # synthetic pinned proof removed"),
+        ("prove_pair_import_fd_cleanup", "os.fstat(descriptor)", "os.fstat(-1)"),
+        ("prove_pair_import_fd_cleanup", "errno.EBADF", "errno.EIO"),
         ("main", "prove_pair_import_unsafe_sources()",
          "pass  # synthetic unsafe proof removed"),
+        ("main", "prove_pair_import_fd_cleanup()",
+         "pass  # synthetic FD cleanup proof removed"),
     )
     for name, original, replacement in mutations:
         tree = ast.parse(code)
