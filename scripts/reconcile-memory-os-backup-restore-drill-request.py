@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import stat
 import subprocess
@@ -182,12 +183,37 @@ def restore_original_text(original_text: dict[Path, str]) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
-    relative = repo_relative(path)
+    """Reject ambiguous authority JSON independently of downstream validators."""
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "drill request reconcile JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def finite_float(raw: str) -> float:
+        value = float(raw)
+        require(math.isfinite(value), "drill request reconcile JSON nonfinite number refused")
+        return value
+
+    def bounded_int(raw: str) -> int:
+        require(len(raw.lstrip("-")) <= 128, "drill request reconcile JSON integer too large")
+        return int(raw)
+
+    def nonfinite(_raw: str) -> None:
+        raise Fail("drill request reconcile JSON nonfinite number refused")
+
     try:
-        value = json.loads(read_text(path))
-    except json.JSONDecodeError as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
+        value = json.loads(
+            read_text(path),
+            object_pairs_hook=unique_keys,
+            parse_constant=nonfinite,
+            parse_float=finite_float,
+            parse_int=bounded_int,
+        )
+    except (json.JSONDecodeError, UnicodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("drill request reconcile JSON invalid or ambiguous") from None
+    require(isinstance(value, dict), "drill request reconcile JSON root must be object")
     return value
 
 

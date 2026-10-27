@@ -636,6 +636,45 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
     print("PASS: drill reconcile reader positive, oversized, UTF-8, symlink, FIFO, directory and raced-open negatives")
 
 
+def prove_reconciler_strict_json(reconciler) -> None:
+    """The reconciler must reject ambiguity before deriving any planning state."""
+    protected = (reconciler.CONTRACT, reconciler.REGISTRY, reconciler.STATUS)
+    before = tuple(path.read_bytes() for path in protected)
+    with guarded_temporary_directory(".tmp-drill-reconcile-strict-json-", TMP_PARENT) as raw:
+        candidate = Path(raw) / "authority.json"
+        positive = b'{"safe":true,"nested":{"count":1}}'
+        candidate.write_bytes(positive)
+        require(reconciler.load(candidate) == {"safe": True, "nested": {"count": 1}},
+                "drill reconcile strict JSON positive control failed")
+        cases = (
+            ("duplicate root", b'{"safe":true,"safe":false}', "drill request reconcile JSON duplicate key refused"),
+            ("duplicate nested", b'{"nested":{"x":1,"x":2}}', "drill request reconcile JSON duplicate key refused"),
+            ("NaN", b'{"number":NaN}', "drill request reconcile JSON nonfinite number refused"),
+            ("Infinity", b'{"number":Infinity}', "drill request reconcile JSON nonfinite number refused"),
+            ("negative Infinity", b'{"number":-Infinity}', "drill request reconcile JSON nonfinite number refused"),
+            ("float overflow", b'{"number":1e999}', "drill request reconcile JSON nonfinite number refused"),
+            ("huge integer", b'{"number":' + b"9" * 5000 + b"}", "drill request reconcile JSON integer too large"),
+            ("malformed private", b'{"private":"synthetic-secret",', "drill request reconcile JSON invalid or ambiguous"),
+            ("nonobject root", b"[]", "drill request reconcile JSON root must be object"),
+        )
+        for label, payload, expected in cases:
+            candidate.write_bytes(payload)
+            try:
+                reconciler.load(candidate)
+            except reconciler.Fail as exc:
+                require(str(exc) == expected, f"{label}: wrong drill reconcile JSON rejection")
+                require("synthetic-secret" not in str(exc), f"{label}: private JSON leaked")
+            else:
+                raise Fail(f"{label}: ambiguous drill reconcile JSON accepted")
+        candidate.write_bytes(positive)
+        require(reconciler.load(candidate) == {"safe": True, "nested": {"count": 1}},
+                "drill reconcile strict JSON post-negative positive failed")
+        require(candidate.read_bytes() == positive, "drill reconcile JSON reader mutated positive fixture")
+    require(tuple(path.read_bytes() for path in protected) == before,
+            "drill reconcile strict JSON test mutated protected authorities")
+    print("PASS: drill reconcile strict JSON positive and nine ambiguity negatives")
+
+
 def main() -> int:
     require(WRITER.is_file(), "drill-request writer missing")
     require(VALIDATOR.is_file(), "drill-request validator missing")
@@ -652,6 +691,7 @@ def main() -> int:
     prove_negative_subprocess_redaction(validator)
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
     prove_reconciler_bounded_reader(reconciler)
+    prove_reconciler_strict_json(reconciler)
     require(writer.canonical_repo_file(writer.ELIGIBILITY_HELPER, "environment generation eligibility helper") == writer.ELIGIBILITY_HELPER, "canonical eligibility helper rejected")
     exercise_registry_corruption(writer)
     exercise_validator_execution_transport(validator)

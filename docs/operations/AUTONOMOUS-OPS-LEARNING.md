@@ -14985,3 +14985,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Actual drill-request negative execution transport is bounded and class-only, and exact-source admission CI succeeded at `de972da4`.
 - **Why safe/reusable mechanism:** Reused the already validated recovery-objective negative subprocess guard, tested synthetic output without creating human approvals, requests, recovery evidence, traffic or credentials.
 - **Protected-authority check:** Production status, strict OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract blobs remained unchanged. `productionDecision=NO_GO`; semantic distinct unsuperseded environments, explicit current human objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning and CI never satisfy production or recovery gates.
+
+## 2026-10-27 — Bound drill-request reconciler authority reads before parsing
+
+### Material failure
+- **Symptom/evidence:** At source `d1f0d102d21363552976c649a13f3bfc752905a9`, drill-request reconciler `read_text` used unbounded `Path.read_text` and interpolated raw filesystem exceptions into public failures. A replaced path, FIFO, oversized authority or private OSError could escape the reader's intended trust boundary. No actual authority substitution or credential disclosure was observed.
+- **Verified root cause:** The reconciler independently reread contract, registry and production status without the bounded descriptor identity policy already used in recovery-objective admission. **Failed approach:** assuming strict adjacent validators protect every separate read.
+- **Correction:** `d67a5ce123760d293eedf35d4e4a804335a55903` requires a no-follow, nonblocking regular descriptor, bounded 1 MiB read, fixed read/cleanup errors and closed descriptor ownership.
+- **Executable recurrence guard:** The CI-invoked actual-function load-negative suite checks positive bytes, oversized input, invalid UTF-8, symlink, directory, FIFO, raced-open flags and private marker suppression. Exact-source Backup Restore Unreadable Authority Negatives run `40442896610` completed SUCCESS.
+- **Retry condition:** Revisit on observed source-identity/size/cleanup regression or reviewed filesystem policy change; do not retry unchanged external or human-evidence blockers.
+
+### Material success
+- **Outcome/evidence:** Bounded drill-request reconciler reads and negative controls passed exact-source read-only CI at `d67a5ce1`.
+- **Why safe/reusable mechanism:** Descriptor-pinned bounded reads reject special files without creating requests or modifying protected authorities; tests use disposable fixtures and assert canonical authority bytes unchanged.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract blobs were unchanged. `productionDecision=NO_GO`, distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning cannot satisfy readiness or recovery gates.
