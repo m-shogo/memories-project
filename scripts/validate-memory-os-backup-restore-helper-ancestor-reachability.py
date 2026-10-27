@@ -3739,8 +3739,12 @@ for fault in ("syntax", "read"):
     finally:
         ast.parse, os.open = original_parse, original_open
     combined = stdout.getvalue() + stderr.getvalue()
+    expected = (
+        "unexpected validator input failure" if fault == "syntax"
+        else "canonical target source read failed"
+    )
     assert stdout.getvalue().strip() == (
-        "HELPER ANCESTOR REACHABILITY FAILED: unexpected validator input failure"
+        "HELPER ANCESTOR REACHABILITY FAILED: " + expected
     ), repr(combined)
     assert "PRIVATE_VALIDATOR_" not in combined
 """
