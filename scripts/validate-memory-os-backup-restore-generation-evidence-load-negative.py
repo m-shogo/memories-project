@@ -639,7 +639,7 @@ def prove_generation_evidence_json_reader(validator) -> None:
         positive = b'{"safe":true,"nested":{"count":1}}'
         path.write_bytes(positive)
         require(validator.load(path) == {"safe": True, "nested": {"count": 1}}, "generation recovery JSON positive control failed")
-        for flag in ("O_NOFOLLOW", "O_NONBLOCK"):
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
             original = getattr(validator.os, flag)
             try:
                 for invalid in (None, 0):
@@ -724,6 +724,61 @@ def prove_generation_evidence_json_reader(validator) -> None:
                 "generation recovery JSON leaf swap was not exercised")
         require(race_canary.read_bytes() == positive,
                 "generation recovery JSON symlink swap changed canary")
+        with tempfile.TemporaryDirectory(prefix="memory-os-recovery-json-parent-canary-") as outside:
+            parent = Path(directory) / "pinned-parent"
+            parked_parent = Path(directory) / "parked-parent"
+            parent.mkdir()
+            child = parent / "candidate.json"
+            original = b'{"inside":true}'
+            child.write_bytes(original)
+            canary = Path(outside) / child.name
+            canary.write_bytes(b'{"outside":true}')
+            swapped_parent = False
+
+            def swap_before_descent(target, flags, *args, **kwargs):
+                nonlocal swapped_parent
+                if not swapped_parent and target == parent.name and kwargs.get("dir_fd") is not None:
+                    swapped_parent = True
+                    parent.rename(parked_parent)
+                    parent.symlink_to(Path(outside), target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            validator.os.open = swap_before_descent
+            try:
+                rejected(child, "generation recovery JSON unreadable or invalid", "ancestor swap before descent")
+            finally:
+                validator.os.open = original_open
+                if parent.is_symlink():
+                    require(parent.resolve() == Path(outside), "generation recovery JSON parent canary changed")
+                    parent.unlink()
+                if parked_parent.exists():
+                    parked_parent.rename(parent)
+            require(swapped_parent and child.read_bytes() == original,
+                    "generation recovery JSON ancestor substitution not exercised safely")
+            swapped_parent = False
+
+            def swap_after_pin(target, flags, *args, **kwargs):
+                nonlocal swapped_parent
+                if not swapped_parent and target == child.name and kwargs.get("dir_fd") is not None:
+                    swapped_parent = True
+                    parent.rename(parked_parent)
+                    parent.symlink_to(Path(outside), target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            validator.os.open = swap_after_pin
+            try:
+                require(validator.load(child) == {"inside": True},
+                        "generation recovery JSON followed substituted parent after pin")
+            finally:
+                validator.os.open = original_open
+                if parent.is_symlink():
+                    require(parent.resolve() == Path(outside), "generation recovery JSON parent canary changed")
+                    parent.unlink()
+                if parked_parent.exists():
+                    parked_parent.rename(parent)
+            require(swapped_parent and child.read_bytes() == original and canary.read_bytes() == b'{"outside":true}',
+                    "generation recovery JSON pinned ancestor test changed original or canary")
+            print("PASS: generation recovery JSON ancestor swap rejected before descent and pinned after descent")
         require(path.read_bytes() == positive, "generation recovery JSON mutated positive fixture")
     require(tuple(path.read_bytes() for path in protected_paths) == before, "generation recovery JSON mutated protected authorities")
     print("PASS: actual generation recovery JSON reader positive and 18 fail-closed negatives")
