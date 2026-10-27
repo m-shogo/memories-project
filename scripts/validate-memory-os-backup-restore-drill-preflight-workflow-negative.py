@@ -98,21 +98,25 @@ def checked_source(relative: str) -> str:
         raise SystemExit("preflight CI source unavailable or substituted: " + relative) from exc
 
 
-def validate(main: str, guard: str) -> None:
+def validate(
+    main: str, guard: str, *,
+    check_publisher_blob: bool = True, check_independent_blob: bool = True,
+) -> None:
     for label, token, expected in MAIN_REQUIRED:
         if main.count(token) != expected:
             raise SystemExit("preflight publisher source drift: " + label)
     for label, token, expected in GUARD_REQUIRED:
         if guard.count(token) != expected:
             raise SystemExit("preflight independent guard source drift: " + label)
-    for label, source, reviewed in (
-        ("publisher", main, MAIN_BLOB),
-        ("independent guard", guard, GUARD_BLOB),
+    for label, source, reviewed, check_blob in (
+        ("publisher", main, MAIN_BLOB, check_publisher_blob),
+        ("independent guard", guard, GUARD_BLOB, check_independent_blob),
     ):
-        payload = source.encode("utf-8")
-        blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
-        if hashlib.sha1(blob).hexdigest() != reviewed:
-            raise SystemExit("preflight " + label + " complete source drift")
+        if check_blob:
+            payload = source.encode("utf-8")
+            blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+            if hashlib.sha1(blob).hexdigest() != reviewed:
+                raise SystemExit("preflight " + label + " complete source drift")
 
 
 def runtime_branch_proof(main: str, guard: str) -> None:
@@ -352,6 +356,8 @@ def prove_negative_mutations(main: str, guard: str) -> None:
         ("injected Action", "      - name: Prove preflight publisher source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove preflight publisher source admission\n"),
         ("injected shell", "      - name: Prove preflight publisher source admission\n", "      - run: echo unreviewed\n      - name: Prove preflight publisher source admission\n"),
     )
+    semantic_counts = {"publisher": 0, "independent": 0}
+    digest_counts = {"publisher": 0, "independent": 0}
     for target, cases in (("publisher", publisher_cases), ("independent", independent_cases)):
         for label, old, new in cases:
             source = main if target == "publisher" else guard
@@ -360,12 +366,21 @@ def prove_negative_mutations(main: str, guard: str) -> None:
             mutated = source.replace(old, new, 1)
             if mutated == source:
                 raise SystemExit("preflight source negative fixture unchanged: " + target + " " + label)
+            required = MAIN_REQUIRED if target == "publisher" else GUARD_REQUIRED
+            semantic = any(mutated.count(token) != source.count(token) for _, token, _ in required)
+            semantic_counts[target] += int(semantic)
+            digest_counts[target] += int(not semantic)
             try:
-                validate(mutated, guard) if target == "publisher" else validate(main, mutated)
+                if target == "publisher":
+                    validate(mutated, guard, check_publisher_blob=not semantic)
+                else:
+                    validate(main, mutated, check_independent_blob=not semantic)
             except SystemExit:
                 continue
             raise SystemExit("preflight source negative accepted mutation: " + target + " " + label)
-    print(f"PASS: preflight publisher source admission ({len(publisher_cases)} negatives), independent source admission ({len(independent_cases)} negatives)")
+    if min(semantic_counts.values()) < 10 or min(digest_counts.values()) < 2:
+        raise SystemExit("preflight source negative semantic/digest coverage unexpectedly narrow")
+    print(f"PASS: preflight publisher source admission ({semantic_counts['publisher']} semantic + {digest_counts['publisher']} blob-only negatives), independent source admission ({semantic_counts['independent']} semantic + {digest_counts['independent']} blob-only negatives)")
 
 
 def main() -> int:
