@@ -668,22 +668,25 @@ def main() -> int:
             require(swapped and child.read_bytes() == original and canary.read_bytes() == b'{"outside":true}',
                     "generation binding JSON pinned ancestor test changed original or canary")
             print("PASS: generation binding JSON ancestor swap rejects before descent and pins after descent")
-        for flag in ("O_NOFOLLOW", "O_NONBLOCK"):
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
             original_flag = getattr(module.os, flag)
             try:
-                setattr(module.os, flag, None)
-                try:
-                    module.load(valid_json)
-                except module.Fail as exc:
-                    require(str(exc) == "generation binding JSON nofollow support required",
-                            "generation binding JSON accepted missing nofollow support")
-                else:
-                    raise Fail("generation binding JSON accepted missing platform flag: " + flag)
+                for invalid in (None, 0):
+                    setattr(module.os, flag, invalid)
+                    try:
+                        module.load(valid_json)
+                    except module.Fail as exc:
+                        require(str(exc) == "generation binding JSON nofollow support required",
+                                "generation binding JSON accepted missing or ineffective safety flag")
+                        require(exc.__suppress_context__ and exc.__cause__ is None,
+                                "generation binding JSON unsupported safety flag leaked exception context")
+                    else:
+                        raise Fail("generation binding JSON accepted unsafe platform flag: " + flag)
             finally:
                 setattr(module.os, flag, original_flag)
         require(module.load(valid_json) == {"nested": {"value": 1}},
                 "generation binding JSON reader failed after flag restoration")
-        print("PASS: generation binding JSON missing nofollow/nonblocking support rejected")
+        print("PASS: generation binding JSON missing/zero nofollow, nonblocking and directory support rejected")
         linked_json = tmp / "linked-authority.json"
         linked_json.symlink_to(valid_json)
         expect_rejected(module, "generation binding JSON symlink", lambda: module.load(linked_json))
