@@ -14941,3 +14941,18 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Why safe:** The test patches only disposable reconciler fixture authorities and restores all monkeypatches; no canonical objective, status, production evidence, readiness or promotion was written.
 - **Reusable mechanism:** Track descriptor ownership explicitly and independently attempt close and unlink in `finally`; verify closure using the OS, not just absence of temporary filenames.
 - **Protected-authority check:** `productionDecision=NO_GO`, OPS-P0-007 blocking, zero approved objectives, semantically eligible distinct unsuperseded environments, explicit current human objective, current executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning cannot satisfy production or recovery gates.
+
+## 2026-10-27 — Approval digest must pin its own file descriptor
+
+### Material failure
+- **Symptom/evidence:** At writer blob `ba25e216bd7dcf70fea6fa0d7d0d9099919034aa`, `approval_sha256` validated the lexical/resolved approval reference and size-bounded a later `path.open` read, but did not pin the opened file to a regular no-follow descriptor. A replacement between validation and read could redirect the digest. No actual approval evidence tampering was observed.
+- **Verified root cause:** The independent digest path did not reuse the already hardened JSON and snapshot descriptor identity checks. **Failed approach:** assuming earlier canonical path resolution prevents a later filesystem swap.
+- **Correction:** `66f3598238580f1872edb27917784777a47a136b` requires `O_NOFOLLOW|O_NONBLOCK`, `fstat` regular-file and 1 MiB checks, bounded reads, fixed private errors and descriptor cleanup. `4dbe94d61895d2ebb9c9849b018ca8f2b9dccc5a` adds a real digest raced-open negative asserting flags, fixed diagnostics and unchanged canonical fixture digest.
+- **Executable recurrence guard:** Exact-source Recovery Objectives Admission `40439247435` at `4dbe94d6` completed SUCCESS. Earlier `66f35982` run `40439233123` validated `failure_stage=PASS` but refused stale HEAD during publisher CAS; no validator failure was observed.
+- **Retry condition:** Revisit only for an observed digest race, exact-source regression or reviewed approval source-identity policy change; do not retry unchanged external approval or MinIO blockers.
+
+### Material success
+- **Outcome/evidence:** Approval digest bytes are now read from a pinned regular descriptor; a simulated raced-open private error is rejected in the canonical negative CI path.
+- **Why safe:** Synthetic failure injection never creates an approval document, objective, production generation, evidence, readiness or promotion. The positive approval fixture digest is checked before and after the negative.
+- **Reusable mechanism:** Every independent file-read boundary, including hashing after semantic validation, must enforce its own descriptor identity and bounded read; a previous path check alone is insufficient.
+- **Protected-authority check:** Production status, recovery objective registry and learning contract are unchanged. `productionDecision=NO_GO`, zero approved objectives, semantic distinct-generation eligibility, explicit current human objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy production or recovery gates.
