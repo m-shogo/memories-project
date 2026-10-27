@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import os
 import shutil
@@ -29,15 +30,114 @@ def mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
 
 
+MAX_MODULE_BYTES = 1024 * 1024
+
+
 def load_module():
-    spec = importlib.util.spec_from_file_location(
-        "memory_os_backup_restore_drill_preflight_reconcile_negative",
-        RECONCILER,
-    )
-    require(spec is not None and spec.loader is not None, "cannot load restore drill preflight reconciler")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        relative = RECONCILER.relative_to(ROOT)
+        require(RECONCILER.resolve(strict=True) == ROOT.resolve() / relative,
+                "cannot load restore drill preflight reconciler")
+        checked = RECONCILER.lstat()
+        require(stat.S_ISREG(checked.st_mode), "cannot load restore drill preflight reconciler")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                "cannot load restore drill preflight reconciler")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(relative.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    "cannot load restore drill preflight reconciler")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_MODULE_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            require(not cleanup_failed, "cannot load restore drill preflight reconciler")
+        require(len(source) <= MAX_MODULE_BYTES, "cannot load restore drill preflight reconciler")
+
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == "memory_os_backup_restore_drill_preflight_reconcile_negative",
+                        "cannot load restore drill preflight reconciler")
+                return compile(source, str(RECONCILER), "exec")
+
+        name = "memory_os_backup_restore_drill_preflight_reconcile_negative"
+        spec = importlib.util.spec_from_file_location(
+            name, RECONCILER, loader=PinnedSourceLoader(name, str(RECONCILER)))
+        require(spec is not None and spec.loader is not None, "cannot load restore drill preflight reconciler")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("cannot load restore drill preflight reconciler") from None
     return module
+
+
+def prove_pinned_reconciler_import() -> None:
+    """The reconcile negative harness never executes a swapped parent source."""
+    global RECONCILER
+    original_path = RECONCILER
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".preflight-reconcile-import-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "module.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "module.py"
+        source.write_text("VALUE = 'pinned'\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_PREFLIGHT_RECONCILE_CANARY')\n", encoding="utf-8")
+        try:
+            RECONCILER = source
+            require(load_module().VALUE == "pinned", "preflight reconcile pinned import positive failed")
+            swapped = False
+
+            def swap_after_read(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = load_module()
+            require(swapped and loaded.VALUE == "pinned",
+                    "preflight reconcile negative executed redirected parent source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_PREFLIGHT_RECONCILE_CANARY')\n",
+                    "preflight reconcile import changed redirected canary")
+        finally:
+            RECONCILER = original_path
+            importlib.util.spec_from_file_location = original_spec
+    require(callable(getattr(load_module(), "main", None)),
+            "preflight reconcile pinned import canonical restoration failed")
+    print("PASS: preflight reconcile negative loader uses pinned source after parent swap")
+
+
+
 
 
 def pin_checked_helper_parent(path: Path) -> int:
@@ -505,6 +605,7 @@ def prove_post_validator_rollback(module, tmp: Path) -> None:
 
 
 def main() -> int:
+    prove_pinned_reconciler_import()
     require(RECONCILER.is_file(), "restore drill preflight reconciler missing")
     require(TMP_PARENT.is_dir(), "preflight negative fixture parent missing")
     with guarded_temporary_directory(".tmp-preflight-reconcile-parent-negative-", TMP_PARENT) as raw:
