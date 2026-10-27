@@ -506,7 +506,7 @@ def prove_target_pinned_import_mutations_rejected() -> None:
         ("load_target", 'raise Fail("generation binding target import rejected") from None',
          'raise Fail("generation binding target import rejected")'),
         ("prove_pinned_target_import", "parent.symlink_to(redirected",
-         "parent.rename(redirected  # synthetic removed parent swap"),
+         "parent.symlink_to(parked"),
         ("prove_pinned_target_import", 'loaded.VALUE == "pinned"',
          'loaded.VALUE == "redirected"'),
         ("prove_pinned_target_import", 'require(canary.read_text(encoding="utf-8") ==',
@@ -533,6 +533,7 @@ def prove_target_pinned_import_mutations_rejected() -> None:
             raise SystemExit("generation binding target pinned import mutation anchor drift: " + name)
         fragment = fragment.replace(original, replacement, 1)
         mutated = "".join(lines[:node.lineno - 1]) + fragment + "".join(lines[node.end_lineno:])
+        ast.parse(mutated)  # Mutation must be executable, not merely a SyntaxError.
         try:
             require_target_pinned_import_reachable(mutated)
         except SystemExit:
