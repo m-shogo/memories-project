@@ -403,9 +403,9 @@ def require_reconcile_reader_race_negative_reachable(source: str, function_name:
                if isinstance(node, ast.Constant) and isinstance(node.value, str)}
     byte_literals = [node.value for node in ast.walk(target)
                      if isinstance(node, ast.Constant) and isinstance(node.value, bytes)]
-    if not {"parent", "ancestor", "pinned"}.issubset(strings) or not any(
-        b"SYNTHETIC_PRIVATE_CANARY" in value for value in byte_literals
-    ):
+    if not {"parent", "ancestor"}.issubset(strings) or not any(
+        b'"source":"pinned"' in value for value in byte_literals
+    ) or not any(b"SYNTHETIC_PRIVATE_CANARY" in value for value in byte_literals):
         raise SystemExit("reconcile reader race positive/canary coverage missing")
     if not any(isinstance(node, ast.Attribute) and node.attr == "MAX_AUTHORITY_BYTES"
                for node in ast.walk(target)):
