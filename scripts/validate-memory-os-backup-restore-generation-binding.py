@@ -99,10 +99,20 @@ def load(path: Path) -> dict[str, Any]:
     require(type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0
             and type(getattr(os, "O_NONBLOCK", None)) is int and os.O_NONBLOCK > 0,
             "generation binding JSON nofollow support required")
+    require(type(getattr(os, "O_DIRECTORY", None)) is int and os.O_DIRECTORY > 0,
+            "generation binding JSON nofollow support required")
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    directory_flags = flags | os.O_DIRECTORY
+    directories: list[int] = []
     fd = -1
     try:
-        fd = os.open(path, flags)
+        # Walk from a pinned repository root: no mutable parent pathname is followed.
+        parent_fd = os.open(ROOT, directory_flags)
+        directories.append(parent_fd)
+        for component in lexical.parts[:-1]:
+            parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            directories.append(parent_fd)
+        fd = os.open(lexical.name, flags, dir_fd=parent_fd)
         require(stat.S_ISREG(os.fstat(fd).st_mode), "generation binding JSON must be regular")
         with os.fdopen(fd, "rb") as stream:
             fd = -1
@@ -110,11 +120,19 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         raise Fail("generation binding JSON unreadable") from None
     finally:
+        cleanup_failed = False
         if fd >= 0:
             try:
                 os.close(fd)
             except OSError:
-                raise Fail("generation binding JSON cleanup failed") from None
+                cleanup_failed = True
+        for directory_fd in reversed(directories):
+            try:
+                os.close(directory_fd)
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("generation binding JSON cleanup failed") from None
     require(len(raw) <= MAX_JSON_BYTES, "generation binding JSON size limit exceeded")
 
     def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
