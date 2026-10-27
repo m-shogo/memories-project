@@ -49,6 +49,7 @@ MAIN_REQUIRED = (
     ("raw CI log suppression", '          printf "Recovery objective validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
     ("fixed stage output", '          echo "failure_stage=$stage" >> "$GITHUB_OUTPUT"\n', 1),
     ("fixed stage diagnostic", '          printf "Recovery objective validation stage: %s (fixed class; raw validator log suppressed)\\n" "$stage"\n', 1),
+    ("diagnostic symlink rejection", "          if path.is_symlink():\n              raise SystemExit('recovery objective diagnostic target must not be a symlink')\n", 1),
     ("no raw diagnostic tail", "text[-12000:]", 0),
     ("no raw CI log echo", '          cat "$log"\n', 0),
 )
@@ -327,11 +328,11 @@ def negatives(publisher: str, independent: str) -> None:
         ("injected Action", "      - name: Prove recovery objective source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove recovery objective source admission\n"),
         ("injected shell", "      - name: Prove recovery objective source admission\n", "      - run: echo unreviewed\n      - name: Prove recovery objective source admission\n"),
     )
-    publisher_blob_only = {"unreviewed Action", "unreviewed shell", "appended command", "symlink guard"}
+    publisher_blob_only = {"unreviewed Action", "unreviewed shell", "appended command"}
     independent_blob_only = {"injected Action", "injected shell"}
     if (len(publisher_cases), len(independent_cases)) != (25, 13):
         raise SystemExit("recovery objective source negative population drift")
-    if sum(label in publisher_blob_only for label, _, _ in publisher_cases) != 4 or sum(label in independent_blob_only for label, _, _ in independent_cases) != 2:
+    if sum(label in publisher_blob_only for label, _, _ in publisher_cases) != 3 or sum(label in independent_blob_only for label, _, _ in independent_cases) != 2:
         raise SystemExit("recovery objective digest-only negative population drift")
     for target, cases in (("publisher", publisher_cases), ("independent", independent_cases)):
         for label, old, new in cases:
@@ -349,7 +350,7 @@ def negatives(publisher: str, independent: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("recovery objective accepted source mutation: " + target + " " + label)
-    print(f"PASS: recovery objective publisher source admission ({len(publisher_cases) - 4} semantic + 4 blob-only negatives), independent source admission ({len(independent_cases) - 2} semantic + 2 blob-only negatives)")
+    print(f"PASS: recovery objective publisher source admission ({len(publisher_cases) - 3} semantic + 3 blob-only negatives), independent source admission ({len(independent_cases) - 2} semantic + 2 blob-only negatives)")
 
 
 def main() -> int:
