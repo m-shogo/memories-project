@@ -1189,8 +1189,15 @@ def prove_typed_reconcile_private_path_diagnostics() -> None:
     def fail_private_import(_spec):
         raise OSError(private)
 
+    def fail_private_runtime(_spec):
+        raise RuntimeError(private)
+
     try:
         reconciler.importlib.util.module_from_spec = fail_private_import
+        require_private_fail(
+            lambda: reconciler.load_module(reconciler.TYPED_WRITER, "synthetic_typed_import"),
+            "typed reconcile validator module import unavailable")
+        reconciler.importlib.util.module_from_spec = fail_private_runtime
         require_private_fail(
             lambda: reconciler.load_module(reconciler.TYPED_WRITER, "synthetic_typed_import"),
             "typed reconcile validator module import unavailable")
