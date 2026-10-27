@@ -58,6 +58,7 @@ MAIN_REQUIRED = (
     ("raw CI log suppression", '          printf "Typed non-resurrection validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
     ("no raw diagnostic tail", "text[-12000:]", 0),
     ("no raw CI log echo", '          cat "$log"\n', 0),
+    ("diagnostic symlink rejection", "          if path.is_symlink():\n              raise SystemExit('typed non-resurrection diagnostic target must not be a symlink')\n", 1),
 )
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
@@ -272,6 +273,13 @@ def negatives(publisher: str, independent: str) -> None:
         ("injected Action", "      - name: Prove typed non-resurrection source admission\n", "      - uses: unreviewed/action@v1\n      - name: Prove typed non-resurrection source admission\n"),
         ("injected shell", "      - name: Prove typed non-resurrection source admission\n", "      - run: echo unreviewed\n      - name: Prove typed non-resurrection source admission\n"),
     )
+    # A semantic guard deletion cannot be reclassified as a digest-only proof.
+    digest_only = {
+        "publisher": frozenset({"unreviewed Action", "unreviewed shell"}),
+        "independent": frozenset({"injected Action", "injected shell"}),
+    }
+    if len(publisher_cases) != 31 or len(independent_cases) != 13:
+        raise SystemExit("typed non-resurrection mutation inventory drift")
     semantic_counts = {"publisher": 0, "independent": 0}
     blob_counts = {"publisher": 0, "independent": 0}
     for target, cases in (("publisher", publisher_cases), ("independent", independent_cases)):
@@ -285,6 +293,8 @@ def negatives(publisher: str, independent: str) -> None:
             required = MAIN_REQUIRED if target == "publisher" else INDEPENDENT_REQUIRED
             semantic = any(mutated.count(token) != original.count(token)
                            for _, token, _ in required)
+            if semantic == (label in digest_only[target]):
+                raise SystemExit("typed non-resurrection mutation classification drift: " + target + " " + label)
             counts = semantic_counts if semantic else blob_counts
             counts[target] += 1
             try:
@@ -292,7 +302,10 @@ def negatives(publisher: str, independent: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("typed non-resurrection accepted source mutation: " + target + " " + label)
-    if semantic_counts["publisher"] < 15 or semantic_counts["independent"] < 9 or not all(blob_counts.values()):
+    if (semantic_counts, blob_counts) != (
+        {"publisher": 29, "independent": 11},
+        {"publisher": 2, "independent": 2},
+    ):
         raise SystemExit("typed non-resurrection semantic/blob mutation coverage drift")
     print(f"PASS: typed non-resurrection source mutations: publisher {semantic_counts['publisher']} semantic + {blob_counts['publisher']} blob-only; independent {semantic_counts['independent']} semantic + {blob_counts['independent']} blob-only")
 
