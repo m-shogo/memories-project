@@ -677,9 +677,37 @@ def prove_generation_evidence_json_reader(validator) -> None:
             escaped.symlink_to(canary)
             rejected(escaped, "generation recovery JSON path missing or outside repository", "external symlink")
             require(canary.read_bytes() == positive, "generation recovery JSON modified external canary")
+        fifo = Path(directory) / "fifo.json"
+        os.mkfifo(fifo)
+        rejected(fifo, "generation recovery JSON path unsafe", "FIFO")
+        race = Path(directory) / "race.json"
+        parked = Path(directory) / "parked-race.json"
+        race_canary = Path(directory) / "race-canary.json"
+        race.write_bytes(positive)
+        race_canary.write_bytes(positive)
+        original_open = validator.os.open
+        swapped = False
+
+        def swap_before_leaf_open(target, flags, *args, **kwargs):
+            nonlocal swapped
+            if not swapped and Path(target) == race:
+                swapped = True
+                race.rename(parked)
+                race.symlink_to(race_canary)
+            return original_open(target, flags, *args, **kwargs)
+
+        validator.os.open = swap_before_leaf_open
+        try:
+            rejected(race, "generation recovery JSON unreadable or invalid", "symlink leaf swap")
+        finally:
+            validator.os.open = original_open
+        require(swapped and race.is_symlink() and parked.read_bytes() == positive,
+                "generation recovery JSON leaf swap was not exercised")
+        require(race_canary.read_bytes() == positive,
+                "generation recovery JSON symlink swap changed canary")
         require(path.read_bytes() == positive, "generation recovery JSON mutated positive fixture")
     require(tuple(path.read_bytes() for path in protected_paths) == before, "generation recovery JSON mutated protected authorities")
-    print("PASS: actual generation recovery JSON reader positive and 16 fail-closed negatives")
+    print("PASS: actual generation recovery JSON reader positive and 18 fail-closed negatives")
 
 
 def main() -> int:
