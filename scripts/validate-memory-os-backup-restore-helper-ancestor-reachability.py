@@ -1431,12 +1431,12 @@ except (OSError, RuntimeError):
     )
     # A present but zeroed platform flag is not a no-follow/directory guard.
     expected_flags = ast.parse(
-        "isinstance(getattr(os, 'O_NOFOLLOW', None), int)"
-        " and os.O_NOFOLLOW != 0"
-        " and isinstance(getattr(os, 'O_DIRECTORY', None), int)"
-        " and os.O_DIRECTORY != 0"
-        " and isinstance(getattr(os, 'O_NONBLOCK', None), int)"
-        " and os.O_NONBLOCK != 0", mode="eval"
+        "type(getattr(os, 'O_NOFOLLOW', None)) is int"
+        " and os.O_NOFOLLOW > 0"
+        " and type(getattr(os, 'O_DIRECTORY', None)) is int"
+        " and os.O_DIRECTORY > 0"
+        " and type(getattr(os, 'O_NONBLOCK', None)) is int"
+        " and os.O_NONBLOCK > 0", mode="eval"
     ).body
     first_pin_statement = pin_live[0] if pin_live else None
     require(
@@ -1576,9 +1576,9 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "canonical __main__ dispatch handler drift"),
     )
     replacements += (
-        ('    require(\n        isinstance(getattr(os, "O_NOFOLLOW", None), int)\n',
+        ('    require(\n        type(getattr(os, "O_NOFOLLOW", None)) is int\n',
          '    return os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)\n'
-         '    require(\n        isinstance(getattr(os, "O_NOFOLLOW", None), int)\n',
+         '    require(\n        type(getattr(os, "O_NOFOLLOW", None)) is int\n',
          "ancestor pin exits before checked walk"),
         ("        for part in relative.parts:\n",
          "        return fd  # synthetic skipped ancestor walk\n"
@@ -1886,33 +1886,33 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader leaf open lacks nonblocking nofollow flags"),
     )
     platform_flag_guard = """    require(
-        isinstance(getattr(os, "O_NOFOLLOW", None), int)
-        and os.O_NOFOLLOW != 0
-        and isinstance(getattr(os, "O_DIRECTORY", None), int)
-        and os.O_DIRECTORY != 0
-        and isinstance(getattr(os, "O_NONBLOCK", None), int)
-        and os.O_NONBLOCK != 0,
+        type(getattr(os, "O_NOFOLLOW", None)) is int
+        and os.O_NOFOLLOW > 0
+        and type(getattr(os, "O_DIRECTORY", None)) is int
+        and os.O_DIRECTORY > 0
+        and type(getattr(os, "O_NONBLOCK", None)) is int
+        and os.O_NONBLOCK > 0,
 """
     require(source.count(platform_flag_guard) == 1,
             "loader unsupported platform flags accepted")
     replacements += (
         (platform_flag_guard, platform_flag_guard.replace(
-            "os.O_NOFOLLOW != 0", "os.O_NOFOLLOW >= 0"),
+            "os.O_NOFOLLOW > 0", "os.O_NOFOLLOW >= 0"),
          "loader unsupported platform flags accepted"),
         (platform_flag_guard, platform_flag_guard.replace(
-            "os.O_DIRECTORY != 0", "os.O_DIRECTORY >= 0"),
+            "os.O_DIRECTORY > 0", "os.O_DIRECTORY >= 0"),
          "loader unsupported platform flags accepted"),
         (platform_flag_guard, platform_flag_guard.replace(
-            'isinstance(getattr(os, "O_NOFOLLOW", None), int)', "True"),
+            'type(getattr(os, "O_NOFOLLOW", None)) is int', "True"),
          "loader unsupported platform flags accepted"),
         (platform_flag_guard, platform_flag_guard.replace(
-            'isinstance(getattr(os, "O_DIRECTORY", None), int)', "True"),
+            'type(getattr(os, "O_DIRECTORY", None)) is int', "True"),
          "loader unsupported platform flags accepted"),
         (platform_flag_guard, platform_flag_guard.replace(
-            "os.O_NONBLOCK != 0", "os.O_NONBLOCK >= 0"),
+            "os.O_NONBLOCK > 0", "os.O_NONBLOCK >= 0"),
          "loader unsupported platform flags accepted"),
         (platform_flag_guard, platform_flag_guard.replace(
-            'isinstance(getattr(os, "O_NONBLOCK", None), int)', "True"),
+            'type(getattr(os, "O_NONBLOCK", None)) is int', "True"),
          "loader unsupported platform flags accepted"),
     )
     base_cleanup_anchor = (
@@ -3174,7 +3174,7 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
 
     for flag_name in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK"):
         original_flag = getattr(os, flag_name)
-        for unsafe_value in (0, None):
+        for unsafe_value in (0, None, True, -1):
             setattr(os, flag_name, unsafe_value)
             try:
                 try:

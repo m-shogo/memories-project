@@ -110,12 +110,12 @@ def prove_reconciler_pinned_import() -> None:
 def pin_checked_helper_parent(path: Path) -> int:
     """Walk from a trusted repository/temp anchor, never through a symlinked ancestor."""
     require(
-        isinstance(getattr(os, "O_NOFOLLOW", None), int)
-        and os.O_NOFOLLOW != 0
-        and isinstance(getattr(os, "O_DIRECTORY", None), int)
-        and os.O_DIRECTORY != 0
-        and isinstance(getattr(os, "O_NONBLOCK", None), int)
-        and os.O_NONBLOCK != 0,
+        type(getattr(os, "O_NOFOLLOW", None)) is int
+        and os.O_NOFOLLOW > 0
+        and type(getattr(os, "O_DIRECTORY", None)) is int
+        and os.O_DIRECTORY > 0
+        and type(getattr(os, "O_NONBLOCK", None)) is int
+        and os.O_NONBLOCK > 0,
             "drill request fixture guard no-follow directory open unsupported")
     try:
         anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())
