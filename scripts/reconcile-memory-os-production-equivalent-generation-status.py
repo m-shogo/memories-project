@@ -113,36 +113,56 @@ def read_text(path: Path) -> str:
         raise Fail(f"cannot read {relative}: {exc}") from exc
 
 
+MAX_AUTHORITY_BYTES = 1024 * 1024
+
+
 def write_text(path: Path, text: str) -> None:
+    """Publish one bounded authority with owned descriptors and private failures."""
     relative = repo_relative(path)
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
-    mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    require(not path.is_symlink(), "environment generation authority target symlink refused")
+    require(isinstance(text, str), "environment generation authority payload must be text")
+    try:
+        require(len(text.encode("utf-8")) <= MAX_AUTHORITY_BYTES,
+                "environment generation authority payload size limit exceeded")
+    except UnicodeError:
+        raise Fail("environment generation authority payload encoding invalid") from None
+
+    descriptor: int | None = None
     temp_name: str | None = None
     try:
-        fd, temp_name = tempfile.mkstemp(
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            dir=path.parent,
-            text=True,
-        )
+        mode = path.stat().st_mode & 0o7777 if path.exists() else None
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent, text=True)
         if mode is not None:
-            os.fchmod(fd, mode)
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            handle.write(text)
+            os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            descriptor = None
+            written = handle.write(text)
+            require(type(written) is int and written == len(text),
+                    "cannot atomically write environment generation authority")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, path)
         temp_name = None
-    except OSError as exc:
-        raise Fail(f"cannot atomically write {relative}: {exc}") from exc
+    except Exception:
+        raise Fail("cannot atomically write environment generation authority") from None
     finally:
+        cleanup_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                cleanup_failed = True
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
             except FileNotFoundError:
                 pass
             except OSError:
-                pass
+                cleanup_failed = True
+        if cleanup_failed:
+            raise Fail("environment generation authority temporary cleanup failed") from None
 
 
 def restore_authorities(authorities: tuple[tuple[Path, str], ...]) -> None:

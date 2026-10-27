@@ -387,6 +387,136 @@ def prove_private_child_validator(reconciler: object) -> None:
     print("PASS reject: environment generation child validator timeout/output/exit classes remain private")
 
 
+def prove_private_atomic_authority_writer(reconciler: object) -> None:
+    """Fault-inject the real authority writer without touching canonical files."""
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-private-atomic-", dir=TMP_PARENT) as tmp:
+        parent = Path(tmp)
+        path = parent / "authority.json"
+        original = b'{"sentinel":"before"}\n'
+        path.write_bytes(original)
+        path.chmod(0o640)
+        outside = parent / "outside-canary.json"
+        outside.write_bytes(b"PRIVATE_GENERATION_AUTHORITY_CANARY")
+        alias = parent / "authority-alias.json"
+        alias.symlink_to(outside)
+        try:
+            reconciler.write_text(alias, '{"sentinel":"after"}\n')
+        except reconciler.Fail as exc:
+            require(str(exc) == "environment generation authority target symlink refused",
+                    "generation authority symlink rejected at wrong boundary")
+        else:
+            raise Fail("generation authority writer accepted symlink target")
+        require(outside.read_bytes() == b"PRIVATE_GENERATION_AUTHORITY_CANARY",
+                "generation authority writer modified external canary")
+        try:
+            reconciler.write_text(path, "x" * (reconciler.MAX_AUTHORITY_BYTES + 1))
+        except reconciler.Fail as exc:
+            require(str(exc) == "environment generation authority payload size limit exceeded",
+                    "generation authority oversized payload wrong failure class")
+        else:
+            raise Fail("generation authority oversized payload accepted")
+
+        original_mkstemp = reconciler.tempfile.mkstemp
+        original_fdopen = reconciler.os.fdopen
+        original_fchmod = reconciler.os.fchmod
+        original_replace = reconciler.os.replace
+        try:
+            for stage in ("mkstemp", "fdopen", "fchmod", "replace"):
+                opened: list[int] = []
+
+                def reject(*_args, **_kwargs):
+                    raise OSError("PRIVATE_GENERATION_ATOMIC_CANARY")
+
+                def reject_fdopen(fd, *_args, **_kwargs):
+                    opened.append(fd)
+                    raise OSError("PRIVATE_GENERATION_ATOMIC_CANARY")
+
+                owner, attribute, replacement = {
+                    "mkstemp": (reconciler.tempfile, "mkstemp", reject),
+                    "fdopen": (reconciler.os, "fdopen", reject_fdopen),
+                    "fchmod": (reconciler.os, "fchmod", reject),
+                    "replace": (reconciler.os, "replace", reject),
+                }[stage]
+                setattr(owner, attribute, replacement)
+                try:
+                    try:
+                        reconciler.write_text(path, '{"sentinel":"after"}\n')
+                    except reconciler.Fail as exc:
+                        require(str(exc) == "cannot atomically write environment generation authority"
+                                and exc.__suppress_context__,
+                                f"generation authority {stage} leaked private failure details")
+                    else:
+                        raise Fail(f"generation authority {stage} unexpectedly accepted")
+                finally:
+                    setattr(owner, attribute, {
+                        "mkstemp": original_mkstemp,
+                        "fdopen": original_fdopen,
+                        "fchmod": original_fchmod,
+                        "replace": original_replace,
+                    }[stage])
+                for fd in opened:
+                    try:
+                        os.fstat(fd)
+                    except OSError:
+                        pass
+                    else:
+                        raise Fail("generation authority fdopen failure leaked descriptor")
+                require(path.read_bytes() == original and file_mode(path) == 0o640,
+                        f"generation authority {stage} changed original bytes/mode")
+                require(not list(parent.glob(".authority.json.*.tmp")),
+                        f"generation authority {stage} left temporary residue")
+
+            class ShortTextHandle:
+                def __init__(self, descriptor: int):
+                    self.source = original_fdopen(descriptor, "w", encoding="utf-8", newline="")
+
+                def __enter__(self):
+                    self.source.__enter__()
+                    return self
+
+                def __exit__(self, *args):
+                    return self.source.__exit__(*args)
+
+                def fileno(self):
+                    return self.source.fileno()
+
+                def write(self, payload: str) -> int:
+                    count = max(1, len(payload) // 2)
+                    self.source.write(payload[:count])
+                    return count
+
+                def flush(self) -> None:
+                    self.source.flush()
+
+            def short_fdopen(descriptor, mode, *args, **kwargs):
+                if mode == "w":
+                    return ShortTextHandle(descriptor)
+                return original_fdopen(descriptor, mode, *args, **kwargs)
+
+            reconciler.os.fdopen = short_fdopen
+            try:
+                try:
+                    reconciler.write_text(path, '{"sentinel":"after"}\n')
+                except reconciler.Fail as exc:
+                    require(str(exc) == "cannot atomically write environment generation authority"
+                            and exc.__suppress_context__,
+                            "generation authority short text write leaked diagnostics")
+                else:
+                    raise Fail("generation authority short text write unexpectedly accepted")
+            finally:
+                reconciler.os.fdopen = original_fdopen
+            require(path.read_bytes() == original and file_mode(path) == 0o640,
+                    "generation authority short text write changed bytes/mode")
+            require(not list(parent.glob(".authority.json.*.tmp")),
+                    "generation authority short text write left residue")
+        finally:
+            reconciler.tempfile.mkstemp = original_mkstemp
+            reconciler.os.fdopen = original_fdopen
+            reconciler.os.fchmod = original_fchmod
+            reconciler.os.replace = original_replace
+    print("PASS reject: generation reconciler atomic writer private faults, short writes and symlinks")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(WORKFLOW.is_file(), "environment generation workflow missing")
@@ -493,6 +623,7 @@ def main() -> int:
 
     prove_private_child_validator(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
+    prove_private_atomic_authority_writer(reconciler)
     with isolated_authorities(reconciler):
         prove_atomic_write_failure(reconciler)
     with isolated_authorities(reconciler):
