@@ -149,14 +149,15 @@ def load(path: Path) -> dict[str, Any]:
 
 def load_evidence_writer():
     require_exact_repo_file(EVIDENCE_WRITER, EVIDENCE_WRITER_REL, "generation evidence writer")
-    relative = EVIDENCE_WRITER_REL
-    spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_writer_for_binding", EVIDENCE_WRITER)
-    require(spec is not None and spec.loader is not None, f"cannot load generation evidence writer: {relative}")
     try:
+        spec = importlib.util.spec_from_file_location(
+            "memory_os_generation_evidence_writer_for_binding", EVIDENCE_WRITER
+        )
+        require(spec is not None and spec.loader is not None, "generation evidence writer import unavailable")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except (OSError, UnicodeDecodeError) as exc:
-        raise Fail(f"cannot load generation evidence writer {relative}: {exc}") from exc
+    except (OSError, UnicodeError):
+        raise Fail("generation evidence writer import unavailable") from None
     return module
 
 
