@@ -741,6 +741,27 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         and node.name in {"load_pinned_fixture_helper", "load_pinned_fixture_guard"}
     ]
     require(len(loaders) == 1, "missing or duplicate pinned fixture loader")
+    for marker, delegate in (
+        ("typed transport fixture guard source open failed", "load_pinned_fixture_helper"),
+        ("admission-chain fixture guard source open failed", "load_pinned_fixture_guard"),
+    ):
+        if marker in source:
+            module_import = named_function(tree, "load_module")
+            module_body = [
+                statement for statement in module_import.body
+                if not (isinstance(statement, ast.Expr)
+                        and isinstance(statement.value, ast.Constant)
+                        and isinstance(statement.value.value, str))
+            ]
+            expected_delegate = ast.parse(
+                f"return {delegate}(path, name)"
+            ).body[0]
+            require(
+                len(module_body) == 1
+                and ast.dump(module_body[0], include_attributes=False)
+                    == ast.dump(expected_delegate, include_attributes=False),
+                "canonical module import not pinned",
+            )
     # Decorators execute while the module is initialized and may replace the
     # checked callable without a later assignment or explicit namespace write.
     for guarded_function in (main, proof, pin, loaders[0]):
@@ -1477,6 +1498,21 @@ def negative_cases(source: str, diagnostic: str) -> int:
             "module = object()"),
          "loader module setup binding drift"),
     )
+    delegate_anchor = None
+    if "typed transport fixture guard source open failed" in source:
+        delegate_anchor = "    return load_pinned_fixture_helper(path, name)\n"
+    elif "admission-chain fixture guard source open failed" in source:
+        delegate_anchor = "    return load_pinned_fixture_guard(path, name)\n"
+    if delegate_anchor is not None:
+        require(source.count(delegate_anchor) == 1,
+                "canonical module import not pinned")
+        replacements += (
+            (delegate_anchor, "    return object()\n",
+             "canonical module import not pinned"),
+            (delegate_anchor,
+             "    return importlib.util.spec_from_file_location(name, path)\n",
+             "canonical module import not pinned"),
+        )
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
@@ -2662,7 +2698,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 76 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 76 * len(TARGETS) + 226, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

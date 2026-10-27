@@ -35,11 +35,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def load_module(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load module: {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_pinned_fixture_helper(path, name)
 
 
 def pin_checked_helper_parent(path: Path) -> int:
