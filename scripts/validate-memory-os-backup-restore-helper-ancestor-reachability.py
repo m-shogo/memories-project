@@ -762,6 +762,36 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
                     == ast.dump(expected_delegate, include_attributes=False),
                 "canonical module import not pinned",
             )
+    # A source-string marker alone is not an authority: the marker and a
+    # mutable-path import could be changed together. Bind every canonical
+    # load_module(path, name) directly to a pinned loader or checked spec.
+    module_imports = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "load_module"
+        and [arg.arg for arg in node.args.args] == ["path", "name"]
+    ]
+    for module_import in module_imports:
+        for call in ast.walk(module_import):
+            if (isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "spec_from_file_location"):
+                require(any(keyword.arg == "loader" for keyword in call.keywords),
+                        "canonical module import not pinned")
+        module_body = [
+            statement for statement in module_import.body
+            if not (isinstance(statement, ast.Expr)
+                    and isinstance(statement.value, ast.Constant)
+                    and isinstance(statement.value.value, str))
+        ]
+        if len(module_body) == 1 and isinstance(module_body[0], ast.Return):
+            allowed = (
+                ast.parse("return load_pinned_fixture_helper(path, name)").body[0],
+                ast.parse("return load_pinned_fixture_guard(path, name)").body[0],
+            )
+            require(any(ast.dump(module_body[0], include_attributes=False)
+                        == ast.dump(node, include_attributes=False)
+                        for node in allowed),
+                    "canonical module import not pinned")
     # Decorators execute while the module is initialized and may replace the
     # checked callable without a later assignment or explicit namespace write.
     for guarded_function in (main, proof, pin, loaders[0]):
@@ -1513,6 +1543,25 @@ def negative_cases(source: str, diagnostic: str) -> int:
              "    return importlib.util.spec_from_file_location(name, path)\n",
              "canonical module import not pinned"),
         )
+    if delegate_anchor is not None:
+        marker = (
+            "typed transport fixture guard source open failed"
+            if "typed transport fixture guard source open failed" in source
+            else "admission-chain fixture guard source open failed"
+        )
+        require(source.count(marker) >= 1,
+                "canonical module import not pinned")
+        weakened = source.replace(
+            delegate_anchor,
+            "    return importlib.util.spec_from_file_location(name, path)\n", 1
+        ).replace(marker, "synthetic fixture guard source open failed", 1)
+        try:
+            validate_source(weakened, diagnostic)
+        except GuardFailure as exc:
+            require(str(exc) == "canonical module import not pinned",
+                    "combined import/marker mutation rejected at wrong boundary")
+        else:
+            raise GuardFailure("combined import/marker mutation unexpectedly accepted")
     count = 0
     for original, mutation, expected in replacements:
         require(original in source, f"negative mutation anchor absent: {expected}")
@@ -1538,7 +1587,7 @@ def negative_cases(source: str, diagnostic: str) -> int:
         else:
             raise GuardFailure(f"negative unexpectedly accepted: {expected}")
         count += 1
-    return count
+    return count + (1 if delegate_anchor is not None else 0)
 
 
 def target_matrix_negative_cases(workflow_source: str) -> int:
@@ -2698,7 +2747,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 76 * len(TARGETS) + 226, "ancestor negative count mismatch")
+        require(total == 76 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
