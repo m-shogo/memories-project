@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +55,105 @@ def validate_helper_source(source: bytes) -> None:
         raise SystemExit("independent-review fixture helper source binding drift")
 
 
+MAX_SOURCE_BYTES = 128 * 1024
+PRIVATE_SOURCE_ERROR = "independent-review workflow source unreadable or unsafe"
+
+
+def read_bounded_regular(path: Path, limit: int = MAX_SOURCE_BYTES) -> bytes:
+    """Refuse symlink/FIFO/oversize source and compare the opened inode."""
+    fd = -1
+    try:
+        checked = path.lstat()
+        if not stat.S_ISREG(checked.st_mode):
+            raise ValueError("unsafe source type")
+        if not all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                   for flag in ("O_NOFOLLOW", "O_NONBLOCK")):
+            raise ValueError("unsafe platform flags")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        opened = os.fstat(fd)
+        if (not stat.S_ISREG(opened.st_mode) or
+                (opened.st_dev, opened.st_ino) != (checked.st_dev, checked.st_ino)):
+            raise ValueError("source inode drift")
+        with os.fdopen(fd, "rb") as stream:
+            fd = -1
+            data = stream.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError("source size limit")
+        return data
+    except (Exception, SystemExit):
+        raise SystemExit(PRIVATE_SOURCE_ERROR) from None
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except (Exception, SystemExit):
+                raise SystemExit(PRIVATE_SOURCE_ERROR) from None
+
+
+def prove_bounded_reader() -> None:
+    """Actual unsafe-source and FD fault negatives on disposable files."""
+    def rejected(path: Path) -> None:
+        try:
+            read_bounded_regular(path)
+        except SystemExit as exc:
+            if str(exc) == PRIVATE_SOURCE_ERROR and exc.__suppress_context__:
+                return
+            raise SystemExit("independent-review bounded source diagnostic drift") from None
+        raise SystemExit("independent-review bounded source accepted unsafe input")
+
+    with tempfile.TemporaryDirectory(prefix="independent-review-source-") as raw:
+        root = Path(raw)
+        source = root / "source.py"
+        source.write_bytes(b"VALUE = 7\n")
+        if read_bounded_regular(source) != b"VALUE = 7\n":
+            raise SystemExit("independent-review bounded source positive drift")
+        link = root / "symlink.py"
+        link.symlink_to(source)
+        rejected(link)
+        fifo = root / "fifo.py"
+        os.mkfifo(fifo)
+        rejected(fifo)
+        oversized = root / "oversized.py"
+        oversized.write_bytes(b"x" * (MAX_SOURCE_BYTES + 1))
+        rejected(oversized)
+        before = len(os.listdir("/proc/self/fd"))
+        original_fdopen = os.fdopen
+
+        def fail_fdopen(*_args, **_kwargs):
+            raise OSError("PRIVATE_SOURCE_FDOPEN_CANARY")
+
+        os.fdopen = fail_fdopen
+        try:
+            rejected(source)
+        finally:
+            os.fdopen = original_fdopen
+        if len(os.listdir("/proc/self/fd")) != before:
+            raise SystemExit("independent-review bounded source fdopen leak")
+
+        original_close = os.close
+        fired = False
+
+        def close_then_fail(fd: int) -> None:
+            nonlocal fired
+            original_close(fd)
+            if not fired:
+                fired = True
+                raise OSError("PRIVATE_SOURCE_CLOSE_CANARY")
+
+        os.fdopen = fail_fdopen
+        os.close = close_then_fail
+        try:
+            rejected(source)
+        finally:
+            os.fdopen = original_fdopen
+            os.close = original_close
+        if not fired or len(os.listdir("/proc/self/fd")) != before:
+            raise SystemExit("independent-review bounded source close cleanup drift")
+        if read_bounded_regular(source) != b"VALUE = 7\n":
+            raise SystemExit("independent-review bounded source restoration drift")
+    print("PASS independent-review bounded workflow/helper source: symlink FIFO oversize fdopen close")
+
+
 def prove_branch_guards_runtime() -> None:
     """Execute the reviewed shell predicates against disposable synthetic refs."""
     cases = (
@@ -72,9 +173,13 @@ def prove_branch_guards_runtime() -> None:
 
 
 def main() -> int:
-    source = WORKFLOW.read_text(encoding="utf-8")
+    prove_bounded_reader()
+    try:
+        source = read_bounded_regular(WORKFLOW).decode("utf-8")
+    except UnicodeDecodeError:
+        raise SystemExit(PRIVATE_SOURCE_ERROR) from None
     validate(source)
-    helper_source = HELPER.read_bytes()
+    helper_source = read_bounded_regular(HELPER)
     validate_helper_source(helper_source)
     for label, old, new in (
         ("remove pinned source safety flag", b"os.O_NOFOLLOW", b"os.O_RDONLY"),
