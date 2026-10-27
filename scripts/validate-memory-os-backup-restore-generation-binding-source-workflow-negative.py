@@ -418,8 +418,8 @@ def require_binding_json_descriptor_fault_negative_reachable(code: str) -> None:
 def prove_binding_json_descriptor_fault_negative_deletion_rejected() -> None:
     code = source(BINDING_NEGATIVE)
     require_binding_json_descriptor_fault_negative_reachable(code)
-    start = '        # Close errors must fail privately even after the OS descriptor was closed.\\n'
-    end = '        with tempfile.TemporaryDirectory(prefix="memory-os-binding-json-parent-canary-") as outside:\\n'
+    start = '        # Close errors must fail privately even after the OS descriptor was closed.\n'
+    end = '        with tempfile.TemporaryDirectory(prefix="memory-os-binding-json-parent-canary-") as outside:\n'
     if code.count(start) != 1 or code.count(end) != 1:
         raise SystemExit("generation binding JSON descriptor fault deletion anchor drift")
     mutated = code[:code.index(start)] + code[code.index(end, code.index(start)):]
