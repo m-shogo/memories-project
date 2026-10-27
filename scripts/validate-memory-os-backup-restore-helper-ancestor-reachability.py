@@ -1250,14 +1250,25 @@ except (Exception, SystemExit):
         "loader source runtime open failure not private",
     )
     read_try = loader_try.body[1] if len(loader_try.body) > 1 else None
+    expected_owned_duplicate = ast.parse("""duplicated_fd = os.dup(fd)
+try:
+    with os.fdopen(duplicated_fd, "rb") as stream:
+        duplicated_fd = -1
+        source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)
+finally:
+    if duplicated_fd >= 0:
+        try:
+            os.close(duplicated_fd)
+        except (Exception, SystemExit):
+            raise Fail("fixture guard pinned descriptor cleanup failed") from None
+""").body
     require(
         isinstance(read_try, ast.Try)
-        and len(read_try.body) >= 5
-        and ast.dump(read_try.body[3], include_attributes=False)
-        == ast.dump(ast.parse(
-            "with os.fdopen(os.dup(fd), 'rb') as stream:\n"
-            "    source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)\n"
-        ).body[0], include_attributes=False)
+        and len(read_try.body) >= 6
+        and len(expected_owned_duplicate) == 2
+        and all(ast.dump(actual, include_attributes=False)
+                == ast.dump(expected, include_attributes=False)
+                for actual, expected in zip(read_try.body[3:5], expected_owned_duplicate))
         and ast.dump(read_try.body[-2], include_attributes=False)
         == ast.dump(ast.parse("""try:
     spec.loader.exec_module(module)
@@ -1266,7 +1277,7 @@ except Fail:
 except (Exception, SystemExit):
     raise Fail("fixture guard pinned module execution failed") from None
 """).body[0], include_attributes=False)
-        and ast.dump(read_try.body[4], include_attributes=False)
+        and ast.dump(read_try.body[5], include_attributes=False)
         == ast.dump(ast.parse(
             "require(len(source) <= MAX_HELPER_SOURCE_BYTES, 'fixture guard pinned source oversized')"
         ).body[0], include_attributes=False)
@@ -1624,12 +1635,27 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "ancestor pin missing live relative-parts walk"),
     )
     replacements += (
-        ("                source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)\n",
-         "                source = path.read_bytes()\n",
+        ("                    source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)\n",
+         "                    source = path.read_bytes()\n",
          "loader source execution not pinned to FD"),
-        ('            with os.fdopen(os.dup(fd), "rb") as stream:\n',
-         '            with open(path, "rb") as stream:\n',
+        ('                with os.fdopen(duplicated_fd, "rb") as stream:\n',
+         '                with open(path, "rb") as stream:\n',
          "loader source execution not pinned to FD"),
+        ("            duplicated_fd = os.dup(fd)\n",
+         "            duplicated_fd = fd\n",
+         "loader duplicate FD ownership not guaranteed"),
+        ("                    duplicated_fd = -1\n",
+         "                    duplicated_fd = fd\n",
+         "loader duplicate FD ownership not guaranteed"),
+        ("                if duplicated_fd >= 0:\n",
+         "                if False:\n",
+         "loader duplicate FD ownership not guaranteed"),
+        ("                        os.close(duplicated_fd)\n",
+         "                        pass  # synthetic duplicate FD leak\n",
+         "loader duplicate FD ownership not guaranteed"),
+        ('                        raise Fail("fixture guard pinned descriptor cleanup failed") from None\n',
+         '                        raise Fail("fixture guard pinned descriptor cleanup failed")\n',
+         "loader duplicate FD ownership not guaranteed"),
         ('                    return compile(source, str(path), "exec")\n',
          '                    return compile(path.read_bytes(), str(path), "exec")\n',
          "loader source execution not pinned to FD"),
@@ -3083,6 +3109,7 @@ def prove_compilation_failure_runtime(filename: str) -> None:
     """Run the actual canonical pinned loader on valid and malformed fixtures."""
     script = """
 import runpy
+import errno
 import sys
 import tempfile
 from pathlib import Path
@@ -3435,6 +3462,43 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     finally:
         os.dup = original_dup
 
+    original_dup, original_fdopen, original_close = os.dup, os.fdopen, os.close
+    for cleanup_fault in (False, True):
+        tracked_duplicate = {}
+        def watch_duplicate(descriptor):
+            duplicate = original_dup(descriptor)
+            tracked_duplicate["fd"] = duplicate
+            return duplicate
+        def fail_preownership_fdopen(descriptor, *args, **kwargs):
+            if descriptor == tracked_duplicate.get("fd"):
+                raise OSError("PRIVATE_FDOPEN_PREOWNERSHIP_CANARY")
+            return original_fdopen(descriptor, *args, **kwargs)
+        def fail_duplicate_cleanup(descriptor):
+            original_close(descriptor)
+            if cleanup_fault and descriptor == tracked_duplicate.get("fd"):
+                raise OSError("PRIVATE_DUPLICATE_CLOSE_CANARY")
+        os.dup, os.fdopen, os.close = watch_duplicate, fail_preownership_fdopen, fail_duplicate_cleanup
+        try:
+            try:
+                loader(good, "pinned_fdopen_preownership_negative_" + str(cleanup_fault))
+            except Fail as exc:
+                expected = ("fixture guard pinned descriptor cleanup failed"
+                            if cleanup_fault else "pinned source read failed")
+                assert str(exc).endswith(expected)
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_" not in str(exc)
+            else:
+                raise AssertionError("preownership fdopen failure accepted")
+        finally:
+            os.dup, os.fdopen, os.close = original_dup, original_fdopen, original_close
+        assert "fd" in tracked_duplicate
+        try:
+            os.fstat(tracked_duplicate["fd"])
+        except OSError as exc:
+            assert exc.errno == errno.EBADF
+        else:
+            raise AssertionError("fdopen failure leaked duplicate descriptor")
+
     original_fstat = os.fstat
     injected_unexpected_parent_close = {"done": False}
     def fault_unexpected_parent_stat(descriptor):
@@ -3593,7 +3657,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 130 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 135 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

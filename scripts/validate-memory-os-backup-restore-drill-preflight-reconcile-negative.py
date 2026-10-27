@@ -248,8 +248,17 @@ def load_pinned_fixture_guard(path: Path, name: str):
                 and (opened.st_dev, opened.st_ino) == (entry.st_dev, entry.st_ino),
                 "preflight fixture guard source identity drift",
             )
-            with os.fdopen(os.dup(fd), "rb") as stream:
-                source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)
+            duplicated_fd = os.dup(fd)
+            try:
+                with os.fdopen(duplicated_fd, "rb") as stream:
+                    duplicated_fd = -1
+                    source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)
+            finally:
+                if duplicated_fd >= 0:
+                    try:
+                        os.close(duplicated_fd)
+                    except (Exception, SystemExit):
+                        raise Fail("fixture guard pinned descriptor cleanup failed") from None
             require(len(source) <= MAX_HELPER_SOURCE_BYTES,
                     "fixture guard pinned source oversized")
             class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
