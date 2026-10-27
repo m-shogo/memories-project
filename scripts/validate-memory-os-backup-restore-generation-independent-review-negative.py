@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import copy
 import errno
+import errno
 import importlib.machinery
 import importlib.util
 import stat
@@ -74,9 +75,19 @@ def require_pinned_execution_negative_source(code: str) -> None:
             "os.O_NONBLOCK = 0",
             'load_checked_module(good, "independent_review_unsafe_restored")',
         ),
+        "prove_review_import_fd_cleanup": (
+            "def tracked_open(",
+            "def broken_fdopen(",
+            "def broken_close(",
+            'load_checked_module(VALIDATOR, "independent_review_fd_fault")',
+            "os.fstat(descriptor)",
+            "errno.EBADF",
+            "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+        ),
         "main": (
             "prove_pinned_validator_import()",
             "prove_review_import_unsafe_sources()",
+            "prove_review_import_fd_cleanup()",
             "module = load_validator()",
         ),
     }
@@ -89,6 +100,7 @@ def require_pinned_execution_negative_source(code: str) -> None:
     main = ast.get_source_segment(code, functions["main"]) or ""
     require(main.index("prove_pinned_validator_import()")
             < main.index("prove_review_import_unsafe_sources()")
+            < main.index("prove_review_import_fd_cleanup()")
             < main.index("module = load_validator()"),
             "independent review pinned source proof not reached before import")
 
@@ -123,8 +135,12 @@ def prove_pinned_execution_negative_mutations_rejected() -> None:
          "os.O_NONBLOCK = original_flag"),
         ("main", "prove_pinned_validator_import()",
          "pass  # synthetic pinned import proof removed"),
+        ("prove_review_import_fd_cleanup", "os.fstat(descriptor)", "os.fstat(-1)"),
+        ("prove_review_import_fd_cleanup", "errno.EBADF", "errno.EIO"),
         ("main", "prove_review_import_unsafe_sources()",
          "pass  # synthetic unsafe proof removed"),
+        ("main", "prove_review_import_fd_cleanup()",
+         "pass  # synthetic FD cleanup proof removed"),
     )
     for name, original, replacement in mutations:
         tree = ast.parse(code)
