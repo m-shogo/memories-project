@@ -2,6 +2,7 @@
 """Reject non-canonical or repository-escaping typed admission authority refs."""
 from __future__ import annotations
 
+import errno
 import importlib.util
 import inspect
 import os
@@ -636,6 +637,64 @@ def prove_typed_pinned_module_fail_closed(validator: object) -> None:
     print("PASS: typed pinned module oversized/symlink/FIFO/unsafe flag negatives and positive")
 
 
+def prove_typed_pinned_module_fd_cleanup(validator: object) -> None:
+    """Actual pinned import closes every owned FD after fdopen/close faults."""
+    private = "SYNTHETIC_PRIVATE_TYPED_MODULE_FD_CANARY"
+    with tempfile.TemporaryDirectory(prefix=".typed-module-fd-", dir=ROOT) as raw:
+        source = Path(raw) / "helper.py"
+        source.write_text("VALUE = 'safe'\n", encoding="utf-8")
+        for fault in ("fdopen", "close"):
+            original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
+            opened: list[int] = []
+            close_faulted = False
+
+            def tracked_open(*args, **kwargs):
+                fd = original_open(*args, **kwargs)
+                opened.append(fd)
+                return fd
+
+            def broken_fdopen(_fd, *args, **kwargs):
+                raise OSError(private)
+
+            def broken_close(fd):
+                nonlocal close_faulted
+                original_close(fd)
+                if not close_faulted:
+                    close_faulted = True
+                    raise OSError(private)
+
+            try:
+                os.open = tracked_open
+                if fault == "fdopen":
+                    os.fdopen = broken_fdopen
+                else:
+                    os.close = broken_close
+                try:
+                    validator.load_module(source, "typed_module_fd_" + fault)
+                except validator.Fail as exc:
+                    require(str(exc) == "typed admission module import unavailable"
+                            and exc.__suppress_context__ and exc.__cause__ is None
+                            and private not in str(exc),
+                            "typed pinned module FD fault leaked private details: " + fault)
+                else:
+                    raise Fail("typed pinned module FD fault unexpectedly accepted: " + fault)
+            finally:
+                os.open, os.fdopen, os.close = original_open, original_fdopen, original_close
+            require(len(opened) >= 2 and (fault != "close" or close_faulted),
+                    "typed pinned module FD fault was not exercised: " + fault)
+            for fd in opened:
+                try:
+                    os.fstat(fd)
+                except OSError as exc:
+                    require(exc.errno == errno.EBADF,
+                            "typed pinned module FD fault raised unexpected fstat error")
+                else:
+                    raise Fail("typed pinned module FD leaked after " + fault)
+        require(validator.load_module(source, "typed_module_fd_restored").VALUE == "safe",
+                "typed pinned module FD restoration positive failed")
+    print("PASS: typed pinned module fdopen/close faults clean every owned descriptor")
+
+
 def prove_private_typed_append_lock_metadata(validator: object) -> None:
     """Materialized lock metadata errors cannot disclose filesystem exception details."""
     private = "SYNTHETIC_PRIVATE_TYPED_LOCK_CANARY"
@@ -706,6 +765,7 @@ def main() -> int:
     prove_private_typed_admission_import_errors(validator)
     prove_pinned_typed_admission_module_import(validator)
     prove_typed_pinned_module_fail_closed(validator)
+    prove_typed_pinned_module_fd_cleanup(validator)
     prove_private_typed_append_lock_metadata(validator)
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
