@@ -37,7 +37,8 @@ def load_validator() -> Any:
 
 def prove_validator_path_failures() -> None:
     """Prove fixed private errors for missing/symlinked paths and loader faults."""
-    global VALIDATOR, load_pinned_module
+    global ROOT, VALIDATOR, load_pinned_module
+    original_root = ROOT
     original_validator = VALIDATOR
     original_loader = load_pinned_module
 
@@ -52,18 +53,23 @@ def prove_validator_path_failures() -> None:
             raise Fail("independent transport accepted unsafe validator path: " + label)
 
     try:
-        with tempfile.TemporaryDirectory(prefix=".independent-transport-path-", dir=ROOT) as raw:
-            parent = Path(raw)
-            VALIDATOR = parent / "missing.py"
-            rejected("missing")
-            substitute = parent / "substitute.py"
-            substitute.write_text("VALUE = 7\n", encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".independent-transport-path-", dir=original_root) as raw:
+            ROOT = Path(raw)
+            canonical = ROOT / VALIDATOR_REL
+            canonical.parent.mkdir(parents=True)
+            VALIDATOR = canonical
+            rejected("canonical missing")
+            canonical.symlink_to(original_validator)
+            rejected("canonical symlink")
+            canonical.unlink()
+            canonical.write_text("VALUE = 7\n", encoding="utf-8")
+            require(load_validator().VALUE == 7,
+                    "independent transport isolated canonical positive drift")
+            substitute = ROOT / "scripts/substitute.py"
+            substitute.write_text("VALUE = 9\n", encoding="utf-8")
             VALIDATOR = substitute
             rejected("noncanonical substitute")
-            alias = parent / "alias.py"
-            alias.symlink_to(original_validator)
-            VALIDATOR = alias
-            rejected("symlink")
+        ROOT = original_root
         VALIDATOR = original_validator
         for error in (OSError("PRIVATE_TRANSPORT_OS_CANARY"),
                       RuntimeError("PRIVATE_TRANSPORT_RUNTIME_CANARY"),
@@ -78,9 +84,10 @@ def prove_validator_path_failures() -> None:
         require(callable(load_validator().candidate_reviews_approved),
                 "independent transport canonical validator restoration drift")
     finally:
+        ROOT = original_root
         VALIDATOR = original_validator
         load_pinned_module = original_loader
-    print("PASS independent transport canonical validator path privacy: missing substitute symlink OSError RuntimeError SystemExit")
+    print("PASS independent transport canonical validator path privacy: isolated missing symlink positive substitute OSError RuntimeError SystemExit")
 
 
 SOURCE_ORDER_EXECUTION_NEGATIVE = (

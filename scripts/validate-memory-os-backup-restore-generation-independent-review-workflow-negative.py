@@ -15,7 +15,7 @@ WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-revie
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
 HELPER = ROOT / "scripts/ops_independent_review_fixture_loader.py"
 TRANSPORT = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-transport-negative.py"
-REVIEWED_TRANSPORT_GIT_BLOB_SHA = "818c0a27a04ac63c5b277ef803fd2a3c99ef78a9"
+REVIEWED_TRANSPORT_GIT_BLOB_SHA = "3a872dcc8554a63feb894f342c3c2960c85c7975"
 REVIEWED_HELPER_GIT_BLOB_SHA = "1091ad96042f16bbb538fad2b81050a6f4fa6450"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
@@ -292,6 +292,8 @@ def main() -> int:
         ("remove transport validator private failure", b"except (Exception, SystemExit):", b"except FixtureImportFail:"),
         ("remove canonical transport validator path binding", b"require(VALIDATOR == ROOT / VALIDATOR_REL,", b"require(True,"),
         ("remove transport validator path fault probe", b"    prove_validator_path_failures()\n", b"    pass\n"),
+        ("remove isolated canonical symlink fault", b'rejected("canonical symlink")', b'pass  # removed canonical symlink proof'),
+        ("remove isolated canonical positive", b"require(load_validator().VALUE == 7,", b"require(True or load_validator().VALUE == 7,"),
     ):
         if old not in transport_source:
             raise SystemExit("independent-review transport mutation anchor missing: " + label)
