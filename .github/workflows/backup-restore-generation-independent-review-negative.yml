@@ -18,6 +18,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
+      - "scripts/ops_independent_review_fixture_loader.py"
   push:
     branches:
       - so
@@ -35,6 +36,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"
+      - "scripts/ops_independent_review_fixture_loader.py"
   workflow_dispatch:
 
 permissions:
@@ -92,6 +94,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
+            scripts/ops_independent_review_fixture_loader.py
+          python scripts/ops_independent_review_fixture_loader.py
           python scripts/validate-memory-os-backup-restore-review-source-order.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py
           python scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
@@ -123,11 +127,10 @@ jobs:
           contract["materialDeltaReviewEvidenceSchemaVersion"] = "memory-os-backup-restore-material-delta-review.v0"
           contract_path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
 
-          spec = importlib.util.spec_from_file_location("empty_review_material_delta_authority_negative", validator_path)
-          if spec is None or spec.loader is None:
-              raise SystemExit("cannot load independent-review validator fixture")
-          module = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(module)
+          import sys
+          sys.path.insert(0, str(Path.cwd() / "scripts"))
+          from ops_independent_review_fixture_loader import load_pinned_module
+          module = load_pinned_module(root, validator_path, "empty_review_material_delta_authority_negative")
           try:
               module.main()
           except module.Fail as exc:
@@ -154,11 +157,10 @@ jobs:
 
           root = Path(os.environ["FIXTURE_ROOT"])
           validator_path = root / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
-          spec = importlib.util.spec_from_file_location("candidate_count_boundary_negative", validator_path)
-          if spec is None or spec.loader is None:
-              raise SystemExit("cannot load independent-review validator fixture")
-          module = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(module)
+          import sys
+          sys.path.insert(0, str(Path.cwd() / "scripts"))
+          from ops_independent_review_fixture_loader import load_pinned_module
+          module = load_pinned_module(root, validator_path, "candidate_count_boundary_negative")
 
           registry = json.loads(module.REGISTRY.read_text(encoding="utf-8"))
           registry["records"] = [{}]

@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-review-negative.yml"
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "b81c18a30dcf3b5fc6d6f143a84ada5e572163f2"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "34bc72471bf5c5c4ea2300d403e213ecfb544f0e"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
