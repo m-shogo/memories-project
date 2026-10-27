@@ -687,6 +687,57 @@ def prove_typed_json_reader(validator: Any) -> None:
     print("PASS: actual typed admission JSON reader positive and 16 fail-closed negatives")
 
 
+def prove_typed_json_reader_fd_races(validator: Any) -> None:
+    """Real typed admission reader must use pinned original bytes after path swaps."""
+    protected = (CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-typed-json-fd-race-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        for case in ("parent", "ancestor"):
+            checked = sandbox / (case + "-checked")
+            parked = sandbox / (case + "-parked")
+            redirect = sandbox / (case + "-redirect")
+            checked.mkdir()
+            redirect.mkdir()
+            if case == "ancestor":
+                (checked / "nested").mkdir()
+                (redirect / "nested").mkdir()
+                checked_leaf = checked / "nested/candidate.json"
+                redirect_leaf = redirect / "nested/candidate.json"
+                trigger = "nested"
+            else:
+                checked_leaf = checked / "candidate.json"
+                redirect_leaf = redirect / "candidate.json"
+                trigger = "candidate.json"
+            checked_leaf.write_bytes(b'{"source":"pinned"}')
+            redirect_leaf.write_bytes(b'{"source":"redirected","secret":"SYNTHETIC_EXTERNAL_CANARY"}')
+            original_open = os.open
+            swapped = False
+
+            def swap_during_walk(target, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and target == trigger and kwargs.get("dir_fd") is not None:
+                    swapped = True
+                    checked.rename(parked)
+                    checked.symlink_to(redirect, target_is_directory=True)
+                return original_open(target, flags, *args, **kwargs)
+
+            try:
+                require(validator.load(checked_leaf) == {"source": "pinned"},
+                        f"typed JSON {case} positive control failed")
+                os.open = swap_during_walk
+                result = validator.load(checked_leaf)
+                require(swapped, f"typed JSON {case} race injection not reached")
+                require(result == {"source": "pinned"},
+                        f"typed JSON {case} race read redirected source")
+                require(redirect_leaf.read_bytes() == b'{"source":"redirected","secret":"SYNTHETIC_EXTERNAL_CANARY"}',
+                        f"typed JSON {case} race changed external canary")
+            finally:
+                os.open = original_open
+    require((CONTRACT.read_bytes(), REGISTRY.read_bytes(), GEN_REGISTRY.read_bytes(), STATUS.read_bytes()) == protected,
+            "typed JSON race negative mutated protected authorities")
+    print("PASS: actual typed admission JSON reader parent and ancestor swap retain pinned original source")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -716,6 +767,7 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_typed_non_resurrection_load_negative")
     prove_typed_writer_json_reader(writer)
     prove_typed_json_reader(validator)
+    prove_typed_json_reader_fd_races(validator)
     require(writer.canonical_repo_file(WRITER, "typed evidence writer") == WRITER, "canonical typed writer path rejected")
 
     prove_reconcile_runtime_authorities()
