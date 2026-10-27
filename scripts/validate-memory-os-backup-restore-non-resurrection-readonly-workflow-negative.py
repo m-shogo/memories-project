@@ -32,13 +32,13 @@ REQUIRED = (
 )
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, check_blob: bool = True) -> None:
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"typed readonly workflow source boundary drift: {label}")
     payload = source.encode("utf-8")
     blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
-    if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
+    if check_blob and hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
         raise SystemExit("typed readonly workflow complete Git source drift")
 
 
@@ -88,16 +88,26 @@ def main() -> int:
         ("injected unreviewed action", "      - name: Prove canonical authority bytes and modes are immutable\n", "      - uses: unreviewed/action@v1\n      - name: Prove canonical authority bytes and modes are immutable\n"),
         ("removed PR self-trigger", '      - ".github/workflows/backup-restore-non-resurrection-readonly.yml"\n', ""),
     )
+    semantic_count = 0
+    blob_only_count = 0
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit(f"typed readonly negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
+        if mutated == source:
+            raise SystemExit(f"typed readonly mutation unchanged: {label}")
+        semantic = any(mutated.count(token) != source.count(token)
+                       for _, token, _ in REQUIRED)
+        semantic_count += int(semantic)
+        blob_only_count += int(not semantic)
         try:
-            validate(mutated)
+            validate(mutated, check_blob=not semantic)
         except SystemExit:
             continue
         raise SystemExit(f"typed readonly accepted forbidden mutation: {label}")
-    print(f"PASS: typed non-resurrection readonly workflow source admission ({len(cases)} negatives)")
+    if (semantic_count, blob_only_count) != (len(cases) - 3, 3):
+        raise SystemExit("typed readonly semantic/blob mutation coverage drift")
+    print(f"PASS: typed non-resurrection readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
 
 
