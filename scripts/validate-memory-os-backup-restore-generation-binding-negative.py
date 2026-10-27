@@ -106,8 +106,8 @@ def prove_pinned_target_import() -> None:
         redirected = sandbox / "redirected"
         redirected.mkdir()
         canary = redirected / "module.py"
-        source.write_text("VALUE = 'pinned'\\n", encoding="utf-8")
-        canary.write_text("raise RuntimeError('PRIVATE_GENERATION_BINDING_TARGET_CANARY')\\n",
+        source.write_text("VALUE = 'pinned'\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_GENERATION_BINDING_TARGET_CANARY')\n",
                           encoding="utf-8")
         swapped = False
         try:
@@ -127,7 +127,7 @@ def prove_pinned_target_import() -> None:
             require(swapped and loaded.VALUE == "pinned",
                     "generation binding target import executed redirected source")
             require(canary.read_text(encoding="utf-8") ==
-                    "raise RuntimeError('PRIVATE_GENERATION_BINDING_TARGET_CANARY')\\n",
+                    "raise RuntimeError('PRIVATE_GENERATION_BINDING_TARGET_CANARY')\n",
                     "generation binding target import changed external canary")
         finally:
             importlib.util.spec_from_file_location = original_spec
@@ -145,7 +145,7 @@ def prove_target_import_unsafe_sources() -> None:
     with tempfile.TemporaryDirectory(prefix=".generation-binding-target-unsafe-", dir=ROOT) as raw:
         sandbox = Path(raw)
         good = sandbox / "good.py"
-        good.write_text("VALUE = 'safe'\\n", encoding="utf-8")
+        good.write_text("VALUE = 'safe'\n", encoding="utf-8")
         oversized = sandbox / "oversized.py"
         oversized.write_bytes(b"x" * (MAX_TARGET_MODULE_BYTES + 1))
         linked = sandbox / "linked.py"
