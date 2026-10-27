@@ -364,7 +364,7 @@ def prove_pair_import_fd_cleanup() -> None:
                 raise Fail("independent review pair module " + fault + " leaked descriptor")
     require(callable(getattr(load_checked_pair_module(VALIDATOR, "review_pair_fd_restored"), "main", None)),
             "independent review pair module FD fault canonical restoration failed")
-    print("PASS: drill request pinned loader fdopen/close faults clean owned descriptors")
+    print("PASS: independent review pair pinned loader fdopen/close faults clean owned descriptors")
 
 
 def head_sha() -> str:
