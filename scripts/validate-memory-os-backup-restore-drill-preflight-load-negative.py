@@ -22,6 +22,7 @@ TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
 PREFLIGHT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 PREFLIGHT_AUTHORITY = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-authority.py"
+PREFLIGHT_RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py"
 
 
 class Fail(RuntimeError):
@@ -1362,6 +1363,70 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("preflight authority pinned loader weakening accepted: " + label)
+    reconcile_negative_source = PREFLIGHT_RECONCILE_NEGATIVE.read_text(encoding="utf-8")
+
+    def verify_reconcile_negative_loader(candidate: str) -> None:
+        try:
+            tree = ast.parse(candidate)
+        except SyntaxError:
+            raise Fail("preflight reconcile negative pinned import syntax invalid") from None
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        loader = functions.get("load_module")
+        proof = functions.get("prove_pinned_reconciler_import")
+        main = functions.get("main")
+        require(loader is not None and proof is not None and main is not None,
+                "preflight reconcile negative pinned loader/proof/main missing")
+        first = main.body[0] if main.body else None
+        require(isinstance(first, ast.Expr) and isinstance(first.value, ast.Call)
+                and isinstance(first.value.func, ast.Name)
+                and first.value.func.id == "prove_pinned_reconciler_import",
+                "preflight reconcile negative pinned proof not executed before canonical work")
+        loader_body = ast.get_source_segment(candidate, loader)
+        proof_body = ast.get_source_segment(candidate, proof)
+        require(isinstance(loader_body, str) and isinstance(proof_body, str),
+                "preflight reconcile negative pinned source unavailable")
+        for token in ("class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+                      'return compile(source, str(RECONCILER), "exec")',
+                      "loader=PinnedSourceLoader(name, str(RECONCILER))",
+                      "spec.loader.exec_module(module)",
+                      "source = stream.read(MAX_MODULE_BYTES + 1)",
+                      "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)"):
+            require(token in loader_body, "preflight reconcile negative pinned loader weakened")
+        for token in ("parent.rename(parked)", "parent.symlink_to(redirected",
+                      "importlib.util.spec_from_file_location = swap_after_read",
+                      'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
+                      "RECONCILER = original_path"):
+            require(token in proof_body, "preflight reconcile negative pinned proof removed")
+        require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in {"exec", "eval"} for node in ast.walk(loader)),
+                "preflight reconcile negative direct dynamic execution refused")
+
+    verify_reconcile_negative_loader(reconcile_negative_source)
+    for label, scope, old, replacement in (
+        ("proof invocation", "main", "    prove_pinned_reconciler_import()\n", "    pass\n"),
+        ("source loader", "load_module", "loader=PinnedSourceLoader(name, str(RECONCILER))", "loader=None"),
+        ("pinned code", "load_module", 'return compile(source, str(RECONCILER), "exec")', "return None"),
+        ("parent substitution", "prove_pinned_reconciler_import",
+         "                    parent.symlink_to(redirected, target_is_directory=True)\n",
+         "                    pass\n"),
+        ("pinned value assertion", "prove_pinned_reconciler_import",
+         'loaded.VALUE == "pinned"', "False"),
+    ):
+        parsed = ast.parse(reconcile_negative_source)
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        function = functions.get(scope)
+        require(function is not None, "preflight reconcile negative mutation scope missing")
+        lines = reconcile_negative_source.splitlines(keepends=True)
+        span = "".join(lines[function.lineno - 1:function.end_lineno])
+        require(span.count(old) == 1,
+                "preflight reconcile negative scoped mutation anchor drift: " + label)
+        lines[function.lineno - 1:function.end_lineno] = [span.replace(old, replacement, 1)]
+        try:
+            verify_reconcile_negative_loader("".join(lines))
+        except Fail:
+            continue
+        raise Fail("preflight reconcile negative pinned loader weakening accepted: " + label)
+    print("PASS: preflight reconcile negative pinned loader and five source mutations rejected")
     print("PASS: preflight authority pinned loader/private path/FD/unsafe source and 21 mutations rejected")
     print("PASS: preflight pinned source loader and four weakening mutations rejected")
     print("PASS: preflight private path/import fault, context and invocation deletion rejected")
