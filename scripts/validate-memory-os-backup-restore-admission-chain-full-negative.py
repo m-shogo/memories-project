@@ -852,10 +852,12 @@ def prove_full_step_exit_propagation() -> None:
 
     module.enforce_execution_transport = fixture_transport_guard
     try:
+        marker = "synthetic-secret-full-chain-child"
         for code, child_stdout, child_stderr in (
-            (0, "child success\n", ""),
-            (7, "child PASS-looking output\n", "controlled child failure\n"),
-            (-9, "", "controlled child signal\n"),
+            (0, marker, ""),
+            (7, f"child PASS-looking output {marker}", marker),
+            (-9, "", marker),
+            (False, marker, marker),
         ):
             calls = []
 
@@ -865,28 +867,43 @@ def prove_full_step_exit_propagation() -> None:
 
             module.subprocess.run = controlled_run
             output = io.StringIO()
+            success = type(code) is int and code == 0
             with redirect_stdout(output):
                 try:
                     module.run_step(relative, label,
                                     canonical_transport_guard=fixture_transport_guard)
                 except module.Fail as exc:
-                    if code == 0:
-                        raise Fail("full-chain successful child was rejected") from exc
-                    require(str(exc) == f"{label} failed with exit code {code}: {relative}",
-                            "full-chain child nonzero exit diagnostic drift")
+                    require(not success, "full-chain successful child was rejected")
+                    require(str(exc) == f"{label} failed (raw child output withheld): {relative}",
+                            "full-chain child fixed failure class drift")
+                    require(marker not in str(exc), "full-chain private child output leaked")
                 else:
-                    require(code == 0, "full-chain child nonzero exit was accepted")
+                    require(success, "full-chain nonzero/boolean child status accepted")
             require(len(calls) == 1, "full-chain child subprocess invocation count drift")
             argv, kwargs = calls[0]
             require(argv == [module.sys.executable, str(ROOT / relative)],
                     "full-chain child interpreter/path binding drift")
             require(kwargs == {
-                "cwd": ROOT, "text": True, "stdout": subprocess.PIPE,
-                "stderr": subprocess.PIPE, "check": False,
-            }, "full-chain child subprocess capture or execution mode drift")
+                "cwd": ROOT, "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL, "check": False, "timeout": 120,
+            }, "full-chain child private subprocess or execution budget drift")
             parent_pass = f"PASS chain step: {label}"
-            require((parent_pass in output.getvalue()) is (code == 0),
+            require((parent_pass in output.getvalue()) is success,
                     "full-chain child parent PASS output contradicts exit status")
+            require(marker not in output.getvalue(), "full-chain child output leaked to parent")
+
+        for failure in (OSError(marker), subprocess.TimeoutExpired(["synthetic"], 120)):
+            def raise_failure(*_args, **_kwargs):
+                raise failure
+            module.subprocess.run = raise_failure
+            try:
+                module.run_step(relative, label, canonical_transport_guard=fixture_transport_guard)
+            except module.Fail as exc:
+                require(str(exc) == f"{label} unavailable or timed out (raw child output withheld): {relative}",
+                        "full-chain unavailable/timeout failure class drift")
+                require(marker not in str(exc), "full-chain private exception leaked")
+            else:
+                raise Fail("full-chain unavailable/timeout child accepted")
     finally:
         module.subprocess.run = original_run
         module.enforce_execution_transport = original_guard

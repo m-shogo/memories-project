@@ -15097,3 +15097,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** The reconciler's helper import boundary is class-only and Python-stream-private, verified in exact-source negative and admission CI.
 - **Why safe/reusable mechanism:** Reused the validated null-sink import pattern without changing source authority paths, planning admission semantics or transaction behavior; synthetic tests create no human approval, drill request, recovery evidence, traffic, credentials or readiness.
 - **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remained unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, explicit current human-approved objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy recovery or production gates.
+
+## 2026-10-27 — Drill-request reconciler helper import privacy verified
+
+### Material failure
+- **Symptom/evidence:** At `b10df88aa2a6ec6eac25a5417e2c828a23905355` parent, the reconciler's canonical helper import executed with inherited Python stdout/stderr and interpolated raw OSError content. This independent import boundary could leak private diagnostic text. No real secret disclosure or production authority mutation was observed.
+- **Verified root cause:** Module import-time diagnostics were not covered by strict JSON or bounded subprocess protections. **Failed approach:** relying on later admission error handling to suppress earlier import output.
+- **Correction:** `b2f23f953726d9eb24171c7386a8996a38239c84` redirects Python import streams to a null sink and reports only a fixed import failure class without raw context.
+- **Executable recurrence guard:** Actual-function noisy positive/failing loader negatives are CI-reached; exact-source Reconcile Rollback `40444207240`, Unreadable Authority Negatives `40444207184`, Drill Request Admission `40444207171` and Autonomous Learning Guard `40444207273` completed SUCCESS.
+- **Retry condition:** Only on observed import privacy regression or reviewed module-loading policy change; unchanged human/external blockers are not retried.
+
+### Material success
+- **Outcome/evidence:** Canonical reconciler import privacy guard passed exact-source read-only and admission CI.
+- **Why safe/reusable mechanism:** Synthetic import canaries verify Python stream and exception boundaries without creating production, recovery, drill, credential, traffic, readiness or promotion evidence.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning and CI cannot satisfy any production/recovery gate.

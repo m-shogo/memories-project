@@ -164,19 +164,21 @@ def run_step(
         raise Fail("admission-chain full runner script resolver drift")
     enforce_execution_transport()
     script = canonical_script(relative)
-    completed = subprocess.run(
-        [sys.executable, str(script)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    output = f"{completed.stdout}{completed.stderr}"
-    if output:
-        print(output, end="" if output.endswith("\n") else "\n")
-    if completed.returncode != 0:
-        raise Fail(f"{label} failed with exit code {completed.returncode}: {relative}")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"{label} unavailable or timed out (raw child output withheld): {relative}") from None
+    if not isinstance(completed, subprocess.CompletedProcess) or (
+        type(completed.returncode) is not int or completed.returncode != 0
+    ):
+        raise Fail(f"{label} failed (raw child output withheld): {relative}")
     print(f"PASS chain step: {label}")
 
 
