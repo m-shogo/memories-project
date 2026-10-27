@@ -145,6 +145,91 @@ def run_in_isolated_worktree() -> int:
     return 0
 
 
+def prove_bounded_source_binding(writer, source_commit: str) -> None:
+    """Exercise bounded immutable Git blobs with real writer and private faults."""
+    path = ENVIRONMENT_RECORD_FIXTURE
+    original = path.read_bytes()
+    field = "environmentRecordRef"
+    try:
+        path.write_bytes(b"x" * (writer.MAX_SOURCE_BYTES + 1))
+        try:
+            writer.require_repo_file_bound_to_source(source_commit, path, field)
+        except writer.Fail as exc:
+            require(str(exc) == f"{field} source file size limit exceeded",
+                    "oversized environment generation source wrong rejection class")
+        else:
+            raise Fail("oversized environment generation source accepted")
+    finally:
+        path.write_bytes(original)
+
+    original_run = writer.subprocess.run
+    private_canary = "PRIVATE_GENERATION_SOURCE_GIT_CANARY"
+    source_ref = f"{source_commit}:{path.relative_to(ROOT).as_posix()}"
+    try:
+        for scenario in ("positive", "timeout", "os-error", "invalid-size",
+                         "oversized-blob", "length-mismatch", "missing-blob"):
+            calls: list[str] = []
+
+            def fake_git(args, **kwargs):
+                require(kwargs.get("cwd") == ROOT
+                        and kwargs.get("stdout") == subprocess.PIPE
+                        and kwargs.get("stderr") == subprocess.DEVNULL
+                        and kwargs.get("timeout") == writer.SOURCE_GIT_TIMEOUT
+                        and kwargs.get("check") is False,
+                        "generation source Git timeout/privacy controls drift")
+                require(args in (["git", "cat-file", "-s", source_ref],
+                                 ["git", "show", source_ref]),
+                        "generation source Git immutable ref drift")
+                calls.append(args[1])
+                if scenario == "timeout":
+                    raise subprocess.TimeoutExpired(args, writer.SOURCE_GIT_TIMEOUT)
+                if scenario == "os-error":
+                    raise OSError(private_canary)
+                if args[1] == "cat-file":
+                    size = {
+                        "invalid-size": b"not-a-number\n",
+                        "oversized-blob": str(writer.MAX_SOURCE_BYTES + 1).encode() + b"\n",
+                        "length-mismatch": b"2\n",
+                    }.get(scenario, str(len(original)).encode() + b"\n")
+                    return subprocess.CompletedProcess(args, 0, stdout=size)
+                if scenario == "missing-blob":
+                    return subprocess.CompletedProcess(args, 1, stdout=b"")
+                if scenario == "length-mismatch":
+                    return subprocess.CompletedProcess(args, 0, stdout=b"abc")
+                return subprocess.CompletedProcess(args, 0, stdout=original)
+
+            writer.subprocess.run = fake_git
+            if scenario == "positive":
+                writer.require_repo_file_bound_to_source(source_commit, path, field)
+                require(calls == ["cat-file", "show"], "generation source positive Git binding incomplete")
+                continue
+            expected = {
+                "timeout": f"{field} evidence missing from sourceCommitSha",
+                "os-error": f"{field} evidence missing from sourceCommitSha",
+                "invalid-size": f"{field} source blob size invalid",
+                "oversized-blob": f"{field} source blob size limit exceeded",
+                "length-mismatch": f"{field} source blob length mismatch",
+                "missing-blob": f"{field} evidence missing from sourceCommitSha",
+            }[scenario]
+            try:
+                writer.require_repo_file_bound_to_source(source_commit, path, field)
+            except writer.Fail as exc:
+                require(str(exc) == expected and private_canary not in str(exc),
+                        f"generation source {scenario} leaked private diagnostics")
+                if scenario in ("timeout", "os-error"):
+                    require(exc.__suppress_context__,
+                            f"generation source {scenario} leaked exception context")
+            else:
+                raise Fail(f"generation source {scenario} unexpectedly accepted")
+            if scenario in ("invalid-size", "oversized-blob"):
+                require(calls == ["cat-file"], f"generation source {scenario} fetched unbounded blob")
+    finally:
+        writer.subprocess.run = original_run
+    require(path.read_bytes() == original,
+            "bounded generation source negatives changed fixture bytes")
+    print("PASS reject: bounded generation source Git timeout, size, length and private failures")
+
+
 def main() -> int:
     require(
         CONTRACT.is_file() and WRITER.is_file() and ENVIRONMENT_RECORD_FIXTURE.is_file(),
@@ -162,6 +247,7 @@ def main() -> int:
 
     writer = load_writer()
     source = head_sha()
+    prove_bounded_source_binding(writer, source)
     refs = tuple(path.relative_to(ROOT).as_posix() for _, path in EVIDENCE_CASES)
     require(len(set(refs)) == len(refs), "source-binding negative suite requires distinct evidence refs")
     env = evidence_env(refs)

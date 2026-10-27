@@ -204,20 +204,69 @@ def require_source_commit_ancestor(source_commit: str) -> None:
     raise Fail("sourceCommitSha must be an ancestor of current HEAD")
 
 
+MAX_SOURCE_BYTES = 1024 * 1024
+SOURCE_GIT_TIMEOUT = 20
+
+
+def read_bounded_source(path: Path, field: str) -> bytes:
+    """Pin one regular inode and reject symlinks, special files and oversized input."""
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
+            f"{field} safe source read unavailable")
+    descriptor = -1
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(stat.S_ISREG(os.fstat(descriptor).st_mode),
+                f"{field} source is not a regular file")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = -1
+            content = source.read(MAX_SOURCE_BYTES + 1)
+    except OSError:
+        raise Fail(f"{field} cannot be read for immutable source binding") from None
+    finally:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raise Fail(f"{field} source descriptor cleanup failed") from None
+    require(len(content) <= MAX_SOURCE_BYTES, f"{field} source file size limit exceeded")
+    return content
+
+
 def git_blob(source_commit: str, relative: str, field: str) -> bytes:
-    require(isinstance(relative, str) and relative and ":" not in relative, f"{field} invalid for immutable source binding")
-    completed = subprocess.run(
-        ["git", "show", f"{source_commit}:{relative}"],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    require(completed.returncode == 0, f"{field} evidence missing from sourceCommitSha")
-    return completed.stdout
+    require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit),
+            f"{field} sourceCommitSha invalid")
+    require(isinstance(relative, str) and relative and ":" not in relative
+            and not Path(relative).is_absolute()
+            and ".." not in Path(relative).parts,
+            f"{field} invalid for immutable source binding")
+    source_ref = f"{source_commit}:{relative}"
+
+    def bounded_git(*args: str) -> bytes:
+        try:
+            completed = subprocess.run(
+                ["git", *args], cwd=ROOT, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, timeout=SOURCE_GIT_TIMEOUT, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            raise Fail(f"{field} evidence missing from sourceCommitSha") from None
+        require(type(completed.returncode) is int and completed.returncode == 0
+                and isinstance(completed.stdout, bytes),
+                f"{field} evidence missing from sourceCommitSha")
+        return completed.stdout
+
+    size_bytes = bounded_git("cat-file", "-s", source_ref)
+    require(len(size_bytes) <= 32 and size_bytes.strip().isascii()
+            and size_bytes.strip().isdigit(),
+            f"{field} source blob size invalid")
+    source_size = int(size_bytes.strip())
+    require(source_size <= MAX_SOURCE_BYTES, f"{field} source blob size limit exceeded")
+    historical = bounded_git("show", source_ref)
+    require(len(historical) == source_size, f"{field} source blob length mismatch")
+    return historical
 
 
 def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bounded_source(path, "environmentRecordRef")).hexdigest()
 
 
 def repo_ref(value: Any, field: str) -> Path:
@@ -244,7 +293,7 @@ def require_repo_file_bound_to_source(source_commit: str, path: Path, field: str
         relative = path.relative_to(ROOT).as_posix()
     except ValueError as exc:
         raise Fail(f"{field} escapes repository") from exc
-    current = path.read_bytes()
+    current = read_bounded_source(path, field)
     historical = git_blob(source_commit, relative, field)
     require(current == historical, f"{field} changed since sourceCommitSha")
 
