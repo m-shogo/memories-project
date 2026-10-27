@@ -94,6 +94,9 @@ def pin_checked_helper_parent(path: Path) -> int:
         raise
 
 
+MAX_HELPER_SOURCE_BYTES = 1024 * 1024
+
+
 def load_pinned_fixture_guard(path: Path, name: str):
     """Bind checked ancestors and leaf source to pinned FDs."""
     parent_fd = pin_checked_helper_parent(path)
@@ -111,7 +114,9 @@ def load_pinned_fixture_guard(path: Path, name: str):
                 "admission-chain fixture guard source identity drift",
             )
             with os.fdopen(os.dup(fd), "rb") as stream:
-                source = stream.read()
+                source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)
+            require(len(source) <= MAX_HELPER_SOURCE_BYTES,
+                    "fixture guard pinned source oversized")
             spec = importlib.util.spec_from_file_location(name, path)
             require(spec is not None and spec.loader is not None,
                     "admission-chain fixture guard cannot load")

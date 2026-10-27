@@ -698,6 +698,8 @@ def validate_independent_learning_workflow(source: str) -> None:
 
 def validate_source(source: str, expected_diagnostic: str) -> None:
     tree = ast.parse(source)
+    require(source.count("MAX_HELPER_SOURCE_BYTES = 1024 * 1024\n") == 1,
+            "loader source execution not pinned to FD")
     main = named_function(tree, "main")
     proof = named_function(tree, PROOF)
     pin = named_function(tree, PIN)
@@ -982,11 +984,15 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
         and ast.dump(read_try.body[3], include_attributes=False)
         == ast.dump(ast.parse(
             "with os.fdopen(os.dup(fd), 'rb') as stream:\n"
-            "    source = stream.read()\n"
+            "    source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)\n"
         ).body[0], include_attributes=False)
         and ast.dump(read_try.body[-2], include_attributes=False)
         == ast.dump(ast.parse(
             "exec(compile(source, str(path), 'exec'), module.__dict__)"
+        ).body[0], include_attributes=False)
+        and ast.dump(read_try.body[4], include_attributes=False)
+        == ast.dump(ast.parse(
+            "require(len(source) <= MAX_HELPER_SOURCE_BYTES, 'fixture guard pinned source oversized')"
         ).body[0], include_attributes=False)
         and isinstance(read_try.body[-1], ast.Return)
         and isinstance(read_try.body[-1].value, ast.Name)
@@ -1144,7 +1150,7 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "ancestor pin missing live relative-parts walk"),
     )
     replacements += (
-        ("                source = stream.read()\n",
+        ("                source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)\n",
          "                source = path.read_bytes()\n",
          "loader source execution not pinned to FD"),
         ('            with os.fdopen(os.dup(fd), "rb") as stream:\n',
@@ -1155,6 +1161,12 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader source execution not pinned to FD"),
         ('            exec(compile(source, str(path), "exec"), module.__dict__)\n',
          '            exec(compile(source, str(path), "exec"), globals())\n',
+         "loader source execution not pinned to FD"),
+        ("            require(len(source) <= MAX_HELPER_SOURCE_BYTES,\n",
+         "            require(True,\n",
+         "loader source execution not pinned to FD"),
+        ("MAX_HELPER_SOURCE_BYTES = 1024 * 1024\n",
+         "MAX_HELPER_SOURCE_BYTES = 1024 * 1024 * 1024\n",
          "loader source execution not pinned to FD"),
         ("        finally:\n            os.close(fd)\n    finally:\n",
          "        finally:\n            pass  # synthetic leaked leaf FD\n    finally:\n",
@@ -2165,7 +2177,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 46 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 48 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
