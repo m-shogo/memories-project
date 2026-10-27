@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-independent-review-negative.yml"
-REVIEWED_WORKFLOW_GIT_BLOB_SHA = "34bc72471bf5c5c4ea2300d403e213ecfb544f0e"
+REVIEWED_WORKFLOW_GIT_BLOB_SHA = "a4ae3121a5542d4dddc9f631f0b6e78302febd3a"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -28,6 +28,7 @@ REQUIRED = (
     ("self-execution", '          python scripts/validate-memory-os-backup-restore-generation-independent-review-workflow-negative.py\n', 1),
     ("PR base ref", '            test "${GITHUB_BASE_REF:-}" = "so"\n', 1),
     ("PR target filter", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
+    ("fixture helper compile", "            scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py \\\n            scripts/ops_independent_review_fixture_loader.py\n", 1),
 )
 
 
@@ -77,6 +78,7 @@ def main() -> int:
         ("unreviewed event rejection", REQUIRED[9][1], ""),
         ("source HEAD", REQUIRED[10][1], ""),
         ("clean source", REQUIRED[11][1], ""),
+        ("fixture helper compile continuation", REQUIRED[16][1], REQUIRED[16][1].replace(".py \\n", ".py\\n")),
         ("self-trigger", REQUIRED[12][1], ""),
         ("self-execution", REQUIRED[13][1], ""),
     )
