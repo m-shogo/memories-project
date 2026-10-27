@@ -462,10 +462,10 @@ def prove_rollback_attempts_all_restores(reconciler: Any) -> None:
             try:
                 reconciler.restore_original_text(originals)
             except reconciler.Fail as exc:
-                require(
-                    "synthetic first drill-request rollback restore rejection" in str(exc),
-                    f"rollback restore failure reported at wrong boundary: {exc}",
-                )
+                require(str(exc) == "drill request rollback incomplete",
+                        "rollback restore failure lost fixed private class")
+                require("synthetic first drill-request rollback restore rejection" not in str(exc),
+                        "rollback restore disclosed private error")
             else:
                 raise Fail("synthetic first drill-request rollback restore failure unexpectedly accepted")
         finally:
@@ -561,12 +561,11 @@ def prove_primary_and_rollback_diagnostics(reconciler: Any) -> None:
             reconciler.main()
         except reconciler.Fail as exc:
             message = str(exc)
-            require("post-reconcile drill request validator failed (raw output withheld)" in message,
-                    "primary validator fixed failure class lost")
-            require("synthetic drill-request validator rejection" not in message,
-                    "private primary validator output leaked")
-            require("rollback incomplete" in message, f"rollback-incomplete marker lost: {exc}")
-            require("synthetic drill-request rollback restore rejection" in message, f"rollback diagnostic lost: {exc}")
+            require(message == "drill request reconcile transaction failed (Fail); rollback incomplete",
+                    "transaction primary class or incomplete rollback status drift")
+            require("synthetic drill-request validator rejection" not in message
+                    and "synthetic drill-request rollback restore rejection" not in message,
+                    "transaction disclosed private primary or rollback diagnostics")
         else:
             raise Fail("combined drill-request primary and rollback failure unexpectedly accepted")
     finally:
@@ -760,7 +759,8 @@ def main() -> int:
                 try:
                     reconciler.main()
                 except reconciler.Fail as exc:
-                    require("post-reconcile operability validator failed" in str(exc), "aggregate operability failure was not the rollback trigger")
+                    require(str(exc) == "drill request reconcile transaction failed (Fail); rollback completed",
+                            "aggregate operability failure lost fixed transaction class")
                 else:
                     raise Fail("reconciler unexpectedly accepted failed aggregate operability validation")
             finally:

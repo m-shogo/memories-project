@@ -182,14 +182,14 @@ def write_text(path: Path, text: str) -> None:
 
 
 def restore_original_text(original_text: dict[Path, str]) -> None:
-    failures: list[str] = []
+    rollback_incomplete = False
     for path, text in original_text.items():
         try:
             write_text(path, text)
-        except Exception as exc:
-            failures.append(f"{repo_relative(path)}: {type(exc).__name__}: {exc}")
-    if failures:
-        raise Fail("drill request rollback restore failures: " + "; ".join(failures))
+        except Exception:
+            rollback_incomplete = True
+    if rollback_incomplete:
+        raise Fail("drill request rollback incomplete") from None
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -470,9 +470,13 @@ def main() -> int:
     except Exception as exc:
         try:
             restore_original_text(original_text)
-        except Fail as rollback_exc:
-            raise Fail(f"drill request reconcile failed: {exc}; rollback incomplete: {rollback_exc}") from exc
-        raise
+        except Exception:
+            raise Fail(
+                f"drill request reconcile transaction failed ({type(exc).__name__}); rollback incomplete"
+            ) from None
+        raise Fail(
+            f"drill request reconcile transaction failed ({type(exc).__name__}); rollback completed"
+        ) from None
 
     print("Memory OS backup/restore drill request authority reconciliation PASS")
     print(f"registered environment generations: {generation_count}")

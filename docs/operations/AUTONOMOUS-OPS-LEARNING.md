@@ -15027,3 +15027,17 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Outcome/evidence:** Atomic descriptor cleanup and redacted failure classes are verified by exact-source rollback CI after updating the negative oracle.
 - **Why safe/reusable mechanism:** Explicit descriptor ownership and independently attempted close/unlink protect only isolated authority fixtures; a failed post-write transaction still rolls back without publishing production evidence.
 - **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; semantically eligible distinct unsuperseded environments, current human-approved objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy recovery or readiness gates.
+
+## 2026-10-27 — Drill-request post-reconcile validators are bounded and private
+
+### Material failure
+- **Symptom/evidence:** At `3ed9df86173969c2052e2dbdfd2960d316e184cf`, drill-request reconciler ran its post-write request/operability validators without timeouts, captured raw stdout/stderr and included up to 5000 characters in failure exceptions. A failing validator could disclose private output or hang reconciliation. No actual credential disclosure or production readiness change was observed.
+- **Verified root cause:** This transaction's subprocess boundary was independent of the already hardened recovery-objective and preflight subprocess runners. **Failed approach:** treating downstream validator output truncation as safe public diagnostics.
+- **Correction:** `53d15594c74db934bbd3e21a40f1cc2f7c69672a` uses DEVNULL, a 120-second bound, strict integer return code and fixed failure/unavailable classes for both ordered validators.
+- **Executable recurrence guard:** Existing CI-invoked reconciler negatives exercise the actual helper with valid, nonzero, boolean, OSError and timeout controls, verify exact target/cwd/DEVNULL/timeout, and reject synthetic private output. Exact-source Reconcile Rollback `40443387501`, Unreadable Authority Negatives `40443387507`, Drill Request Admission `40443387618` and Autonomous Learning Guard `40443387491` completed SUCCESS.
+- **Retry condition:** Revisit only for an observed subprocess regression or reviewed timeout/diagnostic policy change; do not restore raw output or retry unchanged human/external blockers.
+
+### Material success
+- **Outcome/evidence:** Both post-reconcile validators now use bounded class-only transport with exact-source negative/admission CI SUCCESS.
+- **Why safe/reusable mechanism:** Reused a verified fail-closed subprocess pattern without changing validator order, admission semantics, request evidence or production status.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/request/recovery/non-resurrection/promotion registries and learning contract remain unchanged. `productionDecision=NO_GO`; distinct unsuperseded semantically eligible environments, current human-approved objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning and CI never satisfy production readiness or recovery gates.

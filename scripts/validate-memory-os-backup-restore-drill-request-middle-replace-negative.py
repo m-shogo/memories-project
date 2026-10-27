@@ -123,9 +123,9 @@ def main() -> int:
             try:
                 module.main()
             except module.Fail as exc:
-                require_fixed = "cannot atomically write drill request authority (raw error withheld)"
+                require_fixed = "drill request reconcile transaction failed (Fail); rollback completed"
                 if str(exc) != require_fixed or "synthetic second authority replace failure" in str(exc):
-                    raise Fail("middle replace failure lost fixed private diagnostic boundary") from None
+                    raise Fail("middle replace failure lost fixed transaction/rollback boundary") from None
             else:
                 raise Fail("synthetic second authority replace failure unexpectedly reconciled")
         finally:
