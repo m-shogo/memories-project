@@ -97,11 +97,51 @@ def prove_generation_json_negative_removal_rejected() -> None:
 
 
 
+def require_generation_json_parent_swap_negative_reachable(code: str) -> None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise SystemExit("generation recovery JSON parent swap negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target = functions.get("prove_generation_evidence_json_reader")
+    if target is None:
+        raise SystemExit("generation recovery JSON parent swap negative missing")
+    nested = {node.name for node in ast.walk(target) if isinstance(node, ast.FunctionDef)}
+    if not {"swap_before_descent", "swap_after_pin"}.issubset(nested):
+        raise SystemExit("generation recovery JSON parent swap negative removed")
+    assignments = [node.value.id for node in ast.walk(target) if isinstance(node, ast.Assign)
+                   and isinstance(node.value, ast.Name)
+                   and any(isinstance(entry, ast.Attribute) and entry.attr == "open"
+                           for entry in node.targets)]
+    if not {"swap_before_descent", "swap_after_pin"}.issubset(assignments):
+        raise SystemExit("generation recovery JSON parent swap negative unreachable")
+
+
+def prove_generation_json_parent_swap_negative_removal_rejected() -> None:
+    code = LOAD_NEGATIVE.read_text(encoding="utf-8")
+    require_generation_json_parent_swap_negative_reachable(code)
+    start = '        with tempfile.TemporaryDirectory(prefix="memory-os-recovery-json-parent-canary-") as outside:\n'
+    end = '        require(path.read_bytes() == positive, "generation recovery JSON mutated positive fixture")\n'
+    if code.count(start) != 1 or code.count(end) != 1:
+        raise SystemExit("generation recovery JSON parent swap negative removal anchor drift")
+    left = code.index(start)
+    right = code.index(end, left)
+    mutated = code[:left] + code[right:]
+    try:
+        require_generation_json_parent_swap_negative_reachable(mutated)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation recovery JSON parent swap negative deletion accepted")
+    print("PASS: generation recovery JSON ancestor swap negative deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
     prove_generation_json_negative_removal_rejected()
+    prove_generation_json_parent_swap_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
