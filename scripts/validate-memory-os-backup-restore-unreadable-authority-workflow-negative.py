@@ -78,6 +78,13 @@ def require_generation_json_negative_reachable(code: str) -> None:
     ]
     if len(calls) != 1:
         raise SystemExit("generation evidence JSON reader negative invocation drift")
+    if "prove_generation_private_authority_path_diagnostics" not in functions:
+        raise SystemExit("generation recovery private missing-authority negative missing")
+    private_calls = [node for node in ast.walk(functions["main"])
+                     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                     and node.func.id == "prove_generation_private_authority_path_diagnostics"]
+    if len(private_calls) != 1:
+        raise SystemExit("generation recovery private missing-authority negative invocation drift")
 
 
 def prove_generation_json_negative_removal_rejected() -> None:
@@ -94,6 +101,17 @@ def prove_generation_json_negative_removal_rejected() -> None:
     else:
         raise SystemExit("generation evidence JSON reader negative deletion accepted")
     print("PASS: generation evidence JSON reader negative execution deletion rejected")
+    private_anchor = "    prove_generation_private_authority_path_diagnostics(validator)\n"
+    if code.count(private_anchor) != 1:
+        raise SystemExit("generation recovery private missing-authority removal anchor drift")
+    mutated_private = code.replace(private_anchor, "    pass\n", 1)
+    try:
+        require_generation_json_negative_reachable(mutated_private)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation recovery private missing-authority negative deletion accepted")
+    print("PASS: generation recovery private missing-authority negative deletion rejected")
 
 
 
