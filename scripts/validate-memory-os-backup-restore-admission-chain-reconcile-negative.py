@@ -84,7 +84,10 @@ def pin_checked_helper_parent(path: Path) -> int:
             )
         return fd
     except OSError:
-        os.close(fd)
+        try:
+            os.close(fd)
+        except (Exception, SystemExit):
+            raise Fail("fixture guard pinned descriptor cleanup failed") from None
         raise Fail("admission-chain fixture guard parent open failed") from None
     except BaseException:
         os.close(fd)

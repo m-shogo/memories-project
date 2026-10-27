@@ -703,6 +703,11 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
     main = named_function(tree, "main")
     proof = named_function(tree, PROOF)
     pin = named_function(tree, PIN)
+    expected_parent_failure_cleanup = ast.parse("""try:
+    os.close(fd)
+except (Exception, SystemExit):
+    raise Fail("fixture guard pinned descriptor cleanup failed") from None
+""").body[0]
     for suffix, expected_type, expected_count in (
         ("fixture guard parent outside trusted roots", "ValueError", 1),
         ("fixture guard anchor open failed", "OSError", 1),
@@ -731,7 +736,7 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
             and matches[0].body[-1].cause.value is None
             and (expected_count == 1 or ast.dump(
                 matches[0].body[0], include_attributes=False)
-                == ast.dump(ast.parse("os.close(fd)").body[0],
+                == ast.dump(expected_parent_failure_cleanup,
                             include_attributes=False)),
             "loader parent pin failure not private",
         )
@@ -1487,7 +1492,7 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "except ValueError:", "except TypeError:"),
         (r'    except OSError:\n        raise Fail\("[^"]+ fixture guard anchor open failed"\) from None\n',
          "except OSError:", "except FileNotFoundError:"),
-        (r'    except OSError:\n        os.close\(fd\)\n        raise Fail\("[^"]+ fixture guard parent open failed"\) from None\n',
+        (r'    except OSError:\n        try:\n            os.close\(fd\)\n        except \(Exception, SystemExit\):\n            raise Fail\("fixture guard pinned descriptor cleanup failed"\) from None\n        raise Fail\("[^"]+ fixture guard parent open failed"\) from None\n',
          "except OSError:", "except FileNotFoundError:"),
     )
     for pattern, original_handler, narrowed_handler in pin_privacy_cases:
@@ -1500,6 +1505,25 @@ def negative_cases(source: str, diagnostic: str) -> int:
             (anchor, anchor.replace(original_handler, narrowed_handler),
              "loader parent pin failure not private"),
         )
+        if "fixture guard parent open failed" in anchor:
+            cleanup = (
+                "        try:\n"
+                "            os.close(fd)\n"
+                "        except (Exception, SystemExit):\n"
+                '            raise Fail("fixture guard pinned descriptor cleanup failed") from None\n'
+            )
+            require(cleanup in anchor, "loader parent pin failure not private")
+            replacements += (
+                (anchor, anchor.replace("except (Exception, SystemExit):",
+                                        "except OSError:"),
+                 "loader parent pin failure not private"),
+                (anchor, anchor.replace(
+                    'raise Fail("fixture guard pinned descriptor cleanup failed") from None',
+                    'raise Fail("fixture guard pinned descriptor cleanup failed")'),
+                 "loader parent pin failure not private"),
+                (anchor, anchor.replace(cleanup, "        os.close(fd)\n"),
+                 "loader parent pin failure not private"),
+            )
     setup_start = (
         "                spec = importlib.util.spec_from_file_location("
         "name, path, loader=PinnedSourceLoader(name, str(path)))\n"
@@ -2626,6 +2650,29 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
         finally:
             os.open = original_open
 
+    injected_parent_close = {"done": False}
+    def fault_parent_cleanup_open(file, flags, *args, **kwargs):
+        if file == parent.name and kwargs.get("dir_fd") is not None:
+            raise OSError("PRIVATE_PARENT_OPEN_CANARY")
+        return original_open(file, flags, *args, **kwargs)
+    def fault_parent_cleanup_close(descriptor):
+        original_close(descriptor)
+        injected_parent_close["done"] = True
+        raise OSError("PRIVATE_PARENT_CLOSE_CANARY")
+    os.open, os.close = fault_parent_cleanup_open, fault_parent_cleanup_close
+    try:
+        try:
+            loader(good, "pinned_parent_cleanup_negative")
+        except Fail as exc:
+            assert str(exc) == "fixture guard pinned descriptor cleanup failed"
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_PARENT_CLOSE_CANARY" not in str(exc)
+        else:
+            raise AssertionError("parent cleanup failure accepted")
+    finally:
+        os.open, os.close = original_open, original_close
+    assert injected_parent_close["done"]
+
     def fault_source_open(file, flags, *args, **kwargs):
         if file == good.name and kwargs.get("dir_fd") is not None:
             raise OSError("PRIVATE_SOURCE_OPEN_CANARY")
@@ -2747,7 +2794,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 76 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 79 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
