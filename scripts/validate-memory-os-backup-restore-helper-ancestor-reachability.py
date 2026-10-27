@@ -987,9 +987,13 @@ def validate_source(source: str, expected_diagnostic: str) -> None:
             "    source = stream.read(MAX_HELPER_SOURCE_BYTES + 1)\n"
         ).body[0], include_attributes=False)
         and ast.dump(read_try.body[-2], include_attributes=False)
-        == ast.dump(ast.parse(
-            "spec.loader.exec_module(module)"
-        ).body[0], include_attributes=False)
+        == ast.dump(ast.parse("""try:
+    spec.loader.exec_module(module)
+except Fail:
+    raise
+except (Exception, SystemExit):
+    raise Fail("fixture guard pinned module execution failed") from None
+""").body[0], include_attributes=False)
         and ast.dump(read_try.body[4], include_attributes=False)
         == ast.dump(ast.parse(
             "require(len(source) <= MAX_HELPER_SOURCE_BYTES, 'fixture guard pinned source oversized')"
@@ -1277,6 +1281,17 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader read failure not private"),
         (read_privacy, read_privacy.replace("except OSError:", "except FileNotFoundError:"),
          "loader read failure not private"),
+    )
+    replacements += (
+        ("            try:\n                spec.loader.exec_module(module)\n            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module execution failed\") from None\n",
+         "            try:\n                spec.loader.exec_module(module)\n            except Fail:\n                raise\n            except Exception:\n                raise Fail(\"fixture guard pinned module execution failed\") from None\n",
+         "loader source execution not pinned to FD"),
+        ("            try:\n                spec.loader.exec_module(module)\n            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module execution failed\") from None\n",
+         "            try:\n                spec.loader.exec_module(module)\n            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module execution failed\")\n",
+         "loader source execution not pinned to FD"),
+        ("            try:\n                spec.loader.exec_module(module)\n            except Fail:\n                raise\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module execution failed\") from None\n",
+         "            try:\n                spec.loader.exec_module(module)\n            except (Exception, SystemExit):\n                raise Fail(\"fixture guard pinned module execution failed\") from None\n",
+         "loader source execution not pinned to FD"),
     )
     count = 0
     for original, mutation, expected in replacements:
@@ -2333,6 +2348,21 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     finally:
         os.open, os.fstat = original_open, original_fstat
     assert "leaf" in tracked_read
+
+    for filename, payload in (
+        ("runtime-error.py", "raise RuntimeError('PRIVATE_EXEC_CANARY')"),
+        ("system-exit.py", "raise SystemExit('PRIVATE_EXIT_CANARY')"),
+    ):
+        throwing = parent / filename
+        throwing.write_text(payload + chr(10), encoding="utf-8")
+        try:
+            loader(throwing, "pinned_exec_negative_" + filename.replace("-", "_"))
+        except Fail as exc:
+            assert str(exc) == "fixture guard pinned module execution failed"
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_" not in str(exc)
+        else:
+            raise AssertionError("throwing helper was accepted")
 """
     result = subprocess.run(
         [sys.executable, "-c", script, str(ROOT / "scripts" / filename), str(ROOT)],
@@ -2371,7 +2401,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 59 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 62 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

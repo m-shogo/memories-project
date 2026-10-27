@@ -227,7 +227,12 @@ def load_pinned_fixture_helper(path: Path, name: str):
             require(spec is not None and spec.loader is not None,
                     "typed contract path fixture guard cannot load")
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            try:
+                spec.loader.exec_module(module)
+            except Fail:
+                raise
+            except (Exception, SystemExit):
+                raise Fail("fixture guard pinned module execution failed") from None
             return module
         except OSError:
             raise Fail("typed contract path fixture guard pinned source read failed") from None

@@ -313,7 +313,12 @@ def load_pinned_fixture_guard(path: Path, name: str):
             require(spec is not None and spec.loader is not None,
                     "generation-evidence fixture guard cannot load")
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            try:
+                spec.loader.exec_module(module)
+            except Fail:
+                raise
+            except (Exception, SystemExit):
+                raise Fail("fixture guard pinned module execution failed") from None
             return module
         except OSError:
             raise Fail("generation-evidence fixture guard pinned source read failed") from None
