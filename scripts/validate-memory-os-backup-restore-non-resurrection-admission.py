@@ -132,6 +132,8 @@ def load_module(path: Path, name: str):
 
 def run_validator(path: Path, label: str) -> None:
     repo_relative(path)
+    require(path.is_file() and not path.is_symlink(),
+            "typed admission child validator must be a regular canonical file")
     try:
         completed = subprocess.run(
             [sys.executable, str(path)], cwd=ROOT,
