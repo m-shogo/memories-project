@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import importlib.machinery
 import importlib.util
 import os
@@ -184,6 +185,64 @@ def prove_private_authority_path_errors() -> None:
     print("PASS: preflight authority private path metadata and exception contexts suppressed")
 
 
+def prove_pinned_authority_fd_cleanup() -> None:
+    """Checked module import closes all descriptors after injected fdopen/close faults."""
+    private = "SYNTHETIC_PRIVATE_PREFLIGHT_AUTHORITY_FD_CANARY"
+    with tempfile.TemporaryDirectory(prefix=".preflight-authority-fd-", dir=ROOT) as raw:
+        source = Path(raw) / "module.py"
+        source.write_text("VALUE = 'safe'\n", encoding="utf-8")
+        for fault in ("fdopen", "close"):
+            original_open, original_fdopen, original_close = os.open, os.fdopen, os.close
+            opened: list[int] = []
+            close_faulted = False
+
+            def tracked_open(*args, **kwargs):
+                fd = original_open(*args, **kwargs)
+                opened.append(fd)
+                return fd
+
+            def broken_fdopen(_fd, *args, **kwargs):
+                raise OSError(private)
+
+            def broken_close(fd):
+                nonlocal close_faulted
+                original_close(fd)
+                if not close_faulted:
+                    close_faulted = True
+                    raise OSError(private)
+
+            try:
+                os.open = tracked_open
+                if fault == "fdopen":
+                    os.fdopen = broken_fdopen
+                else:
+                    os.close = broken_close
+                try:
+                    load_module(source, "preflight_authority_fd_" + fault, "synthetic authority")
+                except Fail as exc:
+                    require(str(exc) == "cannot load synthetic authority"
+                            and exc.__suppress_context__ and exc.__cause__ is None
+                            and private not in str(exc),
+                            "preflight authority pinned FD fault leaked details: " + fault)
+                else:
+                    raise Fail("preflight authority pinned FD fault accepted: " + fault)
+            finally:
+                os.open, os.fdopen, os.close = original_open, original_fdopen, original_close
+            require(len(opened) >= 2 and (fault != "close" or close_faulted),
+                    "preflight authority pinned FD fault not exercised: " + fault)
+            for fd in opened:
+                try:
+                    os.fstat(fd)
+                except OSError as exc:
+                    require(exc.errno == errno.EBADF,
+                            "preflight authority pinned FD fault raised unexpected fstat error")
+                else:
+                    raise Fail("preflight authority pinned FD leaked after " + fault)
+        require(load_module(source, "preflight_authority_fd_restored", "synthetic authority").VALUE == "safe",
+                "preflight authority pinned FD restoration positive failed")
+    print("PASS: preflight authority pinned fdopen/close faults clean owned descriptors")
+
+
 def require_module_authority(module: object, name: str, expected: Path, field: str) -> None:
     actual = getattr(module, name, None)
     require(actual == expected, f"{field} authority drift: {name}")
@@ -335,6 +394,7 @@ def require_atomic_diagnostic_publication() -> None:
 def main() -> int:
     prove_pinned_authority_import()
     prove_private_authority_path_errors()
+    prove_pinned_authority_fd_cleanup()
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_authority_validator", "restore drill preflight validator")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_authority_reconciler", "restore drill preflight reconciler")
 
