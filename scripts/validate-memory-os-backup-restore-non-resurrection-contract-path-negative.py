@@ -596,6 +596,46 @@ def prove_pinned_typed_admission_module_import(validator: object) -> None:
     print("PASS: typed admission module import executes descriptor-pinned source after parent swap")
 
 
+def prove_typed_pinned_module_fail_closed(validator: object) -> None:
+    """Real pinned loader rejects oversized, special and unsafe-platform sources."""
+    def rejected(path: Path, label: str) -> None:
+        try:
+            validator.load_module(path, "typed_pinned_rejection_" + label)
+        except validator.Fail as exc:
+            require(str(exc) == "typed admission module import unavailable"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
+                    "typed pinned module rejection leaked implementation details: " + label)
+        else:
+            raise Fail("typed pinned module accepted unsafe source: " + label)
+
+    with tempfile.TemporaryDirectory(prefix=".typed-pinned-reject-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        good = sandbox / "good.py"
+        good.write_text("VALUE = 'safe'\n", encoding="utf-8")
+        require(validator.load_module(good, "typed_pinned_rejection_positive").VALUE == "safe",
+                "typed pinned module positive unavailable")
+        oversized = sandbox / "oversized.py"
+        oversized.write_bytes(b"x" * (validator.MAX_MODULE_BYTES + 1))
+        rejected(oversized, "oversized")
+        link = sandbox / "linked.py"
+        link.symlink_to(good)
+        rejected(link, "symlink")
+        fifo = sandbox / "fifo.py"
+        os.mkfifo(fifo)
+        rejected(fifo, "fifo")
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original = getattr(os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(os, flag, invalid)
+                    rejected(good, flag + "_missing_or_zero")
+            finally:
+                setattr(os, flag, original)
+        require(validator.load_module(good, "typed_pinned_rejection_restored").VALUE == "safe",
+                "typed pinned module platform flag restoration failed")
+    print("PASS: typed pinned module oversized/symlink/FIFO/unsafe flag negatives and positive")
+
+
 def prove_private_typed_append_lock_metadata(validator: object) -> None:
     """Materialized lock metadata errors cannot disclose filesystem exception details."""
     private = "SYNTHETIC_PRIVATE_TYPED_LOCK_CANARY"
@@ -665,6 +705,7 @@ def main() -> int:
     prove_private_typed_admission_paths(validator)
     prove_private_typed_admission_import_errors(validator)
     prove_pinned_typed_admission_module_import(validator)
+    prove_typed_pinned_module_fail_closed(validator)
     prove_private_typed_append_lock_metadata(validator)
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
