@@ -104,8 +104,11 @@ def main() -> int:
             writer.os.replace = reject_candidate_replace
             try:
                 writer.write_registry_transactionally({"sentinel": "candidate-rejected"})
-            except OSError as exc:
-                require("synthetic candidate replace" in str(exc), "unexpected candidate replace rejection")
+            except writer.Fail as exc:
+                require(str(exc) == "recovery objective registry atomic write failed"
+                        and exc.__suppress_context__
+                        and "synthetic candidate replace" not in str(exc),
+                        "candidate atomic replace rejection wrong or private")
             else:
                 raise Fail("candidate objective registry replace rejection was accepted")
             finally:
@@ -113,6 +116,65 @@ def main() -> int:
             require(registry.read_bytes() == before_bytes, "candidate replace rejection changed canonical registry bytes")
             require(mode(registry) == before_mode == 0o640, "candidate replace rejection changed canonical registry mode")
             require(not residue(root), "candidate replace rejection left temporary residue")
+
+            marker = "PRIVATE_OBJECTIVE_ATOMIC_IO_CANARY"
+            original_mkstemp = writer.tempfile.mkstemp
+
+            def reject_mkstemp(*_args, **_kwargs):
+                raise OSError(marker)
+
+            writer.tempfile.mkstemp = reject_mkstemp
+            try:
+                try:
+                    writer.atomic_write({"sentinel": "not-written"}, before_mode)
+                except writer.Fail as exc:
+                    require(str(exc) == "recovery objective registry atomic write failed"
+                            and exc.__suppress_context__ and marker not in str(exc),
+                            "atomic mkstemp failure disclosed private detail")
+                else:
+                    raise Fail("atomic mkstemp failure was accepted")
+            finally:
+                writer.tempfile.mkstemp = original_mkstemp
+            require(registry.read_bytes() == before_bytes and not residue(root),
+                    "atomic mkstemp rejection changed fixture or left residue")
+
+            original_fdopen = writer.os.fdopen
+
+            def reject_fdopen(*_args, **_kwargs):
+                raise OSError(marker)
+
+            writer.os.fdopen = reject_fdopen
+            try:
+                try:
+                    writer.atomic_write({"sentinel": "not-written"}, before_mode)
+                except writer.Fail as exc:
+                    require(str(exc) == "recovery objective registry atomic write failed"
+                            and exc.__suppress_context__ and marker not in str(exc),
+                            "atomic fdopen failure disclosed private detail")
+                else:
+                    raise Fail("atomic fdopen failure was accepted")
+            finally:
+                writer.os.fdopen = original_fdopen
+            require(registry.read_bytes() == before_bytes and not residue(root),
+                    "atomic fdopen rejection changed fixture or left residue")
+
+            def reject_restore_replace(_source, _destination):
+                raise OSError(marker)
+
+            writer.os.replace = reject_restore_replace
+            try:
+                try:
+                    writer.atomic_restore(before_bytes, before_mode)
+                except writer.Fail as exc:
+                    require(str(exc) == "recovery objective registry atomic restore failed"
+                            and exc.__suppress_context__ and marker not in str(exc),
+                            "atomic restore replace failure disclosed private detail")
+                else:
+                    raise Fail("atomic restore replace failure was accepted")
+            finally:
+                writer.os.replace = original_replace
+            require(registry.read_bytes() == before_bytes and mode(registry) == before_mode
+                    and not residue(root), "atomic restore rejection changed fixture or left residue")
 
             primary_marker = "PRIVATE_OBJECTIVE_POST_APPEND_CANARY"
             rollback_marker = "PRIVATE_OBJECTIVE_ROLLBACK_CANARY"
@@ -205,7 +267,7 @@ def main() -> int:
     print("Memory OS recovery objectives append rollback negative PASS")
     print("post-append canonical registry revalidation: enforced")
     print("successful append registry mode preservation: enforced")
-    print("candidate replace rejection preserves canonical bytes/mode: enforced")
+    print("candidate/restore atomic IO failures private and residue-free: enforced")
     print("failed append registry rollback: exact bytes and mode")
     print("rollback completion/incomplete classes private and preserved: enforced")
     print("candidate/rollback temporary residue: none")
