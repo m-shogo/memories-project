@@ -467,6 +467,22 @@ def exercise_registry_transaction_transport() -> None:
             )
         finally:
             writer.os.replace = original_replace
+
+        original_unlink = writer.os.unlink
+        def unlink_then_fail(path, *args, **kwargs):
+            original_unlink(path, *args, **kwargs)
+            raise OSError("PRIVATE_TYPED_ATOMIC_CANARY unlink")
+        writer.os.replace = reject_replace
+        writer.os.unlink = unlink_then_fail
+        try:
+            expect_private_failure(
+                "typed registry atomic temporary cleanup failure",
+                lambda: writer.atomic_write(copy.deepcopy(base), original_mode),
+                "typed non-resurrection registry temporary cleanup failed",
+            )
+        finally:
+            writer.os.unlink = original_unlink
+            writer.os.replace = original_replace
         require(registry.read_bytes() == before_reject,
                 "typed registry atomic pre-publication failure changed bytes")
         require(stat.S_IMODE(registry.stat().st_mode) == original_mode,
