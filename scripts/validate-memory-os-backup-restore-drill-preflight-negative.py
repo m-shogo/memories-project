@@ -111,6 +111,34 @@ def prove_private_preflight_path_errors(validator: Any) -> None:
     print("PASS: preflight private path errors and exception contexts suppressed")
 
 
+
+def prove_private_preflight_import_errors(validator: Any) -> None:
+    """Real eligibility helper import must hide private implementation exceptions."""
+    original = importlib.util.module_from_spec
+    private = "SYNTHETIC_PRIVATE_PREFLIGHT_IMPORT_CANARY"
+    for error_type in (OSError, RuntimeError, TypeError):
+        def private_import(_spec):
+            raise error_type(private)
+
+        try:
+            importlib.util.module_from_spec = private_import
+            try:
+                validator.load_eligibility_helper()
+            except validator.Fail as exc:
+                require(str(exc) == "preflight eligibility helper import unavailable"
+                        and exc.__suppress_context__ and exc.__cause__ is None
+                        and private not in str(exc),
+                        "preflight helper import leaked private exception")
+            else:
+                raise Fail("preflight helper private import fault accepted")
+        finally:
+            importlib.util.module_from_spec = original
+    helper = validator.load_eligibility_helper()
+    require(callable(getattr(helper, "derive_registry", None)),
+            "preflight helper canonical import positive failed")
+    print("PASS: preflight helper private import faults and canonical positive")
+
+
 def expect_strict_preflight_json_reader(validator: Any) -> None:
     """Actual preflight reader rejects noncanonical, unsafe or oversized JSON evidence."""
     require(isinstance(validator.load(CONTRACT), dict), "preflight JSON canonical positive failed")
@@ -484,6 +512,7 @@ def main() -> int:
     )
     validator = load_validator()
     prove_private_preflight_path_errors(validator)
+    prove_private_preflight_import_errors(validator)
     canonical = load(CONTRACT)
     generations = load(GEN_REGISTRY)
     objectives = load(OBJECTIVES)

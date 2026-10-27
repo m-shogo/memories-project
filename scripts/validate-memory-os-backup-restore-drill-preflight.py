@@ -218,10 +218,13 @@ def load_eligibility_helper():
         ELIGIBILITY_HELPER_REL,
         "shared environment generation eligibility authority",
     )
-    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
-    require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
+        require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("preflight eligibility helper import unavailable") from None
     return module
 
 

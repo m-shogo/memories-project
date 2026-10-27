@@ -160,11 +160,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 def load_module(path: Path, name: str):
-    relative = repo_relative(path)
-    spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    repo_relative(path)
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        require(spec is not None and spec.loader is not None, "typed admission module import unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("typed admission module import unavailable") from None
     return module
 
 def run_validator(path: Path, label: str) -> None:

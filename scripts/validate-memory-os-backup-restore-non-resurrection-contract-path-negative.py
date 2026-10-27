@@ -514,6 +514,34 @@ def prove_private_typed_admission_paths(validator: object) -> None:
     print("PASS: typed admission private path/ref errors and exception contexts suppressed")
 
 
+
+def prove_private_typed_admission_import_errors(validator: object) -> None:
+    """Real typed module loader hides private implementation errors."""
+    original = importlib.util.module_from_spec
+    private = "SYNTHETIC_PRIVATE_TYPED_IMPORT_CANARY"
+    for error_type in (OSError, RuntimeError, TypeError):
+        def private_import(_spec):
+            raise error_type(private)
+
+        try:
+            importlib.util.module_from_spec = private_import
+            try:
+                validator.load_module(VALIDATOR, "memory_os_typed_private_import_probe")
+            except validator.Fail as exc:
+                require(str(exc) == "typed admission module import unavailable"
+                        and exc.__suppress_context__ and exc.__cause__ is None
+                        and private not in str(exc),
+                        "typed admission import leaked private exception")
+            else:
+                raise Fail("typed admission private module import fault accepted")
+        finally:
+            importlib.util.module_from_spec = original
+    module = validator.load_module(VALIDATOR, "memory_os_typed_private_import_positive")
+    require(callable(getattr(module, "main", None)),
+            "typed admission canonical module import positive failed")
+    print("PASS: typed admission private module import faults and canonical positive")
+
+
 def main() -> int:
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     with guarded_temporary_directory(".tmp-typed-path-parent-negative-", TMP_PARENT) as raw:
@@ -539,6 +567,7 @@ def main() -> int:
     prove_file_swap_before_unlink_rejected()
     validator = load_validator()
     prove_private_typed_admission_paths(validator)
+    prove_private_typed_admission_import_errors(validator)
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
     accepted = validator.canonical_repo_file_ref(canonical, "negative.canonical")
     require(accepted == ROOT / canonical, "canonical in-repository authority ref did not resolve exactly")
