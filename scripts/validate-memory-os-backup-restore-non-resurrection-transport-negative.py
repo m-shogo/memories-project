@@ -21,6 +21,7 @@ WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evid
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
 TEMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 PATH_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
+REGISTRY_MODE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py"
 
 
 class Fail(RuntimeError):
@@ -1659,6 +1660,17 @@ def prove_typed_transport_fixture_parent_guard() -> None:
     print("PASS: typed transport fixture reuses checked parent guard")
 
 
+def exercise_writer_lock_lifecycle_negative() -> None:
+    """Execute the existing actual-writer lock lifecycle negative through the canonical CI suite."""
+    require(REGISTRY_MODE_NEGATIVE.is_file() and not REGISTRY_MODE_NEGATIVE.is_symlink(),
+            "typed registry lock negative missing or symlinked")
+    module = load_module(REGISTRY_MODE_NEGATIVE, "memory_os_typed_registry_lock_ci_negative")
+    require(callable(getattr(module, "main", None)),
+            "typed registry lock negative entrypoint missing")
+    require(module.main() == 0, "typed registry lock negative failed")
+    print("PASS: typed registry lock lifecycle negative is executed by transport CI")
+
+
 def main() -> int:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical typed validator missing or symlinked")
     prove_typed_admission_main_reachability()
@@ -1709,6 +1721,7 @@ def main() -> int:
     exercise_reconciler_transaction_transport()
     prove_typed_transport_fixture_parent_guard()
     exercise_writer_snapshot_transport()
+    exercise_writer_lock_lifecycle_negative()
 
     print("Typed non-resurrection execution/registry/reconcile transport negative suite PASS")
     print("subprocess/import loader/guard substitution accepted: false")
