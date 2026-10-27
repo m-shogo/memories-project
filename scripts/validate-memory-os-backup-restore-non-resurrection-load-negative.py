@@ -229,8 +229,8 @@ def load_pinned_fixture_helper(path: Path, name: str):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             return module
-        except OSError as exc:
-            raise Fail("typed contract path fixture guard pinned source read failed") from exc
+        except OSError:
+            raise Fail("typed contract path fixture guard pinned source read failed") from None
         finally:
             try:
                 os.close(fd)

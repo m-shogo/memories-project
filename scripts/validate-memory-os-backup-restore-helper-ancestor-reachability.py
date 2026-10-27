@@ -1051,6 +1051,25 @@ except (Exception, SystemExit):
         == ast.dump(expected_parent_cleanup, include_attributes=False),
         "loader FD cleanup not guaranteed",
     )
+    read_handlers = read_try.handlers
+    require(
+        len(read_handlers) == 1
+        and isinstance(read_handlers[0].type, ast.Name)
+        and read_handlers[0].type.id == "OSError"
+        and read_handlers[0].name is None
+        and len(read_handlers[0].body) == 1
+        and isinstance(read_handlers[0].body[0], ast.Raise)
+        and isinstance(read_handlers[0].body[0].cause, ast.Constant)
+        and read_handlers[0].body[0].cause.value is None
+        and isinstance(read_handlers[0].body[0].exc, ast.Call)
+        and isinstance(read_handlers[0].body[0].exc.func, ast.Name)
+        and read_handlers[0].body[0].exc.func.id == "Fail"
+        and len(read_handlers[0].body[0].exc.args) == 1
+        and isinstance(read_handlers[0].body[0].exc.args[0], ast.Constant)
+        and isinstance(read_handlers[0].body[0].exc.args[0].value, str)
+        and read_handlers[0].body[0].exc.args[0].value.endswith("pinned source read failed"),
+        "loader read failure not private",
+    )
     require(
         has_method(proof, "rename") and has_method(proof, "symlink_to"),
         "ancestor proof missing deterministic substitution",
@@ -1246,6 +1265,18 @@ def negative_cases(source: str, diagnostic: str) -> int:
         ('                        raise Fail("fixture guard pinned source compilation failed") from None\n',
          '                        raise Fail("synthetic raw compilation failure") from None\n',
          "loader compilation failure not private"),
+    )
+    read_privacy_anchors = re.findall(
+        r'        except OSError:\n            raise Fail\("[^"]+ pinned source read failed"\) from None\n',
+        source,
+    )
+    require(len(read_privacy_anchors) == 1, "loader read failure not private")
+    read_privacy = read_privacy_anchors[0]
+    replacements += (
+        (read_privacy, read_privacy.replace(" from None", ""),
+         "loader read failure not private"),
+        (read_privacy, read_privacy.replace("except OSError:", "except FileNotFoundError:"),
+         "loader read failure not private"),
     )
     count = 0
     for original, mutation, expected in replacements:
@@ -2277,6 +2308,31 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
         finally:
             os.open, os.close = original_open, original_close
         assert "leaf" in tracked and "parent" in tracked
+
+    original_fstat = os.fstat
+    tracked_read = {}
+    def watch_read_open(file, flags, *args, **kwargs):
+        descriptor = original_open(file, flags, *args, **kwargs)
+        if file == good.name and kwargs.get("dir_fd") is not None:
+            tracked_read["leaf"] = descriptor
+        return descriptor
+    def fault_fstat(descriptor):
+        if descriptor == tracked_read.get("leaf"):
+            raise OSError("PRIVATE_READ_CANARY")
+        return original_fstat(descriptor)
+    os.open, os.fstat = watch_read_open, fault_fstat
+    try:
+        try:
+            loader(good, "pinned_read_negative")
+        except Fail as exc:
+            assert str(exc).endswith("pinned source read failed")
+            assert exc.__cause__ is None and exc.__suppress_context__
+            assert "PRIVATE_READ_CANARY" not in str(exc)
+        else:
+            raise AssertionError("descriptor read failure accepted")
+    finally:
+        os.open, os.fstat = original_open, original_fstat
+    assert "leaf" in tracked_read
 """
     result = subprocess.run(
         [sys.executable, "-c", script, str(ROOT / "scripts" / filename), str(ROOT)],
@@ -2315,7 +2371,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 57 * len(TARGETS) + 222, "ancestor negative count mismatch")
+        require(total == 59 * len(TARGETS) + 222, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

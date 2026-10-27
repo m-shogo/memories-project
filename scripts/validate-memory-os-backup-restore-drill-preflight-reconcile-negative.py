@@ -224,8 +224,8 @@ def load_pinned_fixture_guard(path: Path, name: str):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             return module
-        except OSError as exc:
-            raise Fail("preflight fixture guard pinned source read failed") from exc
+        except OSError:
+            raise Fail("preflight fixture guard pinned source read failed") from None
         finally:
             try:
                 os.close(fd)
