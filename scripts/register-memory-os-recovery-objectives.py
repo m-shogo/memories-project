@@ -515,8 +515,14 @@ def main() -> int:
     except OSError:
         raise Fail("recovery objectives registry lock acquisition failed") from None
     try:
-        os.write(lock_fd, (record["objectiveId"] + "\n").encode("ascii"))
-        os.fsync(lock_fd)
+        lock_payload = (record["objectiveId"] + "\n").encode("ascii")
+        try:
+            written = os.write(lock_fd, lock_payload)
+            require(type(written) is int and written == len(lock_payload),
+                    "recovery objectives registry lock initialization failed")
+            os.fsync(lock_fd)
+        except OSError:
+            raise Fail("recovery objectives registry lock initialization failed") from None
         registry = load(REGISTRY)
         rows = validate_registry_for_append(registry)
         require(all(row.get("objectiveId") != record["objectiveId"] for row in rows), "objectiveId already registered")

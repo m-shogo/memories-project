@@ -54,6 +54,8 @@ def prove_close_failure_releases_lock(writer) -> None:
     original_require_canonical = writer.require_canonical_runtime_authorities
     original_close = writer.os.close
     original_open = writer.os.open
+    original_write = writer.os.write
+    original_fsync = writer.os.fsync
     original_argv = sys.argv[:]
 
     with tempfile.TemporaryDirectory(prefix="memory-os-objective-lock-") as tmpdir:
@@ -139,6 +141,47 @@ def prove_close_failure_releases_lock(writer) -> None:
             require(not lock.exists(), "failed objective lock acquisition left a lock")
             require(writer.main() == 0, "recovery objective retry after lock open fault failed")
             require(not lock.exists(), "recovery objective lock open retry stranded lock")
+
+            # Lock payload writes must be complete, private and durable before append.
+            for fault in ("write-error", "write-short", "write-boolean", "fsync-error"):
+                def synthetic_write(fd, payload):
+                    if fault == "write-error":
+                        raise OSError("PRIVATE_OBJECTIVE_LOCK_INIT_CANARY")
+                    if fault == "write-short":
+                        return len(payload) - 1
+                    if fault == "write-boolean":
+                        return True
+                    return original_write(fd, payload)
+
+                def synthetic_fsync(fd):
+                    if fault == "fsync-error":
+                        raise OSError("PRIVATE_OBJECTIVE_LOCK_INIT_CANARY")
+                    return original_fsync(fd)
+
+                writer.os.write = synthetic_write
+                writer.os.fsync = synthetic_fsync
+                try:
+                    writer.main()
+                except writer.Fail as exc:
+                    require(
+                        str(exc) == "recovery objectives registry lock initialization failed",
+                        "recovery objective lock initialization failure class drift",
+                    )
+                    require(
+                        "PRIVATE_OBJECTIVE_LOCK_INIT_CANARY" not in str(exc),
+                        "recovery objective lock initialization leaked private OS diagnostics",
+                    )
+                    if fault.endswith("error"):
+                        require(exc.__suppress_context__,
+                                "recovery objective lock OS fault retained private exception context")
+                else:
+                    raise Fail("recovery objective incomplete lock initialization was accepted")
+                finally:
+                    writer.os.write = original_write
+                    writer.os.fsync = original_fsync
+                require(not lock.exists(), "failed objective lock initialization stranded lock")
+                require(writer.main() == 0, "recovery objective retry after lock initialization fault failed")
+                require(not lock.exists(), "recovery objective lock initialization retry stranded lock")
         finally:
             writer.REGISTRY = original_registry
             writer.LOCK = original_lock
@@ -151,6 +194,8 @@ def prove_close_failure_releases_lock(writer) -> None:
             writer.require_canonical_runtime_authorities = original_require_canonical
             writer.os.close = original_close
             writer.os.open = original_open
+            writer.os.write = original_write
+            writer.os.fsync = original_fsync
             sys.argv = original_argv
 
 
