@@ -612,6 +612,70 @@ def main() -> int:
         valid_json.write_text('{"nested":{"value":1}}', encoding="utf-8")
         require(module.load(valid_json) == {"nested": {"value": 1}},
                 "generation binding strict JSON reader positive control failed")
+        # Close errors must fail privately even after the OS descriptor was closed.
+        original_close = module.os.close
+        closed_descriptors = []
+
+        def close_then_fail(descriptor):
+            original_close(descriptor)
+            closed_descriptors.append(descriptor)
+            if len(closed_descriptors) == 1:
+                raise OSError("synthetic-private-generation-binding-close")
+
+        module.os.close = close_then_fail
+        try:
+            try:
+                module.load(valid_json)
+            except module.Fail as exc:
+                require(str(exc) == "generation binding JSON cleanup failed",
+                        "generation binding JSON close fault escaped fixed cleanup classification")
+                require(exc.__suppress_context__ and exc.__cause__ is None,
+                        "generation binding JSON close fault exposed private exception context")
+            else:
+                raise Fail("generation binding JSON accepted failed descriptor cleanup")
+        finally:
+            module.os.close = original_close
+        require(closed_descriptors, "generation binding JSON descriptor cleanup fault not reached")
+        for descriptor in closed_descriptors:
+            try:
+                os.fstat(descriptor)
+            except OSError:
+                pass
+            else:
+                raise Fail("generation binding JSON directory descriptor remained open")
+
+        # fdopen can fail before ownership transfers to the stream.
+        original_fdopen = module.os.fdopen
+        attempted_descriptors = []
+
+        def fdopen_then_fail(descriptor, *args, **kwargs):
+            attempted_descriptors.append(descriptor)
+            raise OSError("synthetic-private-generation-binding-fdopen")
+
+        module.os.fdopen = fdopen_then_fail
+        try:
+            try:
+                module.load(valid_json)
+            except module.Fail as exc:
+                require(str(exc) == "generation binding JSON unreadable",
+                        "generation binding JSON fdopen fault escaped fixed unreadable classification")
+                require(exc.__suppress_context__ and exc.__cause__ is None,
+                        "generation binding JSON fdopen fault exposed private exception context")
+            else:
+                raise Fail("generation binding JSON accepted failed fdopen")
+        finally:
+            module.os.fdopen = original_fdopen
+        require(len(attempted_descriptors) == 1,
+                "generation binding JSON fdopen fault was not exercised exactly once")
+        try:
+            os.fstat(attempted_descriptors[0])
+        except OSError:
+            pass
+        else:
+            raise Fail("generation binding JSON leaf descriptor leaked after fdopen fault")
+        require(module.load(valid_json) == {"nested": {"value": 1}},
+                "generation binding JSON reader failed after descriptor fault restoration")
+        print("PASS: generation binding JSON close/fdopen faults private and descriptors released")
         with tempfile.TemporaryDirectory(prefix="memory-os-binding-json-parent-canary-") as outside:
             parent = tmp / "pinned-parent"
             parked = tmp / "parked-parent"
