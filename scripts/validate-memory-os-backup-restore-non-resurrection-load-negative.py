@@ -1371,6 +1371,20 @@ def prove_typed_private_path_negative_reachability() -> None:
                       'validator.load_module(good, "typed_pinned_rejection_restored")'):
             require(token in unsafe_body, "typed pinned module rejection guard removed")
 
+        fd_target = functions.get("prove_typed_pinned_module_fd_cleanup")
+        require(fd_target is not None, "typed pinned module FD negative missing")
+        fd_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "prove_typed_pinned_module_fd_cleanup"]
+        require(len(fd_calls) == 1, "typed pinned module FD negative not executed exactly once")
+        fd_body = ast.get_source_segment(candidate, fd_target)
+        require(isinstance(fd_body, str), "typed pinned module FD negative body unavailable")
+        for token in ("os.fdopen = broken_fdopen", "os.close = broken_close",
+                      "exc.__suppress_context__", "errno.EBADF",
+                      "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+                      'validator.load_module(source, "typed_module_fd_restored")'):
+            require(token in fd_body, "typed pinned module FD negative guard removed")
+
         lock_target = functions.get("prove_private_typed_append_lock_metadata")
         require(lock_target is not None, "typed admission lock metadata negative missing")
         lock_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
@@ -1414,6 +1428,16 @@ def prove_typed_private_path_negative_reachability() -> None:
         ("pinned rejection flags", "prove_typed_pinned_module_fail_closed",
          "                for invalid in (None, 0):\n", "                for invalid in ():\n"),
         ("pinned rejection context", "prove_typed_pinned_module_fail_closed",
+         "exc.__suppress_context__", "False"),
+        ("pinned FD invocation", "main",
+         "    prove_typed_pinned_module_fd_cleanup(validator)\n", "    pass\n"),
+        ("pinned FD fdopen fault", "prove_typed_pinned_module_fd_cleanup",
+         "                    os.fdopen = broken_fdopen\n", "                    pass\n"),
+        ("pinned FD close fault", "prove_typed_pinned_module_fd_cleanup",
+         "                    os.close = broken_close\n", "                    pass\n"),
+        ("pinned FD leak check", "prove_typed_pinned_module_fd_cleanup",
+         "errno.EBADF", "None"),
+        ("pinned FD context", "prove_typed_pinned_module_fd_cleanup",
          "exc.__suppress_context__", "False"),
         ("lock invocation", "main", "    prove_private_typed_append_lock_metadata(validator)\n", "    pass\n"),
         ("lock symlink fault", "prove_private_typed_append_lock_metadata", "                Path.is_symlink = fault\n", "                pass\n"),
