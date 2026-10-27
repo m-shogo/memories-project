@@ -1094,24 +1094,56 @@ except (OSError, RuntimeError):
         "ancestor pin exits before checked walk",
     )
     walk_loop = walk_try.body[-2]
+    expected_cursor_condition = ast.parse(
+        "cursor.is_dir() and not cursor.is_symlink()", mode="eval"
+    ).body
+    expected_cursor_handler = ast.parse("""try:
+    pass
+except (OSError, RuntimeError):
+    raise Fail("fixture guard ancestor predicate check failed") from None
+""").body[0].handlers[0]
+    cursor_try = walk_loop.body[1]
+    cursor_require = walk_loop.body[2]
     require(
-        len(walk_loop.body) >= 3
-        and isinstance(walk_loop.body[2], ast.Assign)
-        and len(walk_loop.body[2].targets) == 1
-        and isinstance(walk_loop.body[2].targets[0], ast.Name)
-        and walk_loop.body[2].targets[0].id == "next_fd"
-        and isinstance(walk_loop.body[2].value, ast.Call)
-        and isinstance(walk_loop.body[2].value.func, ast.Attribute)
-        and isinstance(walk_loop.body[2].value.func.value, ast.Name)
-        and walk_loop.body[2].value.func.value.id == "os"
-        and walk_loop.body[2].value.func.attr == "open"
-        and walk_loop.body[2].value.args
-        and isinstance(walk_loop.body[2].value.args[0], ast.Name)
-        and walk_loop.body[2].value.args[0].id == "part"
+        isinstance(cursor_try, ast.Try)
+        and len(cursor_try.body) == 1
+        and isinstance(cursor_try.body[0], ast.Assign)
+        and len(cursor_try.body[0].targets) == 1
+        and isinstance(cursor_try.body[0].targets[0], ast.Name)
+        and cursor_try.body[0].targets[0].id == "cursor_ok"
+        and ast.dump(cursor_try.body[0].value, include_attributes=False)
+            == ast.dump(expected_cursor_condition, include_attributes=False)
+        and len(cursor_try.handlers) == 1
+        and ast.dump(cursor_try.handlers[0], include_attributes=False)
+            == ast.dump(expected_cursor_handler, include_attributes=False)
+        and not cursor_try.orelse and not cursor_try.finalbody
+        and isinstance(cursor_require, ast.Expr)
+        and isinstance(cursor_require.value, ast.Call)
+        and isinstance(cursor_require.value.func, ast.Name)
+        and cursor_require.value.func.id == "require"
+        and len(cursor_require.value.args) == 2
+        and isinstance(cursor_require.value.args[0], ast.Name)
+        and cursor_require.value.args[0].id == "cursor_ok",
+        "loader ancestor predicate fault not private",
+    )
+    require(
+        len(walk_loop.body) >= 4
+        and isinstance(walk_loop.body[3], ast.Assign)
+        and len(walk_loop.body[3].targets) == 1
+        and isinstance(walk_loop.body[3].targets[0], ast.Name)
+        and walk_loop.body[3].targets[0].id == "next_fd"
+        and isinstance(walk_loop.body[3].value, ast.Call)
+        and isinstance(walk_loop.body[3].value.func, ast.Attribute)
+        and isinstance(walk_loop.body[3].value.func.value, ast.Name)
+        and walk_loop.body[3].value.func.value.id == "os"
+        and walk_loop.body[3].value.func.attr == "open"
+        and walk_loop.body[3].value.args
+        and isinstance(walk_loop.body[3].value.args[0], ast.Name)
+        and walk_loop.body[3].value.args[0].id == "part"
         and any(keyword.arg == "dir_fd"
                 and isinstance(keyword.value, ast.Name)
                 and keyword.value.id == "fd"
-                for keyword in walk_loop.body[2].value.keywords),
+                for keyword in walk_loop.body[3].value.keywords),
         "ancestor pin descriptor open not live",
     )
     expected_handoff = ast.parse("""next_fd = os.open(part, flags, dir_fd=fd)
@@ -1123,11 +1155,11 @@ except (Exception, SystemExit):
     raise Fail("fixture guard pinned descriptor cleanup failed") from None
 """).body
     require(
-        len(walk_loop.body) >= 6
+        len(walk_loop.body) >= 7
         and all(
             ast.dump(actual, include_attributes=False)
             == ast.dump(expected, include_attributes=False)
-            for actual, expected in zip(walk_loop.body[2:6], expected_handoff)
+            for actual, expected in zip(walk_loop.body[3:7], expected_handoff)
         ),
         "ancestor pin handoff not cleanup-safe",
     )
@@ -1638,6 +1670,29 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "loader anchor predicate fault not private"),
         (anchor_guard, anchor_guard.replace("not anchor.is_symlink()", "True"),
          "loader anchor predicate fault not private"),
+    )
+    cursor_start = """            try:
+                cursor_ok = cursor.is_dir() and not cursor.is_symlink()
+"""
+    cursor_end = """            except (OSError, RuntimeError):
+                raise Fail("fixture guard ancestor predicate check failed") from None
+            require(cursor_ok,
+"""
+    require(source.count(cursor_start) == 1 and source.count(cursor_end) == 1,
+            "loader ancestor predicate fault not private")
+    cursor_begin = source.index(cursor_start)
+    cursor_finish = source.index(cursor_end, cursor_begin) + len(cursor_end)
+    cursor_guard = source[cursor_begin:cursor_finish]
+    replacements += (
+        (cursor_guard, cursor_guard.replace(
+            "except (OSError, RuntimeError):", "except OSError:"),
+         "loader ancestor predicate fault not private"),
+        (cursor_guard, cursor_guard.replace(" from None", ""),
+         "loader ancestor predicate fault not private"),
+        (cursor_guard, cursor_guard.replace("cursor.is_dir()", "True"),
+         "loader ancestor predicate fault not private"),
+        (cursor_guard, cursor_guard.replace("not cursor.is_symlink()", "True"),
+         "loader ancestor predicate fault not private"),
     )
     base_cleanup_anchor = (
         "    except BaseException:\n"
@@ -2784,6 +2839,29 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
         finally:
             Path.is_dir, Path.is_symlink = original_is_dir, original_is_symlink
 
+    original_is_dir, original_is_symlink = Path.is_dir, Path.is_symlink
+    for fault in ("is_dir", "is_symlink"):
+        def fault_cursor_predicate(self):
+            if self == parent:
+                raise RuntimeError("PRIVATE_CURSOR_PREDICATE_CANARY")
+            return (original_is_dir(self) if fault == "is_dir"
+                    else original_is_symlink(self))
+        if fault == "is_dir":
+            Path.is_dir = fault_cursor_predicate
+        else:
+            Path.is_symlink = fault_cursor_predicate
+        try:
+            try:
+                loader(good, "pinned_cursor_predicate_negative_" + fault)
+            except Fail as exc:
+                assert str(exc) == "fixture guard ancestor predicate check failed"
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_CURSOR_PREDICATE_CANARY" not in str(exc)
+            else:
+                raise AssertionError("cursor predicate failure accepted")
+        finally:
+            Path.is_dir, Path.is_symlink = original_is_dir, original_is_symlink
+
     outside = Path("/PRIVATE_OUTSIDE_CANARY/fixture.py")
     try:
         loader(outside, "pinned_outside_negative")
@@ -3015,7 +3093,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 91 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 95 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 

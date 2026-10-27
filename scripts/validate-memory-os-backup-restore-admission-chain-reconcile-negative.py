@@ -74,7 +74,11 @@ def pin_checked_helper_parent(path: Path) -> int:
         cursor = anchor
         for part in relative.parts:
             cursor = cursor / part
-            require(cursor.is_dir() and not cursor.is_symlink(),
+            try:
+                cursor_ok = cursor.is_dir() and not cursor.is_symlink()
+            except (OSError, RuntimeError):
+                raise Fail("fixture guard ancestor predicate check failed") from None
+            require(cursor_ok,
                     "admission-chain fixture guard ancestor missing or symlinked")
             next_fd = os.open(part, flags, dir_fd=fd)
             previous_fd = fd
