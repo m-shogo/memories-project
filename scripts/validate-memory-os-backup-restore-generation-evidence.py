@@ -196,10 +196,8 @@ def run_validator(path: Path, expected_relative: Path, label: str) -> None:
         )
     except (OSError, subprocess.TimeoutExpired):
         raise Fail("generation evidence child validator failed") from None
-    require(
-        type(getattr(completed, "returncode", None)) is int and completed.returncode == 0,
-        "generation evidence child validator failed",
-    )
+    if type(getattr(completed, "returncode", None)) is not int or completed.returncode != 0:
+        raise Fail("generation evidence child validator failed") from None
 
 
 def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
