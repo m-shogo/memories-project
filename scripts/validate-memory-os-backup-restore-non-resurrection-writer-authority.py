@@ -645,8 +645,7 @@ def prove_lock_probe_reachability() -> None:
                 "typed child symlink negative removal rejected at wrong boundary")
     else:
         raise NegativeFailure("typed child symlink negative removal unexpectedly accepted")
-    removed_delegated = source.replace(
-        "    exercise_writer_delegated_generation_privacy()\\n".replace("\\\\n", "\\n"), "", 1)
+    removed_delegated = source.replace("    exercise_writer_delegated_generation_privacy()\n", "", 1)
     require(removed_delegated != source, "typed delegated privacy negative mutation did not apply")
     try:
         require_lock_probe_reachable(removed_delegated)
