@@ -296,10 +296,14 @@ def main() -> int:
         writer.REGISTRY = temp_registry
         writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic post-append validation failure"))
         try:
-            expect_rejected(
-                "generation evidence post-append validation rollback",
-                lambda: writer.write_registry_transactionally({"sentinel": "mutated authority bytes"}),
-            )
+            try:
+                writer.write_registry_transactionally({"sentinel": "mutated authority bytes"})
+            except writer.Fail as exc:
+                require(str(exc) == "generation evidence append failed; rollback completed"
+                        and exc.__suppress_context__,
+                        "generation evidence post-append failure did not use private rollback-completed class")
+            else:
+                raise Fail("generation evidence post-append validation rollback unexpectedly accepted")
             require(temp_registry.read_bytes() == before, "generation evidence registry bytes changed after rejected transactional append")
             print("PASS preserve: generation evidence append failure rolled back byte-for-byte")
         finally:
