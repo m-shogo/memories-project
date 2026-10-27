@@ -3701,6 +3701,56 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
             f"pinned helper compilation runtime negative failed: {filename}")
 
 
+def prove_private_entrypoint_failures() -> int:
+    """Unexpected parser/read errors must never print source or path canaries."""
+    script = """
+import ast
+import contextlib
+import io
+import runpy
+import sys
+from pathlib import Path
+
+target = sys.argv[1]
+for fault in ("syntax", "read"):
+    original_parse, original_read_text = ast.parse, Path.read_text
+    if fault == "syntax":
+        def fault_parse(*args, **kwargs):
+            raise SyntaxError("PRIVATE_VALIDATOR_SYNTAX_CANARY")
+        ast.parse = fault_parse
+    else:
+        def fault_read_text(self, *args, **kwargs):
+            if self.name == "backup-restore-helper-ancestor-reachability.yml":
+                raise OSError("PRIVATE_VALIDATOR_PATH_CANARY")
+            return original_read_text(self, *args, **kwargs)
+        Path.read_text = fault_read_text
+    stdout, stderr = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            try:
+                runpy.run_path(target, run_name="__main__")
+            except SystemExit as exc:
+                assert exc.code == 1
+            else:
+                raise AssertionError("unexpected validator fault was accepted")
+    finally:
+        ast.parse, Path.read_text = original_parse, original_read_text
+    combined = stdout.getvalue() + stderr.getvalue()
+    assert stdout.getvalue().strip() == (
+        "HELPER ANCESTOR REACHABILITY FAILED: unexpected validator input failure"
+    ), repr(combined)
+    assert "PRIVATE_VALIDATOR_" not in combined
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(ROOT / "scripts" /
+                                          "validate-memory-os-backup-restore-helper-ancestor-reachability.py")],
+        cwd=ROOT, capture_output=True, text=True, timeout=15, check=False,
+    )
+    require(result.returncode == 0,
+            "helper ancestor private entrypoint fault proof failed")
+    return 2
+
+
 def main() -> int:
     workflow_source = (
         ROOT / ".github/workflows/backup-restore-helper-ancestor-reachability.yml"
@@ -3719,6 +3769,7 @@ def main() -> int:
         if "--negative" in sys.argv[1:]:
             total += negative_cases(source, diagnostic)
     if "--negative" in sys.argv[1:]:
+        total += prove_private_entrypoint_failures()
         total += target_matrix_negative_cases(workflow_source)
         total += workflow_runtime_negative_cases(workflow_source)
         total += independent_learning_workflow_negative_cases(learning_workflow_source)
@@ -3730,7 +3781,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 136 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 136 * len(TARGETS) + 230, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
@@ -3738,6 +3789,9 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (GuardFailure, SyntaxError, OSError) as exc:
+    except GuardFailure as exc:
         print(f"HELPER ANCESTOR REACHABILITY FAILED: {exc}")
+        raise SystemExit(1)
+    except (SyntaxError, OSError):
+        print("HELPER ANCESTOR REACHABILITY FAILED: unexpected validator input failure")
         raise SystemExit(1)
