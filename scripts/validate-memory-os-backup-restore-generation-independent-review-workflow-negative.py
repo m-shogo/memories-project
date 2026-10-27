@@ -71,16 +71,26 @@ PRIVATE_SOURCE_ERROR = "independent-review workflow source unreadable or unsafe"
 
 
 def read_bounded_regular(path: Path, limit: int = MAX_SOURCE_BYTES) -> bytes:
-    """Refuse symlink/FIFO/oversize source and compare the opened inode."""
+    """Pin every ancestor and the regular leaf before bounded source reading."""
+    directory_fds: list[int] = []
     fd = -1
     try:
+        if not path.is_absolute() or not path.name:
+            raise ValueError("unsafe source path")
         checked = path.lstat()
         if not stat.S_ISREG(checked.st_mode):
             raise ValueError("unsafe source type")
         if not all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
-                   for flag in ("O_NOFOLLOW", "O_NONBLOCK")):
+                   for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")):
             raise ValueError("unsafe platform flags")
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+        parent_fd = os.open(path.anchor, directory_flags)
+        directory_fds.append(parent_fd)
+        for component in path.parts[1:-1]:
+            parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            directory_fds.append(parent_fd)
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=parent_fd)
         opened = os.fstat(fd)
         if (not stat.S_ISREG(opened.st_mode) or
                 (opened.st_dev, opened.st_ino) != (checked.st_dev, checked.st_ino)):
@@ -94,11 +104,19 @@ def read_bounded_regular(path: Path, limit: int = MAX_SOURCE_BYTES) -> bytes:
     except (Exception, SystemExit):
         raise SystemExit(PRIVATE_SOURCE_ERROR) from None
     finally:
+        cleanup_failed = False
         if fd >= 0:
             try:
                 os.close(fd)
             except (Exception, SystemExit):
-                raise SystemExit(PRIVATE_SOURCE_ERROR) from None
+                cleanup_failed = True
+        for directory_fd in reversed(directory_fds):
+            try:
+                os.close(directory_fd)
+            except (Exception, SystemExit):
+                cleanup_failed = True
+        if cleanup_failed:
+            raise SystemExit(PRIVATE_SOURCE_ERROR) from None
 
 
 def prove_bounded_reader() -> None:
@@ -127,6 +145,14 @@ def prove_bounded_reader() -> None:
         oversized = root / "oversized.py"
         oversized.write_bytes(b"x" * (MAX_SOURCE_BYTES + 1))
         rejected(oversized)
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original_flag = getattr(os, flag)
+            for unsupported in (None, 0):
+                try:
+                    setattr(os, flag, unsupported)
+                    rejected(source)
+                finally:
+                    setattr(os, flag, original_flag)
 
         parent = root / "source-parent"
         parent.mkdir()
@@ -143,7 +169,7 @@ def prove_bounded_reader() -> None:
 
         def swap_parent_before_open(target, flags, *args, **kwargs):
             nonlocal swapped
-            if not swapped and Path(target) == pinned:
+            if not swapped and target == parent.name and kwargs.get("dir_fd") is not None:
                 swapped = True
                 parent.rename(parked)
                 parent.symlink_to(external, target_is_directory=True)
@@ -164,6 +190,32 @@ def prove_bounded_reader() -> None:
             raise SystemExit("independent-review bounded source parent-swap FD leak")
         if read_bounded_regular(pinned) != b"PINNED_SOURCE\n":
             raise SystemExit("independent-review bounded source parent-swap restoration drift")
+
+        before_post_pin = len(os.listdir("/proc/self/fd"))
+        swapped_after_pin = False
+
+        def swap_after_parent_pin(target, flags, *args, **kwargs):
+            nonlocal swapped_after_pin
+            if not swapped_after_pin and target == pinned.name and kwargs.get("dir_fd") is not None:
+                swapped_after_pin = True
+                parent.rename(parked)
+                parent.symlink_to(external, target_is_directory=True)
+            return original_open(target, flags, *args, **kwargs)
+
+        os.open = swap_after_parent_pin
+        try:
+            if read_bounded_regular(pinned) != b"PINNED_SOURCE\n":
+                raise SystemExit("independent-review pinned parent source changed after swap")
+        finally:
+            os.open = original_open
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+        if not swapped_after_pin or canary.read_bytes() != b"PRIVATE_EXTERNAL_CANARY\n":
+            raise SystemExit("independent-review pinned parent post-open canary drift")
+        if len(os.listdir("/proc/self/fd")) != before_post_pin:
+            raise SystemExit("independent-review pinned parent post-open FD leak")
 
         before = len(os.listdir("/proc/self/fd"))
         original_fdopen = os.fdopen
@@ -200,7 +252,7 @@ def prove_bounded_reader() -> None:
             raise SystemExit("independent-review bounded source close cleanup drift")
         if read_bounded_regular(source) != b"VALUE = 7\n":
             raise SystemExit("independent-review bounded source restoration drift")
-    print("PASS independent-review bounded workflow/helper/transport source: symlink FIFO oversize parent-swap fdopen close")
+    print("PASS independent-review bounded workflow/helper/transport source: symlink FIFO oversize platform-flags ancestor-swap post-pin-swap fdopen close")
 
 
 def prove_branch_guards_runtime() -> None:
