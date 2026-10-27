@@ -290,7 +290,7 @@ def validate_record(record: dict[str, Any]) -> None:
     require_canonical_runtime_authorities()
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
-    require(set(record) == required, f"record field set drift: {sorted(set(record) ^ required)}")
+    require(set(record) == required, "record field set drift")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "schemaVersion drift")
     objective_id = record.get("objectiveId")
     require(isinstance(objective_id, str) and OBJECTIVE_ID.fullmatch(objective_id), "objectiveId invalid")
