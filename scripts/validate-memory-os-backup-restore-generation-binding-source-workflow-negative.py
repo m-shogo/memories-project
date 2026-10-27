@@ -335,6 +335,44 @@ def prove_binding_writer_import_negative_deletion_rejected() -> None:
 
 
 
+def require_binding_json_parent_swap_negative_reachable(code: str) -> None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        raise SystemExit("generation binding JSON parent swap negative syntax invalid") from None
+    mains = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"]
+    if len(mains) != 1:
+        raise SystemExit("generation binding JSON parent swap negative main missing")
+    nested = {node.name for node in ast.walk(mains[0]) if isinstance(node, ast.FunctionDef)}
+    if not {"swap_before_descent", "swap_after_pin"}.issubset(nested):
+        raise SystemExit("generation binding JSON parent swap negative missing")
+    assignments = [node.value.id for node in ast.walk(mains[0]) if isinstance(node, ast.Assign)
+                   and isinstance(node.value, ast.Name)
+                   and any(isinstance(target, ast.Attribute) and target.attr == "open"
+                           for target in node.targets)]
+    if not {"swap_before_descent", "swap_after_pin"}.issubset(assignments):
+        raise SystemExit("generation binding JSON parent swap injection unreachable")
+
+
+def prove_binding_json_parent_swap_negative_deletion_rejected() -> None:
+    code = source(BINDING_NEGATIVE)
+    require_binding_json_parent_swap_negative_reachable(code)
+    start = '        with tempfile.TemporaryDirectory(prefix="memory-os-binding-json-parent-canary-") as outside:\n'
+    end = '        for flag in ("O_NOFOLLOW", "O_NONBLOCK"):\n'
+    if code.count(start) != 1 or code.count(end) != 1:
+        raise SystemExit("generation binding JSON parent swap negative deletion anchor drift")
+    left = code.index(start)
+    right = code.index(end, left)
+    mutated = code[:left] + code[right:]
+    try:
+        require_binding_json_parent_swap_negative_reachable(mutated)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation binding JSON parent swap negative deletion accepted")
+    print("PASS: generation binding JSON ancestor swap negative deletion rejected")
+
+
 def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
@@ -343,6 +381,7 @@ def main() -> int:
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
     prove_binding_writer_import_negative_deletion_rejected()
+    prove_binding_json_parent_swap_negative_deletion_rejected()
     negatives(publisher, independent)
     return 0
 
