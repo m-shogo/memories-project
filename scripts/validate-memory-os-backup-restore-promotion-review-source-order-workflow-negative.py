@@ -30,6 +30,7 @@ REQUIRED = (
     ("self-execution", "        run: python scripts/validate-memory-os-backup-restore-promotion-review-source-order-workflow-negative.py\n", 1),
     ("read-only token", "permissions:\n  contents: read\n", 1),
     ("unreviewed event", "          else\n            echo \"Unreviewed promotion source-order CI event\" >&2\n            exit 1\n          fi\n", 1),
+    ("no contents write permission", "contents: write", 0),
 )
 
 
@@ -86,7 +87,11 @@ def main() -> int:
         ("injected shell command", "          python -m py_compile \\\n", "          echo UNREVIEWED\n          python -m py_compile \\\n"),
         ("injected executable action", "      - name: Compile chronology and promotion validators\n", "      - uses: unreviewed/action@v1\n      - name: Compile chronology and promotion validators\n"),
         ("removed PR self-trigger", "      - 'scripts/validate-memory-os-backup-restore-promotion-review-source-order-workflow-negative.py'\n", ""),
+        ("job permission escalation", "jobs:\n  validate:\n", "jobs:\n  validate:\n    permissions:\n      contents: write\n"),
     )
+    if len(cases) != 22:
+        raise SystemExit("promotion source-order CI mutation inventory drift")
+    digest_only = frozenset({"injected shell command", "injected executable action"})
     semantic_count = 0
     blob_only_count = 0
     for label, old, replacement in cases:
@@ -97,6 +102,8 @@ def main() -> int:
             raise SystemExit("promotion source-order CI mutation unchanged: " + label)
         semantic = any(mutated.count(token) != source.count(token)
                        for _, token, _ in REQUIRED)
+        if semantic == (label in digest_only):
+            raise SystemExit("promotion source-order CI mutation classification drift: " + label)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
         try:
@@ -104,7 +111,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("promotion source-order CI accepted forbidden mutation: " + label)
-    if (semantic_count, blob_only_count) != (len(cases) - 2, 2):
+    if (semantic_count, blob_only_count) != (20, 2):
         raise SystemExit("promotion source-order CI semantic/blob mutation coverage drift")
     print(f"PASS: promotion source-order CI source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
     return 0
