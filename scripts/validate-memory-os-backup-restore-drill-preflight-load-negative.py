@@ -1734,6 +1734,30 @@ def prove_preflight_private_path_negative_reachability() -> None:
                       "importlib.util.spec_from_file_location = original_spec",
                       'getattr(load_module(VALIDATOR, "generation_import_restored"), "main", None)'):
             require(token in proof_body, "generation evidence pinned proof removed")
+        unsafe = functions.get("prove_pinned_module_unsafe_sources")
+        fd_proof = functions.get("prove_pinned_module_fd_cleanup")
+        require(unsafe is not None and fd_proof is not None,
+                "generation evidence unsafe/FD pinned proof missing")
+        unsafe_body = ast.get_source_segment(candidate, unsafe)
+        fd_body = ast.get_source_segment(candidate, fd_proof)
+        require(isinstance(unsafe_body, str) and isinstance(fd_body, str),
+                "generation evidence unsafe/FD pinned source unavailable")
+        for call in ("prove_pinned_module_unsafe_sources()", "prove_pinned_module_fd_cleanup()"):
+            require(main_body.count(call) == 1
+                    and main_body.index(call) < main_body.index("writer = load_module(WRITER"),
+                    "generation evidence unsafe/FD proof not run before canonical imports")
+        for token in ("oversized.write_bytes", "link.symlink_to(good)",
+                      "os.mkfifo(fifo)", "for invalid in (None, 0):",
+                      "exc.__suppress_context__",
+                      'load_module(good, "generation_import_unsafe_restored")'):
+            require(token in unsafe_body, "generation evidence unsafe pinned proof removed")
+        for token in ('raise OSError(errno.EIO, "PRIVATE_GENERATION_FDOPEN_CANARY")',
+                      'raise OSError(errno.EIO, "PRIVATE_GENERATION_CLOSE_CANARY")',
+                      "os.open, os.fdopen, os.close = tracked_open, broken_fdopen, broken_close",
+                      "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close",
+                      "exc.__suppress_context__", "errno.EBADF",
+                      'load_module(VALIDATOR, "generation_import_fd_restored")'):
+            require(token in fd_body, "generation evidence FD pinned proof removed")
         require(not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                         and node.func.id in {"exec", "eval"} for node in ast.walk(loader)),
                 "generation evidence direct dynamic execution refused")
@@ -1758,6 +1782,29 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("pinned value", "prove_pinned_module_import", 'loaded.VALUE == "pinned"', "False"),
         ("canary", "prove_pinned_module_import",
          'require(canary.read_text(encoding="utf-8") ==', 'require(False and'),
+        ("unsafe invocation", "main", "    prove_pinned_module_unsafe_sources()\n", "    pass\n"),
+        ("unsafe size", "prove_pinned_module_unsafe_sources",
+         'oversized.write_bytes(b"x" * (MAX_MODULE_BYTES + 1))', "pass"),
+        ("unsafe symlink", "prove_pinned_module_unsafe_sources", "link.symlink_to(good)", "pass"),
+        ("unsafe FIFO", "prove_pinned_module_unsafe_sources", "os.mkfifo(fifo)", "pass"),
+        ("unsafe flags", "prove_pinned_module_unsafe_sources",
+         "for invalid in (None, 0):", "for invalid in ():"),
+        ("unsafe context", "prove_pinned_module_unsafe_sources", "exc.__suppress_context__", "False"),
+        ("unsafe positive", "prove_pinned_module_unsafe_sources",
+         'load_module(good, "generation_import_unsafe_restored")',
+         'load_module(good, "generation_import_unsafe")'),
+        ("FD invocation", "main", "    prove_pinned_module_fd_cleanup()\n", "    pass\n"),
+        ("FD fdopen fault", "prove_pinned_module_fd_cleanup",
+         'raise OSError(errno.EIO, "PRIVATE_GENERATION_FDOPEN_CANARY")', "pass"),
+        ("FD close fault", "prove_pinned_module_fd_cleanup",
+         'raise OSError(errno.EIO, "PRIVATE_GENERATION_CLOSE_CANARY")', "pass"),
+        ("FD EBADF", "prove_pinned_module_fd_cleanup", "errno.EBADF", "None"),
+        ("FD context", "prove_pinned_module_fd_cleanup", "exc.__suppress_context__", "False"),
+        ("FD restore patch", "prove_pinned_module_fd_cleanup",
+         "os.open, os.fdopen, os.close = original_open, original_fdopen, original_close", "pass"),
+        ("FD positive", "prove_pinned_module_fd_cleanup",
+         'load_module(VALIDATOR, "generation_import_fd_restored")',
+         'load_module(VALIDATOR, "generation_import_fd_fault")'),
     ):
         parsed = ast.parse(generation_source)
         functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
@@ -1773,7 +1820,7 @@ def prove_preflight_private_path_negative_reachability() -> None:
         except Fail:
             continue
         raise Fail("generation evidence pinned source weakening accepted: " + label)
-    print("PASS: generation evidence pinned loader and nine source mutations rejected")
+    print("PASS: generation evidence pinned loader and twenty-three source mutations rejected")
     print("PASS: drill writer negative pinned loader and nine source mutations rejected")
     print("PASS: drill reconcile pinned loader and eight source mutations rejected")
     print("PASS: drill request pinned loader and twenty-five source mutations rejected")
