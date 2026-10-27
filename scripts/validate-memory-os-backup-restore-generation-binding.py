@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
+import os
+import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -80,13 +83,67 @@ def enforce_runtime_authorities() -> None:
         require_exact_repo_file(path, expected, field)
 
 
+MAX_JSON_BYTES = 1024 * 1024
+
+
 def load(path: Path) -> dict[str, Any]:
-    relative = repo_relative(path)
+    """Admit bounded, inode-pinned and unambiguous generation binding authority."""
+    require(isinstance(path, Path) and path.is_absolute(), "generation binding JSON path invalid")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve(strict=True))
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise Fail("generation binding JSON path unsafe") from None
+    require(lexical == resolved and not path.is_symlink(), "generation binding JSON path unsafe")
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    fd = -1
+    try:
+        fd = os.open(path, flags)
+        require(stat.S_ISREG(os.fstat(fd).st_mode), "generation binding JSON must be regular")
+        with os.fdopen(fd, "rb") as stream:
+            fd = -1
+            raw = stream.read(MAX_JSON_BYTES + 1)
+    except (OSError, ValueError):
+        raise Fail("generation binding JSON unreadable") from None
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                raise Fail("generation binding JSON cleanup failed") from None
+    require(len(raw) <= MAX_JSON_BYTES, "generation binding JSON size limit exceeded")
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            require(key not in result, "generation binding JSON duplicate key refused")
+            result[key] = item
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("generation binding JSON nonfinite number refused")
+
+    def parse_finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "generation binding JSON nonfinite number refused")
+        return number
+
+    def parse_bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128, "generation binding JSON integer too large")
+        return int(value)
+
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite,
+            parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("generation binding JSON invalid") from None
+    require(isinstance(value, dict), "generation binding JSON root must be object")
     return value
 
 
