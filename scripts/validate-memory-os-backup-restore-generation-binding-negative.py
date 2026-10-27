@@ -249,7 +249,11 @@ def prove_target_import_fd_cleanup() -> None:
 
 def pin_checked_helper_parent(path: Path) -> int:
     """Walk from a trusted repository/temp anchor, never through a symlinked ancestor."""
-    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+    require(
+        isinstance(getattr(os, "O_NOFOLLOW", None), int)
+        and os.O_NOFOLLOW != 0
+        and isinstance(getattr(os, "O_DIRECTORY", None), int)
+        and os.O_DIRECTORY != 0,
             "generation-binding fixture guard no-follow directory open unsupported")
     try:
         anchor = ROOT if path.is_relative_to(ROOT) else Path(tempfile.gettempdir())

@@ -1418,6 +1418,28 @@ except (OSError, RuntimeError):
         and not relative_guard.orelse and not relative_guard.finalbody,
         "loader parent classification fault not private",
     )
+    # A present but zeroed platform flag is not a no-follow/directory guard.
+    expected_flags = ast.parse(
+        "isinstance(getattr(os, 'O_NOFOLLOW', None), int)"
+        " and os.O_NOFOLLOW != 0"
+        " and isinstance(getattr(os, 'O_DIRECTORY', None), int)"
+        " and os.O_DIRECTORY != 0", mode="eval"
+    ).body
+    first_pin_statement = pin_live[0] if pin_live else None
+    require(
+        isinstance(first_pin_statement, ast.Expr)
+        and isinstance(first_pin_statement.value, ast.Call)
+        and isinstance(first_pin_statement.value.func, ast.Name)
+        and first_pin_statement.value.func.id == "require"
+        and len(first_pin_statement.value.args) == 2
+        and ast.dump(first_pin_statement.value.args[0], include_attributes=False)
+            == ast.dump(expected_flags, include_attributes=False)
+        and isinstance(first_pin_statement.value.args[1], ast.Constant)
+        and isinstance(first_pin_statement.value.args[1].value, str)
+        and first_pin_statement.value.args[1].value.endswith(
+            "no-follow directory open unsupported"),
+        "loader unsupported platform flags accepted",
+    )
     require(
         has_method(proof, "rename") and has_method(proof, "symlink_to"),
         "ancestor proof missing deterministic substitution",
@@ -1541,9 +1563,9 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "canonical __main__ dispatch handler drift"),
     )
     replacements += (
-        ('    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),\n',
+        ('    require(\n        isinstance(getattr(os, "O_NOFOLLOW", None), int)\n',
          '    return os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)\n'
-         '    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),\n',
+         '    require(\n        isinstance(getattr(os, "O_NOFOLLOW", None), int)\n',
          "ancestor pin exits before checked walk"),
         ("        for part in relative.parts:\n",
          "        return fd  # synthetic skipped ancestor walk\n"
@@ -1839,6 +1861,28 @@ def negative_cases(source: str, diagnostic: str) -> int:
         (relative_classification, relative_classification.replace(
             "path.parent.relative_to(anchor)", "Path('.')"),
          "loader parent classification fault not private"),
+    )
+    platform_flag_guard = """    require(
+        isinstance(getattr(os, "O_NOFOLLOW", None), int)
+        and os.O_NOFOLLOW != 0
+        and isinstance(getattr(os, "O_DIRECTORY", None), int)
+        and os.O_DIRECTORY != 0,
+"""
+    require(source.count(platform_flag_guard) == 1,
+            "loader unsupported platform flags accepted")
+    replacements += (
+        (platform_flag_guard, platform_flag_guard.replace(
+            "os.O_NOFOLLOW != 0", "os.O_NOFOLLOW >= 0"),
+         "loader unsupported platform flags accepted"),
+        (platform_flag_guard, platform_flag_guard.replace(
+            "os.O_DIRECTORY != 0", "os.O_DIRECTORY >= 0"),
+         "loader unsupported platform flags accepted"),
+        (platform_flag_guard, platform_flag_guard.replace(
+            'isinstance(getattr(os, "O_NOFOLLOW", None), int)', "True"),
+         "loader unsupported platform flags accepted"),
+        (platform_flag_guard, platform_flag_guard.replace(
+            'isinstance(getattr(os, "O_DIRECTORY", None), int)', "True"),
+         "loader unsupported platform flags accepted"),
     )
     base_cleanup_anchor = (
         "    except BaseException as exc:\n"
@@ -3097,6 +3141,21 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
     else:
         raise AssertionError("outside parent accepted")
 
+    for flag_name in ("O_NOFOLLOW", "O_DIRECTORY"):
+        original_flag = getattr(os, flag_name)
+        for unsafe_value in (0, None):
+            setattr(os, flag_name, unsafe_value)
+            try:
+                try:
+                    loader(good, "pinned_unsupported_flag_" + flag_name)
+                except Fail as exc:
+                    assert str(exc).endswith("no-follow directory open unsupported")
+                    assert exc.__cause__ is None and exc.__suppress_context__
+                else:
+                    raise AssertionError("unsupported platform flag accepted")
+            finally:
+                setattr(os, flag_name, original_flag)
+
     def fault_parent_runtime_open(file, flags, *args, **kwargs):
         if file == parent.name and kwargs.get("dir_fd") is not None:
             raise RuntimeError("PRIVATE_PARENT_RUNTIME_CANARY")
@@ -3368,7 +3427,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 114 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 118 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
