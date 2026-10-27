@@ -872,6 +872,80 @@ def prove_reconcile_writer_preopen_negative_removal_rejected() -> None:
     print("PASS: preflight and typed reconcile mkstemp/fchmod negative deletion rejected")
 
 
+def prove_preflight_harness_pinned_import_source_guard() -> None:
+    """Independently reject weakening the CI-reached preflight negative loader."""
+    source = (ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py").read_text(
+        encoding="utf-8")
+
+    def verify(candidate: str) -> None:
+        try:
+            parsed = ast.parse(candidate)
+        except SyntaxError:
+            raise SystemExit("preflight harness pinned source syntax invalid") from None
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        loader = functions.get("load_module")
+        proof = functions.get("prove_pinned_harness_import")
+        main = functions.get("main")
+        if loader is None or proof is None or main is None:
+            raise SystemExit("preflight harness pinned loader/proof/main missing")
+        loader_body = ast.get_source_segment(candidate, loader)
+        proof_body = ast.get_source_segment(candidate, proof)
+        main_body = ast.get_source_segment(candidate, main)
+        if not all(isinstance(body, str) for body in (loader_body, proof_body, main_body)):
+            raise SystemExit("preflight harness pinned source unavailable")
+        if (main_body.count("prove_pinned_harness_import()") != 1
+                or main_body.index("prove_pinned_harness_import()") >
+                   main_body.index("prove_preflight_private_path_negative_reachability()")):
+            raise SystemExit("preflight harness pinned proof not executed before canonical checks")
+        for token in ("class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+                      'return compile(source, str(path), "exec")',
+                      "loader=PinnedSourceLoader(name, str(path))",
+                      "spec.loader.exec_module(module)",
+                      "source = stream.read(MAX_MODULE_BYTES + 1)",
+                      "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+                      'for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")',
+                      'raise Fail("cannot load preflight negative authority") from None'):
+            if token not in loader_body:
+                raise SystemExit("preflight harness pinned loader weakened")
+        for token in ("parent.rename(parked)", "parent.symlink_to(redirected",
+                      "importlib.util.spec_from_file_location = swap_after_read",
+                      'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
+                      "importlib.util.spec_from_file_location = original_spec",
+                      'getattr(load_module(VALIDATOR, "preflight_harness_restored"), "main", None)'):
+            if token not in proof_body:
+                raise SystemExit("preflight harness pinned race proof removed")
+        if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+               and node.func.id in {"exec", "eval"} for node in ast.walk(loader)):
+            raise SystemExit("preflight harness direct dynamic execution refused")
+
+    verify(source)
+    for label, scope, old, replacement in (
+        ("invocation", "main", "    prove_pinned_harness_import()\n", "    pass\n"),
+        ("source loader", "load_module", "loader=PinnedSourceLoader(name, str(path))", "loader=None"),
+        ("pinned code", "load_module", 'return compile(source, str(path), "exec")', "return None"),
+        ("descriptor leaf", "load_module",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)"),
+        ("bounded source", "load_module", "source = stream.read(MAX_MODULE_BYTES + 1)",
+         "source = stream.read()"),
+        ("private suppression", "load_module",
+         'raise Fail("cannot load preflight negative authority") from None',
+         'raise Fail("cannot load preflight negative authority") from exc'),
+        ("parent substitution", "prove_pinned_harness_import",
+         "parent.symlink_to(redirected, target_is_directory=True)", "pass"),
+        ("pinned value", "prove_pinned_harness_import", 'loaded.VALUE == "pinned"', "False"),
+        ("canary", "prove_pinned_harness_import",
+         'require(canary.read_text(encoding="utf-8") ==', 'require(False and'),
+    ):
+        mutated = mutate_named_function(source, scope, old, replacement)
+        try:
+            verify(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("preflight harness pinned source weakening accepted: " + label)
+    print("PASS: preflight harness pinned loader and nine source mutations rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -889,6 +963,7 @@ def main() -> int:
     prove_reconcile_private_path_negative_removal_rejected()
     prove_reconcile_repo_ref_negative_removal_rejected()
     prove_reconcile_writer_preopen_negative_removal_rejected()
+    prove_preflight_harness_pinned_import_source_guard()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
