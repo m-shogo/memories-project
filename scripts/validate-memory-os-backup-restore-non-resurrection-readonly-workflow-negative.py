@@ -11,6 +11,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-non-resurrection-readonly.yml"
 REVIEWED_WORKFLOW_BLOB_SHA = "0a94fa297449fd8aa7b32b4e767fe5bf3f406084"
+
+TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-non-resurrection-readonly.yml",
+    ".github/workflows/backup-restore-non-resurrection-admission.yml",
+    "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-*.py",
+    "scripts/reconcile-memory-os-backup-non-resurrection-authority.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-readonly-workflow-negative.py",
+)
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -35,7 +53,46 @@ REQUIRED = (
 )
 
 
+def validate_trigger_reachability(source: str) -> None:
+    """Pin typed non-resurrection CI path triggers for each event separately."""
+    pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+    push_marker = "  push:\n    branches: [so]\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("typed non-resurrection readonly trigger marker drift")
+    pr_block = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push_block = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    for event, block in (("pull_request", pr_block), ("push", push_block)):
+        for path in TRIGGER_PATHS:
+            token = '      - "' + path + '"\n'
+            if block.count(token) != 1:
+                raise SystemExit("typed non-resurrection readonly " + event + " trigger drift: " + path)
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    """Prove every one-event-only path removal fails without a blob comparison."""
+    push_marker = "  push:\n    branches: [so]\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for path in TRIGGER_PATHS:
+            token = '      - "' + path + '"\n'
+            if source.count(token) != 2:
+                raise SystemExit("typed non-resurrection readonly trigger negative anchor drift: " + path)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("typed non-resurrection readonly trigger negative accepted: " + event + " " + path)
+    print(f"PASS: typed non-resurrection readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_trigger_reachability(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"typed readonly workflow source boundary drift: {label}")
@@ -68,6 +125,7 @@ def prove_branch_guards_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_trigger_reachability_negatives(source)
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
