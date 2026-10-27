@@ -915,6 +915,64 @@ def prove_typed_reconcile_strict_json() -> None:
     print("PASS: typed reconciler strict JSON positive and seven ambiguity negatives")
 
 
+def prove_typed_reconcile_descriptor_faults() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_typed_reconcile_fd_fault_negative")
+    with guarded_temporary_directory(".tmp-typed-reconcile-fd-fault-", TMP_PARENT) as raw:
+        path = Path(raw) / "positive.json"
+        path.write_bytes(b'{"safe":true}')
+        for fault, expected in (
+            ("close", "typed reconcile authority cleanup failed"),
+            ("fdopen", "typed reconcile authority unreadable"),
+        ):
+            original_open, original_close, original_fdopen = os.open, os.close, os.fdopen
+            opened: list[int] = []
+            faulted = False
+
+            def capture_open(*args, **kwargs):
+                descriptor = original_open(*args, **kwargs)
+                opened.append(descriptor)
+                return descriptor
+
+            def close_then_fail(descriptor):
+                nonlocal faulted
+                original_close(descriptor)
+                if not faulted:
+                    faulted = True
+                    raise OSError("SYNTHETIC_PRIVATE_CLOSE_CANARY")
+
+            def fdopen_then_fail(descriptor, *args, **kwargs):
+                nonlocal faulted
+                faulted = True
+                raise OSError("SYNTHETIC_PRIVATE_FDOPEN_CANARY")
+
+            try:
+                os.open = capture_open
+                if fault == "close":
+                    os.close = close_then_fail
+                else:
+                    os.fdopen = fdopen_then_fail
+                try:
+                    reconciler.read_text(path)
+                except reconciler.Fail as exc:
+                    require(str(exc) == expected and exc.__suppress_context__ and exc.__cause__ is None,
+                            f"typed reconcile {fault} leaked private descriptor fault")
+                else:
+                    raise Fail(f"typed reconcile {fault} fault unexpectedly accepted")
+            finally:
+                os.open, os.close, os.fdopen = original_open, original_close, original_fdopen
+            require(faulted and opened, f"typed reconcile {fault} fault injection not reached")
+            for descriptor in opened:
+                try:
+                    os.fstat(descriptor)
+                except OSError:
+                    pass
+                else:
+                    raise Fail(f"typed reconcile {fault} leaked descriptor")
+            require(reconciler.read_text(path) == '{"safe":true}',
+                    f"typed reconcile {fault} recovery positive failed")
+    print("PASS: typed reconcile close/fdopen private faults close all descriptors")
+
+
 def main() -> int:
     require(WRITER.is_file(), "typed evidence writer missing")
     require(VALIDATOR.is_file(), "typed admission validator missing")
@@ -952,6 +1010,7 @@ def main() -> int:
     prove_reconcile_runtime_authorities()
     prove_typed_reconcile_pinned_reader()
     prove_typed_reconcile_strict_json()
+    prove_typed_reconcile_descriptor_faults()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
