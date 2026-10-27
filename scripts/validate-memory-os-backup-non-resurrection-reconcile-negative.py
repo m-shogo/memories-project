@@ -176,10 +176,9 @@ def prove_rollback_attempts_all_restores() -> None:
         try:
             reconciler.restore_original_text(originals)
         except reconciler.Fail as exc:
-            require(
-                "synthetic first typed rollback restore rejection" in str(exc),
-                f"rollback restore failure reported at wrong boundary: {exc}",
-            )
+            require(str(exc) == "typed non-resurrection rollback incomplete"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
+                    "typed rollback restore leaked private failure")
         else:
             raise Fail("synthetic first typed rollback restore failure unexpectedly accepted")
     finally:
@@ -208,10 +207,9 @@ def prove_primary_and_rollback_failures_are_preserved() -> None:
         try:
             reconciler.main()
         except reconciler.Fail as exc:
-            text = str(exc)
-            require("synthetic typed primary validator rejection" in text, f"primary failure lost from rollback diagnostic: {exc}")
-            require("synthetic typed rollback restore rejection" in text, f"rollback failure lost from combined diagnostic: {exc}")
-            require("rollback incomplete" in text, f"combined rollback failure missing fail-closed marker: {exc}")
+            require(str(exc) == "typed non-resurrection reconcile failed; rollback incomplete"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
+                    "typed primary+rollback failure leaked private diagnostics")
         else:
             raise Fail("synthetic typed primary+rollback failure unexpectedly accepted")
     finally:
@@ -221,7 +219,7 @@ def prove_primary_and_rollback_failures_are_preserved() -> None:
     require_unchanged(before, "primary+rollback diagnostic negative")
     require_modes_unchanged(before_modes, "primary+rollback diagnostic negative")
     require_no_temp_files(before, "primary+rollback diagnostic negative")
-    print("PASS rollback: typed non-resurrection preserves primary and rollback failure diagnostics")
+    print("PASS rollback: typed non-resurrection classifies primary and rollback failures without private diagnostics")
 
 
 def prove_second_replace_rollback() -> None:
@@ -246,7 +244,8 @@ def prove_second_replace_rollback() -> None:
         try:
             reconciler.main()
         except reconciler.Fail as exc:
-            require(str(exc) == "typed reconcile atomic write failed" and "synthetic second authority replace rejection" not in str(exc),
+            require(str(exc) == "typed non-resurrection reconcile failed; rollback completed"
+                    and exc.__suppress_context__ and exc.__cause__ is None,
                     "typed second replace leaked private filesystem exception")
         else:
             raise Fail("synthetic second authority replace failure unexpectedly accepted")
@@ -286,7 +285,9 @@ def prove_post_write_aggregate_rollback() -> None:
     try:
         reconciler.main()
     except reconciler.Fail as exc:
-        require("synthetic aggregate operability rejection" in str(exc), "unexpected aggregate rejection")
+        require(str(exc) == "typed non-resurrection reconcile failed; rollback completed"
+                and exc.__suppress_context__ and exc.__cause__ is None,
+                "typed aggregate rejection leaked private validator exception")
     else:
         raise Fail("synthetic aggregate operability rejection unexpectedly accepted")
     finally:
