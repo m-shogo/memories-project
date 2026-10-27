@@ -601,6 +601,39 @@ def prove_private_bounded_authority_reader(reconciler: object) -> None:
     print("PASS reject: generation authority bounded reader symlink/FIFO/UTF-8/FD cleanup")
 
 
+def prove_strict_authority_json(reconciler: object) -> None:
+    """Reject ambiguous authority JSON using the real reconciler loader."""
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-json-strict-", dir=TMP_PARENT) as tmp:
+        path = Path(tmp) / "authority.json"
+        path.write_bytes(b'{"sentinel":"safe"}\n')
+        require(reconciler.load(path) == {"sentinel": "safe"},
+                "generation strict authority JSON positive control failed")
+        cases = (
+            ("duplicate", b'{"a":1,"a":2}',
+             "environment generation authority JSON duplicate key refused"),
+            ("nonfinite", b'{"a":NaN}',
+             "environment generation authority JSON nonfinite number refused"),
+            ("overflow-float", b'{"a":1e999}',
+             "environment generation authority JSON nonfinite number refused"),
+            ("huge-int", b'{"a":' + b"9" * 129 + b"}",
+             "environment generation authority JSON integer too large"),
+            ("invalid-json", b'{"a":',
+             "environment generation authority JSON invalid"),
+            ("array-root", b"[]",
+             "environment generation authority JSON root must be object"),
+        )
+        for label, payload, expected in cases:
+            path.write_bytes(payload)
+            try:
+                reconciler.load(path)
+            except reconciler.Fail as exc:
+                require(str(exc) == expected,
+                        f"generation strict JSON {label} wrong rejection class")
+            else:
+                raise Fail(f"generation strict JSON {label} unexpectedly accepted")
+    print("PASS reject: generation authority duplicate/nonfinite/huge JSON and nonobject roots")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(WORKFLOW.is_file(), "environment generation workflow missing")
@@ -707,6 +740,7 @@ def main() -> int:
 
     prove_private_child_validator(reconciler)
     prove_private_bounded_authority_reader(reconciler)
+    prove_strict_authority_json(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_private_atomic_authority_writer(reconciler)
     with isolated_authorities(reconciler):

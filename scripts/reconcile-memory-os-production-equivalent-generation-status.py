@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import stat
 import subprocess
@@ -199,12 +200,41 @@ def restore_authorities(authorities: tuple[tuple[Path, str], ...]) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
-    relative = repo_relative(path)
+    """Reject ambiguous JSON authority before any derived status publication."""
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result,
+                    "environment generation authority JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("environment generation authority JSON nonfinite number refused")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number),
+                "environment generation authority JSON nonfinite number refused")
+        return number
+
+    def bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128,
+                "environment generation authority JSON integer too large")
+        return int(value)
+
     try:
-        value = json.loads(read_text(path))
-    except json.JSONDecodeError as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {relative}")
+        value = json.loads(
+            read_text(path), object_pairs_hook=reject_duplicates,
+            parse_constant=reject_nonfinite, parse_float=finite_float,
+            parse_int=bounded_int,
+        )
+    except Fail:
+        raise
+    except (json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail("environment generation authority JSON invalid") from None
+    require(isinstance(value, dict),
+            "environment generation authority JSON root must be object")
     return value
 
 
