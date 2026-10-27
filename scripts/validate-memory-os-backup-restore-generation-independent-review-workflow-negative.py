@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import stat
@@ -50,11 +51,93 @@ def validate(source: str, *, check_blob: bool = True) -> None:
 
 
 
-def validate_transport_source(source: bytes) -> None:
+def require_transport_path_proof(source: bytes) -> None:
+    """Independently reject removal of real canonical path and private-fault probes."""
+    try:
+        tree = ast.parse(source.decode("utf-8"))
+    except (UnicodeDecodeError, SyntaxError):
+        raise SystemExit("independent-review transport path proof unreadable") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    if not {"load_validator", "prove_validator_path_failures", "main"} <= functions.keys():
+        raise SystemExit("independent-review transport path proof missing")
+    loader = functions["load_validator"]
+    proof = functions["prove_validator_path_failures"]
+    main = functions["main"]
+
+    def calls(node, name):
+        return [item for item in ast.walk(node) if isinstance(item, ast.Call)
+                and isinstance(item.func, ast.Name) and item.func.id == name]
+
+    lexical = [call for call in calls(loader, "require") if call.args
+               and isinstance(call.args[0], ast.Compare)
+               and isinstance(call.args[0].left, ast.Name)
+               and call.args[0].left.id == "VALIDATOR"
+               and len(call.args[0].ops) == 1
+               and isinstance(call.args[0].ops[0], ast.Eq)
+               and len(call.args[0].comparators) == 1
+               and ast.unparse(call.args[0].comparators[0]) == "ROOT / VALIDATOR_REL"]
+    if len(lexical) != 1 or len(calls(loader, "load_pinned_module")) != 1:
+        raise SystemExit("independent-review transport canonical loader binding weakened")
+    if not any(isinstance(node, ast.Raise) and isinstance(node.cause, ast.Constant)
+               and node.cause.value is None
+               for node in ast.walk(loader)):
+        raise SystemExit("independent-review transport private loader failure weakened")
+
+    labels = {call.args[0].value for call in calls(proof, "rejected")
+              if call.args and isinstance(call.args[0], ast.Constant)
+              and isinstance(call.args[0].value, str)}
+    if not {"canonical missing", "canonical symlink", "noncanonical substitute"} <= labels:
+        raise SystemExit("independent-review transport canonical path probes weakened")
+    if not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+               and node.func.attr == "symlink_to"
+               for node in ast.walk(proof)):
+        raise SystemExit("independent-review transport actual symlink fixture missing")
+    if not any(isinstance(node, ast.Assign)
+               and any(isinstance(target, ast.Name) and target.id == "VALIDATOR"
+                       for target in node.targets)
+               and isinstance(node.value, ast.Name) and node.value.id == "substitute"
+               for node in ast.walk(proof)):
+        raise SystemExit("independent-review transport substitute binding missing")
+    positive = [call for call in calls(proof, "require") if call.args
+                and isinstance(call.args[0], ast.Compare)
+                and ast.unparse(call.args[0]) == "load_validator().VALUE == 7"]
+    if len(positive) != 1:
+        raise SystemExit("independent-review transport canonical positive probe weakened")
+    fault_loops = [node for node in ast.walk(proof)
+                   if isinstance(node, ast.For) and isinstance(node.iter, ast.Tuple)
+                   and {elt.func.id for elt in node.iter.elts
+                        if isinstance(elt, ast.Call) and isinstance(elt.func, ast.Name)}
+                   == {"OSError", "RuntimeError", "SystemExit"}
+                   and any(isinstance(call.args[0], ast.Call)
+                           for call in calls(node, "rejected") if call.args)]
+    if len(fault_loops) != 1:
+        raise SystemExit("independent-review transport private fault probes weakened")
+    nested = [node for node in ast.walk(proof)
+              if isinstance(node, ast.FunctionDef) and node.name == "rejected"]
+    if len(nested) != 1 or not any(isinstance(node, ast.ExceptHandler)
+                                   and isinstance(node.type, ast.Name)
+                                   and node.type.id == "Fail"
+                                   for node in ast.walk(nested[0])):
+        raise SystemExit("independent-review transport rejection diagnostic proof missing")
+    attrs = {node.attr for node in ast.walk(nested[0]) if isinstance(node, ast.Attribute)}
+    if not {"__suppress_context__", "__cause__"} <= attrs:
+        raise SystemExit("independent-review transport private exception proof missing")
+    restored = {"ROOT", "VALIDATOR", "load_pinned_module"}
+    if not any(isinstance(node, ast.Try) and restored <= {
+               target.id for statement in node.finalbody if isinstance(statement, ast.Assign)
+               for target in statement.targets if isinstance(target, ast.Name)}
+               for node in ast.walk(proof)):
+        raise SystemExit("independent-review transport fixture cleanup proof missing")
+    if len(calls(main, "prove_validator_path_failures")) != 1:
+        raise SystemExit("independent-review transport path proof not reachable")
+
+
+def validate_transport_source(source: bytes, *, check_blob: bool = True) -> None:
+    require_transport_path_proof(source)
     if len(source) > 1024 * 1024:
         raise SystemExit("independent-review transport negative source oversized")
     git_blob = b"blob " + str(len(source)).encode("ascii") + b"\0" + source
-    if hashlib.sha1(git_blob).hexdigest() != REVIEWED_TRANSPORT_GIT_BLOB_SHA:
+    if check_blob and hashlib.sha1(git_blob).hexdigest() != REVIEWED_TRANSPORT_GIT_BLOB_SHA:
         raise SystemExit("independent-review transport negative complete source blob drift")
 
 
@@ -284,6 +367,43 @@ def main() -> int:
     validate_helper_source(helper_source)
     transport_source = read_bounded_regular(TRANSPORT)
     validate_transport_source(transport_source)
+    for label, old, new in (
+        ("delete canonical missing probe", b'rejected("canonical missing")',
+         b'pass  # missing probe removed'),
+        ("delete canonical symlink probe", b'rejected("canonical symlink")',
+         b'pass  # symlink probe removed'),
+        ("delete canonical symlink fixture", b'canonical.symlink_to(original_validator)',
+         b'pass  # symlink fixture removed'),
+        ("delete noncanonical substitute probe", b'rejected("noncanonical substitute")',
+         b'pass  # substitute probe removed'),
+        ("delete substitute binding", b'VALIDATOR = substitute',
+         b'VALIDATOR = canonical'),
+        ("bypass canonical positive", b'require(load_validator().VALUE == 7,',
+         b'require(True or load_validator().VALUE == 7,'),
+        ("replace OSError fault", b'OSError("PRIVATE_TRANSPORT_OS_CANARY")',
+         b'ValueError("PRIVATE_TRANSPORT_OS_CANARY")'),
+        ("remove private loader suppression",
+         b'raise Fail("canonical independent-review validator path rejected") from None',
+         b'raise Fail("canonical independent-review validator path rejected")'),
+        ("bypass lexical canonical check", b'require(VALIDATOR == ROOT / VALIDATOR_REL,',
+         b'require(True or VALIDATOR == ROOT / VALIDATOR_REL,'),
+        ("bypass pinned module", b'return load_pinned_module(ROOT, VALIDATOR,',
+         b'return object() # load_pinned_module(ROOT, VALIDATOR,'),
+        ("remove path probe reachability", b'    prove_validator_path_failures()\n',
+         b'    pass  # path proof removed\n'),
+        ("remove final root restoration", b'    finally:\n        ROOT = original_root',
+         b'    finally:\n        pass  # root restoration removed'),
+    ):
+        if transport_source.count(old) != 1:
+            raise SystemExit("independent-review transport semantic mutation anchor drift: " + label)
+        mutant = transport_source.replace(old, new, 1)
+        try:
+            validate_transport_source(mutant, check_blob=False)
+        except SystemExit:
+            continue
+        raise SystemExit("independent-review transport semantic weakening accepted: " + label)
+    print("PASS independent-review transport 12 semantic path-proof mutations")
+
     for label, old, new in (
         ("restore mutable transport source read", b"raw = read_pinned_source(ROOT, SOURCE_ORDER_EXECUTION_NEGATIVE)", b"raw = SOURCE_ORDER_EXECUTION_NEGATIVE.read_bytes()"),
         ("remove transport private read failure", b"except (FixtureImportFail, UnicodeDecodeError):", b"except UnicodeDecodeError:"),
