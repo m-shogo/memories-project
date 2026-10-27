@@ -184,23 +184,36 @@ def load_environment_validator():
 
 
 def git(*args: str) -> str:
-    completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    require(completed.returncode == 0, f"git {' '.join(args)} failed")
+    """Run bounded, private Git authority checks; never echo command arguments."""
+    try:
+        completed = subprocess.run(
+            ["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, timeout=SOURCE_GIT_TIMEOUT, check=False,
+        )
+    except (OSError, UnicodeError, subprocess.TimeoutExpired):
+        raise Fail("environment generation Git authority unavailable") from None
+    require(type(completed.returncode) is int and completed.returncode == 0
+            and isinstance(completed.stdout, str),
+            "environment generation Git authority unavailable")
+    require(len(completed.stdout) <= MAX_SOURCE_BYTES,
+            "environment generation Git output size limit exceeded")
     return completed.stdout.strip()
 
 
 def require_source_commit_ancestor(source_commit: str) -> None:
-    """Require source authority to belong to the current checked-out history."""
-    completed = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if completed.returncode == 0:
+    """Check ancestry with a bounded private Git invocation."""
+    try:
+        completed = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"],
+            cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=SOURCE_GIT_TIMEOUT, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("cannot verify sourceCommitSha ancestry") from None
+    if type(completed.returncode) is int and completed.returncode == 0:
         return
-    require(completed.returncode == 1, "cannot verify sourceCommitSha ancestry")
+    require(type(completed.returncode) is int and completed.returncode == 1,
+            "cannot verify sourceCommitSha ancestry")
     raise Fail("sourceCommitSha must be an ancestor of current HEAD")
 
 

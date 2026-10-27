@@ -94,10 +94,94 @@ def minimal_record(source_commit: str) -> dict[str, Any]:
     }
 
 
+def prove_bounded_writer_git_authority(writer) -> None:
+    """Fault-inject real writer Git/ancestry helpers without mutating refs."""
+    original_run = writer.subprocess.run
+    private_canary = "PRIVATE_ENVIRONMENT_GENERATION_GIT_CANARY"
+    try:
+        for scenario in ("positive", "timeout", "os-error", "exit", "oversize", "wrong-type"):
+            def fake_run(args, **kwargs):
+                require(args == ["git", "status", "--porcelain"]
+                        and kwargs.get("cwd") == ROOT
+                        and kwargs.get("text") is True
+                        and kwargs.get("stdout") == subprocess.PIPE
+                        and kwargs.get("stderr") == subprocess.DEVNULL
+                        and kwargs.get("timeout") == writer.SOURCE_GIT_TIMEOUT
+                        and kwargs.get("check") is False,
+                        "generation Git helper privacy/timeout drift")
+                if scenario == "timeout":
+                    raise subprocess.TimeoutExpired(args, writer.SOURCE_GIT_TIMEOUT)
+                if scenario == "os-error":
+                    raise OSError(private_canary)
+                if scenario == "exit":
+                    return subprocess.CompletedProcess(args, 128, stdout="")
+                if scenario == "oversize":
+                    return subprocess.CompletedProcess(args, 0, stdout="x" * (writer.MAX_SOURCE_BYTES + 1))
+                if scenario == "wrong-type":
+                    return subprocess.CompletedProcess(args, 0, stdout=b"bytes-not-text")
+                return subprocess.CompletedProcess(args, 0, stdout="  \n")
+            writer.subprocess.run = fake_run
+            if scenario == "positive":
+                require(writer.git("status", "--porcelain") == "",
+                        "generation Git positive control failed")
+                continue
+            expected = ("environment generation Git output size limit exceeded"
+                        if scenario == "oversize"
+                        else "environment generation Git authority unavailable")
+            try:
+                writer.git("status", "--porcelain")
+            except writer.Fail as exc:
+                require(str(exc) == expected and private_canary not in str(exc),
+                        f"generation Git {scenario} exposed private diagnostics")
+                if scenario in ("timeout", "os-error"):
+                    require(exc.__suppress_context__,
+                            f"generation Git {scenario} leaked exception context")
+            else:
+                raise Fail(f"generation Git {scenario} unexpectedly accepted")
+
+        for scenario in ("positive", "non-ancestor", "error", "timeout", "os-error"):
+            def fake_ancestry(args, **kwargs):
+                require(args == ["git", "merge-base", "--is-ancestor", "a" * 40, "HEAD"]
+                        and kwargs.get("cwd") == ROOT
+                        and kwargs.get("stdout") == subprocess.DEVNULL
+                        and kwargs.get("stderr") == subprocess.DEVNULL
+                        and kwargs.get("timeout") == writer.SOURCE_GIT_TIMEOUT
+                        and kwargs.get("check") is False,
+                        "generation ancestry Git privacy/timeout drift")
+                if scenario == "timeout":
+                    raise subprocess.TimeoutExpired(args, writer.SOURCE_GIT_TIMEOUT)
+                if scenario == "os-error":
+                    raise OSError(private_canary)
+                return subprocess.CompletedProcess(args, {
+                    "positive": 0, "non-ancestor": 1, "error": 128
+                }[scenario])
+            writer.subprocess.run = fake_ancestry
+            if scenario == "positive":
+                writer.require_source_commit_ancestor("a" * 40)
+                continue
+            expected = ("sourceCommitSha must be an ancestor of current HEAD"
+                        if scenario == "non-ancestor"
+                        else "cannot verify sourceCommitSha ancestry")
+            try:
+                writer.require_source_commit_ancestor("a" * 40)
+            except writer.Fail as exc:
+                require(str(exc) == expected and private_canary not in str(exc),
+                        f"generation ancestry {scenario} exposed private diagnostics")
+                if scenario in ("timeout", "os-error"):
+                    require(exc.__suppress_context__,
+                            f"generation ancestry {scenario} leaked exception context")
+            else:
+                raise Fail(f"generation ancestry {scenario} unexpectedly accepted")
+    finally:
+        writer.subprocess.run = original_run
+    print("PASS reject: generation Git and ancestry timeouts, oversized output and private failures")
+
+
 def main() -> int:
     workspace_before = git("status", "--porcelain")
     refs_before = git("for-each-ref", "--format=%(refname) %(objectname)", "refs/heads")
     writer = load_writer()
+    prove_bounded_writer_git_authority(writer)
     head = git("rev-parse", "HEAD")
     writer.require_source_commit_ancestor(head)
     print("PASS lineage authority: current HEAD is accepted")
