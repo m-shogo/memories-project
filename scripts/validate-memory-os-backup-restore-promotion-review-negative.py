@@ -422,6 +422,47 @@ def prove_bounded_promotion_payload_digest() -> None:
     print("PASS: actual promotion writer digest positive and six fail-closed path/size negatives")
 
 
+def prove_private_generation_registry_diagnostics() -> None:
+    """Exercise the real promotion writer's delegated registry error boundary."""
+    writer = load_module(WRITER, "memory_os_promotion_generation_registry_private_negative")
+    require(Path(writer.__file__).resolve() == WRITER.resolve(),
+            "promotion generation registry writer module identity drift")
+    original_load = writer.load
+    original_generation_writer = writer.load_generation_writer
+    marker = "PRIVATE_GENERATION_REGISTRY_ERROR_CANARY_DO_NOT_LOG"
+
+    class SyntheticGenerationWriter:
+        def __init__(self, error_type):
+            self.error_type = error_type
+
+        def validate_registry_for_append(self, _registry):
+            raise self.error_type(marker)
+
+    writer.load = lambda path: {"synthetic": True} if path == writer.GEN_REGISTRY else original_load(path)
+    try:
+        writer.load_generation_writer = lambda: SyntheticGenerationWriter(writer.Fail)
+        try:
+            writer.registered_recovery_evidence("brge_negative_candidate")
+        except writer.Fail as exc:
+            require(str(exc) == "generation recovery evidence registry authority invalid"
+                    and exc.__suppress_context__ and marker not in str(exc),
+                    "delegated generation registry domain error leaked private diagnostics")
+        else:
+            raise Fail("delegated generation registry domain failure unexpectedly accepted")
+
+        writer.load_generation_writer = lambda: SyntheticGenerationWriter(TypeError)
+        try:
+            writer.registered_recovery_evidence("brge_negative_candidate")
+        except TypeError:
+            pass
+        else:
+            raise Fail("unexpected generation registry implementation fault was normalized")
+    finally:
+        writer.load = original_load
+        writer.load_generation_writer = original_generation_writer
+    print("PASS: promotion delegated generation registry private domain error and unexpected fault boundary")
+
+
 def main() -> int:
     global EXPECTED_FAILURE
     require(WRITER.is_file() and VALIDATOR.is_file(), "promotion review authority scripts missing")
@@ -444,6 +485,7 @@ def main() -> int:
     prove_promotion_reader()
     prove_promotion_writer_reader()
     prove_bounded_promotion_payload_digest()
+    prove_private_generation_registry_diagnostics()
     prove_private_negative_suite_transport()
     writer = load_module(WRITER, "memory_os_promotion_review_writer_negative")
     validator = load_module(VALIDATOR, "memory_os_promotion_review_validator_negative")

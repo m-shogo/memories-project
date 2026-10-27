@@ -224,7 +224,7 @@ def registered_recovery_evidence(evidence_id: Any) -> dict[str, Any]:
         rows = generation_writer.validate_registry_for_append(registry)
     except Exception as exc:
         if domain_validation_failure(exc):
-            raise Fail(f"generation recovery evidence registry authority invalid: {exc}") from exc
+            raise Fail("generation recovery evidence registry authority invalid") from None
         raise
     matches = [row for row in rows if row.get("evidenceId") == evidence_id]
     require(len(matches) == 1, "recoveryEvidenceId is not uniquely registered")
