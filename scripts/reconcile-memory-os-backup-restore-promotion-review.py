@@ -166,9 +166,9 @@ def run_validator(path: Path, label: str) -> None:
             timeout=180,
         )
     except (OSError, subprocess.TimeoutExpired):
-        raise Fail(f"post-reconcile {label} validator unavailable") from None
+        raise Fail(f"post-reconcile {label} unavailable") from None
     require(type(completed.returncode) is int and completed.returncode == 0,
-            f"post-reconcile {label} validator failed without exposing subprocess output")
+            f"post-reconcile {label} failed without exposing subprocess output")
 
 def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_error: Exception) -> None:
     rollback_incomplete = False
