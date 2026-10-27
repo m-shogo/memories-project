@@ -253,6 +253,31 @@ def expect_preflight_json_descriptor_faults(validator: Any) -> None:
     print("PASS: actual preflight JSON reader close/fdopen private faults clean all descriptors")
 
 
+def expect_preflight_json_platform_flags(validator: Any) -> None:
+    """Missing and ineffective nofollow flags must fail before any JSON open."""
+    with tempfile.TemporaryDirectory(prefix=".preflight-json-flags-", dir=ROOT) as raw:
+        path = Path(raw) / "positive.json"
+        path.write_bytes(b'{"safe":true}')
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original = getattr(os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(os, flag, invalid)
+                    try:
+                        validator.load(path)
+                    except validator.Fail as exc:
+                        require(str(exc) == "preflight JSON nofollow support required"
+                                and exc.__suppress_context__ and exc.__cause__ is None,
+                                f"preflight JSON {flag} unsafe platform failure class drift")
+                    else:
+                        raise Fail(f"preflight JSON accepted unsafe {flag}")
+            finally:
+                setattr(os, flag, original)
+        require(validator.load(path) == {"safe": True},
+                "preflight JSON reader failed after platform flag restoration")
+    print("PASS: preflight JSON missing/zero nofollow, nonblock and directory flags rejected")
+
+
 def expect_state_rejected(
     validator: Any,
     generations: dict[str, Any],
@@ -541,6 +566,7 @@ def main() -> int:
     expect_strict_preflight_json_reader(validator)
     expect_pinned_preflight_json_reader(validator)
     expect_preflight_json_descriptor_faults(validator)
+    expect_preflight_json_platform_flags(validator)
     expect_upstream_validator_substitutions_rejected(validator)
     expect_upstream_validator_output_redacted(validator)
     expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
