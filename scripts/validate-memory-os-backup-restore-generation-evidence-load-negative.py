@@ -784,6 +784,32 @@ def prove_generation_evidence_json_reader(validator) -> None:
     print("PASS: actual generation recovery JSON reader positive and 18 fail-closed negatives")
 
 
+def prove_generation_private_authority_path_diagnostics(validator) -> None:
+    missing = TMP_PARENT / ".synthetic-private-generation-evidence-missing.json"
+    missing_lock = TMP_PARENT / ".synthetic-private-generation-evidence-missing-parent" / "lock"
+    require(not missing.exists() and not missing.is_symlink() and not missing_lock.parent.exists(),
+            "generation evidence private missing-path fixture unexpectedly exists")
+    for label, action, expected in (
+        ("file", lambda: validator.require_exact_repo_file(missing, Path("unused.json"),
+                                                           "generation evidence contract"),
+         "generation evidence contract missing or escapes repository"),
+        ("lock parent", lambda: validator.require_canonical_lock_path(missing_lock, Path("unused.lock"),
+                                                                     "generation evidence append lock"),
+         "generation evidence append lock parent missing or escapes repository"),
+    ):
+        try:
+            action()
+        except validator.Fail as exc:
+            require(str(exc) == expected, "generation evidence private " + label + " diagnostic drift")
+            require(exc.__suppress_context__ and exc.__cause__ is None,
+                    "generation evidence private " + label + " filesystem exception context exposed")
+            require("synthetic-private" not in str(exc),
+                    "generation evidence private " + label + " path canary exposed")
+        else:
+            raise Fail("generation evidence private " + label + " missing authority accepted")
+    print("PASS: generation evidence missing file/lock parent diagnostics suppress private context")
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
     require(VALIDATOR.is_file(), "generation evidence validator missing")
@@ -813,6 +839,7 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_generation_evidence_validator_load_negative")
     prove_generation_evidence_writer_json_reader(writer)
     prove_generation_evidence_json_reader(validator)
+    prove_generation_private_authority_path_diagnostics(validator)
     reconciler = load_module(RECONCILER, "memory_os_generation_evidence_reconciler_load_negative")
 
     require(writer.canonical_repo_file(WRITER, "generation evidence writer") == WRITER, "canonical writer path rejected")
