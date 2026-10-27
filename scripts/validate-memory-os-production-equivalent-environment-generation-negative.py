@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
+GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
 DIGEST_C = "c" * 64
@@ -121,12 +123,56 @@ def generation_record(commit_sha: str, env_path: Path, env: dict[str, Any]) -> d
     }
 
 
+def prove_private_generation_suite_transport() -> None:
+    """Exercise the real generation validator child suite transport with private faults."""
+    validator = load_module(GEN_VALIDATOR, "memory_os_generation_validator_transport_negative")
+    original_run = validator.subprocess.run
+    private_canary = "PRIVATE_GENERATION_SUITE_TRANSPORT_CANARY"
+    try:
+        for scenario in ("positive", "exit", "timeout", "os-error", "wrong-type"):
+            def fake_run(args, **kwargs):
+                require(args == [sys.executable, str(validator.NEGATIVE)]
+                        and kwargs.get("cwd") == validator.ROOT
+                        and kwargs.get("stdout") == subprocess.DEVNULL
+                        and kwargs.get("stderr") == subprocess.DEVNULL
+                        and kwargs.get("timeout") == validator.SUITE_TIMEOUT_SECONDS
+                        and kwargs.get("check") is False,
+                        "generation validator suite timeout/output privacy drift")
+                if scenario == "timeout":
+                    raise subprocess.TimeoutExpired(args, validator.SUITE_TIMEOUT_SECONDS)
+                if scenario == "os-error":
+                    raise OSError(private_canary)
+                if scenario == "wrong-type":
+                    return subprocess.CompletedProcess(args, True)
+                return subprocess.CompletedProcess(args, 0 if scenario == "positive" else 23)
+
+            validator.subprocess.run = fake_run
+            if scenario == "positive":
+                validator.run_suite(validator.NEGATIVE, validator.NEGATIVE_REL, "negative suite")
+                continue
+            try:
+                validator.run_suite(validator.NEGATIVE, validator.NEGATIVE_REL, "negative suite")
+            except validator.Fail as exc:
+                require(str(exc) == "environment generation child suite failed"
+                        and private_canary not in str(exc),
+                        f"generation suite {scenario} leaked private diagnostics")
+                if scenario in ("timeout", "os-error"):
+                    require(exc.__suppress_context__,
+                            f"generation suite {scenario} leaked exception context")
+            else:
+                raise Fail(f"generation suite {scenario} unexpectedly accepted")
+    finally:
+        validator.subprocess.run = original_run
+    print("PASS reject: generation validator child suite timeouts and private errors")
+
+
 def main() -> int:
     global EXPECTED_FAILURES
     require(WRITER.is_file() and ENV_VALIDATOR.is_file(), "generation validation foundation missing")
     writer = load_module(WRITER, "memory_os_generation_writer_negative")
     env_validator = load_module(ENV_VALIDATOR, "memory_os_environment_semantic_negative")
     EXPECTED_FAILURES = (writer.Fail, env_validator.Fail)
+    prove_private_generation_suite_transport()
     commit_sha = head_sha()
 
     planned = planned_env()
