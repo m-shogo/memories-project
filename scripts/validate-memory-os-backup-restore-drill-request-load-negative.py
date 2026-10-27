@@ -143,6 +143,44 @@ def prove_pinned_module_import() -> None:
     print("PASS: drill request loader executes pinned source after parent swap")
 
 
+def prove_pinned_module_unsafe_sources() -> None:
+    """Oversized, symlink, FIFO and missing safety flags must fail closed."""
+    with tempfile.TemporaryDirectory(prefix=".drill-request-unsafe-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        good = sandbox / "good.py"
+        good.write_text("VALUE = 'safe'\n", encoding="utf-8")
+        oversized = sandbox / "oversized.py"
+        oversized.write_bytes(b"x" * (MAX_MODULE_BYTES + 1))
+        link = sandbox / "linked.py"
+        link.symlink_to(good)
+        fifo = sandbox / "fifo.py"
+        os.mkfifo(fifo)
+
+        def rejected(label: str, candidate: Path) -> None:
+            try:
+                load_module(candidate, "drill_import_unsafe")
+            except Fail as exc:
+                require(str(exc) == "cannot load drill request authority"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        "drill import unsafe " + label + " leaked private error")
+            else:
+                raise Fail("drill import unsafe " + label + " accepted")
+
+        for label, candidate in (("oversized", oversized), ("symlink", link), ("FIFO", fifo)):
+            rejected(label, candidate)
+        for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"):
+            original = getattr(os, flag)
+            try:
+                for invalid in (None, 0):
+                    setattr(os, flag, invalid)
+                    rejected(flag + " unsupported", good)
+            finally:
+                setattr(os, flag, original)
+        require(load_module(good, "drill_import_unsafe_restored").VALUE == "safe",
+                "drill import unsafe fixture canonical restoration failed")
+    print("PASS: drill request pinned loader rejects oversized/symlink/FIFO/unsafe flags")
+
+
 def _remove_pinned_entries(directory_fd: int, flags: int) -> None:
     # Never recursively open a nested directory through a name that may have
     # changed after stat. Open each child with no-follow and traverse its FD.
@@ -853,6 +891,7 @@ def main() -> int:
     prove_nested_swap_during_cleanup_preserves_unowned_data()
     prove_file_swap_before_unlink_rejected()
     prove_pinned_module_import()
+    prove_pinned_module_unsafe_sources()
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     prove_drill_request_json_reader(validator)
