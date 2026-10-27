@@ -93,7 +93,7 @@ def prove_short_restore_write_rejected(writer) -> None:
     """Exercise the real rollback writer through the canonical CI-reached suite."""
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-short-restore-") as tmp:
         registry = Path(tmp) / "generation-registry.v1.json"
-        original = b'{"sentinel":"before"}\\n'.replace(b"\\\\n", b"\\n")
+        original = b'{"sentinel":"before"}\n'
         registry.write_bytes(original)
         registry.chmod(0o640)
         original_mode = file_mode(registry)
