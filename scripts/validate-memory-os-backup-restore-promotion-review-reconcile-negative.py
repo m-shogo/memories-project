@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -422,11 +423,71 @@ def prove_aggregate_validator_rejection_rolls_back_transaction(
     print("PASS boundary: aggregate operability rejection rolls back isolated promotion authorities without mutating canonical state")
 
 
+def prove_private_post_reconcile_transport(reconciler: Any) -> None:
+    """Test the actual bounded, private post-reconcile subprocess boundary."""
+    original_run = reconciler.subprocess.run
+    marker = "PRIVATE_PROMOTION_RECONCILE_SUBPROCESS_CANARY"
+    state: dict[str, Any] = {"returncode": 0, "error": None}
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(args, **kwargs):
+        require(args in ([sys.executable, str(reconciler.VALIDATOR)],
+                         [sys.executable, str(reconciler.OPERABILITY_VALIDATOR)]),
+                "promotion reconcile subprocess command drift")
+        require(kwargs.get("cwd") == reconciler.ROOT
+                and kwargs.get("stdout") is subprocess.DEVNULL
+                and kwargs.get("stderr") is subprocess.DEVNULL
+                and kwargs.get("check") is False
+                and kwargs.get("timeout") == 180
+                and "text" not in kwargs,
+                "promotion reconcile subprocess privacy/timeout drift")
+        calls.append(tuple(args))
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(args, state["returncode"], stdout=marker, stderr=marker)
+
+    reconciler.subprocess.run = fake_run
+    try:
+        reconciler.run_validator(reconciler.VALIDATOR, "promotion review validator")
+        reconciler.run_validator(reconciler.OPERABILITY_VALIDATOR, "aggregate operability validator")
+        cases = (
+            ("nonzero", {"returncode": 1}, "post-reconcile promotion review validator failed without exposing subprocess output"),
+            ("boolean", {"returncode": True}, "post-reconcile promotion review validator failed without exposing subprocess output"),
+            ("timeout", {"error": subprocess.TimeoutExpired(["python"], 180, stderr=marker)},
+             "post-reconcile promotion review validator unavailable"),
+            ("unavailable", {"error": OSError(marker)}, "post-reconcile promotion review validator unavailable"),
+        )
+        for label, change, expected in cases:
+            state.update({"returncode": 0, "error": None})
+            state.update(change)
+            try:
+                reconciler.run_validator(reconciler.VALIDATOR, "promotion review validator")
+            except reconciler.Fail as exc:
+                require(str(exc) == expected and marker not in str(exc)
+                        and (label not in ("timeout", "unavailable") or exc.__suppress_context__),
+                        "promotion reconcile subprocess private failure drift")
+            else:
+                raise Fail("promotion reconcile subprocess unexpectedly accepted: " + label)
+        try:
+            reconciler.run_validator(reconciler.VALIDATOR, "aggregate operability validator")
+        except reconciler.Fail as exc:
+            require(str(exc) == "unreviewed promotion review post-reconcile validator",
+                    "promotion reconcile validator label mismatch accepted")
+        else:
+            raise Fail("promotion reconcile validator label mismatch unexpectedly accepted")
+        require(len(calls) == len(cases) + 2,
+                "promotion reconcile subprocess case multiplicity drift")
+    finally:
+        reconciler.subprocess.run = original_run
+    print("PASS: promotion reconcile post-validation transport private, bounded and source-pinned (5 negatives)")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
     original_registry = CANONICAL_REGISTRY.read_bytes()
     validate_atomic_diagnostic_publication()
+    prove_private_post_reconcile_transport(reconciler)
 
     expect_authority_substitution_rejected(reconciler, "CONTRACT", reconciler.REGISTRY, "promotion review contract substitution", "promotion review contract authority drift", original_contract, original_registry)
     expect_authority_substitution_rejected(reconciler, "REGISTRY", reconciler.GEN_REGISTRY, "promotion review registry substitution", "promotion review registry authority drift", original_contract, original_registry)

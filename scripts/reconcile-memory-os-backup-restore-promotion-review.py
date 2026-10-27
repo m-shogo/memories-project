@@ -149,20 +149,26 @@ def validate_generation_registry(writer: Any, registry: dict[str, Any]) -> tuple
 
 
 def run_validator(path: Path, label: str) -> None:
-    relative = repo_relative(path)
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    require(
-        completed.returncode == 0,
-        f"post-reconcile {label} failed ({relative}):\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}",
-    )
-
+    if path == VALIDATOR and label == "promotion review validator":
+        expected = VALIDATOR_REL
+    elif path == OPERABILITY_VALIDATOR and label == "aggregate operability validator":
+        expected = OPERABILITY_VALIDATOR_REL
+    else:
+        raise Fail("unreviewed promotion review post-reconcile validator")
+    require_exact_repo_file(path, expected, "post-reconcile validator")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"post-reconcile {label} validator unavailable") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"post-reconcile {label} validator failed without exposing subprocess output")
 
 def restore_authorities(authorities: tuple[tuple[Path, str], ...], reconcile_error: Exception) -> None:
     rollback_failures: list[str] = []
