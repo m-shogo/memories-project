@@ -549,16 +549,37 @@ def main() -> int:
         write_registry_transactionally(registry)
     finally:
         cleanup_failed = False
+        owned_lock_identity = None
+        try:
+            owned_lock = os.fstat(lock_fd)
+            owned_lock_identity = (owned_lock.st_dev, owned_lock.st_ino)
+        except OSError:
+            cleanup_failed = True
         try:
             os.close(lock_fd)
         except OSError:
             cleanup_failed = True
         try:
-            LOCK.unlink()
+            current_lock = LOCK.lstat()
         except FileNotFoundError:
-            pass
+            current_lock = None
         except OSError:
+            current_lock = None
             cleanup_failed = True
+        if current_lock is not None:
+            if (
+                owned_lock_identity is None
+                or not stat.S_ISREG(current_lock.st_mode)
+                or (current_lock.st_dev, current_lock.st_ino) != owned_lock_identity
+            ):
+                cleanup_failed = True
+            else:
+                try:
+                    LOCK.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    cleanup_failed = True
         if cleanup_failed:
             raise Fail("recovery objectives registry lock cleanup failed") from None
     print(f"Registered recovery objectives: {record['objectiveId']}")

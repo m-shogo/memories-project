@@ -182,6 +182,43 @@ def prove_close_failure_releases_lock(writer) -> None:
                 require(not lock.exists(), "failed objective lock initialization stranded lock")
                 require(writer.main() == 0, "recovery objective retry after lock initialization fault failed")
                 require(not lock.exists(), "recovery objective lock initialization retry stranded lock")
+
+            # Never unlink a different lock inode or a symlink substituted during append.
+            fixture_write = writer.write_registry_transactionally
+            for replacement in ("regular", "symlink"):
+                def substitute_lock(_registry):
+                    lock.unlink()
+                    if replacement == "regular":
+                        lock.write_text("FOREIGN_OBJECTIVE_LOCK_CANARY\n", encoding="utf-8")
+                    else:
+                        lock.symlink_to(record_path)
+
+                writer.write_registry_transactionally = substitute_lock
+                try:
+                    writer.main()
+                except writer.Fail as exc:
+                    require(
+                        str(exc) == "recovery objectives registry lock cleanup failed",
+                        "recovery objective foreign lock replacement failure class drift",
+                    )
+                    require(exc.__suppress_context__,
+                            "recovery objective foreign lock replacement exposed exception context")
+                else:
+                    raise Fail("recovery objective foreign lock replacement was accepted")
+                finally:
+                    writer.write_registry_transactionally = fixture_write
+
+                if replacement == "regular":
+                    require(lock.is_file() and not lock.is_symlink(),
+                            "foreign objective regular lock was removed")
+                    require(lock.read_text(encoding="utf-8") == "FOREIGN_OBJECTIVE_LOCK_CANARY\n",
+                            "foreign objective lock contents changed")
+                else:
+                    require(lock.is_symlink() and record_path.read_text(encoding="utf-8") == "{}\n",
+                            "foreign objective symlink or target was modified")
+                lock.unlink()
+                require(writer.main() == 0, "recovery objective retry after foreign lock replacement failed")
+                require(not lock.exists(), "recovery objective foreign lock retry stranded lock")
         finally:
             writer.REGISTRY = original_registry
             writer.LOCK = original_lock
