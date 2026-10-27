@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import copy
+import importlib.machinery
 import importlib.util
 import json
+import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -46,12 +49,118 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+MAX_MODULE_BYTES = 1024 * 1024
+
+
 def load_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_restore_drill_request_writer_negative", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load drill request writer")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    """Import only bounded, descriptor-pinned canonical writer bytes."""
+    try:
+        relative = WRITER.relative_to(ROOT)
+        require(WRITER.resolve(strict=True) == ROOT.resolve() / relative,
+                "cannot load drill request writer")
+        checked = WRITER.lstat()
+        require(stat.S_ISREG(checked.st_mode), "cannot load drill request writer")
+        require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                    for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")),
+                "cannot load drill request writer")
+        directory_fds = []
+        source_fd = -1
+        try:
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+            parent_fd = os.open(ROOT, directory_flags)
+            directory_fds.append(parent_fd)
+            for component in relative.parts[:-1]:
+                parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                directory_fds.append(parent_fd)
+            source_fd = os.open(relative.name,
+                                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(source_fd)
+            require(stat.S_ISREG(opened.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (checked.st_dev, checked.st_ino),
+                    "cannot load drill request writer")
+            with os.fdopen(source_fd, "rb") as stream:
+                source_fd = -1
+                source = stream.read(MAX_MODULE_BYTES + 1)
+        finally:
+            cleanup_failed = False
+            if source_fd >= 0:
+                try:
+                    os.close(source_fd)
+                except OSError:
+                    cleanup_failed = True
+            for directory_fd in reversed(directory_fds):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    cleanup_failed = True
+            require(not cleanup_failed, "cannot load drill request writer")
+        require(len(source) <= MAX_MODULE_BYTES, "cannot load drill request writer")
+
+        class PinnedSourceLoader(importlib.machinery.SourceFileLoader):
+            def get_code(self, fullname):
+                require(fullname == "memory_os_restore_drill_request_writer_negative",
+                        "cannot load drill request writer")
+                return compile(source, str(WRITER), "exec")
+
+        name = "memory_os_restore_drill_request_writer_negative"
+        spec = importlib.util.spec_from_file_location(
+            name, WRITER, loader=PinnedSourceLoader(name, str(WRITER)))
+        require(spec is not None and spec.loader is not None,
+                "cannot load drill request writer")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        raise Fail("cannot load drill request writer") from None
     return module
+
+
+def prove_pinned_writer_import() -> None:
+    """After-capture parent swaps cannot change the executed writer."""
+    global WRITER
+    original_path = WRITER
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".drill-writer-import-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        parent = sandbox / "trusted"
+        parent.mkdir()
+        source = parent / "module.py"
+        parked = sandbox / "parked"
+        redirected = sandbox / "redirected"
+        redirected.mkdir()
+        canary = redirected / "module.py"
+        source.write_text("VALUE = 'pinned'\n", encoding="utf-8")
+        canary.write_text("raise RuntimeError('PRIVATE_DRILL_WRITER_CANARY')\n",
+                          encoding="utf-8")
+        swapped = False
+        try:
+            WRITER = source
+            require(load_writer().VALUE == "pinned", "drill writer pinned import positive failed")
+
+            def swap_after_read(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_read
+            loaded = load_writer()
+            require(swapped and loaded.VALUE == "pinned",
+                    "drill writer import executed redirected source")
+            require(canary.read_text(encoding="utf-8") ==
+                    "raise RuntimeError('PRIVATE_DRILL_WRITER_CANARY')\n",
+                    "drill writer import changed redirected canary")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            WRITER = original_path
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    require(callable(getattr(load_writer(), "validate_request", None)),
+            "drill writer pinned import canonical restoration failed")
+    print("PASS: drill request writer negative loader executes pinned source after parent swap")
 
 
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
@@ -141,6 +250,7 @@ def bind_approvals(tmp_path: Path, writer: Any, contract: dict[str, Any], reques
 def main() -> int:
     global EXPECTED_FAILURE
     require(WRITER.is_file() and CONTRACT.is_file(), "drill request foundation missing")
+    prove_pinned_writer_import()
     contract = load(CONTRACT)
     writer = load_writer()
     EXPECTED_FAILURE = writer.Fail
