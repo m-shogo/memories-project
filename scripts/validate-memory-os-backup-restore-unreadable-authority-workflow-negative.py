@@ -612,6 +612,63 @@ def prove_reconcile_writer_negative_removal_rejected() -> None:
     print("PASS: preflight and typed reconcile atomic writer negative deletion rejected")
 
 
+def require_typed_reconcile_child_negative_reachable(source: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("typed reconcile child negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    target, main = functions.get("prove_typed_reconcile_child_validator"), functions.get("main")
+    if target is None or main is None:
+        raise SystemExit("typed reconcile child negative missing")
+    calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name)
+             and node.func.id == "prove_typed_reconcile_child_validator"]
+    if len(calls) != 1:
+        raise SystemExit("typed reconcile child negative invocation drift")
+    nested = {node.name for node in ast.walk(target) if isinstance(node, ast.FunctionDef)}
+    if "fake_run" not in nested:
+        raise SystemExit("typed reconcile child synthetic runner missing")
+    assignments = [node for node in ast.walk(target) if isinstance(node, ast.Assign)
+                   and isinstance(node.value, ast.Name) and node.value.id == "fake_run"
+                   and any(isinstance(item, ast.Attribute) and item.attr == "run"
+                           and isinstance(item.value, ast.Attribute)
+                           and item.value.attr == "subprocess"
+                           for item in node.targets)]
+    if len(assignments) != 1:
+        raise SystemExit("typed reconcile child synthetic runner not installed")
+    strings = {node.value for node in ast.walk(target)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    if not {"success", "nonzero", "bool", "string", "timeout", "oserror"}.issubset(strings):
+        raise SystemExit("typed reconcile child negative matrix incomplete")
+    attrs = {node.attr for node in ast.walk(target) if isinstance(node, ast.Attribute)}
+    if "DEVNULL" not in attrs or "TimeoutExpired" not in attrs:
+        raise SystemExit("typed reconcile child privacy/timeout negative missing")
+
+
+def prove_typed_reconcile_child_negative_removal_rejected() -> None:
+    relative = "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+    source = (ROOT / relative).read_text(encoding="utf-8")
+    require_typed_reconcile_child_negative_reachable(source)
+    invocation = "    prove_typed_reconcile_child_validator()\n"
+    if source.count(invocation) != 1:
+        raise SystemExit("typed reconcile child invocation deletion anchor drift")
+    for label, mutated in (
+        ("invocation", source.replace(invocation, "    pass\n", 1)),
+        ("synthetic runner", mutate_named_function(
+            source, "prove_typed_reconcile_child_validator",
+            "        reconciler.subprocess.run = fake_run\n", "        pass\n",
+        )),
+    ):
+        try:
+            require_typed_reconcile_child_negative_reachable(mutated)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("typed reconcile child negative deletion accepted: " + label)
+    print("PASS: typed reconcile child privacy/timeout negative deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -625,6 +682,7 @@ def main() -> int:
     prove_reconcile_reader_race_negative_removal_rejected()
     prove_reconcile_strict_json_negative_removal_rejected()
     prove_reconcile_writer_negative_removal_rejected()
+    prove_typed_reconcile_child_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
