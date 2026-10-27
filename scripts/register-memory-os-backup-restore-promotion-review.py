@@ -461,9 +461,15 @@ def atomic_restore(payload: bytes, mode: int) -> None:
 
 def write_registry_transactionally(value: dict[str, Any]) -> None:
     try:
-        original = REGISTRY.read_bytes()
+        resolved = REGISTRY.resolve(strict=True)
+        require(resolved == REGISTRY and REGISTRY.is_file() and not REGISTRY.is_symlink(),
+                "cannot snapshot promotion review registry before append")
+        with REGISTRY.open("rb") as source:
+            original = source.read(MAX_JSON_BYTES + 1)
+        require(len(original) <= MAX_JSON_BYTES,
+                "cannot snapshot promotion review registry before append")
         original_mode = stat.S_IMODE(REGISTRY.stat().st_mode)
-    except OSError:
+    except (OSError, RuntimeError, ValueError):
         raise Fail("cannot snapshot promotion review registry before append") from None
     try:
         atomic_write(value, original_mode)

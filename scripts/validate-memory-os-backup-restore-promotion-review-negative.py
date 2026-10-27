@@ -544,6 +544,53 @@ def main() -> int:
         try:
             candidate = copy.deepcopy(registry)
             candidate["limitations"] = ["synthetic mode-preservation write"]
+
+            oversize = b"x" * (writer.MAX_JSON_BYTES + 1)
+            temp_registry.write_bytes(oversize)
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == "cannot snapshot promotion review registry before append"
+                        and exc.__suppress_context__,
+                        "oversized promotion registry snapshot leaked private diagnostics")
+            else:
+                raise Fail("oversized promotion registry snapshot unexpectedly accepted")
+            require(temp_registry.read_bytes() == oversize,
+                    "oversized promotion registry snapshot mutated original bytes")
+            temp_registry.write_bytes(before)
+            temp_registry.chmod(before_mode)
+
+            marker = "PRIVATE_PROMOTION_SNAPSHOT_CANARY_DO_NOT_LOG"
+            external_canary = Path(registry_tmp) / "snapshot-external-canary.json"
+            external_canary.write_text(marker, encoding="utf-8")
+            temp_registry.unlink()
+            temp_registry.symlink_to(external_canary)
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == "cannot snapshot promotion review registry before append"
+                        and marker not in str(exc),
+                        "promotion registry snapshot symlink disclosed private diagnostics")
+            else:
+                raise Fail("promotion registry snapshot symlink unexpectedly accepted")
+            require(external_canary.read_text(encoding="utf-8") == marker,
+                    "promotion registry snapshot external canary mutated")
+            temp_registry.unlink()
+            temp_registry.mkdir()
+            try:
+                writer.write_registry_transactionally(candidate)
+            except writer.Fail as exc:
+                require(str(exc) == "cannot snapshot promotion review registry before append",
+                        "promotion registry snapshot directory wrong rejection")
+            else:
+                raise Fail("promotion registry snapshot directory unexpectedly accepted")
+            temp_registry.rmdir()
+            temp_registry.write_bytes(before)
+            temp_registry.chmod(before_mode)
+            require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")),
+                    "promotion registry snapshot negatives left temporary residue")
+            print("PASS: promotion registry snapshot bounded, canonical and private (3 negatives)")
+
             writer.write_registry_transactionally(candidate)
             require(writer.stat.S_IMODE(temp_registry.stat().st_mode) == before_mode, "promotion registry mode changed after successful transactional append")
             require(not list(temp_registry.parent.glob(".backup-restore-promotion-review*.tmp")), "promotion registry successful append left temporary residue")
