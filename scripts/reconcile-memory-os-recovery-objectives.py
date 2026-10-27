@@ -9,6 +9,7 @@ import math
 import os
 import subprocess
 import sys
+import stat
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -114,27 +115,40 @@ def read_text(path: Path) -> str:
 
 
 def write_text(path: Path, text: str) -> None:
-    relative = repo_relative(path)
-    require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
-    mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    """Atomically replace only reviewed, bounded recovery objective authorities."""
+    require(isinstance(path, Path) and path.is_absolute(),
+            "recovery objective reconcile write path unsafe")
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError):
+        raise Fail("recovery objective reconcile write path unsafe") from None
+    require(lexical == resolved and path.is_file() and not path.is_symlink(),
+            "recovery objective reconcile write path unsafe")
+    require(lexical in {CONTRACT_REL, STATUS_REL},
+            "recovery objective reconcile write target unreviewed")
+    require(isinstance(text, str), "recovery objective reconcile write payload invalid")
+    try:
+        payload = text.encode("utf-8")
+    except UnicodeError:
+        raise Fail("recovery objective reconcile write payload invalid") from None
+    require(len(payload) <= MAX_AUTHORITY_BYTES,
+            "recovery objective reconcile write size limit exceeded")
     temp_name: str | None = None
     try:
+        mode = stat.S_IMODE(path.stat().st_mode)
         fd, temp_name = tempfile.mkstemp(
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            dir=path.parent,
-            text=True,
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
         )
-        if mode is not None:
-            os.fchmod(fd, mode)
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            handle.write(text)
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, path)
         temp_name = None
-    except OSError as exc:
-        raise Fail(f"cannot atomically write {relative}: {exc}") from exc
+    except (OSError, ValueError, TypeError):
+        raise Fail("recovery objective reconcile authority atomic write failed") from None
     finally:
         if temp_name is not None:
             try:
@@ -142,7 +156,7 @@ def write_text(path: Path, text: str) -> None:
             except FileNotFoundError:
                 pass
             except OSError:
-                pass
+                raise Fail("recovery objective reconcile authority temporary cleanup failed") from None
 
 
 def restore_original_text(original_text: dict[Path, str]) -> None:
