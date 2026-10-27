@@ -142,7 +142,8 @@ def prove_atomic_write_failure() -> None:
         try:
             reconciler.write_text(CANONICAL_CONTRACT, before[CANONICAL_CONTRACT].decode("utf-8") + " ")
         except reconciler.Fail as exc:
-            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+            require(str(exc) == "typed reconcile atomic write failed" and exc.__suppress_context__ and exc.__cause__ is None,
+                    "typed atomic write rejected at wrong private failure boundary")
         else:
             raise Fail("synthetic typed non-resurrection atomic replace failure unexpectedly accepted")
     finally:
@@ -245,7 +246,8 @@ def prove_second_replace_rollback() -> None:
         try:
             reconciler.main()
         except reconciler.Fail as exc:
-            require("synthetic second authority replace rejection" in str(exc), f"second replace rejected at wrong boundary: {exc}")
+            require(str(exc) == "typed reconcile atomic write failed" and "synthetic second authority replace rejection" not in str(exc),
+                    "typed second replace leaked private filesystem exception")
         else:
             raise Fail("synthetic second authority replace failure unexpectedly accepted")
     finally:
