@@ -65,6 +65,15 @@ def require_private_child_negative_reachable(source: str) -> None:
     ]
     if len(calls) != 1:
         raise SystemExit("generation evidence private child negative execution drift")
+    if "prove_private_writer_import_failures" not in functions:
+        raise SystemExit("generation evidence private writer import negative missing")
+    writer_calls = [
+        node for node in ast.walk(functions["main"])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "prove_private_writer_import_failures"
+    ]
+    if len(writer_calls) != 1:
+        raise SystemExit("generation evidence private writer import negative execution drift")
 
 
 def prove_private_child_negative_removal_rejected() -> None:
@@ -81,6 +90,17 @@ def prove_private_child_negative_removal_rejected() -> None:
     else:
         raise SystemExit("generation evidence private child negative deletion accepted")
     print("PASS: generation evidence private child negative execution deletion rejected")
+    writer_anchor = "    prove_private_writer_import_failures(module)\n"
+    if source.count(writer_anchor) != 1:
+        raise SystemExit("generation evidence private writer import negative removal anchor drift")
+    mutated_writer = source.replace(writer_anchor, "    pass\n", 1)
+    try:
+        require_private_child_negative_reachable(mutated_writer)
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation evidence private writer import negative deletion accepted")
+    print("PASS: generation evidence private writer import negative execution deletion rejected")
 
 
 
