@@ -386,6 +386,21 @@ def main() -> int:
                                "generation evidence registry atomic restore failed")
             finally:
                 writer.os.replace = original_replace
+
+            # Cleanup failure must be classified privately after removing its owned temp.
+            original_unlink = writer.os.unlink
+            def unlink_then_fail(path, *args, **kwargs):
+                original_unlink(path, *args, **kwargs)
+                raise OSError("PRIVATE_GENERATION_ATOMIC_CANARY unlink")
+            writer.os.replace = reject_restore_replace
+            writer.os.unlink = unlink_then_fail
+            try:
+                expect_private("generation atomic temporary cleanup failure",
+                               lambda: writer.atomic_write(candidate_value, original_mode),
+                               "generation evidence registry temporary cleanup failed")
+            finally:
+                writer.os.unlink = original_unlink
+                writer.os.replace = original_replace
         finally:
             writer.os.replace = original_replace
             writer.REGISTRY = original_registry
