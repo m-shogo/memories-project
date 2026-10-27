@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 from pathlib import Path
 from typing import Any, Callable
+
+from ops_independent_review_fixture_loader import load_pinned_module
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-independent-review.py")
@@ -24,11 +27,51 @@ def require(condition: bool, message: str) -> None:
 def load_validator() -> Any:
     require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical independent-review validator missing or symlinked")
     require(VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve()) == VALIDATOR_REL, "canonical independent-review validator path drift")
-    spec = importlib.util.spec_from_file_location("memory_os_generation_independent_review_transport_negative", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load independent-review validator")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_pinned_module(ROOT, VALIDATOR, "memory_os_generation_independent_review_transport_negative")
+
+
+SOURCE_ORDER_EXECUTION_NEGATIVE = (
+    ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-execution-negative.py"
+)
+
+
+def require_source_order_pinned_import(source: str) -> None:
+    tree = ast.parse(source)
+    functions = [node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == "prove_source_order_json_reader"]
+    require(len(functions) == 1, "source-order negative import function drift")
+    fn = functions[0]
+    pinned = [node for node in ast.walk(fn)
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+              and node.func.id == "load_checked_module"]
+    unsafe = [node for node in ast.walk(fn)
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+              and node.func.attr == "spec_from_file_location"]
+    require(len(pinned) == 1 and not unsafe, "source-order negative import must be descriptor-pinned")
+
+
+def prove_source_order_import_guard() -> None:
+    with SOURCE_ORDER_EXECUTION_NEGATIVE.open("rb") as stream:
+        raw = stream.read(1024 * 1024 + 1)
+    require(len(raw) <= 1024 * 1024, "source-order negative source oversized")
+    try:
+        source = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Fail("source-order negative source invalid") from None
+    require_source_order_pinned_import(source)
+    old = 'module = load_checked_module(path_to_validator, "memory_os_source_order_json_negative")'
+    require(source.count(old) == 1, "source-order pinned negative mutation anchor drift")
+    for label, replacement in (
+        ("delete import", "module = None"),
+        ("restore unsafe default loader", 'module = importlib.util.spec_from_file_location("unsafe", path_to_validator)'),
+    ):
+        mutant = source.replace(old, replacement, 1)
+        try:
+            require_source_order_pinned_import(mutant)
+        except Fail:
+            continue
+        raise Fail("source-order pinned import weakening accepted: " + label)
+    print("PASS: independent source-order negative importer rejects 2 source mutations")
 
 
 def expect_transport_rejected(module: Any, mutate: Callable[[], None], restore: Callable[[], None], label: str) -> None:
@@ -45,6 +88,7 @@ def expect_transport_rejected(module: Any, mutate: Callable[[], None], restore: 
 
 
 def main() -> int:
+    prove_source_order_import_guard()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
     canonical_registry = module.REGISTRY.read_bytes()

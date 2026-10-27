@@ -546,10 +546,7 @@ def prove_pair_negative_harness_reachability() -> None:
 def prove_source_order_json_reader() -> None:
     """Exercise the actual review chronology reader without modifying review evidence."""
     path_to_validator = ROOT / SOURCE_ORDER_REL
-    spec = importlib.util.spec_from_file_location("memory_os_source_order_json_negative", path_to_validator)
-    require(spec is not None and spec.loader is not None, "source-order JSON validator unavailable")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = load_checked_module(path_to_validator, "memory_os_source_order_json_negative")
     with tempfile.TemporaryDirectory(prefix="memory-os-source-order-json-", dir=ROOT) as directory:
         path = Path(directory) / "candidate.json"
         positive = b'{"safe":true,"nested":{"count":1}}'
