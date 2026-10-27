@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import inspect
 import json
@@ -274,11 +275,77 @@ def expect_contract_ref_rejection(field: str, replacement: str, expected_message
         module.load_contract = original
 
 
+def require_snapshot_transport_reachability(writer_source: str, suite_source: str) -> None:
+    """Bind both the writer's pinned snapshot call and the executable negative probe."""
+    writer_tree = ast.parse(writer_source)
+    require(len(writer_tree.body) == 1 and isinstance(writer_tree.body[0], ast.FunctionDef),
+            "generation writer transaction source invalid")
+    first = writer_tree.body[0].body[0]
+    require(
+        isinstance(first, ast.Assign)
+        and len(first.targets) == 1
+        and isinstance(first.targets[0], ast.Tuple)
+        and [x.id for x in first.targets[0].elts if isinstance(x, ast.Name)]
+            == ["original", "original_mode"]
+        and isinstance(first.value, ast.Call)
+        and isinstance(first.value.func, ast.Name)
+        and first.value.func.id == "snapshot_registry_for_append"
+        and not first.value.args and not first.value.keywords,
+        "generation writer must snapshot through pinned bounded helper before publication",
+    )
+    suite_tree = ast.parse(suite_source)
+    mains = [node for node in suite_tree.body if isinstance(node, ast.FunctionDef)
+             and node.name == "main"]
+    require(len(mains) == 1, "generation registry transaction negative main missing")
+    calls = [node for node in mains[0].body if isinstance(node, ast.Expr)
+             and isinstance(node.value, ast.Call)
+             and isinstance(node.value.func, ast.Name)
+             and node.value.func.id == "prove_pinned_registry_snapshot"
+             and len(node.value.args) == 1
+             and isinstance(node.value.args[0], ast.Name)
+             and node.value.args[0].id == "writer"
+             and not node.value.keywords]
+    require(len(calls) == 1, "generation snapshot negative must be invoked directly by CI suite")
+
+
+def prove_snapshot_transport_reachability() -> None:
+    module = load_authority_validator("generation_snapshot_source_binding")
+    writer = module.load_writer()
+    source = inspect.getsource(writer.write_registry_transactionally)
+    suite_path = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
+    require(suite_path.is_file() and not suite_path.is_symlink(),
+            "generation snapshot negative source missing or symlinked")
+    require(suite_path.stat().st_size <= 1024 * 1024,
+            "generation snapshot negative source too large")
+    suite = suite_path.read_text(encoding="utf-8")
+    require_snapshot_transport_reachability(source, suite)
+    mutated_writer = source.replace("snapshot_registry_for_append()", "unsafe_read_bytes()", 1)
+    require(mutated_writer != source, "generation snapshot mutation did not apply")
+    try:
+        require_snapshot_transport_reachability(mutated_writer, suite)
+    except Fail as exc:
+        require(str(exc) == "generation writer must snapshot through pinned bounded helper before publication",
+                "generation snapshot writer mutation rejected at wrong boundary")
+    else:
+        raise Fail("generation writer unbounded snapshot mutation accepted")
+    mutated_suite = suite.replace("    prove_pinned_registry_snapshot(writer)\n", "", 1)
+    require(mutated_suite != suite, "generation snapshot negative call mutation did not apply")
+    try:
+        require_snapshot_transport_reachability(source, mutated_suite)
+    except Fail as exc:
+        require(str(exc) == "generation snapshot negative must be invoked directly by CI suite",
+                "generation snapshot negative removal rejected at wrong boundary")
+    else:
+        raise Fail("generation snapshot negative call removal accepted")
+    print("PASS: generation snapshot bounded helper and direct CI negative call are source-bound")
+
+
 def main() -> int:
     require(AUTHORITY_VALIDATOR.is_file(), "authority validator missing")
     require(TMP_PARENT.is_dir(), "isolated operability fixture parent missing")
     reject_writer_cli_substitutions()
     reject_generation_validator_substitutions()
+    prove_snapshot_transport_reachability()
 
     cases = (
         ("contract", {"CONTRACT": "contracts/operations/backup-restore-drill-request-contract.v1.json"}, "generation-evidence contract authority drift"),
