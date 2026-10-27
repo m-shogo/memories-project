@@ -428,6 +428,50 @@ def prove_private_authority_path_diagnostics(reconciler: object) -> None:
     print("PASS: recovery objective canonical authority path private diagnostics (2 negatives)")
 
 
+def prove_private_delegated_registry_errors(reconciler: object) -> None:
+    """Recognized delegated domain errors must not echo private text or context."""
+    with isolated_authorities(reconciler):
+        original_loader = reconciler.load_writer
+        canonical_writer = original_loader()
+        require(isinstance(canonical_writer.validate_registry_for_append(
+                    reconciler.load(reconciler.REGISTRY)), list),
+                "recovery objective delegated registry positive control failed")
+        marker = "PRIVATE_RECOVERY_OBJECTIVE_DELEGATED_REGISTRY_CANARY"
+
+        class Fail(RuntimeError):
+            pass
+
+        class DelegatedWriter:
+            def __init__(self, failure):
+                self.failure = failure
+
+            def validate_registry_for_append(self, _registry):
+                raise self.failure
+
+        try:
+            reconciler.load_writer = lambda: DelegatedWriter(Fail(marker))
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                require(str(exc) == "append-only recovery objective authority invalid before reconcile"
+                        and exc.__suppress_context__ and marker not in str(exc),
+                        "recovery objective delegated domain error exposed private diagnostics")
+            else:
+                raise Fail("recovery objective delegated domain error unexpectedly accepted")
+
+            reconciler.load_writer = lambda: DelegatedWriter(TypeError(marker))
+            try:
+                reconciler.main()
+            except TypeError as exc:
+                require(str(exc) == marker,
+                        "recovery objective unexpected delegated fault was normalized")
+            else:
+                raise Fail("recovery objective unexpected delegated fault accepted")
+        finally:
+            reconciler.load_writer = original_loader
+    print("PASS: recovery objective delegated registry private domain error and unexpected fault boundary")
+
+
 def prove_private_post_reconcile_transport(reconciler: object) -> None:
     """Exercise the actual subprocess boundary with private synthetic canaries."""
     original_run = reconciler.subprocess.run
@@ -646,6 +690,7 @@ def main() -> int:
     prove_strict_objective_json(reconciler)
     prove_private_writer_import(reconciler)
     prove_private_authority_path_diagnostics(reconciler)
+    prove_private_delegated_registry_errors(reconciler)
     prove_private_post_reconcile_transport(reconciler)
     prove_private_atomic_write_path_guards(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
