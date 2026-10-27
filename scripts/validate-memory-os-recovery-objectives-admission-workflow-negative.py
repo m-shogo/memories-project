@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/recovery-objectives-admission.yml"
 INDEPENDENT = ".github/workflows/recovery-objectives-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-recovery-objectives-admission-workflow-negative.py"
-REVIEWED_PUBLISHER = "d7afd013ab3fe0d91e66913bc1fe335176d923c6"
+REVIEWED_PUBLISHER = "dadbedca0f7464489638781118b993e571b50648"
 REVIEWED_INDEPENDENT = "16c74a57a5e8b0f983a95e36aa3055c0ab96adae"
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
@@ -47,6 +47,8 @@ MAIN_REQUIRED = (
     ("writer write token", "      contents: write\n", 1),
     ("diagnostic fixed redaction", "              'output': 'REDACTED: recovery objective validation failed; consult CI job logs',\n", 1),
     ("raw CI log suppression", '          printf "Recovery objective validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
+    ("fixed stage output", '          echo "failure_stage=$stage" >> "$GITHUB_OUTPUT"\n', 1),
+    ("fixed stage diagnostic", '          printf "Recovery objective validation stage: %s (fixed class; raw validator log suppressed)\\n" "$stage"\n', 1),
     ("no raw diagnostic tail", "text[-12000:]", 0),
     ("no raw CI log echo", '          cat "$log"\n', 0),
 )
@@ -213,6 +215,71 @@ def runtime_diagnostic_redaction(publisher: str) -> None:
     print("PASS: recovery objective diagnostic redaction/atomic runtime (5 cases)")
 
 
+def runtime_failure_stage(publisher: str) -> None:
+    """Execute the actual validation shell with synthetic private failures."""
+    heading = "      - name: Validate explicit recovery objectives authority\n"
+    following = "      - name: Commit bounded objective authority\n"
+    if publisher.count(heading) != 1 or publisher.count(following) != 1:
+        raise SystemExit("recovery objective class-only validation step missing")
+    block = publisher.split(heading, 1)[1].split(following, 1)[0]
+    if block.count("        run: |\n") != 1:
+        raise SystemExit("recovery objective class-only shell source missing")
+    run = block.split("        run: |\n", 1)[1]
+    lines = run.splitlines()
+    if any(not line.startswith("          ") for line in lines):
+        raise SystemExit("recovery objective class-only shell indentation drift")
+    body = "\n".join(line[10:] for line in lines) + "\n"
+    expected_stages = (
+        "PY_COMPILE", "ADMISSION_NEGATIVE", "DIGEST_NEGATIVE",
+        "APPEND_ROLLBACK_NEGATIVE", "RECONCILE_NEGATIVE", "RECONCILE",
+        "OBJECTIVE_VALIDATOR", "OPERABILITY_VALIDATOR",
+    )
+    marker = "PRIVATE_RECOVERY_OBJECTIVE_STAGE_CANARY"
+    with tempfile.TemporaryDirectory(prefix="recovery-objective-stage-") as tmp:
+        root = Path(tmp)
+        log = root / "private.log"
+        if body.count("log=/tmp/recovery-objectives-admission.log") != 1:
+            raise SystemExit("recovery objective private log source drift")
+        body = body.replace("log=/tmp/recovery-objectives-admission.log", "log=" + str(log))
+        shell = (
+            "CALLS=0\n"
+            "python() {\n"
+            "  CALLS=$((CALLS+1))\n"
+            "  if [[ \"$CALLS\" == \"$FAIL_AT\" ]]; then\n"
+            "    printf 'PRIVATE_RECOVERY_OBJECTIVE_STAGE_CANARY\\n' >&2\n"
+            "    return 17\n"
+            "  fi\n"
+            "  return 0\n"
+            "}\n" + body
+        )
+        for fail_at in range(9):
+            output = root / "output"
+            output.write_text("", encoding="utf-8")
+            env = {
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "GITHUB_OUTPUT": str(output),
+                "FAIL_AT": str(fail_at),
+            }
+            completed = subprocess.run(
+                ["bash", "-c", shell], cwd=root, env=env,
+                capture_output=True, text=True, check=False, timeout=15,
+            )
+            expected = "PASS" if fail_at == 0 else expected_stages[fail_at - 1]
+            code = 0 if fail_at == 0 else 17
+            observed = output.read_text(encoding="utf-8")
+            if completed.returncode != 0 or observed != (
+                f"exit_code={code}\nfailure_stage={expected}\n"
+            ):
+                raise SystemExit("recovery objective class-only stage output drift")
+            if (f"Recovery objective validation stage: {expected} "
+                    not in completed.stdout or marker in completed.stdout
+                    or marker in completed.stderr):
+                raise SystemExit("recovery objective class-only stage diagnostic private/output drift")
+            if fail_at and marker not in log.read_text(encoding="utf-8"):
+                raise SystemExit("recovery objective synthetic failure was not exercised")
+    print("PASS: recovery objective class-only validation stage runtime (9 cases)")
+
+
 def negatives(publisher: str, independent: str) -> None:
     publisher_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -279,6 +346,7 @@ def main() -> int:
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
+    runtime_failure_stage(publisher)
     negatives(publisher, independent)
     return 0
 
