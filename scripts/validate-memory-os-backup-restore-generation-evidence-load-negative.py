@@ -241,7 +241,11 @@ def pin_checked_helper_parent(path: Path) -> int:
     except ValueError:
         raise Fail("generation-evidence fixture guard parent outside trusted roots") from None
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    require(anchor.is_dir() and not anchor.is_symlink(),
+    try:
+        anchor_ok = anchor.is_dir() and not anchor.is_symlink()
+    except (OSError, RuntimeError):
+        raise Fail("fixture guard trusted anchor check failed") from None
+    require(anchor_ok,
             "generation-evidence fixture guard trusted anchor missing or symlinked")
     try:
         fd = os.open(anchor, flags)

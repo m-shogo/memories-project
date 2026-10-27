@@ -725,6 +725,41 @@ except (Exception, SystemExit):
         and base_handlers[0].body[1].cause is None,
         "loader parent unexpected cleanup not private",
     )
+    expected_anchor_condition = ast.parse(
+        "anchor.is_dir() and not anchor.is_symlink()", mode="eval"
+    ).body
+    expected_anchor_handler = ast.parse("""try:
+    pass
+except (OSError, RuntimeError):
+    raise Fail("fixture guard trusted anchor check failed") from None
+""").body[0].handlers[0]
+    anchor_checks = [
+        (index, node) for index, node in enumerate(pin.body)
+        if isinstance(node, ast.Try)
+        and len(node.body) == 1
+        and isinstance(node.body[0], ast.Assign)
+        and len(node.body[0].targets) == 1
+        and isinstance(node.body[0].targets[0], ast.Name)
+        and node.body[0].targets[0].id == "anchor_ok"
+        and ast.dump(node.body[0].value, include_attributes=False)
+            == ast.dump(expected_anchor_condition, include_attributes=False)
+    ]
+    require(
+        len(anchor_checks) == 1
+        and len(anchor_checks[0][1].handlers) == 1
+        and ast.dump(anchor_checks[0][1].handlers[0], include_attributes=False)
+            == ast.dump(expected_anchor_handler, include_attributes=False)
+        and not anchor_checks[0][1].orelse and not anchor_checks[0][1].finalbody
+        and anchor_checks[0][0] + 1 < len(pin.body)
+        and isinstance(pin.body[anchor_checks[0][0] + 1], ast.Expr)
+        and isinstance(pin.body[anchor_checks[0][0] + 1].value, ast.Call)
+        and isinstance(pin.body[anchor_checks[0][0] + 1].value.func, ast.Name)
+        and pin.body[anchor_checks[0][0] + 1].value.func.id == "require"
+        and len(pin.body[anchor_checks[0][0] + 1].value.args) == 2
+        and isinstance(pin.body[anchor_checks[0][0] + 1].value.args[0], ast.Name)
+        and pin.body[anchor_checks[0][0] + 1].value.args[0].id == "anchor_ok",
+        "loader anchor predicate fault not private",
+    )
     for suffix, expected_type, expected_count in (
         ("fixture guard parent outside trusted roots", "ValueError", 1),
         ("fixture guard anchor open failed", "OSError", 1),
@@ -1581,6 +1616,28 @@ def negative_cases(source: str, diagnostic: str) -> int:
          "ancestor pin handoff not cleanup-safe"),
         (handoff_anchor, handoff_anchor.replace(" from None", ""),
          "ancestor pin handoff not cleanup-safe"),
+    )
+    anchor_start = """    try:
+        anchor_ok = anchor.is_dir() and not anchor.is_symlink()
+"""
+    anchor_end = """    except (OSError, RuntimeError):
+        raise Fail("fixture guard trusted anchor check failed") from None
+"""
+    require(source.count(anchor_start) == 1 and source.count(anchor_end) == 1,
+            "loader anchor predicate fault not private")
+    anchor_begin = source.index(anchor_start)
+    anchor_finish = source.index(anchor_end, anchor_begin) + len(anchor_end)
+    anchor_guard = source[anchor_begin:anchor_finish]
+    replacements += (
+        (anchor_guard, anchor_guard.replace(
+            "except (OSError, RuntimeError):", "except OSError:"),
+         "loader anchor predicate fault not private"),
+        (anchor_guard, anchor_guard.replace(" from None", ""),
+         "loader anchor predicate fault not private"),
+        (anchor_guard, anchor_guard.replace("anchor.is_dir()", "True"),
+         "loader anchor predicate fault not private"),
+        (anchor_guard, anchor_guard.replace("not anchor.is_symlink()", "True"),
+         "loader anchor predicate fault not private"),
     )
     base_cleanup_anchor = (
         "    except BaseException:\n"
@@ -2704,6 +2761,29 @@ with tempfile.TemporaryDirectory(prefix=".pinned-compile-probe-", dir=sys.argv[2
             os.open, os.close = original_open, original_close
         assert "leaf" in tracked and "parent" in tracked
 
+    original_is_dir, original_is_symlink = Path.is_dir, Path.is_symlink
+    for fault in ("is_dir", "is_symlink"):
+        def fault_anchor_predicate(self):
+            if self == Path(sys.argv[2]):
+                raise RuntimeError("PRIVATE_ANCHOR_PREDICATE_CANARY")
+            return (original_is_dir(self) if fault == "is_dir"
+                    else original_is_symlink(self))
+        if fault == "is_dir":
+            Path.is_dir = fault_anchor_predicate
+        else:
+            Path.is_symlink = fault_anchor_predicate
+        try:
+            try:
+                loader(good, "pinned_anchor_predicate_negative_" + fault)
+            except Fail as exc:
+                assert str(exc) == "fixture guard trusted anchor check failed"
+                assert exc.__cause__ is None and exc.__suppress_context__
+                assert "PRIVATE_ANCHOR_PREDICATE_CANARY" not in str(exc)
+            else:
+                raise AssertionError("anchor predicate failure accepted")
+        finally:
+            Path.is_dir, Path.is_symlink = original_is_dir, original_is_symlink
+
     outside = Path("/PRIVATE_OUTSIDE_CANARY/fixture.py")
     try:
         loader(outside, "pinned_outside_negative")
@@ -2935,7 +3015,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 87 * len(TARGETS) + 228, "ancestor negative count mismatch")
+        require(total == 91 * len(TARGETS) + 228, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
