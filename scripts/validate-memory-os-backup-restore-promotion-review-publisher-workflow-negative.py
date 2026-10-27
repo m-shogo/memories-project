@@ -52,7 +52,7 @@ MAIN_REQUIRED = (
     ("raw CI log suppression", '          printf "Promotion review validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', 1),
     ("no raw diagnostic tail", "text[-12000:]", 0),
     ("no raw CI log echo", '          cat "$log"\n', 0),
-    ("diagnostic symlink rejection", "          if path.is_symlink():\n", 1),
+    ("diagnostic symlink rejection", "          if path.is_symlink():\n              raise SystemExit('promotion review diagnostic target must not be a symlink')\n", 1),
 )
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
@@ -252,6 +252,7 @@ def negatives(publisher: str, independent: str) -> None:
         ("raw CI log", '          printf "Promotion review validation exit code: %s (raw validator log suppressed)\\n" "$code"\n', '          cat "$log"\n'),
         ("missing redaction", "              'output': 'REDACTED: promotion review validation failed; consult CI job logs',\n", ""),
         ("diagnostic symlink guard", "          if path.is_symlink():\n", ""),
+        ("diagnostic symlink rejection body", "              raise SystemExit('promotion review diagnostic target must not be a symlink')\n", "              pass\n"),
     )
     independent_cases = (
         ("PR target", "  pull_request:\n    branches:\n      - so\n", "  pull_request:\n"),
@@ -270,7 +271,7 @@ def negatives(publisher: str, independent: str) -> None:
     )
     publisher_blob_only = {"unreviewed Action", "unreviewed shell"}
     independent_blob_only = {"injected Action", "injected shell"}
-    if (len(publisher_cases), len(independent_cases)) != (26, 13):
+    if (len(publisher_cases), len(independent_cases)) != (27, 13):
         raise SystemExit("human promotion source negative population drift")
     if sum(label in publisher_blob_only for label, _, _ in publisher_cases) != 2 or sum(label in independent_blob_only for label, _, _ in independent_cases) != 2:
         raise SystemExit("human promotion source digest-only population drift")
@@ -282,6 +283,12 @@ def negatives(publisher: str, independent: str) -> None:
             mutated = original.replace(old, new, 1)
             if mutated == original:
                 raise SystemExit("human promotion negative fixture unchanged: " + target + " " + label)
+            required = MAIN_REQUIRED if target == "publisher" else INDEPENDENT_REQUIRED
+            semantic = any(mutated.count(token) != original.count(token)
+                           for _, token, _ in required)
+            digest_only = publisher_blob_only if target == "publisher" else independent_blob_only
+            if semantic == (label in digest_only):
+                raise SystemExit("human promotion mutation classification drift: " + target + " " + label)
             try:
                 if target == "publisher":
                     validate(mutated, independent, check_publisher_blob=label in publisher_blob_only)
