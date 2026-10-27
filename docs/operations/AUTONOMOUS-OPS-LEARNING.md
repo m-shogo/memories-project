@@ -14887,3 +14887,42 @@ a promotion decision, a recovery objective, or drill evidence.
 - **Observed outcome/evidence:** The previously pending source `517bf635f3e761729e4ed281991ed70cd5328e46` completed Recovery Objectives Admission run `40438326610` with SUCCESS. Its field-name negative guard was runtime-reachable and did not require changing production authority. The earlier `f2cbb2` run `40438312709` validated `failure_stage=PASS` but refused stale HEAD during publication, which is expected CAS safety and not a failed validator.
 - **Why safe/reusable mechanism:** Distinguish class-only validator success from whole workflow completion, and require exact-source SUCCESS before upgrading the CI claim. No objective, generation, evidence or promotion was created.
 - **Protected-authority check:** Production status blob `f58d9e66eef99c06c23711a472325dacc686282e`, objective registry blob `f4d74f333a4884f9aba2284a31ac011aae8b71bd`, and mandatory learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` remain unchanged; `productionDecision=NO_GO`.
+
+## 2026-10-27 — Validator negative case typing and private authority paths
+
+### Material failure
+- **Symptom/evidence:** Validator source `36532bd98b1f9156efbfb0c59610a60453e71205` computed `set(negativeAdmissionCases)` without checking each JSON element was a string; malformed mapping/list cases could raise raw `TypeError`. Several path authority helpers also chained filesystem exceptions into public validation failures. No real credential leak or objective admission was observed.
+- **Verified root cause:** Untrusted JSON collection operations preceded type checks; validator path wrappers did not reuse the writer's context-suppressed fixed error classification. **Failed approach:** assuming reviewed contract shape and filesystem exceptions are inherently safe for public diagnostics.
+- **Correction:** `0a72d9639f14af65b74e2ca648ceb39d5aa6b1de` adds a typed exact-set admission helper. `e934df06e2877a977eb69e3f985bd9f511ea9130` adds one positive and six malformed authority negatives. `29653ae6ceb29810f9cbc85a2ee18b999829c25e` suppresses private filesystem exception contexts; `2d1896dec313c8e2a7ba65949bc466d618fc1cbc` adds four actual path negatives and canonical positive controls.
+- **Executable recurrence guard:** The existing Recovery Objectives Admission workflow invokes the negative suite. Exact-source runs `40438609736` (`e934df06`) and `40438680858` (`2d1896de`) both completed SUCCESS. Earlier `0a72d963` run `40438592179` validated `failure_stage=PASS` but refused a stale HEAD during publication; it is not a validator regression.
+- **Retry condition:** Revisit only on exact-source regression or reviewed schema/path policy change; do not retry unchanged stale-source publisher conflicts.
+### Material success
+- **Outcome/evidence:** Unhashable negative cases and private path failures now produce fixed domain diagnostics in actual runtime CI.
+- **Why safe/reusable mechanism:** Check all collection element types before `set()`, and suppress filesystem exception contexts at each independent authority boundary. Tests use synthetic paths and do not write production evidence.
+- **Protected-authority check:** `productionDecision=NO_GO`, zero approved objectives and all OPS-P0-007 generation, objective, executable request, typed eight-domain, independent review and human promotion gates remain mandatory.
+
+## 2026-10-27 — Exact type binding of human-approved recovery targets
+
+### Material failure
+- **Symptom/evidence:** Writer `approval_document` compared approved RPO/RTO/skew values using Python equality alone. For records with RPO/RTO=1 or skew=0, approval JSON `true`/`false` compares equal to integers and could satisfy a binding despite a type mismatch. No such human approval or production objective was observed.
+- **Verified root cause:** Python `bool` subclasses `int`; equality is not sufficient for typed human recovery-target binding. **Failed approach:** trusting value equality without exact type identity.
+- **Correction:** `ac1905a3721bf0c613a9a8e00a939c3fcc22e0b1` requires both exact type and value for objectiveId, scope, RPO, RTO and skew. `c301785fd8dcaa1ed805e83b73eb000cbf4b39bf` adds an actual positive synthetic approval and four boolean/string mismatch negatives, without creating approval evidence.
+- **Executable recurrence guard:** Recovery Objectives Admission run `40438829900` at `c301785f` completed SUCCESS. The earlier `ac1905a3` run `40438809885` reported validator PASS but stale-source CAS refusal, not failed admission semantics.
+- **Retry condition:** Revisit on observed regression or a separately reviewed typed-approval schema change, never by inventing human approval values.
+### Material success
+- **Outcome/evidence:** The writer rejects boolean and string aliases of integer recovery targets; actual-function negative suite passed in exact-source CI.
+- **Why safe/reusable mechanism:** Bind human approval values with `type(a) is type(b)` plus equality and prove boolean/int edge cases with synthetic documents only.
+- **Protected-authority check:** No objective, recovery evidence, readiness or promotion was written; `NO_GO`, distinct semantic generation eligibility, explicit current human objective, executable reviewed request, typed eight-domain coverage, independent review and separate human promotion remain required.
+
+## 2026-10-27 — Pin objective validator and reconciler reads after path validation
+
+### Material failure
+- **Symptom/evidence:** Objective validator `load` and reconciler `read_text` performed lexical/resolved path checks, then reopened the path with `path.open`. A file swapped between check and open could redirect reads to an alias or special file despite the earlier check. No real race or production evidence substitution was observed.
+- **Verified root cause:** Path validation and file reading used separate filesystem lookups rather than a pinned regular-file descriptor. **Failed approach:** treating a pre-open path check as immutable source identity.
+- **Correction:** `4c79e37afec4397f382c688917451d3e2285ec4a` and `1bfeddd2d70e7292114aff3d7b1fa46aed977825` add `O_NOFOLLOW|O_NONBLOCK`, `fstat` regular-file and size checks, bounded descriptor reads and private cleanup failure classes. `758780f2443e199d1faaf22ebfa39ebcd7c5c8c2` and `b75ad48b780aa40de4bf9d52bd236e5c4c1677ba` add real-function simulated raced-open negatives and post-race positive controls.
+- **Executable recurrence guard:** Exact-source Recovery Objectives Admission `40438761982` at `758780f2` and Recovery Objectives Reconcile Negative `40438909621` plus Admission `40438909716` at `b75ad48b` completed SUCCESS. Intermediate `1bfeddd2` admission validated PASS but refused a concurrent newer HEAD; this was bounded CAS protection.
+- **Retry condition:** Revisit only on an observed race/reader regression, new filesystem platform constraint or reviewed source-identity policy change.
+### Material success
+- **Outcome/evidence:** Both read boundaries are now descriptor-pinned and exercised by canonical CI negative suites with unchanged positive fixture bytes.
+- **Why safe/reusable mechanism:** Recheck identity at the actual open operation, not only before it; preserve bounded byte reads and fixed private errors; use synthetic OSError canaries to test flags and fail-closed behavior.
+- **Protected-authority check:** Production status, recovery objective registry and autonomous-learning contract are unchanged. `productionDecision=NO_GO`; registered versus semantically eligible distinct environments, current human objective, executable reviewed request, typed eight-domain non-resurrection, independent review and separate human promotion remain mandatory. Learning/CI cannot satisfy any production or recovery evidence gate.
