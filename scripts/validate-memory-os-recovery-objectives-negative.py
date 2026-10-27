@@ -362,6 +362,30 @@ def prove_unhashable_approval_inputs(writer) -> None:
     print("PASS: objective typed approval refs and roles reject four unhashable negatives")
 
 
+def prove_typed_negative_case_authority(validator) -> None:
+    """Unhashable contract cases must be a fixed validator failure."""
+    cases = sorted(validator.EXPECTED_NEGATIVE_CASES)
+    validator.require_negative_admission_cases(cases)
+    marker = "PRIVATE_OBJECTIVE_NEGATIVE_CASE_CANARY"
+    for label, mutated in (
+        ("mapping case", cases + [{"private": marker}]),
+        ("list case", cases + [[marker]]),
+        ("numeric case", cases + [7]),
+        ("duplicate case", cases + [cases[0]]),
+        ("missing case", cases[1:]),
+        ("non-list", {"private": marker}),
+    ):
+        try:
+            validator.require_negative_admission_cases(mutated)
+        except validator.Fail as exc:
+            require(str(exc) == "negative admission case authority drift"
+                    and marker not in str(exc),
+                    f"typed negative authority {label} rejection drift")
+        else:
+            raise Fail(f"typed negative authority {label} unexpectedly accepted")
+    print("PASS: typed negative admission case authority positive and six negatives")
+
+
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
@@ -369,6 +393,7 @@ def main() -> int:
     prove_private_reference_failure_classes(writer)
     prove_unhashable_approval_inputs(writer)
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
+    prove_typed_negative_case_authority(validator)
     prove_writer_json_reader(writer)
     prove_recovery_objective_json_reader(validator)
     prove_negative_subprocess_redaction(validator)
