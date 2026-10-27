@@ -140,6 +140,45 @@ def prove_pinned_validator_import() -> None:
             "independent review canonical import restoration failed")
     print("PASS: independent review execution negative import pins source across parent swap")
 
+def prove_review_import_unsafe_sources() -> None:
+    """Oversized source, symlink, FIFO and unsupported flags are fail-closed."""
+    with tempfile.TemporaryDirectory(prefix=".generation-binding-target-unsafe-", dir=ROOT) as raw:
+        sandbox = Path(raw)
+        good = sandbox / "good.py"
+        good.write_text("VALUE = 'safe'\n", encoding="utf-8")
+        oversized = sandbox / "oversized.py"
+        oversized.write_bytes(b"x" * (MAX_REVIEW_MODULE_BYTES + 1))
+        linked = sandbox / "linked.py"
+        linked.symlink_to(good.name)
+        fifo = sandbox / "pipe.py"
+        os.mkfifo(fifo)
+        for candidate in (oversized, linked, fifo):
+            try:
+                load_checked_module(candidate, "independent_review_unsafe")
+            except Fail as exc:
+                require(str(exc) == "independent review negative source rejected"
+                        and exc.__suppress_context__,
+                        "independent review execution unsafe source leaked private diagnostics")
+            else:
+                raise Fail("independent review execution accepted unsafe source")
+        original_flag = os.O_NONBLOCK
+        try:
+            os.O_NONBLOCK = 0
+            try:
+                load_checked_module(good, "independent_review_unsupported_flag")
+            except Fail as exc:
+                require(str(exc) == "independent review negative source rejected"
+                        and exc.__suppress_context__,
+                        "independent review execution missing flag leaked private diagnostics")
+            else:
+                raise Fail("independent review execution accepted unsupported platform flag")
+        finally:
+            os.O_NONBLOCK = original_flag
+        require(load_checked_module(good, "independent_review_unsafe_restored").VALUE == "safe",
+                "independent review execution unsafe fixture restoration failed")
+    print("PASS: independent review execution unsafe sources and missing flag rejected")
+
+
 def expect_candidate_rejected(module: Any, field: str, replacement: Any) -> None:
     original = getattr(module, field)
     setattr(module, field, replacement)
@@ -605,6 +644,7 @@ def main() -> int:
     prove_pair_negative_harness_reachability()
     prove_pair_pinned_import_mutations_rejected()
     prove_pinned_validator_import()
+    prove_review_import_unsafe_sources()
     module = load_validator()
     canonical_contract = module.CONTRACT.read_bytes()
     canonical_registry = module.REGISTRY.read_bytes()
