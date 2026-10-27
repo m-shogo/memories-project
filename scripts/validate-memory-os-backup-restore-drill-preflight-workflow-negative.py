@@ -390,8 +390,8 @@ def prove_negative_mutations(main: str, guard: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("preflight source negative accepted mutation: " + target + " " + label)
-    if min(semantic_counts.values()) < 14 or min(digest_counts.values()) < 2:
-        raise SystemExit("preflight source negative semantic/digest coverage unexpectedly narrow")
+    if (semantic_counts["publisher"], digest_counts["publisher"], semantic_counts["independent"], digest_counts["independent"]) != (42, 3, 19, 4):
+        raise SystemExit("preflight source negative semantic/digest population drift")
     print(f"PASS: preflight publisher source admission ({semantic_counts['publisher']} semantic + {digest_counts['publisher']} blob-only negatives), independent source admission ({semantic_counts['independent']} semantic + {digest_counts['independent']} blob-only negatives)")
 
 
