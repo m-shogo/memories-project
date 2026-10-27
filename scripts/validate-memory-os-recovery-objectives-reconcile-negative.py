@@ -348,6 +348,36 @@ def prove_private_writer_import(reconciler: object) -> None:
     print("PASS: recovery objective writer import output and errors private")
 
 
+def prove_private_authority_path_diagnostics(reconciler: object) -> None:
+    """Canonical path failures must not retain private filesystem context."""
+    with isolated_authorities(reconciler):
+        marker = "PRIVATE_RECOVERY_OBJECTIVE_AUTHORITY_PATH_CANARY"
+        with tempfile.TemporaryDirectory(prefix="objective-reconcile-authority-external-") as tmp:
+            external = Path(tmp) / "private.json"
+            external.write_text(marker, encoding="utf-8")
+            alias = reconciler.ROOT / "contracts/operations/objective-authority-alias.json"
+            alias.symlink_to(external)
+            missing = reconciler.ROOT / "contracts/operations/missing-objective-authority.json"
+            for label, path in (("external-symlink", alias), ("missing", missing)):
+                try:
+                    reconciler.require_exact_repo_file(
+                        path, reconciler.REGISTRY_REL, "recovery objective registry",
+                    )
+                except reconciler.Fail as exc:
+                    require(str(exc) == "recovery objective registry missing or escapes repository"
+                            and exc.__suppress_context__ and marker not in str(exc),
+                            f"recovery objective reconcile {label} authority path diagnostic drift")
+                else:
+                    raise Fail(f"recovery objective reconcile {label} authority path accepted")
+            require(external.read_text(encoding="utf-8") == marker,
+                    "recovery objective authority path external canary changed")
+        require(reconciler.require_exact_repo_file(
+                    reconciler.REGISTRY, reconciler.REGISTRY_REL,
+                    "recovery objective registry") == reconciler.REGISTRY,
+                "recovery objective canonical authority path positive control failed")
+    print("PASS: recovery objective canonical authority path private diagnostics (2 negatives)")
+
+
 def prove_private_post_reconcile_transport(reconciler: object) -> None:
     """Exercise the actual subprocess boundary with private synthetic canaries."""
     original_run = reconciler.subprocess.run
@@ -565,6 +595,7 @@ def main() -> int:
 
     prove_strict_objective_json(reconciler)
     prove_private_writer_import(reconciler)
+    prove_private_authority_path_diagnostics(reconciler)
     prove_private_post_reconcile_transport(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     with isolated_authorities(reconciler):
