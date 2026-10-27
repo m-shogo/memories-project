@@ -378,17 +378,98 @@ def exercise_registry_transaction_transport() -> None:
         def reject_replace(*_args: object, **_kwargs: object) -> None:
             raise OSError("controlled typed registry replace rejection")
 
+        def expect_private_failure(name: str, action: Callable[[], object], expected: str) -> None:
+            try:
+                action()
+            except writer.Fail as exc:
+                require(str(exc) == expected and exc.__suppress_context__,
+                        f"{name} leaked details or changed fixed failure class")
+                require("PRIVATE_TYPED_ATOMIC_CANARY" not in str(exc),
+                        f"{name} leaked synthetic private canary")
+            else:
+                raise Fail(f"{name} unexpectedly accepted")
+            print(f"PASS reject: {name}")
+
         writer.os.replace = reject_replace
         try:
-            expect_rejected(
+            expect_private_failure(
                 "typed registry atomic replace rejection",
                 lambda: writer.atomic_write(copy.deepcopy(base), original_mode),
-                OSError,
+                "typed non-resurrection registry atomic write failed",
             )
         finally:
             writer.os.replace = original_replace
         require(registry.read_bytes() == before_reject, "replace rejection mutated typed registry bytes")
         require(stat.S_IMODE(registry.stat().st_mode) == original_mode, "replace rejection mutated typed registry mode")
+        assert_no_registry_temp_residue(parent)
+
+        # A failed mkstemp/fdopen/fchmod must never publish or leak private OS diagnostics.
+        original_mkstemp = writer.tempfile.mkstemp
+        def reject_mkstemp(*_args: object, **_kwargs: object):
+            raise OSError("PRIVATE_TYPED_ATOMIC_CANARY mkstemp")
+        writer.tempfile.mkstemp = reject_mkstemp
+        try:
+            expect_private_failure(
+                "typed registry mkstemp failure",
+                lambda: writer.atomic_write(copy.deepcopy(base), original_mode),
+                "typed non-resurrection registry atomic write failed",
+            )
+        finally:
+            writer.tempfile.mkstemp = original_mkstemp
+
+        original_fdopen = writer.os.fdopen
+        opened_fd: int | None = None
+        def capture_mkstemp(*args: object, **kwargs: object):
+            nonlocal opened_fd
+            opened_fd, name = original_mkstemp(*args, **kwargs)
+            return opened_fd, name
+        def reject_fdopen(*_args: object, **_kwargs: object):
+            raise OSError("PRIVATE_TYPED_ATOMIC_CANARY fdopen")
+        writer.tempfile.mkstemp = capture_mkstemp
+        writer.os.fdopen = reject_fdopen
+        try:
+            expect_private_failure(
+                "typed registry fdopen failure",
+                lambda: writer.atomic_write(copy.deepcopy(base), original_mode),
+                "typed non-resurrection registry atomic write failed",
+            )
+        finally:
+            writer.os.fdopen = original_fdopen
+            writer.tempfile.mkstemp = original_mkstemp
+        require(opened_fd is not None, "typed registry fdopen negative did not create descriptor")
+        try:
+            os.fstat(opened_fd)
+        except OSError:
+            pass
+        else:
+            raise Fail("typed registry fdopen failure leaked descriptor")
+
+        original_fchmod = writer.os.fchmod
+        def reject_fchmod(*_args: object, **_kwargs: object):
+            raise OSError("PRIVATE_TYPED_ATOMIC_CANARY fchmod")
+        writer.os.fchmod = reject_fchmod
+        try:
+            expect_private_failure(
+                "typed registry fchmod failure",
+                lambda: writer.atomic_write(copy.deepcopy(base), original_mode),
+                "typed non-resurrection registry atomic write failed",
+            )
+        finally:
+            writer.os.fchmod = original_fchmod
+
+        writer.os.replace = reject_replace
+        try:
+            expect_private_failure(
+                "typed registry atomic restore replace failure",
+                lambda: writer.atomic_restore(original_bytes, original_mode),
+                "typed non-resurrection registry atomic restore failed",
+            )
+        finally:
+            writer.os.replace = original_replace
+        require(registry.read_bytes() == before_reject,
+                "typed registry atomic pre-publication failure changed bytes")
+        require(stat.S_IMODE(registry.stat().st_mode) == original_mode,
+                "typed registry atomic pre-publication failure changed mode")
         assert_no_registry_temp_residue(parent)
 
         candidate = copy.deepcopy(base)
@@ -400,11 +481,26 @@ def exercise_registry_transaction_transport() -> None:
 
         writer.validate_registry_for_append = reject_post_write
         try:
-            expect_rejected(
+            expect_private_failure(
                 "typed registry post-write validation rollback",
                 lambda: writer.write_registry_transactionally(candidate),
-                writer.Fail,
+                "typed non-resurrection append failed; rollback completed",
             )
+            original_restore = writer.atomic_restore
+            def reject_rollback(*_args: object, **_kwargs: object) -> None:
+                raise OSError("PRIVATE_TYPED_ATOMIC_CANARY rollback")
+            writer.atomic_restore = reject_rollback
+            try:
+                expect_private_failure(
+                    "typed registry rollback incomplete",
+                    lambda: writer.write_registry_transactionally(candidate),
+                    "typed non-resurrection append failed; rollback incomplete",
+                )
+            finally:
+                writer.atomic_restore = original_restore
+                # This is an isolated fixture; reset the intentionally un-restored candidate.
+                registry.write_bytes(original_bytes)
+                registry.chmod(original_mode)
         finally:
             writer.validate_registry_for_append = original_guard
         require(registry.read_bytes() == original_bytes, "post-write failure did not restore exact typed registry bytes")
