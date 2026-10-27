@@ -1046,7 +1046,7 @@ def prove_preflight_private_path_negative_reachability() -> None:
         require(len(calls) == 1, "preflight private path negative not executed exactly once")
         body = ast.get_source_segment(candidate, target)
         require(isinstance(body, str), "preflight private path negative body unavailable")
-        for token in ['SYNTHETIC_PRIVATE_PREFLIGHT_PATH_CANARY','validator.repo_relative','validator.require_exact_executable','Path.resolve = private_resolve','exc.__suppress_context__']:
+        for token in ['SYNTHETIC_PRIVATE_PREFLIGHT_PATH_CANARY','validator.repo_relative','validator.require_exact_executable','Path.resolve = private_resolve','Path.is_file = private_is_file','exc.__suppress_context__']:
             require(token in body, "preflight private path negative guard removed")
 
         import_target = functions.get("prove_private_preflight_import_errors")
@@ -1078,6 +1078,7 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("invocation", "main", "    prove_private_preflight_path_errors(validator)\n", "    pass\n"),
         ("fault injection", "prove_private_preflight_path_errors", "        Path.resolve = private_resolve\n", "        pass\n"),
         ("context assertion", "prove_private_preflight_path_errors", "exc.__suppress_context__", "False"),
+        ("stat fault injection", "prove_private_preflight_path_errors", "        Path.is_file = private_is_file\n", "        pass\n"),
         ("import invocation", "main", "    prove_private_preflight_import_errors(validator)\n", "    pass\n"),
         ("import fault injection", "prove_private_preflight_import_errors", "            importlib.util.module_from_spec = private_import\n", "            pass\n"),
         ("import context assertion", "prove_private_preflight_import_errors", "exc.__suppress_context__", "False"),
