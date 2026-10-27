@@ -36,6 +36,7 @@ REQUIRED = (
     ("PR base ref", '            test "${GITHUB_BASE_REF:-}" = "so"\n', 1),
     ("PR target filter", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
     ("fixture helper compile", "            scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py \\\n            scripts/ops_independent_review_fixture_loader.py\n", 1),
+    ("material delta review trigger", '      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"\n', 2),
 )
 
 
@@ -584,6 +585,7 @@ def main() -> int:
         ("fixture helper compile continuation", REQUIRED[16][1], REQUIRED[16][1].replace(chr(92) + chr(10), chr(10))),
         ("self-trigger", REQUIRED[12][1], ""),
         ("self-execution", REQUIRED[13][1], ""),
+        ("material delta review trigger", REQUIRED[17][1], ""),
     )
     for label, old, replacement in cases:
         if old not in source:
@@ -611,9 +613,6 @@ def main() -> int:
         ("extra executable step", source.replace(
             "      - name: Validate final-candidate independent-review authority read-only\n",
             "      - run: echo unreviewed\n      - name: Validate final-candidate independent-review authority read-only\n", 1)),
-        ("missing domain trigger", source.replace(
-            '      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py"\n',
-            "", 1)),
     ):
         if mutated == source:
             raise SystemExit("generation independent review source digest negative anchor missing: " + label)
@@ -622,7 +621,7 @@ def main() -> int:
         except SystemExit:
             continue
         raise SystemExit("generation independent review accepted whole-source mutation: " + label)
-    print(f"PASS: generation independent review workflow source admission ({len(cases) + 2} semantic negatives; 2 whole-source binding negatives)")
+    print(f"PASS: generation independent review workflow source admission ({len(cases) + 2} semantic negatives; 1 whole-source binding negative)")
     return 0
 
 
