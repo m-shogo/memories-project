@@ -772,6 +772,107 @@ def prove_preflight_reconcile_platform_flags(reconciler: object) -> None:
     print("PASS: preflight reconcile None/zero safety flags rejected")
 
 
+def prove_preflight_reconcile_writer_ownership(reconciler: object) -> None:
+    protected = (CANONICAL_CONTRACT.read_bytes(), CANONICAL_STATUS.read_bytes())
+    with guarded_temporary_directory(".tmp-preflight-write-ownership-", TMP_PARENT) as raw:
+        sandbox = Path(raw)
+        path = sandbox / "candidate.json"
+        positive = b'{"safe":true}'
+        path.write_bytes(positive)
+        path.chmod(0o640)
+        for label, value, expected in (
+            ("oversized", "x" * (reconciler.MAX_AUTHORITY_BYTES + 1),
+             "preflight reconcile write size limit exceeded"),
+            ("nonstring", None, "preflight reconcile write payload invalid"),
+        ):
+            try:
+                reconciler.write_text(path, value)
+            except reconciler.Fail as exc:
+                require(str(exc) == expected, f"preflight write {label} wrong rejection")
+            else:
+                raise Fail(f"preflight write {label} accepted")
+        with tempfile.TemporaryDirectory(prefix="preflight-write-outside-") as outside:
+            canary = Path(outside) / "canary.json"
+            canary.write_bytes(positive)
+            link = sandbox / "alias.json"
+            link.symlink_to(canary)
+            try:
+                reconciler.write_text(link, '{"unsafe":true}')
+            except reconciler.Fail as exc:
+                require(str(exc) == "preflight reconcile write path unsafe",
+                        "preflight write symlink rejected at wrong boundary")
+            else:
+                raise Fail("preflight write followed symlink")
+            require(canary.read_bytes() == positive, "preflight write changed external canary")
+
+        original_fdopen = os.fdopen
+        original_mkstemp = tempfile.mkstemp
+        opened: list[int] = []
+
+        def capture_mkstemp(*args, **kwargs):
+            descriptor, name = original_mkstemp(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor, name
+
+        class ShortStream:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+            def write(self, value):
+                return len(value) - 1
+
+            def flush(self):
+                self.stream.flush()
+
+            def fileno(self):
+                return self.stream.fileno()
+
+        for fault, expected in (
+            ("fdopen", "preflight reconcile atomic write failed"),
+            ("short", "preflight reconcile write short buffered write refused"),
+        ):
+            opened.clear()
+
+            def fault_fdopen(descriptor, *args, **kwargs):
+                if fault == "fdopen":
+                    raise OSError("SYNTHETIC_PRIVATE_FDOPEN_CANARY")
+                return ShortStream(original_fdopen(descriptor, *args, **kwargs))
+
+            try:
+                tempfile.mkstemp = capture_mkstemp
+                os.fdopen = fault_fdopen
+                try:
+                    reconciler.write_text(path, '{"safe":false}')
+                except reconciler.Fail as exc:
+                    require(str(exc) == expected and "SYNTHETIC_PRIVATE_" not in str(exc),
+                            f"preflight write {fault} leaked or misclassified")
+                else:
+                    raise Fail(f"preflight write {fault} fault accepted")
+            finally:
+                os.fdopen = original_fdopen
+                tempfile.mkstemp = original_mkstemp
+            require(len(opened) == 1, f"preflight write {fault} descriptor injection not reached")
+            try:
+                os.fstat(opened[0])
+            except OSError:
+                pass
+            else:
+                raise Fail(f"preflight write {fault} leaked descriptor")
+            require(path.read_bytes() == positive and mode(path) == 0o640,
+                    f"preflight write {fault} changed fixture bytes or mode")
+            require(not list(sandbox.glob(".candidate.json.*.tmp")),
+                    f"preflight write {fault} left temporary file")
+    require((CANONICAL_CONTRACT.read_bytes(), CANONICAL_STATUS.read_bytes()) == protected,
+            "preflight writer negative mutated protected authorities")
+    print("PASS: preflight writer oversized/symlink/fdopen/short-write private ownership negatives")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
@@ -792,6 +893,7 @@ def main() -> int:
     prove_data_and_executable_authority_rejection(reconciler)
     prove_post_reconcile_output_suppression(reconciler)
     prove_atomic_write_failure(reconciler)
+    prove_preflight_reconcile_writer_ownership(reconciler)
 
     with guarded_temporary_directory(".tmp-preflight-load-", TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
