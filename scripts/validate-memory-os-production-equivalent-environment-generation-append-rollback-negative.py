@@ -40,6 +40,61 @@ def generation_temp_files(path: Path) -> list[Path]:
     return list(path.parent.glob(".environment-generation*.tmp"))
 
 
+def prove_strict_generation_json_reader(writer) -> None:
+    """Use the real reader to reject ambiguous and unsafe JSON authorities."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-json-reader-") as tmp:
+        parent = Path(tmp)
+        source = parent / "source.json"
+        source.write_bytes(json.dumps({"sentinel": "safe"}).encode("utf-8"))
+        require(writer.load(source) == {"sentinel": "safe"},
+                "environment generation JSON reader positive control failed")
+
+        cases = (
+            ("duplicate", b'{"a":1,"a":2}', "environment generation JSON duplicate key refused"),
+            ("nonfinite", b'{"a":NaN}', "environment generation JSON nonfinite number refused"),
+            ("huge-integer", b'{"a":' + b"9" * 129 + b"}",
+             "environment generation JSON integer too large"),
+            ("invalid-utf8", bytes([255]), "environment generation JSON unreadable or invalid"),
+            ("oversized", b"x" * (writer.MAX_JSON_BYTES + 1),
+             "environment generation JSON size limit exceeded"),
+            ("array-root", b"[]", "environment generation JSON root must be object"),
+        )
+        for label, payload, expected in cases:
+            source.write_bytes(payload)
+            try:
+                writer.load(source)
+            except writer.Fail as exc:
+                require(str(exc) == expected, f"generation JSON {label} wrong rejection class")
+            else:
+                raise Fail(f"generation JSON {label} unexpectedly accepted")
+
+        canary = parent / "external-canary.json"
+        canary.write_bytes(b"PRIVATE_GENERATION_JSON_CANARY")
+        alias = parent / "source-alias.json"
+        alias.symlink_to(canary)
+        try:
+            writer.load(alias)
+        except writer.Fail as exc:
+            require(str(exc) == "environment generation JSON unreadable or invalid"
+                    and exc.__suppress_context__,
+                    "environment generation JSON symlink failure leaked path diagnostics")
+        else:
+            raise Fail("environment generation JSON symlink unexpectedly accepted")
+        require(canary.read_bytes() == b"PRIVATE_GENERATION_JSON_CANARY",
+                "environment generation JSON symlink mutated external canary")
+
+        fifo = parent / "source-fifo.json"
+        os.mkfifo(fifo)
+        try:
+            writer.load(fifo)
+        except writer.Fail as exc:
+            require(str(exc) == "environment generation JSON path unsafe",
+                    "environment generation JSON FIFO wrong rejection class")
+        else:
+            raise Fail("environment generation JSON FIFO unexpectedly accepted")
+    print("PASS reject: strict bounded generation JSON, symlink and FIFO controls")
+
+
 def prove_bounded_registry_snapshot(writer) -> None:
     """Reject oversized and unsafe registry nodes before any atomic candidate write."""
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-snapshot-") as tmp:
@@ -398,6 +453,7 @@ def main() -> int:
     require(callable(getattr(writer, "write_registry_transactionally", None)), "transactional generation registry writer missing")
     require(callable(getattr(writer, "atomic_write", None)), "atomic generation registry writer missing")
 
+    prove_strict_generation_json_reader(writer)
     prove_bounded_registry_snapshot(writer)
     prove_successful_atomic_write_preserves_mode(writer)
     prove_atomic_replace_rejection_preserves_registry(writer)
