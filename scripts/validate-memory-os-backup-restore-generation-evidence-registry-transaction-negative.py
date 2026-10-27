@@ -62,6 +62,7 @@ def prove_close_failure_releases_lock(writer: Any) -> None:
     original_typed_covered = writer.typed_non_resurrection_covered
     original_candidate = writer.candidate
     original_close = writer.os.close
+    original_open = writer.os.open
     original_write_fd = writer.os.write
     original_fsync = writer.os.fsync
     original_argv = sys.argv[:]
@@ -154,6 +155,23 @@ def prove_close_failure_releases_lock(writer: Any) -> None:
             finally:
                 writer.os.fsync = original_fsync
             require(not lock.exists(), "generation evidence lock fsync failure stranded lock")
+            def reject_lock_open(path, flags, mode=0o600):
+                if Path(path) == lock:
+                    raise OSError("PRIVATE_GENERATION_LOCK_CANARY open")
+                return original_open(path, flags, mode)
+            writer.os.open = reject_lock_open
+            try:
+                try:
+                    writer.main()
+                except writer.Fail as exc:
+                    require(str(exc) == "generation evidence registry lock acquisition failed"
+                            and exc.__suppress_context__,
+                            "generation evidence lock acquisition leaked private exception")
+                else:
+                    raise Fail("generation evidence lock acquisition failure accepted")
+            finally:
+                writer.os.open = original_open
+            require(not lock.exists(), "generation evidence lock acquisition failure stranded lock")
             require(writer.main() == 0, "generation evidence lock retry failed after init errors")
             require(not lock.exists(), "generation evidence lock retry stranded lock")
             print("PASS reject: generation lock close, short-write and fsync failures preserve private classes and retry")
@@ -171,6 +189,7 @@ def prove_close_failure_releases_lock(writer: Any) -> None:
             writer.typed_non_resurrection_covered = original_typed_covered
             writer.candidate = original_candidate
             writer.os.close = original_close
+            writer.os.open = original_open
             writer.os.write = original_write_fd
             writer.os.fsync = original_fsync
             sys.argv = original_argv
