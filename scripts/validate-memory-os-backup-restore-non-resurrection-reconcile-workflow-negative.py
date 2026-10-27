@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import subprocess
@@ -64,10 +65,63 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: typed non-resurrection reconcile PR/push branch guard runtime (6 cases)")
 
 
+RECONCILE_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py"
+PRIVATE_ROLLBACK_NEGATIVES = (
+    ("prove_rollback_attempts_all_restores", "typed non-resurrection rollback incomplete"),
+    ("prove_primary_and_rollback_failures_are_preserved",
+     "typed non-resurrection reconcile failed; rollback incomplete"),
+    ("prove_second_replace_rollback",
+     "typed non-resurrection reconcile failed; rollback completed"),
+    ("prove_post_write_aggregate_rollback",
+     "typed non-resurrection reconcile failed; rollback completed"),
+)
+
+
+def require_private_rollback_negative_reachable(source: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("typed rollback negative syntax invalid") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    main = functions.get("main")
+    if main is None:
+        raise SystemExit("typed rollback negative main missing")
+    for function_name, expected in PRIVATE_ROLLBACK_NEGATIVES:
+        target = functions.get(function_name)
+        if target is None:
+            raise SystemExit("typed private rollback negative missing: " + function_name)
+        calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == function_name]
+        if len(calls) != 1:
+            raise SystemExit("typed private rollback negative invocation drift: " + function_name)
+        strings = {node.value for node in ast.walk(target)
+                   if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+        if expected not in strings:
+            raise SystemExit("typed private rollback failure class missing: " + function_name)
+
+
+def prove_private_rollback_negative_deletion_rejected() -> None:
+    source = RECONCILE_NEGATIVE.read_text(encoding="utf-8")
+    require_private_rollback_negative_reachable(source)
+    for function_name, _expected in PRIVATE_ROLLBACK_NEGATIVES:
+        anchor = f"    {function_name}()\n"
+        if source.count(anchor) != 1:
+            raise SystemExit("typed private rollback negative deletion anchor drift")
+        mutated = source.replace(anchor, "    pass\n", 1)
+        try:
+            require_private_rollback_negative_reachable(mutated)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("typed private rollback negative deletion accepted: " + function_name)
+    print("PASS: typed private rollback class negatives and invocation deletion rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_branch_guards_runtime()
+    prove_private_rollback_negative_deletion_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
