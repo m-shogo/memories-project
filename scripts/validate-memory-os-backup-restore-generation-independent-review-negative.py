@@ -66,8 +66,16 @@ def require_pinned_execution_negative_source(code: str) -> None:
         "load_validator": (
             "return load_checked_module(VALIDATOR,",
         ),
+        "prove_review_import_unsafe_sources": (
+            "oversized.write_bytes(b\"x\" * (MAX_REVIEW_MODULE_BYTES + 1))",
+            "linked.symlink_to(good.name)",
+            "os.mkfifo(fifo)",
+            "os.O_NONBLOCK = 0",
+            'load_checked_module(good, "independent_review_unsafe_restored")',
+        ),
         "main": (
             "prove_pinned_validator_import()",
+            "prove_review_import_unsafe_sources()",
             "module = load_validator()",
         ),
     }
@@ -78,7 +86,9 @@ def require_pinned_execution_negative_source(code: str) -> None:
         for token in tokens:
             require(token in fragment, "independent review pinned source guard drift: " + name)
     main = ast.get_source_segment(code, functions["main"]) or ""
-    require(main.index("prove_pinned_validator_import()") < main.index("module = load_validator()"),
+    require(main.index("prove_pinned_validator_import()")
+            < main.index("prove_review_import_unsafe_sources()")
+            < main.index("module = load_validator()"),
             "independent review pinned source proof not reached before import")
 
 
@@ -106,8 +116,14 @@ def prove_pinned_execution_negative_mutations_rejected() -> None:
          'load_checked_module(source, "independent_review_import_positive")'),
         ("load_validator", "return load_checked_module(VALIDATOR,",
          "return load_checked_module(SUBSTITUTE,"),
+        ("prove_review_import_unsafe_sources", "os.mkfifo(fifo)",
+         "pass  # synthetic FIFO proof removed"),
+        ("prove_review_import_unsafe_sources", "os.O_NONBLOCK = 0",
+         "os.O_NONBLOCK = original_flag"),
         ("main", "prove_pinned_validator_import()",
          "pass  # synthetic pinned import proof removed"),
+        ("main", "prove_review_import_unsafe_sources()",
+         "pass  # synthetic unsafe proof removed"),
     )
     for name, original, replacement in mutations:
         tree = ast.parse(code)
