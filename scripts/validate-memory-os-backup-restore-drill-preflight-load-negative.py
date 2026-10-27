@@ -1071,7 +1071,8 @@ def prove_preflight_private_path_negative_reachability() -> None:
         for token in ("validator.load_eligibility_helper()", "parent.rename(parked)",
                       "parent.symlink_to(redirected", "importlib.util.spec_from_file_location = swap_after_read",
                       "loaded.derive_registry({}) == {\"origin\": \"pinned\"}",
-                      "PRIVATE_HELPER_SWAP_CANARY", "validator.ELIGIBILITY_HELPER = original_path"):
+                      "PRIVATE_HELPER_SWAP_CANARY", 'require(canary.read_text(encoding="utf-8") ==',
+                      "validator.ELIGIBILITY_HELPER = original_path"):
             require(token in pinned_body, "preflight pinned helper race guard removed")
 
         semantic_target = functions.get("prove_private_semantic_helper_domain_failure")
@@ -1104,7 +1105,8 @@ def prove_preflight_private_path_negative_reachability() -> None:
         ("pinned helper source assertion", "prove_pinned_preflight_helper_import",
          'loaded.derive_registry({}) == {"origin": "pinned"}', "False"),
         ("pinned helper canary", "prove_pinned_preflight_helper_import",
-         "PRIVATE_HELPER_SWAP_CANARY", "SYNTHETIC_CANARY_REMOVED"),
+         '            require(canary.read_text(encoding="utf-8") ==\n',
+         '            require(False and\n'),
         ("semantic invocation", "main", "    prove_private_semantic_helper_domain_failure(validator)\n", "    pass\n"),
         ("semantic failure injection", "prove_private_semantic_helper_domain_failure", "            raise SyntheticHelper.Fail(private)\n", "            return {}\n"),
         ("semantic context assertion", "prove_private_semantic_helper_domain_failure", "exc.__suppress_context__", "False"),
