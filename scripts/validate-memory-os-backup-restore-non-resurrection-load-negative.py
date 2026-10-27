@@ -1344,6 +1344,19 @@ def prove_typed_private_path_negative_reachability() -> None:
                       "exc.__suppress_context__", "typed admission module import unavailable"):
             require(token in import_body, "typed admission private import negative guard removed")
 
+        lock_target = functions.get("prove_private_typed_append_lock_metadata")
+        require(lock_target is not None, "typed admission lock metadata negative missing")
+        lock_calls = [node for node in ast.walk(main) if isinstance(node, ast.Call)
+                      and isinstance(node.func, ast.Name)
+                      and node.func.id == "prove_private_typed_append_lock_metadata"]
+        require(len(lock_calls) == 1, "typed admission lock metadata negative not executed")
+        lock_body = ast.get_source_segment(candidate, lock_target)
+        require(isinstance(lock_body, str), "typed admission lock metadata negative body unavailable")
+        for token in ("SYNTHETIC_PRIVATE_TYPED_LOCK_CANARY", "validator.enforce_runtime_authorities",
+                      "Path.is_symlink = fault", "Path.exists = fault", "Path.is_file = fault",
+                      "Path.resolve = fault", "exc.__suppress_context__"):
+            require(token in lock_body, "typed admission lock metadata negative guard removed")
+
     verify(source)
     for label, scope, old, replacement in (
         ("invocation", "main", "    prove_private_typed_admission_paths(validator)\n", "    pass\n"),
@@ -1353,6 +1366,12 @@ def prove_typed_private_path_negative_reachability() -> None:
         ("import invocation", "main", "    prove_private_typed_admission_import_errors(validator)\n", "    pass\n"),
         ("import fault injection", "prove_private_typed_admission_import_errors", "            importlib.util.module_from_spec = private_import\n", "            pass\n"),
         ("import context assertion", "prove_private_typed_admission_import_errors", "exc.__suppress_context__", "False"),
+        ("lock invocation", "main", "    prove_private_typed_append_lock_metadata(validator)\n", "    pass\n"),
+        ("lock symlink fault", "prove_private_typed_append_lock_metadata", "                Path.is_symlink = fault\n", "                pass\n"),
+        ("lock exists fault", "prove_private_typed_append_lock_metadata", "                Path.exists = fault\n", "                pass\n"),
+        ("lock file fault", "prove_private_typed_append_lock_metadata", "                Path.is_file = fault\n", "                pass\n"),
+        ("lock resolve fault", "prove_private_typed_append_lock_metadata", "                Path.resolve = fault\n", "                pass\n"),
+        ("lock context assertion", "prove_private_typed_append_lock_metadata", "exc.__suppress_context__", "False"),
     ):
         # A source-wide anchor can repeat in unrelated tests; mutate only the named AST function.
         parsed = ast.parse(source)
