@@ -1238,6 +1238,26 @@ def prove_preflight_private_path_negative_reachability() -> None:
                 and isinstance(first.value.func, ast.Name)
                 and first.value.func.id == "prove_pinned_authority_import",
                 "preflight authority pinned proof must precede canonical validation")
+        second = main.body[1] if len(main.body) > 1 else None
+        require(isinstance(second, ast.Expr) and isinstance(second.value, ast.Call)
+                and isinstance(second.value.func, ast.Name)
+                and second.value.func.id == "prove_private_authority_path_errors",
+                "preflight authority private path proof must precede canonical validation")
+        path_proof = functions.get("prove_private_authority_path_errors")
+        canonical_path = functions.get("canonical_repo_file")
+        require(path_proof is not None and canonical_path is not None,
+                "preflight authority private path proof or canonical guard missing")
+        path_body = ast.get_source_segment(candidate, path_proof)
+        canonical_body = ast.get_source_segment(candidate, canonical_path)
+        require(isinstance(path_body, str) and isinstance(canonical_body, str),
+                "preflight authority private path source unavailable")
+        for token in ("Path.resolve = fault_resolve", "Path.is_file = fault_is_file",
+                      "exc.__suppress_context__", "private not in str(exc)",
+                      "Path.resolve, Path.is_file = original_resolve, original_is_file"):
+            require(token in path_body, "preflight authority private path proof removed")
+        require('raise Fail(f"{field} missing or escapes repository") from None' in canonical_body
+                and "safe = lexical == resolved and path.is_file() and not path.is_symlink()" in canonical_body,
+                "preflight authority private canonical path guard removed")
         loader_body = ast.get_source_segment(candidate, loader)
         proof_body = ast.get_source_segment(candidate, proof)
         require(isinstance(loader_body, str) and isinstance(proof_body, str),
@@ -1268,6 +1288,17 @@ def prove_preflight_private_path_negative_reachability() -> None:
          "                pass\n"),
         ("pinned value assertion", "prove_pinned_authority_import",
          'loaded.VALUE == "pinned"', "False"),
+        ("private path invocation", "main",
+         "    prove_private_authority_path_errors()\n", "    pass\n"),
+        ("private resolve fault", "prove_private_authority_path_errors",
+         "                Path.resolve = fault_resolve\n", "                pass\n"),
+        ("private stat fault", "prove_private_authority_path_errors",
+         "                Path.is_file = fault_is_file\n", "                pass\n"),
+        ("private context", "prove_private_authority_path_errors",
+         "exc.__suppress_context__", "False"),
+        ("private canonical suppression", "canonical_repo_file",
+         'raise Fail(f"{field} missing or escapes repository") from None',
+         'raise Fail(f"{field} missing or escapes repository") from None if False else None'),
     ):
         parsed = ast.parse(authority_source)
         functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
