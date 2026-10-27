@@ -1660,6 +1660,27 @@ def prove_typed_transport_fixture_parent_guard() -> None:
     print("PASS: typed transport fixture reuses checked parent guard")
 
 
+def prove_child_validator_symlink_rejected(validator) -> None:
+    """A same-repository symlink must not redirect executable child authority."""
+    with guarded_temporary_directory(".memory-os-typed-child-symlink-negative-", TEMP_PARENT) as tmp:
+        parent = Path(tmp)
+        child = parent / "child-positive.py"
+        child.write_text("raise SystemExit(0)\n", encoding="utf-8")
+        validator.run_validator(child, "typed child positive control")
+        alias = parent / "child-alias.py"
+        alias.symlink_to(child)
+        try:
+            validator.run_validator(alias, "typed child symlink negative")
+        except validator.Fail as exc:
+            require(str(exc) == "typed admission child validator must be a regular canonical file",
+                    "typed child symlink rejected at wrong boundary")
+        else:
+            raise Fail("typed admission executed a symlinked child validator")
+        require(alias.is_symlink() and child.read_text(encoding="utf-8") == "raise SystemExit(0)\n",
+                "typed child symlink negative modified trusted fixture")
+    print("PASS reject: typed admission child validator internal symlink")
+
+
 def exercise_writer_lock_lifecycle_negative() -> None:
     """Execute the existing actual-writer lock lifecycle negative through the canonical CI suite."""
     require(REGISTRY_MODE_NEGATIVE.is_file() and not REGISTRY_MODE_NEGATIVE.is_symlink(),
@@ -1683,6 +1704,7 @@ def main() -> int:
     prove_validator_runner_binding()
     validator = load_validator()
     exercise_validator_child_exit_propagation(validator)
+    prove_child_validator_symlink_rejected(validator)
     prove_helper_source_symlink_rejected()
     prove_helper_source_swap_during_import_is_pinned()
     prove_helper_parent_swap_after_pin_uses_original_source()
