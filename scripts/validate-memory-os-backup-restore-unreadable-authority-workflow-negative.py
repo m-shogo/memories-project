@@ -946,6 +946,82 @@ def prove_preflight_harness_pinned_import_source_guard() -> None:
     print("PASS: preflight harness pinned loader and nine source mutations rejected")
 
 
+def prove_admission_chain_pinned_import_source_guard() -> None:
+    """Independently reject admission-chain negative loader source weakening."""
+    source = (ROOT / "scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py").read_text(
+        encoding="utf-8")
+
+    def verify(candidate: str) -> None:
+        try:
+            parsed = ast.parse(candidate)
+        except SyntaxError:
+            raise SystemExit("admission-chain pinned loader syntax invalid") from None
+        functions = {node.name: node for node in parsed.body if isinstance(node, ast.FunctionDef)}
+        loader = functions.get("load_validator")
+        proof = functions.get("prove_pinned_validator_import")
+        main = functions.get("main")
+        if loader is None or proof is None or main is None:
+            raise SystemExit("admission-chain pinned loader/proof/main missing")
+        loader_body = ast.get_source_segment(candidate, loader)
+        proof_body = ast.get_source_segment(candidate, proof)
+        main_body = ast.get_source_segment(candidate, main)
+        if not all(isinstance(body, str) for body in (loader_body, proof_body, main_body)):
+            raise SystemExit("admission-chain pinned source unavailable")
+        if (main_body.count("prove_pinned_validator_import()") != 1
+                or main_body.index("prove_pinned_validator_import()") >
+                   main_body.index("validator = load_validator()")):
+            raise SystemExit("admission-chain pinned proof not executed before canonical import")
+        for token in ("class PinnedSourceLoader(importlib.machinery.SourceFileLoader):",
+                      'return compile(source, str(VALIDATOR), "exec")',
+                      "loader=PinnedSourceLoader(name, str(VALIDATOR))",
+                      "spec.loader.exec_module(module)",
+                      "source = stream.read(MAX_MODULE_BYTES + 1)",
+                      "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+                      'for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")',
+                      'raise Fail("cannot load admission-chain validator") from None'):
+            if token not in loader_body:
+                raise SystemExit("admission-chain pinned loader weakened")
+        for token in ("parent.rename(parked)", "parent.symlink_to(redirected",
+                      "importlib.util.spec_from_file_location = swap_after_read",
+                      'loaded.VALUE == "pinned"', 'require(canary.read_text(encoding="utf-8") ==',
+                      "importlib.util.spec_from_file_location = original_spec",
+                      'getattr(load_validator(), "main", None)'):
+            if token not in proof_body:
+                raise SystemExit("admission-chain pinned race proof removed")
+        if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+               and node.func.id in {"exec", "eval"} for node in ast.walk(loader)):
+            raise SystemExit("admission-chain direct dynamic execution refused")
+
+    verify(source)
+    for label, scope, old, replacement in (
+        ("invocation", "main", "    prove_pinned_validator_import()\n", "    pass\n"),
+        ("source loader", "load_validator",
+         "loader=PinnedSourceLoader(name, str(VALIDATOR))", "loader=None"),
+        ("pinned code", "load_validator", 'return compile(source, str(VALIDATOR), "exec")',
+         "return None"),
+        ("descriptor leaf", "load_validator",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)",
+         "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)"),
+        ("bounded source", "load_validator", "source = stream.read(MAX_MODULE_BYTES + 1)",
+         "source = stream.read()"),
+        ("private suppression", "load_validator",
+         'raise Fail("cannot load admission-chain validator") from None',
+         'raise Fail("cannot load admission-chain validator") from exc'),
+        ("parent substitution", "prove_pinned_validator_import",
+         "parent.symlink_to(redirected, target_is_directory=True)", "pass"),
+        ("pinned value", "prove_pinned_validator_import", 'loaded.VALUE == "pinned"', "False"),
+        ("canary", "prove_pinned_validator_import",
+         'require(canary.read_text(encoding="utf-8") ==', 'require(False and'),
+    ):
+        mutated = mutate_named_function(source, scope, old, replacement)
+        try:
+            verify(mutated)
+        except SystemExit:
+            continue
+        raise SystemExit("admission-chain pinned source weakening accepted: " + label)
+    print("PASS: admission-chain pinned loader and nine source mutations rejected")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
@@ -964,6 +1040,7 @@ def main() -> int:
     prove_reconcile_repo_ref_negative_removal_rejected()
     prove_reconcile_writer_preopen_negative_removal_rejected()
     prove_preflight_harness_pinned_import_source_guard()
+    prove_admission_chain_pinned_import_source_guard()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
