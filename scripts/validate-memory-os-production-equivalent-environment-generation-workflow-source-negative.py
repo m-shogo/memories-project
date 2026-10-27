@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -243,6 +244,69 @@ def negatives(publisher: str, independent: str) -> None:
     print(f"PASS: environment generation source negatives ({len(publisher_cases)} publisher, {len(independent_cases)} independent)")
 
 
+NEGATIVE_REACHABILITY = {
+    "scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py": (
+        "prove_bounded_digest_reader",
+        "prove_bounded_source_binding",
+    ),
+    "scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py": (
+        "prove_bounded_writer_git_authority",
+    ),
+    "scripts/validate-memory-os-production-equivalent-environment-generation-append-rollback-negative.py": (
+        "prove_atomic_io_failure_privacy_and_cleanup",
+    ),
+}
+
+
+def check_negative_reachability(tree: ast.Module, path: str, expected: tuple[str, ...]) -> None:
+    mains = [node for node in tree.body
+             if isinstance(node, ast.FunctionDef) and node.name == "main"]
+    if len(mains) != 1:
+        raise SystemExit("environment generation negative main authority drift: " + path)
+    for function in expected:
+        definitions = [node for node in tree.body
+                       if isinstance(node, ast.FunctionDef) and node.name == function]
+        calls = [node for node in mains[0].body
+                 if isinstance(node, ast.Expr)
+                 and isinstance(node.value, ast.Call)
+                 and isinstance(node.value.func, ast.Name)
+                 and node.value.func.id == function
+                 and node.value.args
+                 and isinstance(node.value.args[0], ast.Name)
+                 and node.value.args[0].id == "writer"
+                 and not node.value.keywords]
+        if len(definitions) != 1 or len(calls) != 1:
+            raise SystemExit("environment generation negative executable guard missing: "
+                             + path + " " + function)
+
+
+def prove_negative_reachability() -> None:
+    """Reject deletion of a real-writer fault-injection call from live main()."""
+    for path, functions in NEGATIVE_REACHABILITY.items():
+        source = read(path)
+        try:
+            tree = ast.parse(source, filename=path)
+        except SyntaxError:
+            raise SystemExit("environment generation negative source invalid: " + path) from None
+        check_negative_reachability(tree, path, functions)
+        for function in functions:
+            mutated = ast.parse(source, filename=path)
+            main = next(node for node in mutated.body
+                        if isinstance(node, ast.FunctionDef) and node.name == "main")
+            main.body = [node for node in main.body
+                         if not (isinstance(node, ast.Expr)
+                                 and isinstance(node.value, ast.Call)
+                                 and isinstance(node.value.func, ast.Name)
+                                 and node.value.func.id == function)]
+            try:
+                check_negative_reachability(mutated, path, functions)
+            except SystemExit:
+                continue
+            raise SystemExit("environment generation negative removal mutation accepted: "
+                             + path + " " + function)
+    print("PASS: environment generation real-writer negative reachability and removal mutations (4 cases)")
+
+
 def main() -> int:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
@@ -250,6 +314,7 @@ def main() -> int:
     runtime(publisher, independent)
     diagnostic_runtime(publisher)
     negatives(publisher, independent)
+    prove_negative_reachability()
     return 0
 
 
