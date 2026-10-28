@@ -113,6 +113,21 @@ def validate_yaml_authority(source: str) -> None:
             permission_rows.append(line)
     if permission_rows != ["  contents: read"]:
         raise SystemExit("generation evidence reconcile CI permission leaf shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    headers = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if headers != ["  negative:"]:
+        raise SystemExit("generation evidence reconcile CI job mapping shadow drift")
+    job_keys = [
+        line for line in body.splitlines()
+        if line.startswith("    ") and not line.startswith("     ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_keys != ["    runs-on: ubuntu-latest", "    timeout-minutes: 5", "    steps:"]:
+        raise SystemExit("generation evidence reconcile CI job key/permission shadow drift")
 
 
 def prove_yaml_authority_negatives(source: str) -> None:
@@ -139,7 +154,24 @@ def prove_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(anchor, anchor + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for label, suffix in (
+        ("duplicate job", "  negative: {}\n"),
+        ("spaced job", "  negative : {}\n"),
+        ("quoted job", "  'negative': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    runs_on = "    runs-on: ubuntu-latest\n"
+    if source.count(runs_on) != 1:
+        raise SystemExit("generation evidence reconcile CI job permission fixture anchor drift")
+    for label, leaf in (
+        ("job permission", "    permissions:\n      contents: write\n"),
+        ("spaced job permission", "    permissions :\n      contents: write\n"),
+        ("quoted job permission", "    'permissions':\n      contents: write\n"),
+    ):
+        cases.append((label, source.replace(runs_on, runs_on + leaf, 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 15:
         raise SystemExit("generation evidence reconcile CI YAML negative inventory drift")
     for label, mutated, diagnostic in cases:
         if mutated == source:
@@ -153,7 +185,7 @@ def prove_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("generation evidence reconcile CI accepted YAML mutation: " + label)
-    print("PASS: generation evidence reconcile CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: generation evidence reconcile CI YAML event/root/job/permission authority (15 exact-diagnostic negatives)")
 
 
 
