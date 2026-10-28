@@ -1,0 +1,18 @@
+# Supplemental OPS learning — live-load writer/PR/independent YAML authority (2026-10-29)
+
+Append-only supplemental learning only; not canonical `AUTONOMOUS-OPS-LEARNING.md`, production/backup/restore/RPO/RTO/skew evidence, drill authority, credentials, traffic, readiness or promotion authority.
+
+## Material failure / recurrence guard
+- **Symptom:** The live-load diagnostic source-negative validator pinned three reviewed workflow Git blobs and event matrices but did not independently diagnose effective YAML root/permission shadows across writer, PR, and independent CI. Static semantic coverage gap, not observed production bypass.
+- **Observed evidence:** `live_load_trigger_matrix` checked writer push/schedule/dispatch, PR-only and independent PR/push event headers; `require_reviewed_source` checked Git blobs. No exact diagnostic distinguished `on :`, `jobs :`, or quoted/spaced `contents` shadow keys.
+- **Verified root cause:** Source digest and event topology cannot independently prove root mapping or permission leaf exclusivity; writer legitimately requires `contents: write`, whereas PR and independent CI require `contents: read`.
+- **Failed approach:** Treating all workflows as read-only or relying solely on full-source SHA and visible permissions would obscure the distinct authorized writer boundary.
+- **Correction / executable recurrence guard:** [a515a401](https://github.com/m-shogo/memories-project/commit/a515a401df1e8ea7fefae736748449c2231f5000) adds exact root mapping and role-specific permission checks plus 18 synthetic exact-diagnostic YAML shadows (12 root, 6 permission), preserving reviewed writer write access and PR/independent read-only separation.
+- **Retry condition:** Reassess only on reviewed writer/PR/independent YAML topology changes or a demonstrated new shadow bypass. Do not retry unchanged MinIO HTTP 401, canonical learning transfer, workflow-write permission or human approval blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Live Load Authority Diagnostic Source Negative #40739808226](https://github.com/m-shogo/memories-project/actions/runs/40739808226) completed **SUCCESS** on exact code `a515a401df1e8ea7fefae736748449c2231f5000`. Logs confirm 18 new exact-diagnostic YAML negatives, 32 event omissions, 16 additions, 4 shortened inventories, 5 topology/schedule, 3 blob, 12 independent identity, 16 source, 9 atomic/symlink/privacy, 4 validator-exit/secret, 9 PR source and 6 PR identity tests passing.
+- **Why safe:** Only the existing CI-reachable read-only Python source-negative validator changed (+88 lines, -0); no reviewed workflow, contract, registry, production evidence, credentials, traffic or promotion authority changed.
+- **Reusable mechanism:** Validate the effective root mapping and role-specific permission leaf for each separately reviewed workflow; require in-memory shadow mutations to fail with their exact semantic diagnostic, retaining full-source, event and executable privacy/atomic guards.
+- **Protected-authority check:** Eleven protected production/OPS-P0-007/registry/learning-contract/canonical-learning blob SHAs unchanged. `productionDecision=NO_GO`; registered/semantically eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records, final candidates and human promotion approvals remain zero. Learning cannot satisfy any production/recovery gate.
+- **Next safe target:** Audit other multi-workflow live-object and deletion source-negative validators for effective YAML shadow and role-specific permission gaps without touching protected authorities.
