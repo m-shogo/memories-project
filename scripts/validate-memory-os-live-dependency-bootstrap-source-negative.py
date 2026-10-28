@@ -59,6 +59,120 @@ def step_script(workflow: str, title: str) -> str:
     return "\n".join(line[10:] if line else "" for line in lines) + "\n"
 
 
+BOOTSTRAP_INDEPENDENT_PR_PATHS = (
+    ".github/workflows/regenerate-live-postgres-load-results.yml",
+    ".github/workflows/reconcile-live-load-authority-v2.yml",
+    ".github/workflows/live-object-stage-source-negative.yml",
+    ".github/workflows/reconcile-upload-route-authority.yml",
+    ".github/workflows/deletion-worker-sigkill-recovery.yml",
+    ".github/workflows/live-dependency-bootstrap-source-negative.yml",
+    "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py",
+    "scripts/validate-memory-os-live-load.py",
+    "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+)
+
+BOOTSTRAP_INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/regenerate-live-postgres-load-results.yml",
+    ".github/workflows/reconcile-live-load-authority-v2.yml",
+    ".github/workflows/live-object-stage-source-negative.yml",
+    ".github/workflows/reconcile-upload-route-authority.yml",
+    ".github/workflows/deletion-worker-sigkill-recovery.yml",
+    ".github/workflows/live-dependency-bootstrap-source-negative.yml",
+    "scripts/validate-memory-os-live-dependency-bootstrap-source-negative.py",
+    "scripts/validate-memory-os-live-load.py",
+    "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+)
+
+
+def bootstrap_trigger_event(event, paths):
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def bootstrap_trigger_header(content):
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise AssertionError("live dependency independent CI trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def bootstrap_validate_independent_trigger(
+    content, pr_paths=BOOTSTRAP_INDEPENDENT_PR_PATHS,
+    push_paths=BOOTSTRAP_INDEPENDENT_PUSH_PATHS,
+):
+    expected = (bootstrap_trigger_event("pull_request", pr_paths)
+                + bootstrap_trigger_event("push", push_paths))
+    if bootstrap_trigger_header(content) != expected:
+        raise AssertionError("live dependency independent CI exact event inventory drift")
+
+
+def bootstrap_replace_trigger(content, original, replacement):
+    anchor = "\non:\n" + original + "\npermissions:\n"
+    if content.count(anchor) != 1 or original == replacement:
+        raise AssertionError("live dependency trigger negative fixture unreachable")
+    return content.replace(anchor, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def bootstrap_trigger_negatives(content):
+    def reject(mutated):
+        try:
+            bootstrap_validate_independent_trigger(mutated)
+        except AssertionError:
+            return
+        raise AssertionError("live dependency accepted independent CI trigger mutation")
+
+    header = bootstrap_trigger_header(content)
+    omissions = additions = 0
+    for event, paths in (
+        ("pull_request", BOOTSTRAP_INDEPENDENT_PR_PATHS),
+        ("push", BOOTSTRAP_INDEPENDENT_PUSH_PATHS),
+    ):
+        block = bootstrap_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise AssertionError("live dependency independent trigger fixture ambiguous")
+        for index in range(len(paths)):
+            changed = bootstrap_replace_trigger(
+                content, header,
+                header.replace(block, bootstrap_trigger_event(
+                    event, paths[:index] + paths[index + 1:]), 1))
+            reject(changed)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for extra in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            changed = bootstrap_replace_trigger(
+                content, header,
+                header.replace(block, block.replace(first, first + extra, 1), 1))
+            reject(changed)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("pr_paths", BOOTSTRAP_INDEPENDENT_PR_PATHS),
+        ("push_paths", BOOTSTRAP_INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            bootstrap_validate_independent_trigger(content, **{field: paths[:-1]})
+        except AssertionError:
+            shortened += 1
+        else:
+            raise AssertionError("live dependency accepted shortened trigger inventory")
+    topology = (
+        bootstrap_replace_trigger(content, header, header + "  workflow_dispatch:\n"),
+        bootstrap_replace_trigger(
+            content, header,
+            bootstrap_trigger_event("push", BOOTSTRAP_INDEPENDENT_PUSH_PATHS)
+            + bootstrap_trigger_event("pull_request", BOOTSTRAP_INDEPENDENT_PR_PATHS)),
+    )
+    for changed in topology:
+        reject(changed)
+    print("PASS: live dependency independent CI exact event triggers: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def validate(live: str, upload: str, sigkill: str, independent: str) -> None:
     live_required = (
         "      - name: Start local MinIO harness\n",
@@ -547,6 +661,8 @@ def main() -> int:
     validate_stage_syntax_boundary(stage)
     stage_syntax_negative(stage)
     validate(live, upload, sigkill, independent)
+    bootstrap_validate_independent_trigger(independent)
+    bootstrap_trigger_negatives(independent)
     predicate_runtime(independent)
     source_negatives(live, upload, sigkill, independent)
     synthetic_bootstrap_failure(live, upload, sigkill)
