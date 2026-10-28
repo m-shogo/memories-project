@@ -70,6 +70,17 @@ def validate_trigger_reachability(
         ]
         if observed_roots != expected_roots:
             raise AssertionError("incident authority " + label + " root YAML key shadow drift")
+        # Both reviewed workflow-level permissions are read-only. A later
+        # YAML quoted/spaced contents key can shadow a visible read leaf.
+        permission_lines = value.split("\npermissions:\n", 1)[1].splitlines()
+        permission_rows = []
+        for row in permission_lines:
+            if row.strip() and not row[0].isspace():
+                break
+            if row.strip() and not row.lstrip().startswith("#"):
+                permission_rows.append(row)
+        if permission_rows != ["  contents: read"]:
+            raise AssertionError("incident authority " + label + " permission leaf shadow drift")
 
 
 def trigger_negatives(publisher: str, independent: str) -> None:
@@ -179,6 +190,39 @@ def trigger_negatives(publisher: str, independent: str) -> None:
             root_negative_count += 1
     if root_negative_count != 8:
         raise AssertionError("incident authority root shadow fixture count drift")
+    permission_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        anchor = "permissions:\n  contents: read\n"
+        if original.count(anchor) != 1:
+            raise AssertionError("incident authority permission negative anchor drift: " + label)
+        for name, extra in (
+            ("spaced", "  contents : write\n"),
+            ("quoted", "  'contents': write\n"),
+        ):
+            mutated = original.replace(anchor, anchor + extra, 1)
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, independent)
+                else:
+                    validate_trigger_reachability(publisher, mutated)
+            except AssertionError as exc:
+                expected = "incident authority " + label + " permission leaf shadow drift"
+                if str(exc) != expected:
+                    raise AssertionError(
+                        "incident authority permission shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise AssertionError(
+                    "incident authority accepted permission leaf shadow: " + label + " " + name
+                )
+            permission_negative_count += 1
+    if permission_negative_count != 4:
+        raise AssertionError("incident authority permission leaf fixture count drift")
+    print("PASS: incident authority permission leaf shadows (4 exact-diagnostic negatives)")
     if (omitted, added) != (26, 16):
         raise AssertionError("incident authority trigger negative population drift")
     print("PASS: incident authority exact event triggers (26 omissions; 16 additions; "
