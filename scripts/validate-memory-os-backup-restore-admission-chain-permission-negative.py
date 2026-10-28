@@ -501,6 +501,27 @@ def prove_diagnostic_redaction_runtime(source: str) -> None:
     print("PASS: admission-chain isolated diagnostic redaction (1 runtime case)")
 
 
+def run_independent_workflow_permission_negative() -> None:
+    """Execute the separate event-specific permission source negative from this CI-reachable gate."""
+    path = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py"
+    require(path.is_file() and not path.is_symlink(),
+            "independent workflow permission negative missing or substituted")
+    completed = subprocess.run(
+        [sys.executable, str(path)], cwd=ROOT, capture_output=True, text=True,
+        check=False, timeout=120,
+    )
+    require(completed.returncode == 0,
+            "independent workflow permission negative failed: exit " + str(completed.returncode))
+    for expected in (
+        "PASS: independent permission event-specific trigger reachability (36 removals; 1 shortened inventory negative)",
+        "PASS: admission chain negative event-specific trigger reachability (152 removals; 1 shortened inventory negative)",
+        "Backup/restore admission-chain workflow permission negative PASS",
+    ):
+        require(expected in completed.stdout,
+                "independent workflow permission negative proof output missing")
+    print("PASS: CI-reachable independent permission trigger negatives (36 + 152 omissions; 2 inventory negatives)")
+
+
 def main() -> int:
     require(NEGATIVE_WORKFLOW.is_file() and not NEGATIVE_WORKFLOW.is_symlink(),
             "admission negative CI workflow missing or substituted")
@@ -580,6 +601,7 @@ def main() -> int:
     print("complete workflow run-body negative mutations rejected: 3")
     print("independent admission negative CI source mutations rejected: 12")
     print("independent admission readonly CI source mutations rejected: 15")
+    run_independent_workflow_permission_negative()
     print("production decision changed: false")
     return 0
 
