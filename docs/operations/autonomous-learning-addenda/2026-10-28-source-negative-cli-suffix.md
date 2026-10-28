@@ -415,3 +415,21 @@
 - **Protected-authority check:** Nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007 remains prerequisite-blocked with zero real evidence or final candidates. Canonical learning is still separate and unmodified.
 - **CI status:** Exact-source CI for restored `6870e236` was in progress at this append; do not assert success until its completed job log is inspected.
 - **Learning boundary:** This supplemental append-only failure/success record is not canonical learning authority or production evidence and cannot satisfy backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+
+## 2026-10-28 — Reviewed Go third-step execution bound
+
+### Material failure prevented and recurrence correction
+
+- **Symptom / observed evidence:** The reviewed live-object-stage source-negative workflow has a third step running two named Go tests, followed by tracked/untracked clean-source checks. The common guard previously bound its step count and action pin but not the exact Go command. An echo-only replacement could therefore leave the Python source validator green while silently omitting Go coverage.
+- **Verified root cause:** Third-step execution authority was not bound to the reviewed Go command and clean checks.
+- **Failed approach:** The first patch attempt used raw JavaScript replacement and caused unsafe source expansion (recorded above). A second attempt correctly used deterministic slicing and two-sided source-size bounds but initially omitted the `git diff --check` line from the synthetic Go positive control; this was corrected before exact-source success.
+- **Correction / executable recurrence guard:** [`ff5c3cfd`](https://github.com/m-shogo/memories-project/commit/ff5c3cfd9334d703309d8422f02e462b319f223b) binds the complete reviewed Go third-step shell. [`f85f8224`](https://github.com/m-shogo/memories-project/commit/f85f82245ce21d7720bc2b5e94a768cb12cd6550) completes the synthetic positive shell. Three new negatives reject echo-only Go execution, missing `-count=1` and an unreviewed working directory, raising shared reachability negatives to 166.
+- **Retry condition:** Only modify this exact Go command after a reviewed Go test/toolchain policy change, with positive and negative exact-source CI proof. All future source patches must use deterministic slicing or a callback and two-sided size bounds.
+
+### Material success: exact-source 166-case CI
+
+- **Outcome / observed evidence:** [Autonomous Learning Guard #40681290423](https://github.com/m-shogo/memories-project/actions/runs/40681290423) completed SUCCESS on exact `f85f82245ce21d7720bc2b5e94a768cb12cd6550`. Job logs prove 52 workflows, 63 direct Python commands, 166 executed reachability negative fixtures, 128 canonical learning negatives, 1,186 helper ancestor negatives and canonical append-only PASS.
+- **Why safe / reusable mechanism:** Only the common read-only entrypoint validator and synthetic fixtures changed; reviewed workflows, production source/evidence, credentials, traffic, readiness and human promotion were untouched.
+- **Protected-authority check:** Nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`, OPS-P0-007 prerequisite-blocked with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, request-bound recovery evidence, complete typed eight-domain records or final candidates. Human promotion is separate and was not invoked.
+- **Learning boundary:** This append-only supplemental record is not canonical learning authority and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+- **Next safe target:** Bind the remaining reviewed local-migration-recovery third-step clone source and clean checks, using the corrected bounded patch mechanism. Do not retry unchanged canonical learning transport, Quay MinIO HTTP 401 or human approval blockers.
