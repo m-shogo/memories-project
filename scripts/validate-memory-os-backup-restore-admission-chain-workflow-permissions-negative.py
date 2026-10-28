@@ -12,6 +12,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py"
 RUNNER_NEGATIVE_PATH = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain-full-negative.py"
+ADMISSION_READONLY_PATH = ROOT / ".github/workflows/backup-restore-admission-chain-readonly.yml"
+ADMISSION_READONLY_TRIGGERS = (
+    ".github/workflows/backup-restore-admission-chain-readonly.yml",
+    ".github/workflows/backup-restore-permission-boundary-negative.yml",
+    "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-full.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain.py",
+    "scripts/validate-memory-os-operability.py",
+    "contracts/operations/backup-restore-*.json",
+    "contracts/operations/production-equivalent-environment-*.json",
+    "contracts/operations/recovery-objectives-*.json",
+    "contracts/operations/operability-admission-inventory.v1.json",
+    "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+    "contracts/operations/production-operability-status.json",
+)
 
 
 class Fail(RuntimeError):
@@ -95,9 +111,61 @@ def run_runner_negative() -> None:
     require(completed.returncode == 0, "admission-chain full runner negative proof failed")
 
 
+def validate_admission_readonly_triggers(source: str, *, trigger_paths: tuple[str, ...] = ADMISSION_READONLY_TRIGGERS) -> None:
+    """Require all reviewed PR and push paths, independently of a Git blob hash."""
+    require(len(trigger_paths) == 13 and len(set(trigger_paths)) == 13,
+            "admission readonly trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\\n    branches: [so]\\n    paths:\\n"
+    push_marker = "  push:\\n    branches: [so]\\n    paths:\\n"
+    dispatch_marker = "  workflow_dispatch:\\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        require(source.count(marker) == 1, "admission readonly trigger event marker drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
+                "admission readonly " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            require(block.count('      - "' + item + '"\\n') == 1,
+                    "admission readonly " + event + " missing or duplicate trigger: " + item)
+
+
+def prove_admission_readonly_trigger_negatives() -> None:
+    """Execute one-event-only omissions and inventory shortening against the reviewed CI."""
+    require(ADMISSION_READONLY_PATH.is_file() and not ADMISSION_READONLY_PATH.is_symlink(),
+            "admission readonly workflow source missing or substituted")
+    source = ADMISSION_READONLY_PATH.read_text(encoding="utf-8")
+    validate_admission_readonly_triggers(source)
+    push_marker = "  push:\\n    branches: [so]\\n    paths:\\n"
+    for event in ("pull_request", "push"):
+        for item in ADMISSION_READONLY_TRIGGERS:
+            token = '      - "' + item + '"\\n'
+            require(source.count(token) == 2, "admission readonly mutation anchor drift: " + item)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_admission_readonly_triggers(mutated)
+            except Fail:
+                continue
+            raise Fail("admission readonly accepted missing " + event + " trigger: " + item)
+    try:
+        validate_admission_readonly_triggers(source, trigger_paths=ADMISSION_READONLY_TRIGGERS[:-1])
+    except Fail:
+        pass
+    else:
+        raise Fail("admission readonly accepted shortened trigger inventory")
+    print("PASS: admission readonly event-specific trigger reachability (26 removals; 1 shortened inventory negative)")
+
+
 def main() -> int:
     module = load_validator()
     canonical = module.exact_workflow()
+    prove_admission_readonly_trigger_negatives()
 
     cases = (
         (
