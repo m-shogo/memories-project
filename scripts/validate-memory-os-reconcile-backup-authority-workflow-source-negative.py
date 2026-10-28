@@ -157,9 +157,98 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
     print("PASS: backup authority publisher/independent CI event-specific triggers (58 removals; 16 additions; 2 shortened inventory negatives)")
 
 
+
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Pin effective event, root and permission YAML semantics, not just blob bytes."""
+    if kind == "publisher":
+        name = "Reconcile Backup Authority"
+        paths = PUBLISHER_TRIGGER_PATHS
+        tail = '  schedule:\n    - cron: "17 21 * * *"\n  workflow_dispatch:\n'
+        roots = ["name: " + name, "on:", "permissions:", "concurrency:", "jobs:"]
+    elif kind == "independent":
+        name = "Reconcile Backup Authority Source Negative"
+        paths = INDEPENDENT_TRIGGER_PATHS
+        tail = ""
+        roots = ["name: " + name, "on:", "permissions:", "jobs:"]
+    else:
+        raise SystemExit("backup authority unknown CI YAML kind")
+
+    def event(key: str) -> str:
+        return ("  " + key + ":\n    branches:\n      - so\n    paths:\n"
+                + "".join('      - "' + item + '"\n' for item in paths))
+
+    expected = "name: " + name + "\n\non:\n" + event("pull_request") + event("push") + tail
+    if (content.count("\npermissions:\n") != 1
+            or content.split("\npermissions:\n", 1)[0] != expected):
+        raise SystemExit("backup authority " + kind + " exact event header drift")
+
+    observed_roots = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if observed_roots != roots:
+        raise SystemExit("backup authority " + kind + " root YAML key shadow drift")
+
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("backup authority " + kind + " permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    total = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        validate_yaml_authority(content, kind)
+        cases = [
+            ("extra event", content.replace("on:\n", "on:\n  issues:\n", 1),
+             "exact event header drift"),
+        ]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            cases.append((label, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("backup authority " + kind + " permission mutation anchor drift")
+        for label, extra in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, content.replace(anchor, anchor + extra, 1),
+                          "permission leaf shadow drift"))
+        for label, altered, diagnostic in cases:
+            if altered == content:
+                raise SystemExit("backup authority " + kind + " YAML negative unchanged: " + label)
+            try:
+                validate_yaml_authority(altered, kind)
+            except SystemExit as exc:
+                expected = "backup authority " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "backup authority " + kind + " YAML negative wrong diagnostic: "
+                        + label + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit("backup authority " + kind + " accepted YAML mutation: " + label)
+            total += 1
+    if total != 14:
+        raise SystemExit("backup authority YAML semantic negative count drift")
+    print("PASS: backup authority publisher/independent YAML event/root/permission (14 exact-diagnostic negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
+    validate_yaml_authority(publisher, "publisher")
+    validate_yaml_authority(independent, "independent")
     publisher_required = (
         ("  pull_request:\n    branches:\n      - so\n", 1),
         ("  push:\n    branches:\n      - so\n", 1),
@@ -287,6 +376,7 @@ def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     predicate_runtime(publisher, independent)
     source_negatives(publisher, independent)
     print("production evidence generated: false")
