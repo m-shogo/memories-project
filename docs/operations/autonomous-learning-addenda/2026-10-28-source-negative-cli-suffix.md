@@ -342,3 +342,21 @@
 - **Outcome / evidence:** An initial append attempt was prepared on `dd4208ee`, but a concurrent metrics commit advanced `so` to `0b992c7e` before publication. The expected-HEAD check rejected the stale write; no force update or loss of concurrent work occurred.
 - **Why safe / reusable mechanism:** Re-read branch, target append-only file and canonical contract; rebuild on the new head only when the target blob remains unchanged.
 - **Protected-authority check:** No production authority or registry write was attempted; `NO_GO` remains unchanged.
+
+## 2026-10-28 — Closed source-negative run-step topology
+
+### Material failure prevented: unreviewed YAML run-step execution
+
+- **Symptom / observed evidence:** A read-only inventory of 52 reviewed source-negative workflows found 49 with two literal `run: |` steps and three with an explicitly reviewed third Go/migration step: live-object-stage, local-migration-recovery, and migration-evidence-registry. The previous common guard allowed additional `run` steps and folded `run: >` scalars because it checked individual Python invocations but not the complete step count and scalar style. No actual production incident was observed.
+- **Verified root cause:** The step metadata allowlist accepted `run` keys without bounding their count, YAML scalar form or reviewed exceptions.
+- **Failed approach:** Relying on the existence of verified Python commands while ignoring extra executable steps before or after the validator.
+- **Correction / executable recurrence guard:** [`e8e161a9`](https://github.com/m-shogo/memories-project/commit/e8e161a909785e2914e0e0b75ac60f397c04ea92) binds every reviewed workflow to exactly two literal run steps, except the three observed reviewed three-step workflows. Eight negative mutations cover added, folded, duplicated or missing run scalars, including the setup-go exception. The synthetic setup-go positive control now models the reviewed third run step.
+- **Retry condition:** Change the topology only if an independently reviewed workflow adds/removes a real execution step, with matching positive and negative CI evidence.
+
+### Material success: 153-case reachability proof
+
+- **Outcome / observed evidence:** [Autonomous Learning Guard #40679924009](https://github.com/m-shogo/memories-project/actions/runs/40679924009) completed SUCCESS on exact `e8e161a909785e2914e0e0b75ac60f397c04ea92`. The job log proves 52 source-negative workflows, 63 direct Python commands, 153 executed reachability negative fixtures, 128 canonical learning negatives, 1,186 helper ancestor negatives and canonical append-only PASS.
+- **Why safe / reusable mechanism:** The common read-only CI guard and synthetic fixtures changed; the reviewed workflows, production evidence, credentials, traffic, readiness and promotion authority did not.
+- **Protected-authority check:** All nine protected authority blob SHAs remain unchanged; `productionDecision=NO_GO`, OPS-P0-007 prerequisite-blocked with zero registered/eligible generations, approved objectives, executable reviewed requests, request-bound recovery evidence, complete typed eight-domain records and final candidates. Human promotion is separate and was not invoked.
+- **Learning boundary:** Supplemental append-only history is not canonical learning authority and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+- **Next safe target:** Audit the ordering of the exact-source verification step relative to direct validator execution, without weakening the existing reviewed topology or external blockers.
