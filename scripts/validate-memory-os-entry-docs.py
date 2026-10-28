@@ -333,6 +333,31 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
         issues.append("unreviewed workflow/job shell defaults")
     if re.search(r"(?m)^ {4,10}shell:\s*\S+", source):
         issues.append("unreviewed CI step shell override")
+    # Pin every executable action step, including the four legacy checkout
+    # pins and the single reviewed setup-go exception.
+    alternate_checkout_workflows = {
+        ".github/workflows/live-load-gofmt-source-negative.yml",
+        ".github/workflows/load-missing-evidence-source-negative.yml",
+        ".github/workflows/metrics-authority-source-negative.yml",
+        ".github/workflows/observability-access-source-negative.yml",
+    }
+    checkout_sha = (
+        "11bd71901bbe5b1630ceea73d27597364c9af683"
+        if relative in alternate_checkout_workflows
+        else "11d5960a326750d5838078e36cf38b85af677262"
+    )
+    expected_actions = [
+        f"actions/checkout@{checkout_sha}",
+        "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+    ]
+    if relative == ".github/workflows/live-object-stage-source-negative.yml":
+        expected_actions.append(
+            "actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"
+        )
+    actual_actions = re.findall(r"(?m)^ {6}- uses: (\S+)\s*$", source)
+    all_action_keys = re.findall(r"(?m)^\s*(?:-\s*)?uses:\s*\S+", source)
+    if len(actual_actions) != len(all_action_keys) or actual_actions != expected_actions:
+        issues.append("unreviewed or shadowed CI action invocation")
 
     commands: list[str] = []
     lines = source.splitlines()
@@ -439,7 +464,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 79
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 87
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -495,9 +520,12 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "    permissions:\n"
         "      contents: read\n"
         "    steps:\n"
-        "      - uses: actions/checkout@reviewed\n"
+        "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n"
         "        with:\n"
         "          persist-credentials: false\n"
+        "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
+        "        with:\n"
+        '          python-version: "3.12"\n'
         "      - name: Verify source\n"
         "        run: |\n"
         "          set -euo pipefail\n"
@@ -652,6 +680,33 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "    permissions:\n      contents: read\n",
             "    defaults:\n      run:\n        shell: /bin/true {0}\n"
             "    permissions:\n      contents: read\n", 1),
+        "floating checkout action": fixture.replace(
+            "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "actions/checkout@v4", 1),
+        "substituted checkout action pin": fixture.replace(
+            "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "actions/checkout@0000000000000000000000000000000000000000", 1),
+        "floating setup-python action": fixture.replace(
+            "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+            "actions/setup-python@v5", 1),
+        "extra unreviewed action step": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - uses: unreviewed/action@main\n"
+            "      - name: Execute negative validator\n"),
+        "duplicate setup-python action": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
+            "      - name: Execute negative validator\n"),
+        "unreviewed setup-go action": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5\n"
+            "      - name: Execute negative validator\n"),
+        "alternate checkout in wrong workflow": fixture.replace(
+            "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", 1),
+        "shadowed action uses key": fixture.replace(
+            "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
+            "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
