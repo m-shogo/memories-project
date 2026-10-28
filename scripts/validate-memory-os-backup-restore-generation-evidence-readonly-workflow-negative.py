@@ -75,6 +75,80 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
             raise SystemExit("generation evidence readonly " + event + " exact trigger inventory drift")
 
 
+def validate_yaml_authority(source: str) -> None:
+    """Prove the reviewed event header and effective root/read-only permission semantics."""
+    paths = "".join('      - "' + path + '"\n' for path in TRIGGER_PATHS)
+    expected_header = (
+        "name: Backup Restore Generation Evidence Readonly\n\non:\n"
+        + "  pull_request:\n    branches: [so]\n    paths:\n" + paths
+        + "  push:\n    branches: [so]\n    paths:\n" + paths
+        + "  workflow_dispatch:\n"
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("generation evidence readonly exact event header drift")
+    roots = [
+        row for row in source.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Backup Restore Generation Evidence Readonly",
+        "on:", "permissions:", "jobs:",
+    ]:
+        raise SystemExit("generation evidence readonly root YAML key shadow drift")
+    leaves = []
+    for row in source.split("\npermissions:\n", 1)[1].splitlines():
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            leaves.append(row)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("generation evidence readonly permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    validate_yaml_authority(source)
+    extra = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra == source:
+        raise SystemExit("generation evidence readonly event fixture anchor drift")
+    cases = [("extra event", extra, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source + "\n" + suffix, "root YAML key shadow drift"))
+    anchor = "\npermissions:\n  contents: read\n"
+    if source.count(anchor) != 1:
+        raise SystemExit("generation evidence readonly permission fixture anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(anchor, anchor + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("generation evidence readonly YAML negative inventory drift")
+    for label, mutated, expected in cases:
+        if mutated == source:
+            raise SystemExit("generation evidence readonly unchanged YAML negative: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            diagnostic = "generation evidence readonly " + expected
+            if str(exc) != diagnostic:
+                raise SystemExit("generation evidence readonly wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation evidence readonly accepted YAML mutation: " + label)
+    print("PASS: generation evidence readonly YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
+
 def prove_trigger_reachability_negatives(source: str) -> None:
     """Prove one-event path removals and shortened inventories fail semantically."""
     push_marker = "  push:\n    branches: [so]\n    paths:\n"
@@ -124,6 +198,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
+    validate_yaml_authority(source)
     for label, token, count in REQUIRED:
         if source.count(token) != count:
             raise SystemExit("generation evidence readonly source drift: " + label)
@@ -165,6 +240,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     external = EXTERNAL_PERMISSION_VALIDATOR.read_text(encoding="utf-8")
     require_external_reviewed_binding(external)
     mutated_external = external.replace(REVIEWED_WORKFLOW_BLOB_SHA, "0" * 40, 1)
