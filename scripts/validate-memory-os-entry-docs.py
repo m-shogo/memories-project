@@ -336,6 +336,18 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     root_keys = re.findall(r"(?m)^([A-Za-z][A-Za-z0-9_-]*):", source)
     if root_keys != ["name", "on", "permissions", "jobs"]:
         issues.append("unreviewed workflow-level execution metadata")
+    # YAML permits whitespace before a mapping colon. A second root-level
+    # "on :" or "jobs :" key can shadow the reviewed key while escaping
+    # the exact-colon regex above. Pin all live root-level mapping rows.
+    top_level_rows = [
+        row for row in source.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if (len(top_level_rows) != 4
+            or not re.fullmatch(r"name: [^\n]+", top_level_rows[0])
+            or top_level_rows[1:] != ["on:", "permissions:", "jobs:"]):
+        issues.append("unreviewed workflow-level execution metadata")
     job_keys = (re.findall(r"(?m)^ {4}([A-Za-z][A-Za-z0-9_-]*):", jobs[1])
                 if len(jobs) == 2 else [])
     if job_keys != ["if", "permissions", "runs-on", "timeout-minutes", "steps"]:
@@ -803,7 +815,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 190
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 192
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -1338,6 +1350,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "permissions:\n", "defaults:\n  run:\n    shell: bash\npermissions:\n", 1),
         "duplicate top-level on authority": fixture + "on:\n  workflow_dispatch:\n",
         "quoted shadow on authority": fixture + "'on':\n  workflow_dispatch:\n",
+        "spaced shadow on authority": fixture + "on :\n  workflow_dispatch:\n",
+        "spaced shadow jobs authority": fixture + "jobs : {}\n",
         "unreviewed PR paths-ignore filter": fixture.replace(
             "    paths:\n", "    paths-ignore:\n      - 'scripts/**'\n    paths:\n", 1),
         "unreviewed push branches-ignore filter": fixture.replace(
@@ -1740,6 +1754,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "workflow environment override",
         "workflow defaults override",
         "workflow default shell override",
+        "spaced shadow on authority",
+        "spaced shadow jobs authority",
     }
     job_metadata_cases = {
         "job container override",
@@ -2062,7 +2078,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 190:
+    if diagnostic_bound != 192:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
