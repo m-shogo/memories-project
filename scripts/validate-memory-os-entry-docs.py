@@ -465,7 +465,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "validator inside shell case": fixture.replace(
             "          python scripts/check.py\n",
             '          case "$GITHUB_EVENT_NAME" in\n'
-            "          push) python scripts/check.py ;;\n          esac\n"),
+            "          push)\n          python scripts/check.py\n          ;;\n          esac\n"),
         "conditional post-validator clean checks": fixture.replace(
             "          python scripts/check.py\n          git diff --exit-code\n",
             '          python scripts/check.py\n          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then\n'
