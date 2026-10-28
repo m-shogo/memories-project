@@ -87,6 +87,36 @@ def validate_trigger_reachability(
         )
         if actual != approved:
             raise SystemExit("drill generation binding CI " + event + " exact trigger inventory drift")
+    # Reviewed drill requests are planning-only; protect exact CI event and
+    # permission authority separately from the whole-workflow blob pin.
+    expected_header = (
+        "name: Backup Restore Drill Generation Eligibility Binding\n\non:\n"
+        + pr_marker + "".join('      - "' + item + '"\n' for item in trigger_paths)
+        + push_marker + "".join('      - "' + item + '"\n' for item in trigger_paths)
+        + dispatch_marker
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("drill generation binding CI exact event header drift")
+    observed_roots = [
+        row for row in source.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if observed_roots != [
+        "name: Backup Restore Drill Generation Eligibility Binding",
+        "on:", "permissions:", "concurrency:", "jobs:",
+    ]:
+        raise SystemExit("drill generation binding CI root YAML key shadow drift")
+    permission_lines = source.split("\npermissions:\n", 1)[1].splitlines()
+    permission_rows = []
+    for row in permission_lines:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            permission_rows.append(row)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("drill generation binding CI permission leaf shadow drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -130,6 +160,55 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         pass
     else:
         raise SystemExit("drill generation binding CI shortened trigger inventory accepted")
+    # Mutations retain both exact reviewed PR/push path inventories.
+    extra_event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra_event == source:
+        raise SystemExit("drill generation binding extra-event negative anchor drift")
+    try:
+        validate_trigger_reachability(extra_event)
+    except SystemExit as exc:
+        if str(exc) != "drill generation binding CI exact event header drift":
+            raise SystemExit(
+                "drill generation binding event rejected for wrong reason: " + str(exc)
+            ) from exc
+    else:
+        raise SystemExit("drill generation binding accepted extra event")
+    for name, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    ):
+        try:
+            validate_trigger_reachability(source + "\n" + suffix)
+        except SystemExit as exc:
+            if str(exc) != "drill generation binding CI root YAML key shadow drift":
+                raise SystemExit(
+                    "drill generation binding root shadow rejected for wrong reason: "
+                    + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("drill generation binding accepted root shadow: " + name)
+    anchor = "permissions:\n  contents: read\n"
+    if source.count(anchor) != 1:
+        raise SystemExit("drill generation binding permission negative anchor drift")
+    for name, extra in (
+        ("spaced", "  contents : write\n"),
+        ("quoted", "  'contents': write\n"),
+    ):
+        mutated = source.replace(anchor, anchor + extra, 1)
+        try:
+            validate_trigger_reachability(mutated)
+        except SystemExit as exc:
+            if str(exc) != "drill generation binding CI permission leaf shadow drift":
+                raise SystemExit(
+                    "drill generation binding permission shadow rejected for wrong reason: "
+                    + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("drill generation binding accepted permission shadow: " + name)
+    print("PASS: drill generation binding CI semantic YAML negatives "
+          "(1 extra-event, 4 root, 2 permission exact-diagnostic cases)")
     print("PASS: drill generation binding CI event-specific triggers (52 removals; 8 additions; 1 shortened inventory negative)")
 
 
