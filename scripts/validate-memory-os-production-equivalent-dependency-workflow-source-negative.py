@@ -142,6 +142,43 @@ def validate_trigger_reachability(
             if line.strip() and not line.lstrip().startswith("#")
         )
         require(actual == approved, kind + " " + event + " exact trigger inventory drift")
+    # Publisher intentionally reviews push before PR; independent CI reviews
+    # PR before push. Bind each exact event order and effective YAML authority.
+    paths_block = "".join('      - "' + path + '"\n' for path in trigger_paths)
+    expected_events = (
+        push_marker + paths_block + pr_marker + paths_block + "  workflow_dispatch:\n"
+        if kind == "publisher" else
+        pr_marker + paths_block + push_marker + paths_block
+    )
+    expected_header = (
+        ("name: Production Equivalent Dependency Contract" if kind == "publisher"
+         else "name: Production Equivalent Dependency Source Negative")
+        + "\n\non:\n" + expected_events
+    )
+    if (content.count("\npermissions:\n") != 1
+            or content.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("production-equivalent dependency " + kind + " exact event header drift")
+    observed_roots = [
+        row for row in content.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    expected_roots = [
+        ("name: Production Equivalent Dependency Contract" if kind == "publisher"
+         else "name: Production Equivalent Dependency Source Negative"),
+        "on:", "permissions:", "jobs:",
+    ]
+    if observed_roots != expected_roots:
+        raise SystemExit("production-equivalent dependency " + kind + " root YAML key shadow drift")
+    permission_lines = content.split("\npermissions:\n", 1)[1].splitlines()
+    permission_rows = []
+    for row in permission_lines:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            permission_rows.append(row)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("production-equivalent dependency " + kind + " permission leaf shadow drift")
 
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
@@ -184,6 +221,64 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
             pass
         else:
             raise SystemExit("production-equivalent dependency " + kind + " shortened inventory accepted")
+    # All PR/push path inventories remain unchanged in these fixtures.
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        extra_event = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if extra_event == content:
+            raise SystemExit("production-equivalent dependency event negative anchor drift: " + kind)
+        try:
+            validate_trigger_reachability(extra_event, kind)
+        except SystemExit as exc:
+            expected = "production-equivalent dependency " + kind + " exact event header drift"
+            if str(exc) != expected:
+                raise SystemExit(
+                    "production-equivalent dependency event rejected for wrong reason: "
+                    + kind + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("production-equivalent dependency accepted extra event: " + kind)
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            try:
+                validate_trigger_reachability(content + "\n" + suffix, kind)
+            except SystemExit as exc:
+                expected = "production-equivalent dependency " + kind + " root YAML key shadow drift"
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "production-equivalent dependency root rejected for wrong reason: "
+                        + kind + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "production-equivalent dependency accepted root shadow: " + kind + " " + name
+                )
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("production-equivalent dependency permission negative anchor drift: " + kind)
+        for name, extra in (
+            ("spaced", "  contents : write\n"),
+            ("quoted", "  'contents': write\n"),
+        ):
+            mutated = content.replace(anchor, anchor + extra, 1)
+            try:
+                validate_trigger_reachability(mutated, kind)
+            except SystemExit as exc:
+                expected = "production-equivalent dependency " + kind + " permission leaf shadow drift"
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "production-equivalent dependency permission rejected for wrong reason: "
+                        + kind + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "production-equivalent dependency accepted permission shadow: " + kind + " " + name
+                )
+    print("PASS: production-equivalent dependency CI semantic YAML negatives "
+          "(2 extra-event, 8 root, 4 permission exact-diagnostic cases)")
     print("PASS: production-equivalent dependency CI event-specific triggers (30 removals; 16 additions; 2 shortened inventory negatives)")
 
 
