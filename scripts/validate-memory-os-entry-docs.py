@@ -293,6 +293,8 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
         issues.append("missing reviewed live PR/push job condition")
     if not re.search(r"(?m)^permissions:\n  contents: read$", source):
         issues.append("missing read-only workflow permissions")
+    if re.search(r"(?m)^\s+continue-on-error:\s*(?!false\s*$)\S+", source):
+        issues.append("CI validator failure may be suppressed by continue-on-error")
     if "persist-credentials: false" not in source:
         issues.append("checkout may retain credentials")
     if "git rev-parse HEAD" not in source or "git status --porcelain" not in source:
@@ -321,6 +323,12 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                 continue
             if "          set -euo pipefail" not in block[:offset]:
                 issues.append("Python command lacks preceding fail-closed shell")
+            if any(re.fullmatch(r" {10,}(?:exit(?: +0)?|set +\+e)\s*", previous)
+                   for previous in block[:offset]):
+                issues.append("Python validator unreachable or shell errexit disabled")
+            if any(re.fullmatch(r" {10,}if (?:false|0); then\s*", previous)
+                   for previous in block[:offset]):
+                issues.append("Python validator inside disabled shell branch")
             commands.append(match.group(1))
     if not commands:
         issues.append("no directly executed Python validator")
@@ -382,6 +390,18 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "unconditional early exit": fixture.replace(
+            "          python scripts/check.py",
+            "          exit 0\n          python scripts/check.py"),
+        "errexit disabled before validator": fixture.replace(
+            "          python scripts/check.py",
+            "          set +e\n          python scripts/check.py"),
+        "step continue-on-error": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        continue-on-error: true\n"),
+        "disabled shell branch": fixture.replace(
+            "          python scripts/check.py",
+            "          if false; then\n          python scripts/check.py\n          fi"),
         "nested masked validator failure": nested.replace(
             "            python scripts/check.py",
             "            python scripts/check.py || true"),
@@ -458,7 +478,7 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 15 negative fixtures")
+              f"{invocation_count} direct Python commands, 19 negative fixtures")
 
 
 def main() -> int:
