@@ -386,6 +386,15 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                     row,
                 ) for row in prior):
                 issues.append("Python validator command resolution may be overridden")
+            # Only the two reviewed temporary-directory EXIT cleanup traps are
+            # admitted. Other traps can turn validator failures into exit zero.
+            safe_cleanup_traps = (
+                "trap 'rm -rf \"$temp\"' EXIT",
+                "trap 'rm -rf \"$sandbox\"' EXIT",
+            )
+            if any(row.startswith("trap ") and row not in safe_cleanup_traps
+                   for row in prior):
+                issues.append("unreviewed shell trap may mask validator failure")
             commands.append(match.group(1))
             last_python = offset
         if last_python >= 0:
@@ -423,7 +432,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 69
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 74
 
 
 def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
@@ -571,6 +580,26 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "      - name: Execute negative validator\n",
             '          echo "PYTHONPATH=/tmp/unreviewed" >> "$GITHUB_ENV"\n'
             "      - name: Execute negative validator\n"),
+        "ERR trap masks validator failure": fixture.replace(
+            "          python scripts/check.py\n",
+            "          trap 'exit 0' ERR\n"
+            "          python scripts/check.py\n"),
+        "EXIT trap masks validator failure": fixture.replace(
+            "          python scripts/check.py\n",
+            "          trap 'exit 0' EXIT\n"
+            "          python scripts/check.py\n"),
+        "DEBUG trap masks validator failure": fixture.replace(
+            "          python scripts/check.py\n",
+            "          trap 'exit 0' DEBUG\n"
+            "          python scripts/check.py\n"),
+        "RETURN trap masks validator failure": fixture.replace(
+            "          python scripts/check.py\n",
+            "          trap 'exit 0' RETURN\n"
+            "          python scripts/check.py\n"),
+        "unreviewed EXIT cleanup trap": fixture.replace(
+            "          python scripts/check.py\n",
+            "          trap 'rm -rf /tmp/unreviewed' EXIT\n"
+            "          python scripts/check.py\n"),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
