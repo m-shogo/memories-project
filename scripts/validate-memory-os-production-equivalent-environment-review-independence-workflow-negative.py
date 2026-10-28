@@ -115,6 +115,35 @@ def validate_yaml_authority(source: str) -> None:
             permission_rows.append(line)
     if permission_rows != ["  contents: read"]:
         raise SystemExit("review independence CI permission leaf shadow drift")
+    body = source.split("\n" + "jobs:\n", 1)[1]
+    job_headers = [
+        row for row in body.splitlines()
+        if row.startswith("  ") and not row.startswith("   ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_headers != ["  validate-pr:", "  validate-and-publish:"]:
+        raise SystemExit("review independence CI job mapping shadow drift")
+    pr = body.split("  validate-pr:\n", 1)[1].split("  validate-and-publish:\n", 1)[0]
+    publisher = body.split("  validate-and-publish:\n", 1)[1]
+    for section, expected_if, expected_scope in (
+        (pr, "    if: github.event_name == 'pull_request'", "read"),
+        (publisher, "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "write"),
+    ):
+        keys = [
+            row for row in section.splitlines()
+            if row.startswith("    ") and not row.startswith("     ")
+            and row.strip() and not row.lstrip().startswith("#")
+        ]
+        if keys != [
+            expected_if, "    permissions:", "    runs-on: ubuntu-latest",
+            "    timeout-minutes: 8", "    steps:",
+        ]:
+            raise SystemExit("review independence CI job key/permission shadow drift")
+        marker = "    permissions:\n"
+        if (section.count(marker) != 1
+                or section.split(marker, 1)[1].split("    runs-on: ubuntu-latest\n", 1)[0]
+                != "      contents: " + expected_scope + "\n"):
+            raise SystemExit("review independence CI job permission scope drift")
 
 
 def prove_yaml_authority_negatives(source: str) -> None:
@@ -143,7 +172,62 @@ def prove_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(marker, marker + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for job in ("validate-pr", "validate-and-publish"):
+        for label, suffix in (
+            ("duplicate job", "  " + job + ": {}\n"),
+            ("spaced job", "  " + job + " : {}\n"),
+            ("quoted job", "  '" + job + "': {}\n"),
+        ):
+            cases.append((job + " " + label, source.rstrip("\n") + "\n" + suffix,
+                          "job mapping shadow drift"))
+        job_anchor = "  " + job + ":\n"
+        if source.count(job_anchor) != 1:
+            raise SystemExit("review independence CI job fixture anchor drift: " + job)
+        prefix, section = source.split(job_anchor, 1)
+        runs_on = "    runs-on: ubuntu-latest\n"
+        if runs_on not in section:
+            raise SystemExit("review independence CI job runs-on fixture anchor drift: " + job)
+        for label, leaf in (
+            ("job permission", "    permissions:\n      contents: write\n"),
+            ("spaced job permission", "    permissions :\n      contents: write\n"),
+            ("quoted job permission", "    'permissions':\n      contents: write\n"),
+        ):
+            cases.append((job + " " + label,
+                          prefix + job_anchor + section.replace(runs_on, runs_on + leaf, 1),
+                          "job key/permission shadow drift"))
+    for label, anchor, replacement in (
+        ("PR scope escalation",
+         "  validate-pr:\n    if: github.event_name == 'pull_request'\n    permissions:\n      contents: read\n",
+         "  validate-pr:\n    if: github.event_name == 'pull_request'\n    permissions:\n      contents: write\n"),
+        ("publisher scope removal",
+         "  validate-and-publish:\n    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n    permissions:\n      contents: write\n",
+         "  validate-and-publish:\n    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n    permissions:\n      contents: read\n"),
+    ):
+        if source.count(anchor) != 1:
+            raise SystemExit("review independence CI scoped permission fixture anchor drift: " + label)
+        cases.append((label, source.replace(anchor, replacement, 1),
+                      "job permission scope drift"))
+    for job, scope in (("validate-pr", "read"), ("validate-and-publish", "write")):
+        marker = "    permissions:\n      contents: " + scope + "\n"
+        prefix, section = source.split("  " + job + ":\n", 1)
+        if section.count(marker) < 1:
+            raise SystemExit("review independence CI job permission leaf fixture anchor drift: " + job)
+        for label, leaf in (
+            ("spaced contents", "      contents : write\n"),
+            ("quoted contents", "      'contents': write\n"),
+        ):
+            cases.append((job + " " + label,
+                          prefix + "  " + job + ":\n" + section.replace(marker, marker + leaf, 1),
+                          "job permission scope drift"))
+    for label, anchor in (
+        ("PR event bypass", "    if: github.event_name == 'pull_request'\n"),
+        ("publisher event bypass", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n"),
+    ):
+        if source.count(anchor) != 1:
+            raise SystemExit("review independence CI job event fixture anchor drift: " + label)
+        cases.append((label, source.replace(anchor, "    if: true\n", 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 29:
         raise SystemExit("review independence CI YAML negative inventory drift")
     for label, mutated, diagnostic in cases:
         if mutated == source:
@@ -157,7 +241,7 @@ def prove_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("review independence CI accepted YAML mutation: " + label)
-    print("PASS: review independence CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: review independence CI YAML event/root/job/permission authority (29 exact-diagnostic negatives)")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
