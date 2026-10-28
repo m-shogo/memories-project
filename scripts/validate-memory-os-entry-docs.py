@@ -1700,6 +1700,31 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "alternate checkout in wrong workflow",
         "shadowed action uses key",
     }
+    workflow_metadata_cases = {
+        "workflow concurrency cancellation",
+        "workflow environment override",
+        "workflow defaults override",
+        "workflow default shell override",
+    }
+    job_metadata_cases = {
+        "job container override",
+        "job environment override",
+        "job strategy override",
+        "job default shell override",
+    }
+    job_runner_cases = {"job runner override", "job timeout override"}
+    step_metadata_cases = {
+        "step working directory override",
+        "step id override",
+        "step false continue-on-error override",
+        "step timeout override",
+        "validator step shell override",
+        "source verification step shell override",
+    }
+    workflow_permission_cases = {"duplicate workflow permissions"}
+    workflow_contents_cases = {"duplicate workflow contents permission"}
+    readonly_permission_cases = {"write permission"}
+    job_permission_cases = {"elevated job permissions", "duplicate job permissions"}
     diagnostic_bound = 0
     for name, mutation in cases.items():
         if name.startswith("setup-go "):
@@ -1739,13 +1764,29 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = "setup-go version/cache input authority drift"
         elif name in action_invocation_cases:
             expected_issue = "unreviewed or shadowed CI action invocation"
+        elif name in workflow_metadata_cases:
+            expected_issue = "unreviewed workflow-level execution metadata"
+        elif name in job_metadata_cases:
+            expected_issue = "unreviewed job runner, timeout or execution metadata"
+        elif name in job_runner_cases:
+            expected_issue = "unreviewed job runner or timeout value"
+        elif name in step_metadata_cases:
+            expected_issue = "unreviewed step execution metadata"
+        elif name in workflow_permission_cases:
+            expected_issue = "duplicate or missing workflow permissions key"
+        elif name in workflow_contents_cases:
+            expected_issue = "duplicate or missing workflow contents permission"
+        elif name in readonly_permission_cases:
+            expected_issue = "missing read-only workflow permissions"
+        elif name in job_permission_cases:
+            expected_issue = "duplicate, missing or elevated job permissions"
         if expected_issue is not None:
             diagnostic_bound += 1
             if not any(expected_issue in issue for issue in issues):
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 61:
+    if diagnostic_bound != 82:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
