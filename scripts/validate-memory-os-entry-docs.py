@@ -603,6 +603,37 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                         or re.match(r" {10,}(?:if|elif|case|while|until|for)\b", row)
                         for row in before_clean):
                     issues.append("post-validator clean checks unreachable or conditional")
+                # A syntactically present git clean-source check can be inert
+                # when a preceding shell list skips it or it is only heredoc
+                # data, an uninvoked function body, or a trap-masked failure.
+                if any(
+                    (prior := [
+                        row.strip() for row in after[:position]
+                        if row.strip() and not row.lstrip().startswith("#")
+                    ]) and prior[-1].rstrip("\\\\").rstrip().endswith(("&&", "||"))
+                    for position in (tracked_positions[0], status_positions[0])
+                ):
+                    issues.append("post-validator clean check short-circuited")
+                if any(re.search(r"<<-?\\s*['\\\"]?[A-Za-z_][A-Za-z0-9_]*", row)
+                       for row in before_clean):
+                    issues.append("post-validator clean check may be inert heredoc data")
+                if any(re.match(
+                    r" {10,}(?:function\\s+)?[A-Za-z_][A-Za-z0-9_]*"
+                    r"(?:\\s*\\(\\s*\\))?\\s*\\{", row,
+                ) for row in before_clean):
+                    issues.append("post-validator clean check may be trapped in shell function")
+                if any(row.strip().startswith("trap ") and row.strip() not in (
+                    'trap \'rm -rf "$temp"\' EXIT',
+                    'trap \'rm -rf "$sandbox"\' EXIT',
+                ) for row in before_clean):
+                    issues.append("post-validator clean check failure may be trap-masked")
+                if any(re.match(
+                    r" {10,}(?:alias|unalias|hash|source|eval|exec|command|builtin)\\b|"
+                    r" {10,}\\.\\s|"
+                    r" {10,}(?:export\\s+)?(?:PATH|PYTHONPATH|BASH_ENV|ENV)=",
+                    row,
+                ) for row in before_clean):
+                    issues.append("post-validator clean check shell may be overridden")
     if not commands:
         issues.append("no directly executed Python validator")
     if len(commands) != len(set(commands)):
@@ -616,7 +647,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 135
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 145
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -731,6 +762,60 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "tracked clean check skipped by true-or": fixture.replace(
+            "          git diff --exit-code\n",
+            "          true ||\n          git diff --exit-code\n"),
+        "tracked clean check skipped by false-and": fixture.replace(
+            "          git diff --exit-code\n",
+            "          false &&\n          git diff --exit-code\n"),
+        "untracked clean check skipped by true-or": fixture.replace(
+            '          test -z "$(git status --porcelain)"\n'
+            '      - name: Execute negative validator\n',
+            '          test -z "$(git status --porcelain)"\n'
+            '      - name: Execute negative validator\n').replace(
+            '          git diff --exit-code\n'
+            '          test -z "$(git status --porcelain)"\n',
+            '          git diff --exit-code\n'
+            '          true ||\n'
+            '          test -z "$(git status --porcelain)"\n'),
+        "untracked clean check skipped by false-and": fixture.replace(
+            '          git diff --exit-code\n'
+            '          test -z "$(git status --porcelain)"\n',
+            '          git diff --exit-code\n'
+            '          false &&\n'
+            '          test -z "$(git status --porcelain)"\n'),
+        "tracked clean check inert in heredoc": fixture.replace(
+            "          git diff --exit-code\n",
+            "          cat <<'CLEAN_CHECK'\n"
+            "          git diff --exit-code\n"
+            "          CLEAN_CHECK\n"),
+        "untracked clean check inert in heredoc": fixture.replace(
+            '          git diff --exit-code\n'
+            '          test -z "$(git status --porcelain)"\n',
+            '          git diff --exit-code\n'
+            "          cat <<'CLEAN_CHECK'\n"
+            '          test -z "$(git status --porcelain)"\n'
+            "          CLEAN_CHECK\n"),
+        "tracked clean check trapped in function": fixture.replace(
+            "          git diff --exit-code\n",
+            "          clean_check() {\n"
+            "          git diff --exit-code\n"
+            "          }\n"),
+        "untracked clean check trapped in function": fixture.replace(
+            '          git diff --exit-code\n'
+            '          test -z "$(git status --porcelain)"\n',
+            '          git diff --exit-code\n'
+            '          clean_check() {\n'
+            '          test -z "$(git status --porcelain)"\n'
+            '          }\n'),
+        "post-validator failure masked by ERR trap": fixture.replace(
+            "          git diff --exit-code\n",
+            "          trap 'exit 0' ERR\n"
+            "          git diff --exit-code\n"),
+        "post-validator shell overridden by eval": fixture.replace(
+            "          git diff --exit-code\n",
+            '          eval "set +e"\n'
+            "          git diff --exit-code\n"),
         "comment-only source HEAD comparison": fixture.replace(
             '          test "$(git rev-parse HEAD)" = "$expected"\n',
             '          # test "$(git rev-parse HEAD)" = "$expected"\n'),
