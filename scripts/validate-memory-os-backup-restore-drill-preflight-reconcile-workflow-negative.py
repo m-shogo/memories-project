@@ -143,7 +143,79 @@ def prove_independent_trigger_negatives(source: str) -> None:
     print("PASS: semantic preflight reconcile independent event-specific triggers (6 removals; 8 additions; 1 shortened inventory negative)")
 
 
+
+def validate_independent_yaml_authority(source: str) -> None:
+    """Reject event/root/permission YAML shadows independently of the reviewed blob."""
+    name = "name: Backup Restore Drill Preflight Reconcile Source Negative"
+    paths = "".join('      - "' + item + '"\n' for item in INDEPENDENT_TRIGGER_PATHS)
+    events = (
+        "  pull_request:\n    branches:\n      - so\n    paths:\n" + paths
+        + "  push:\n    branches:\n      - so\n    paths:\n" + paths
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != name + "\n\non:\n" + events):
+        raise SystemExit("semantic preflight reconcile independent exact event header drift")
+    roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [name, "on:", "permissions:", "jobs:"]:
+        raise SystemExit("semantic preflight reconcile independent root YAML key shadow drift")
+    leaves = []
+    for line in source.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            leaves.append(line)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("semantic preflight reconcile independent permission leaf shadow drift")
+
+
+def prove_independent_yaml_authority_negatives(source: str) -> None:
+    """Prove nine exact diagnostics without relying on the Git blob pin."""
+    validate_independent_yaml_authority(source)
+    extra_event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra_event == source:
+        raise SystemExit("semantic preflight reconcile independent YAML event fixture unchanged")
+    cases = [("extra event", extra_event, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source + "\n" + suffix, "root YAML key shadow drift"))
+    marker = "\npermissions:\n  contents: read\n"
+    if source.count(marker) != 1:
+        raise SystemExit("semantic preflight reconcile independent YAML permission fixture anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(marker, marker + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("semantic preflight reconcile independent YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("semantic preflight reconcile independent unchanged YAML fixture: " + label)
+        try:
+            validate_independent_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "semantic preflight reconcile independent " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("semantic preflight reconcile independent wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("semantic preflight reconcile independent accepted YAML mutation: " + label)
+    print("PASS: semantic preflight reconcile independent YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
 def validate_independent(source: str, *, check_blob: bool = True) -> None:
+    validate_independent_yaml_authority(source)
     validate_independent_trigger_reachability(source)
     for label, token, expected in INDEPENDENT_REQUIRED:
         if source.count(token) != expected:
@@ -273,6 +345,7 @@ def main() -> int:
     independent = INDEPENDENT_PATH.read_text(encoding="utf-8")
     validate_independent(independent)
     prove_independent_trigger_negatives(independent)
+    prove_independent_yaml_authority_negatives(independent)
     prove_branch_guards_runtime()
     prove_sha_guard_runtime()
     prove_independent_runtime(independent)
