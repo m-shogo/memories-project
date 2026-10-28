@@ -54,6 +54,22 @@ def validate_trigger_reachability(
             raise SystemExit("inventory PR " + label + " permissions boundary drift")
         if value.split("\npermissions:\n", 1)[0] != expected:
             raise SystemExit("inventory PR " + label + " exact trigger event drift")
+        # Exact event-prefix checks alone miss a later valid YAML root key
+        # shadowing on, permissions or jobs after the reviewed boundary.
+        expected_roots = (
+            ["name: Operability Admission Inventory PR", "on:", "permissions:",
+             "concurrency:", "jobs:"]
+            if label == "publisher" else
+            ["name: Operability Admission Inventory PR Source Negative", "on:",
+             "permissions:", "jobs:"]
+        )
+        observed_roots = [
+            row for row in value.splitlines()
+            if row.strip() and not row[0].isspace()
+            and not row.lstrip().startswith("#")
+        ]
+        if observed_roots != expected_roots:
+            raise SystemExit("inventory PR " + label + " root YAML key shadow drift")
 
 
 def trigger_negatives(pr: str, guard: str) -> None:
@@ -127,10 +143,44 @@ def trigger_negatives(pr: str, guard: str) -> None:
             pass
         else:
             raise SystemExit("inventory PR accepted event topology mutation: " + label)
+    # The reviewed event prefix stays byte-for-byte intact in these
+    # mutations: only the root YAML shadow guard can reject them here.
+    root_shadows = (
+        ("spaced on", "on :\n  workflow_dispatch:\n"),
+        ("quoted on", "'on':\n  workflow_dispatch:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    )
+    root_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", pr, True),
+        ("independent", guard, False),
+    ):
+        for name, suffix in root_shadows:
+            mutated = original + suffix
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, guard)
+                else:
+                    validate_trigger_reachability(pr, mutated)
+            except SystemExit as exc:
+                expected = "inventory PR " + label + " root YAML key shadow drift"
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "inventory PR root shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "inventory PR accepted root YAML shadow: " + label + " " + name
+                )
+            root_negative_count += 1
+    if root_negative_count != 8:
+        raise SystemExit("inventory PR root shadow fixture count drift")
     if (omitted, added) != (29, 12):
         raise SystemExit("inventory PR event trigger negative population drift")
     print("PASS: inventory PR exact event triggers (29 omissions; 12 additions; "
-          "2 shortened inventories; 3 event topology negatives)")
+          "2 shortened inventories; 3 event topology; 8 root shadow negatives)")
 
 
 def source(relative: str) -> str:
