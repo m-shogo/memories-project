@@ -309,6 +309,19 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     if (len(jobs) != 2 or
             len(re.findall(r"(?m)^  [A-Za-z0-9_-]+:\s*$", jobs[1])) != 1):
         issues.append("missing or duplicate source-negative CI job")
+    # GitHub Actions metadata can change the execution source even when the
+    # pinned actions and a visible Python command remain unchanged.
+    root_keys = re.findall(r"(?m)^([A-Za-z][A-Za-z0-9_-]*):", source)
+    if root_keys != ["name", "on", "permissions", "jobs"]:
+        issues.append("unreviewed workflow-level execution metadata")
+    job_keys = (re.findall(r"(?m)^ {4}([A-Za-z][A-Za-z0-9_-]*):", jobs[1])
+                if len(jobs) == 2 else [])
+    if job_keys != ["if", "permissions", "runs-on", "timeout-minutes", "steps"]:
+        issues.append("unreviewed job runner, timeout or execution metadata")
+    step_keys = (re.findall(r"(?m)^ {8}([A-Za-z][A-Za-z0-9_-]*):", jobs[1])
+                 if len(jobs) == 2 else [])
+    if any(key not in {"with", "name", "env", "run"} for key in step_keys):
+        issues.append("unreviewed step execution metadata")
     if f"    {SOURCE_NEGATIVE_JOB_CONDITION}" not in source.splitlines():
         issues.append("missing reviewed live PR/push job condition")
     if not re.search(r"(?m)^permissions:\n  contents: read$", source):
@@ -361,6 +374,18 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     # A pinned checkout action still needs the exact PR-head/push-source ref
     # and no credential/token/duplicate-key overrides in its with block.
     source_lines = source.splitlines()
+    # The only reviewed environment mapping is the PR-head binding in the
+    # exact-source verification step. Extra env blocks or shadowed keys can
+    # replace Python command resolution or the checked-out source identity.
+    env_indices = [i for i, row in enumerate(source_lines) if row == "        env:"]
+    if (len(env_indices) != 1 or
+            source_lines[env_indices[0] + 1:env_indices[0] + 3] != [
+                "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+                "        run: |",
+            ]):
+        issues.append("unreviewed step environment or PR-head SHA binding")
+    if sum(bool(re.match(r"^\\s*env:", row)) for row in source_lines) != 1:
+        issues.append("shadowed workflow, job or step environment")
     checkout_indices = [
         index for index, row in enumerate(source_lines)
         if row.startswith("      - uses: actions/checkout@")
@@ -528,7 +553,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 106
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 121
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -583,6 +608,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         f"    {SOURCE_NEGATIVE_JOB_CONDITION}\n"
         "    permissions:\n"
         "      contents: read\n"
+        "    runs-on: ubuntu-latest\n"
+        "    timeout-minutes: 5\n"
         "    steps:\n"
         "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n"
         "        with:\n"
@@ -593,6 +620,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "        with:\n"
         '          python-version: "3.12"\n'
         "      - name: Verify source\n"
+        "        env:\n"
+        "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n"
         "        run: |\n"
         "          set -euo pipefail\n"
         '          test "$(git rev-parse HEAD)" = "$expected"\n'
@@ -628,6 +657,47 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "workflow concurrency cancellation": fixture.replace(
+            "permissions:\n", "concurrency:\n  group: unreviewed\npermissions:\n", 1),
+        "workflow environment override": fixture.replace(
+            "permissions:\n", "env:\n  PYTHONPATH: /tmp\npermissions:\n", 1),
+        "job runner override": fixture.replace(
+            "    runs-on: ubuntu-latest\n", "    runs-on: self-hosted\n"),
+        "job timeout override": fixture.replace(
+            "    timeout-minutes: 5\n", "    timeout-minutes: 1\n"),
+        "job container override": fixture.replace(
+            "    timeout-minutes: 5\n",
+            "    timeout-minutes: 5\n    container: unreviewed/image\n"),
+        "job environment override": fixture.replace(
+            "    runs-on: ubuntu-latest\n",
+            "    env:\n      PYTHONPATH: /tmp\n    runs-on: ubuntu-latest\n"),
+        "job strategy override": fixture.replace(
+            "    runs-on: ubuntu-latest\n",
+            "    strategy:\n      matrix:\n        os: [ubuntu-latest]\n    runs-on: ubuntu-latest\n"),
+        "step working directory override": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        working-directory: /tmp\n"),
+        "step id override": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        id: unreviewed\n"),
+        "step environment override": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        env:\n          PYTHONPATH: /tmp\n"),
+        "duplicate PR-head environment binding": fixture.replace(
+            "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n",
+            "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n"
+            "          PR_HEAD_SHA: ${{ github.sha }}\n"),
+        "altered PR-head environment binding": fixture.replace(
+            "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n",
+            "          PR_HEAD_SHA: ${{ github.sha }}\n"),
+        "step false continue-on-error override": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        continue-on-error: false\n"),
+        "step timeout override": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        timeout-minutes: 1\n"),
+        "workflow defaults override": fixture.replace(
+            "permissions:\n", "defaults:\n  run:\n    shell: bash\npermissions:\n", 1),
         "duplicate top-level on authority": fixture + "on:\n  workflow_dispatch:\n",
         "quoted shadow on authority": fixture + "'on':\n  workflow_dispatch:\n",
         "unreviewed PR paths-ignore filter": fixture.replace(
