@@ -173,6 +173,19 @@ def metrics_trigger_matrix(
         ]
         if observed_roots != expected_roots:
             raise AssertionError("metrics " + label + " root YAML key shadow drift")
+        # The publisher legitimately requires write; PR and independent CI
+        # require read. Reject quoted/whitespace-colon YAML leaf shadows at
+        # every scope without weakening the publisher's reviewed authority.
+        permission_lines = content.split("\npermissions:\n", 1)[1].splitlines()
+        permission_rows = []
+        for row in permission_lines:
+            if row.strip() and not row[0].isspace():
+                break
+            if row.strip() and not row.lstrip().startswith("#"):
+                permission_rows.append(row)
+        expected_permission = "  contents: write" if label == "writer" else "  contents: read"
+        if permission_rows != [expected_permission]:
+            raise AssertionError("metrics " + label + " workflow permission leaf shadow drift")
 
 
 def metrics_trigger_replace(content: str, old: str, new: str) -> str:
@@ -275,6 +288,36 @@ def metrics_trigger_negatives(writer: str, pr: str, independent: str) -> None:
             root_negative_count += 1
     if root_negative_count != 12:
         raise AssertionError("metrics root shadow fixture count drift")
+    permission_negative_count = 0
+    for index, label, original in (
+        (0, "writer", writer), (1, "PR", pr), (2, "independent", independent)
+    ):
+        reviewed_leaf = "write" if label == "writer" else "read"
+        shadow_leaf = "read" if label == "writer" else "write"
+        anchor = "permissions:\n  contents: " + reviewed_leaf + "\n"
+        if original.count(anchor) != 1:
+            raise AssertionError("metrics permission negative anchor drift: " + label)
+        for name, extra in (
+            ("spaced", "  contents : " + shadow_leaf + "\n"),
+            ("quoted", "  'contents': " + shadow_leaf + "\n"),
+        ):
+            sources = [writer, pr, independent]
+            sources[index] = original.replace(anchor, anchor + extra, 1)
+            try:
+                metrics_trigger_matrix(*sources)
+            except AssertionError as exc:
+                expected = "metrics " + label + " workflow permission leaf shadow drift"
+                if str(exc) != expected:
+                    raise AssertionError(
+                        "metrics permission shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise AssertionError("metrics accepted permission leaf shadow: " + label + " " + name)
+            permission_negative_count += 1
+    if permission_negative_count != 6:
+        raise AssertionError("metrics permission leaf fixture count drift")
+    print("PASS: metrics permission leaf shadows (6 exact-diagnostic negatives)")
     print("PASS: metrics exact event trigger matrix: " + str(omissions)
           + " omissions, " + str(additions) + " additions/duplicates, "
           + str(shortened) + " shortened inventories, "
