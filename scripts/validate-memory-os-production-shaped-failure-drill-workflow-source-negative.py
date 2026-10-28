@@ -18,6 +18,35 @@ INDEPENDENT = ".github/workflows/production-shaped-failure-drills-source-negativ
 SELF = "scripts/validate-memory-os-production-shaped-failure-drill-workflow-source-negative.py"
 PUBLISHER_SHA = "16a8d603a6deb80f6ae5b6f87e64d5ad60bf6036"
 INDEPENDENT_SHA = "f6721cbf3d59d2b4e5aef1e9e324ebf0c478eb9f"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/production-shaped-failure-drills.yml",
+    ".github/workflows/production-shaped-failure-drills-source-negative.yml",
+    "scripts/validate-memory-os-production-shaped-failure-drill-workflow-source-negative.py",
+    "contracts/operations/requests/production-shaped-failure-drill-foundation.v1.json",
+    "contracts/operations/production-shaped-failure-drill-contract.v1.json",
+    "contracts/operations/production-shaped-failure-drill-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+    "docs/evidence/production-shaped-failure-drills/independent-reviews/**",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/register-memory-os-production-shaped-failure-drill.py",
+    "scripts/validate-memory-os-production-shaped-failure-drills.py",
+    "scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py",
+    "scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py",
+    "scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py",
+    "scripts/validate-memory-os-chaos-failure-drills-v2.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/reconcile-memory-os-production-shaped-failure-drills.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/production-shaped-failure-drills.yml",
+    ".github/workflows/production-shaped-failure-drills-source-negative.yml",
+    "scripts/validate-memory-os-production-shaped-failure-drill-workflow-source-negative.py",
+)
 D = chr(36)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
@@ -77,6 +106,81 @@ INDEPENDENT_REQUIRED = (
 )
 
 
+
+def validate_trigger_reachability(
+    source: str, *, publisher: bool, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Require the complete reviewed path inventory independently for PR and push."""
+    expected = PUBLISHER_TRIGGER_PATHS if publisher else INDEPENDENT_TRIGGER_PATHS
+    paths = expected if trigger_paths is None else trigger_paths
+    if len(paths) != len(expected) or len(set(paths)) != len(expected):
+        raise SystemExit("production-shaped drill CI trigger inventory shortened or duplicated")
+    pr = "  pull_request:\\n    branches:\\n      - so\\n    paths:\\n"
+    push = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
+    end = "  workflow_dispatch:\\n" if publisher else "\\npermissions:\\n"
+    first, second = (push, pr) if publisher else (pr, push)
+    if any(source.count(marker) != 1 for marker in (first, second, end)):
+        raise SystemExit("production-shaped drill CI event marker drift")
+    if not (source.index(first) < source.index(second) < source.index(end)):
+        raise SystemExit("production-shaped drill CI event ordering drift")
+    for event, start, stop in (
+        ("first", first, second), ("second", second, end)
+    ):
+        block = source.split(start, 1)[1].split(stop, 1)[0]
+        actual = tuple(line for line in block.splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+        approved = tuple('      - "' + path + '"' for path in paths)
+        if actual != approved:
+            raise SystemExit("production-shaped drill CI " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Prove every single-event omission, extra/duplicate and inventory truncation."""
+    pr = "  pull_request:\\n    branches:\\n      - so\\n    paths:\\n"
+    push = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
+    for label, source, paths, is_publisher in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS, True),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS, False),
+    ):
+        first, second = (push, pr) if is_publisher else (pr, push)
+        end = "  workflow_dispatch:\\n" if is_publisher else "\\npermissions:\\n"
+        for event, start, stop in (("first", first, second), ("second", second, end)):
+            start_index = source.index(start) + len(start)
+            end_index = source.index(stop, start_index)
+            block = source[start_index:end_index]
+            for path in paths:
+                token = '      - "' + path + '"\\n'
+                if block.count(token) != 1:
+                    raise SystemExit("production-shaped drill trigger fixture anchor drift: " + path)
+                mutated = source[:start_index] + block.replace(token, "", 1) + source[end_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("production-shaped drill accepted missing " + label + " " + event + " trigger: " + path)
+            for name, injection in (
+                ("quoted extra", '      - "unreviewed/**"\\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\\n'),
+                ("unquoted extra", "      - unreviewed/**\\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\\n"),
+            ):
+                mutated = source[:start_index] + injection + source[start_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("production-shaped drill accepted " + label + " " + event + " " + name)
+        try:
+            validate_trigger_reachability(source, publisher=is_publisher, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("production-shaped drill accepted shortened " + label + " trigger inventory")
+    print("PASS: production-shaped drill CI event triggers (48 removals; 16 additions; 2 shortened inventory negatives)")
+
+
 def read(relative: str) -> str:
     path = ROOT / relative
     try:
@@ -90,6 +194,8 @@ def read(relative: str) -> str:
 
 
 def validate(publisher: str, independent: str) -> None:
+    validate_trigger_reachability(publisher, publisher=True)
+    validate_trigger_reachability(independent, publisher=False)
     for name, source, required, reviewed in (
         ("publisher", publisher, PUBLISHER_REQUIRED, PUBLISHER_SHA),
         ("independent", independent, INDEPENDENT_REQUIRED, INDEPENDENT_SHA),
@@ -247,6 +353,7 @@ def main() -> int:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     diagnostic_runtime(publisher)
     negatives(publisher, independent)
