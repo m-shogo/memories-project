@@ -16,6 +16,30 @@ INDEPENDENT = ".github/workflows/local-migration-recovery-source-negative.yml"
 SELF = "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py"
 PUBLISHER_SHA = "c28a2f7cc363bf8c787c7f1670d484e569dbc1b3"
 INDEPENDENT_SHA = "094d794db2d11846a4a174ac7ab976b4f81e304a"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/local-migration-recovery-artifact.yml",
+    ".github/workflows/local-migration-recovery-source-negative.yml",
+    "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py",
+    "contracts/operations/local-migration-recovery-artifact-contract.v1.json",
+    "contracts/operations/migration-evidence-registry-contract.v1.json",
+    "contracts/operations/migration-lifecycle-contract.v1.json",
+    "infra/postgresql/security/**",
+    "scripts/run-memory-os-local-migration-recovery-artifact.sh",
+    "scripts/validate-memory-os-local-migration-recovery-artifact.py",
+    "scripts/reconcile-memory-os-local-migration-recovery-artifact.py",
+    "scripts/memory_os_migration_recovery_point.py",
+    "scripts/register-memory-os-migration-rehearsal-evidence.py",
+    "scripts/validate-memory-os-migration-evidence-registry.py",
+    "scripts/reconcile-memory-os-migration-evidence-registry.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/local-migration-recovery-artifact.yml",
+    ".github/workflows/local-migration-recovery-source-negative.yml",
+    "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py",
+    "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py",
+    "scripts/reconcile-memory-os-local-migration-recovery-artifact.py",
+)
 LOCAL_NEGATIVE = "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
 LOCAL_NEGATIVE_SHA = "1e5dccbbf21c0f4dcf8888f6a0e6cf7fa84aebcd"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -25,6 +49,79 @@ PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
 WRITER_REF = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
 PR_SHA = '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'
 WRITER_SHA = '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]'
+
+
+
+def validate_trigger_reachability(
+    source: str, *, publisher: bool, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Require complete reviewed PR/push path inventories independently of Git blob SHA."""
+    expected = PUBLISHER_TRIGGER_PATHS if publisher else INDEPENDENT_TRIGGER_PATHS
+    paths = expected if trigger_paths is None else trigger_paths
+    if len(paths) != len(expected) or len(set(paths)) != len(expected):
+        raise SystemExit("local recovery CI trigger inventory shortened or duplicated")
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n" if publisher else "\npermissions:\n"
+    first, second = (push, pr) if publisher else (pr, push)
+    if any(source.count(marker) != 1 for marker in (first, second, end)):
+        raise SystemExit("local recovery CI trigger marker drift")
+    if not (source.index(first) < source.index(second) < source.index(end)):
+        raise SystemExit("local recovery CI trigger event order drift")
+    for event, start, stop in (("first", first, second), ("second", second, end)):
+        block = source.split(start, 1)[1].split(stop, 1)[0]
+        actual = tuple(line for line in block.splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+        approved = tuple('      - "' + path + '"' for path in paths)
+        if actual != approved:
+            raise SystemExit("local recovery CI " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Exercise all single-event omissions, additions and shortened inventories."""
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    for label, source, paths, is_publisher in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS, True),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS, False),
+    ):
+        first, second = (push, pr) if is_publisher else (pr, push)
+        end = "  workflow_dispatch:\n" if is_publisher else "\npermissions:\n"
+        for event, start, stop in (("first", first, second), ("second", second, end)):
+            start_index = source.index(start) + len(start)
+            end_index = source.index(stop, start_index)
+            block = source[start_index:end_index]
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if block.count(token) != 1:
+                    raise SystemExit("local recovery CI trigger mutation anchor drift: " + path)
+                mutated = source[:start_index] + block.replace(token, "", 1) + source[end_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("local recovery CI accepted missing " + label + " " + event + " trigger: " + path)
+            for name, injection in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                mutated = source[:start_index] + injection + source[start_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("local recovery CI accepted " + label + " " + event + " " + name)
+        try:
+            validate_trigger_reachability(source, publisher=is_publisher, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("local recovery CI accepted shortened " + label + " inventory")
+    print("PASS: local recovery CI event triggers (38 removals; 16 additions; 2 shortened inventory negatives)")
 
 
 def require(condition: bool, message: str) -> None:
@@ -105,6 +202,8 @@ INDEPENDENT_REQUIRED = (
 
 
 def validate(publisher: str, independent: str) -> None:
+    validate_trigger_reachability(publisher, publisher=True)
+    validate_trigger_reachability(independent, publisher=False)
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
     check_source("local reconcile negative", read(LOCAL_NEGATIVE), LOCAL_NEGATIVE_SHA, ())
@@ -359,6 +458,7 @@ def diagnostic_runtime(publisher: str) -> None:
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
     diagnostic_runtime(publisher)
