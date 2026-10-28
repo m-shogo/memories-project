@@ -180,6 +180,90 @@ def validate_trigger_reachability(
             raise SystemExit("generation binding " + kind + " " + event + " exact trigger inventory drift")
 
 
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Bind effective event, root and read-only permission YAML semantics without relying on blob SHA."""
+    if kind == "publisher":
+        name = "name: Backup Restore Generation Binding"
+        paths = PUBLISHER_TRIGGER_PATHS
+        roots = [name, "on:", "permissions:", "concurrency:", "jobs:"]
+    elif kind == "independent":
+        name = "name: Backup Restore Generation Binding Source Negative"
+        paths = INDEPENDENT_TRIGGER_PATHS
+        roots = [name, "on:", "permissions:", "jobs:"]
+    else:
+        raise SystemExit("generation binding unknown YAML authority kind")
+    path_block = "".join('      - "' + item + '"\n' for item in paths)
+    event_block = (
+        "  pull_request:\n    branches:\n      - so\n    paths:\n" + path_block
+        + "  push:\n    branches:\n      - so\n    paths:\n" + path_block
+        + ("  workflow_dispatch:\n" if kind == "publisher" else "")
+    )
+    if (content.count("\npermissions:\n") != 1
+            or content.split("\npermissions:\n", 1)[0] != name + "\n\non:\n" + event_block):
+        raise SystemExit("generation binding " + kind + " exact event header drift")
+    actual_roots = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if actual_roots != roots:
+        raise SystemExit("generation binding " + kind + " root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("generation binding " + kind + " permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    """Exercise each semantic boundary and require the intended failure diagnostic."""
+    count = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        validate_yaml_authority(content, kind)
+        event = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if event == content:
+            raise SystemExit("generation binding " + kind + " event fixture anchor drift")
+        cases = [("extra event", event, "exact event header drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content + "\n" + suffix, "root YAML key shadow drift"))
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            marker = "\npermissions:\n  contents: read\n"
+            if content.count(marker) != 1:
+                raise SystemExit("generation binding " + kind + " permission fixture anchor drift")
+            cases.append((label, content.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("generation binding " + kind + " unchanged YAML negative: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "generation binding " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("generation binding " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("generation binding " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 18:
+        raise SystemExit("generation binding YAML negative inventory drift")
+    print("PASS: generation binding YAML event/root/permission authority (18 exact-diagnostic negatives)")
+
+
+
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
     push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
     for kind, content, paths in (
@@ -234,6 +318,8 @@ def validate(
 ) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
+    validate_yaml_authority(publisher, "publisher")
+    validate_yaml_authority(independent, "independent")
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -761,6 +847,7 @@ def main() -> int:
     independent = source(INDEPENDENT)
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
