@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "local-migration-recovery-artifact",
+  "sourceCommitSha": "ae5b894bdb1f10d555819e4b7c4fa2e7e8f54632",
+  "failureStage": "actual-recovery-artifact",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "REDACTED: local migration recovery failed; raw output withheld",
+  "containsSecrets": false,
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
