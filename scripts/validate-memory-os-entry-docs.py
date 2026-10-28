@@ -359,6 +359,19 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                      if row.strip() and not row.lstrip().startswith("#")]
             if (prior and prior[-1].rstrip().removesuffix("\\").rstrip().endswith(("&&", "||"))):
                 issues.append("Python validator short-circuited by preceding shell list")
+            # A syntactically present command in a heredoc is data, not execution.
+            if any(re.search(r"<<-?\s*['\"]?[A-Za-z_][A-Za-z0-9_]*", row)
+                   for row in prior):
+                issues.append("Python validator may be inert heredoc content")
+            # An uninvoked shell function can contain a visible but inert command.
+            if any(re.match(
+                    r"(?:function\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?\s*\{",
+                    row,
+                ) or re.fullmatch(
+                    r"(?:function\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)",
+                    row,
+                ) for row in prior):
+                issues.append("Python validator may be trapped in shell function")
             commands.append(match.group(1))
             last_python = offset
         if last_python >= 0:
@@ -396,7 +409,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 53
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 58
 
 
 def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
@@ -476,6 +489,32 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "validator skipped by false-and shell list": fixture.replace(
             "          python scripts/check.py\n",
             "          false &&\n          python scripts/check.py\n"),
+        "validator inert in cat heredoc": fixture.replace(
+            "          python scripts/check.py\n",
+            "          cat <<'VALIDATOR_TEXT'\n"
+            "          python scripts/check.py\n"
+            "          VALIDATOR_TEXT\n"),
+        "validator inert in noop heredoc": fixture.replace(
+            "          python scripts/check.py\n",
+            "          : <<'VALIDATOR_TEXT'\n"
+            "          python scripts/check.py\n"
+            "          VALIDATOR_TEXT\n"),
+        "validator trapped in shell function": fixture.replace(
+            "          python scripts/check.py\n",
+            "          validate() {\n"
+            "          python scripts/check.py\n"
+            "          }\n"),
+        "validator trapped in function keyword": fixture.replace(
+            "          python scripts/check.py\n",
+            "          function validate {\n"
+            "          python scripts/check.py\n"
+            "          }\n"),
+        "validator trapped in multiline function": fixture.replace(
+            "          python scripts/check.py\n",
+            "          validate()\n"
+            "          {\n"
+            "          python scripts/check.py\n"
+            "          }\n"),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
