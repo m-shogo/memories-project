@@ -320,6 +320,12 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
         issues.append("checkout may retain credentials")
     if "git rev-parse HEAD" not in source or "git status --porcelain" not in source:
         issues.append("missing exact clean source verification")
+    # GITHUB_ENV/GITHUB_PATH persist across steps; a later literal Python line
+    # does not prove interpreter identity if an earlier step changed its env.
+    if re.search(r"\bGITHUB_(?:PATH|ENV)\b", source):
+        issues.append("cross-step CI command resolution may be overridden")
+    if re.search(r"(?m)^ {2,10}(?:PATH|PYTHONPATH|BASH_ENV|ENV):\s*\S+", source):
+        issues.append("CI interpreter environment may be overridden")
 
     commands: list[str] = []
     lines = source.splitlines()
@@ -417,7 +423,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 64
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 69
 
 
 def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
@@ -547,6 +553,24 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "          python scripts/check.py\n",
             '          eval "alias python=true"\n'
             "          python scripts/check.py\n"),
+        "workflow interpreter env override": fixture.replace(
+            "permissions:\n",
+            "env:\n  PYTHONPATH: /tmp/unreviewed\npermissions:\n", 1),
+        "job interpreter env override": fixture.replace(
+            "    permissions:\n      contents: read\n",
+            "    env:\n      PATH: /tmp/unreviewed\n    permissions:\n      contents: read\n", 1),
+        "validator step interpreter env override": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n"
+            "        env:\n          BASH_ENV: /tmp/unreviewed\n"),
+        "earlier step writes GITHUB_PATH": fixture.replace(
+            "      - name: Execute negative validator\n",
+            '          echo "/tmp/unreviewed" >> "$GITHUB_PATH"\n'
+            "      - name: Execute negative validator\n"),
+        "earlier step writes GITHUB_ENV": fixture.replace(
+            "      - name: Execute negative validator\n",
+            '          echo "PYTHONPATH=/tmp/unreviewed" >> "$GITHUB_ENV"\n'
+            "      - name: Execute negative validator\n"),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
