@@ -142,6 +142,89 @@ def validate_trigger_reachability(
             raise SystemExit("recovery objective " + kind + " " + event + " exact trigger inventory drift")
 
 
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Bind effective recovery-objective CI events, roots and read-only permissions."""
+    if kind == "publisher":
+        name = "name: Recovery Objectives Admission"
+        paths = PUBLISHER_TRIGGER_PATHS
+        roots = [name, "on:", "permissions:", "concurrency:", "jobs:"]
+    elif kind == "independent":
+        name = "name: Recovery Objectives Admission Source Negative"
+        paths = INDEPENDENT_TRIGGER_PATHS
+        roots = [name, "on:", "permissions:", "jobs:"]
+    else:
+        raise SystemExit("recovery objective unknown YAML authority kind")
+    path_block = "".join('      - "' + path + '"\n' for path in paths)
+    event_block = (
+        "  pull_request:\n    branches:\n      - so\n    paths:\n" + path_block
+        + "  push:\n    branches:\n      - so\n    paths:\n" + path_block
+        + ("  workflow_dispatch:\n" if kind == "publisher" else "")
+    )
+    if (content.count("\npermissions:\n") != 1
+            or content.split("\npermissions:\n", 1)[0] != name + "\n\non:\n" + event_block):
+        raise SystemExit("recovery objective " + kind + " exact event header drift")
+    observed_roots = [
+        row for row in content.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if observed_roots != roots:
+        raise SystemExit("recovery objective " + kind + " root YAML key shadow drift")
+    leaves = []
+    for row in content.split("\npermissions:\n", 1)[1].splitlines():
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            leaves.append(row)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("recovery objective " + kind + " permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    count = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        validate_yaml_authority(content, kind)
+        extra = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if extra == content:
+            raise SystemExit("recovery objective " + kind + " event fixture anchor drift")
+        cases = [("extra event", extra, "exact event header drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "\npermissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("recovery objective " + kind + " permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, content.replace(anchor, anchor + leaf, 1),
+                          "permission leaf shadow drift"))
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("recovery objective " + kind + " unchanged YAML negative: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "recovery objective " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("recovery objective " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("recovery objective " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 18:
+        raise SystemExit("recovery objective YAML negative inventory drift")
+    print("PASS: recovery objective publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
+
+
+
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
     push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
     pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
@@ -197,6 +280,8 @@ def validate(
 ) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
+    validate_yaml_authority(publisher, "publisher")
+    validate_yaml_authority(independent, "independent")
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -468,6 +553,7 @@ def main() -> int:
     independent = source(INDEPENDENT)
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
