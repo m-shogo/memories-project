@@ -17,6 +17,45 @@ INDEPENDENT = ".github/workflows/migration-evidence-registry-source-negative.yml
 SELF = "scripts/validate-memory-os-migration-evidence-registry-workflow-source-negative.py"
 PUBLISHER_SHA = "7770a3774201a492d18b90ed96f7feadfcd82788"
 INDEPENDENT_SHA = "878f920daaa183087dceb1dc8c24dde0b47e2180"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/migration-evidence-registry.yml",
+    ".github/workflows/migration-evidence-registry-source-negative.yml",
+    "scripts/validate-memory-os-migration-evidence-registry-workflow-source-negative.py",
+    "contracts/operations/migration-evidence-registry-contract.v1.json",
+    "contracts/operations/migration-evidence-registry.v1.json",
+    "contracts/operations/migration-lifecycle-contract.v1.json",
+    "contracts/operations/local-migration-recovery-artifact-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/evidence/migrations/recovery/**",
+    "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
+    "scripts/memory_os_migration_recovery_point.py",
+    "scripts/run-memory-os-local-migration-recovery-artifact.sh",
+    "scripts/validate-memory-os-local-migration-recovery-artifact.py",
+    "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py",
+    "scripts/reconcile-memory-os-local-migration-recovery-artifact.py",
+    "scripts/reconcile-memory-os-migration-recovery-result-orphans.py",
+    "scripts/register-memory-os-migration-rehearsal-evidence.py",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/validate-memory-os-migration-evidence-registry.py",
+    "scripts/validate-memory-os-migration-evidence-registry-append-negative.py",
+    "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py",
+    "scripts/reconcile-memory-os-migration-evidence-registry.py",
+    "scripts/validate-memory-os-migration-lifecycle.py",
+    "scripts/validate-memory-os-operability.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/migration-evidence-registry.yml",
+    ".github/workflows/migration-evidence-registry-source-negative.yml",
+    "scripts/validate-memory-os-migration-evidence-registry-workflow-source-negative.py",
+    "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py",
+    "scripts/reconcile-memory-os-migration-evidence-registry.py",
+)
 AUTHORITY_NEGATIVE = "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
 AUTHORITY_NEGATIVE_SHA = "e7a730b30064e069efc969a1b7e9715725911815"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -28,6 +67,77 @@ PR_SHA = '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'
 WRITER_SHA = '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]'
 CLONE_CHECKOUT = 'git -C "$sandbox/repo" checkout --quiet --detach "$(git rev-parse HEAD)"'
 CLONE_CLEAN = '            test -z "$(git status --porcelain)"'
+
+
+
+def validate_trigger_reachability(
+    source: str, *, publisher: bool, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Pin complete reviewed PR/push paths without relying on a changed Git blob."""
+    expected = PUBLISHER_TRIGGER_PATHS if publisher else INDEPENDENT_TRIGGER_PATHS
+    paths = expected if trigger_paths is None else trigger_paths
+    if len(paths) != len(expected) or len(set(paths)) != len(expected):
+        raise SystemExit("migration evidence CI trigger inventory shortened or duplicated")
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n" if publisher else "\npermissions:\n"
+    if any(source.count(marker) != 1 for marker in (pr, push, end)):
+        raise SystemExit("migration evidence CI event marker drift")
+    if not (source.index(pr) < source.index(push) < source.index(end)):
+        raise SystemExit("migration evidence CI event ordering drift")
+    for event, start, stop in (("pull_request", pr, push), ("push", push, end)):
+        block = source.split(start, 1)[1].split(stop, 1)[0]
+        actual = tuple(line for line in block.splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+        approved = tuple('      - "' + path + '"' for path in paths)
+        if actual != approved:
+            raise SystemExit("migration evidence CI " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Prove every event omission, extra/duplicate and shortened inventory."""
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    for label, source, paths, is_publisher in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS, True),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS, False),
+    ):
+        end = "  workflow_dispatch:\n" if is_publisher else "\npermissions:\n"
+        for event, start, stop in (("pull_request", pr, push), ("push", push, end)):
+            start_index = source.index(start) + len(start)
+            end_index = source.index(stop, start_index)
+            block = source[start_index:end_index]
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if block.count(token) != 1:
+                    raise SystemExit("migration evidence CI mutation anchor drift: " + path)
+                mutated = source[:start_index] + block.replace(token, "", 1) + source[end_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("migration evidence CI accepted missing " + label + " " + event + " trigger: " + path)
+            for name, injection in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                mutated = source[:start_index] + injection + source[start_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("migration evidence CI accepted " + label + " " + event + " " + name)
+        try:
+            validate_trigger_reachability(source, publisher=is_publisher, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("migration evidence CI accepted shortened " + label + " inventory")
+    print("PASS: migration evidence CI event triggers (68 removals; 16 additions; 2 shortened inventory negatives)")
 
 
 def require(condition: bool, message: str) -> None:
@@ -105,6 +215,8 @@ INDEPENDENT_REQUIRED = (
 def validate(publisher: str, independent: str, authority_negative: str | None = None) -> None:
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
+    validate_trigger_reachability(publisher, publisher=True)
+    validate_trigger_reachability(independent, publisher=False)
     check_source("lifecycle negative", read(AUTHORITY_NEGATIVE) if authority_negative is None else authority_negative,
                  AUTHORITY_NEGATIVE_SHA, ())
 
@@ -359,6 +471,7 @@ def diagnostic_atomic_runtime(publisher: str) -> None:
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
     diagnostic_runtime(publisher)
