@@ -52,6 +52,87 @@ INDEPENDENT_PERMISSION_TRIGGERS = (
 )
 
 
+ADMISSION_CHAIN_NEGATIVE_PATH = ROOT / ".github/workflows/backup-restore-admission-chain-negative.yml"
+ADMISSION_CHAIN_NEGATIVE_TRIGGERS = (
+    ".github/workflows/backup-restore-admission-chain-negative.yml",
+    "contracts/operations/backup-restore-admission-chain-contract.v1.json",
+    "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/backup-restore-promotion-review-contract.v1.json",
+    "contracts/operations/backup-restore-promotion-review-registry.v1.json",
+    "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+    "contracts/operations/recovery-objectives-admission-contract.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/operability-admission-inventory.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/evidence/backup-restore/**",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/memory_os_environment_generation_eligibility.py",
+    "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py",
+    "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py",
+    "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py",
+    "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py",
+    "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py",
+    "scripts/generate-memory-os-operability-admission-inventory.py",
+    "scripts/validate-memory-os-operability-admission-inventory.py",
+    "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py",
+    "scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py",
+    "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py",
+    "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+    "scripts/reconcile-memory-os-production-equivalent-generation-status.py",
+    "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py",
+    "scripts/register-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/reconcile-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py",
+    "scripts/validate-memory-os-backup-restore-drill-request.py",
+    "scripts/reconcile-memory-os-backup-restore-drill-request.py",
+    "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py",
+    "scripts/validate-memory-os-backup-restore-drill-request-ordering-negative.py",
+    "scripts/validate-memory-os-backup-restore-drill-preflight.py",
+    "scripts/reconcile-memory-os-backup-restore-drill-preflight.py",
+    "scripts/validate-memory-os-backup-restore-drill-preflight-ordering-negative.py",
+    "scripts/register-memory-os-backup-restore-generation-evidence.py",
+    "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-ordering-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-supersession-negative.py",
+    "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+    "scripts/reconcile-memory-os-backup-non-resurrection-authority.py",
+    "scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py",
+    "scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py",
+    "scripts/reconcile-memory-os-backup-restore-generation-status.py",
+    "scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-status-ordering-negative.py",
+    "scripts/reconcile-memory-os-backup-restore-promotion-review.py",
+    "scripts/validate-memory-os-backup-restore-promotion-review.py",
+    "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain.py",
+    "scripts/reconcile-memory-os-backup-restore-admission-chain.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-negative.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py",
+    "scripts/validate-memory-os-operability.py",
+)
+
+
 class Fail(RuntimeError):
     pass
 
@@ -232,10 +313,62 @@ def prove_independent_permission_trigger_negatives(source: str) -> None:
     print("PASS: independent permission event-specific trigger reachability (36 removals; 1 shortened inventory negative)")
 
 
+def validate_admission_chain_negative_triggers(source: str, *, trigger_paths: tuple[str, ...] = ADMISSION_CHAIN_NEGATIVE_TRIGGERS) -> None:
+    """Bind all negative-suite CI paths separately on PR and push without a source digest shortcut."""
+    require(len(trigger_paths) == 76 and len(set(trigger_paths)) == 76,
+            "admission chain negative trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        require(source.count(marker) == 1, "admission chain negative trigger event boundary drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
+                "admission chain negative " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            require(block.count('      - "' + item + '"\n') == 1,
+                    "admission chain negative " + event + " missing or duplicate trigger: " + item)
+
+
+def prove_admission_chain_negative_trigger_negatives() -> None:
+    """Reject 152 one-event omissions and shortened inventory, independently of Git blob SHA."""
+    require(ADMISSION_CHAIN_NEGATIVE_PATH.is_file() and not ADMISSION_CHAIN_NEGATIVE_PATH.is_symlink(),
+            "admission chain negative workflow missing or substituted")
+    source = ADMISSION_CHAIN_NEGATIVE_PATH.read_text(encoding="utf-8")
+    validate_admission_chain_negative_triggers(source)
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for item in ADMISSION_CHAIN_NEGATIVE_TRIGGERS:
+            token = '      - "' + item + '"\n'
+            require(source.count(token) == 2, "admission chain negative mutation anchor drift: " + item)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_admission_chain_negative_triggers(mutated)
+            except Fail:
+                continue
+            raise Fail("admission chain negative accepted missing " + event + " trigger: " + item)
+    try:
+        validate_admission_chain_negative_triggers(source, trigger_paths=ADMISSION_CHAIN_NEGATIVE_TRIGGERS[:-1])
+    except Fail:
+        pass
+    else:
+        raise Fail("admission chain negative accepted shortened trigger inventory")
+    print("PASS: admission chain negative event-specific trigger reachability (152 removals; 1 shortened inventory negative)")
+
+
 def main() -> int:
     module = load_validator()
     canonical = module.exact_workflow()
     prove_admission_readonly_trigger_negatives()
+    prove_admission_chain_negative_trigger_negatives()
 
     cases = (
         (
