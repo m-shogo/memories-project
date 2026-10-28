@@ -95,6 +95,82 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
             raise SystemExit("unreadable-authority CI " + event + " exact trigger inventory drift")
 
 
+def validate_yaml_authority(source: str) -> None:
+    """Bind reviewed event, root and read-only permission YAML mapping independently of blob SHA."""
+    expected_header = (
+        "name: Backup Restore Unreadable Authority Negatives\n\non:\n"
+        + "  pull_request:\n    branches: [so]\n    paths:\n"
+        + "".join('      - "' + item + '"\n' for item in TRIGGER_PATHS)
+        + "  push:\n    branches:\n      - so\n    paths:\n"
+        + "".join('      - "' + item + '"\n' for item in TRIGGER_PATHS)
+        + "  workflow_dispatch:\n"
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("unreadable-authority CI exact event header drift")
+    roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Backup Restore Unreadable Authority Negatives",
+        "on:", "permissions:", "jobs:",
+    ]:
+        raise SystemExit("unreadable-authority CI root YAML key shadow drift")
+    permission_rows = []
+    for line in source.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("unreadable-authority CI permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    """Require intended semantic diagnostics for extra event, root and permission shadows."""
+    validate_yaml_authority(source)
+    event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if event == source:
+        raise SystemExit("unreadable-authority CI event fixture anchor drift")
+    cases = [("extra event", event, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "root YAML key shadow drift"))
+    marker = "\npermissions:\n  contents: read\n"
+    if source.count(marker) != 1:
+        raise SystemExit("unreadable-authority CI permission fixture anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(marker, marker + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("unreadable-authority CI YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("unreadable-authority CI unchanged YAML negative: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "unreadable-authority CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("unreadable-authority CI wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("unreadable-authority CI accepted YAML mutation: " + label)
+    print("PASS: unreadable-authority CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
 def prove_trigger_reachability_negatives(source: str) -> None:
     push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
     for event in ("pull_request", "push"):
@@ -143,6 +219,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
+    validate_yaml_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"unreadable-authority negative workflow source boundary drift: {label}")
@@ -1211,6 +1288,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
     prove_generation_json_negative_removal_rejected()
     prove_generation_json_parent_swap_negative_removal_rejected()
