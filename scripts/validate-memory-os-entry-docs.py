@@ -481,6 +481,23 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                 [row for row in source_lines[run_positions[2] + 1:] if row.strip()]
                 != expected_go_shell):
             issues.append("unreviewed Go third-step test or clean-source shell")
+    # Bind the reviewed local recovery clone to an exact source and shell.
+    if relative == ".github/workflows/local-migration-recovery-source-negative.yml":
+        expected_local_shell = [
+            "          set -euo pipefail",
+            '          temp="$(mktemp -d)"',
+            '          trap \'rm -rf "$temp"\' EXIT',
+            '          git clone --no-hardlinks --no-checkout . "$temp/repo"',
+            '          git -C "$temp/repo" checkout --detach "$(git rev-parse HEAD)"',
+            '          test -z "$(git -C "$temp/repo" status --porcelain)"',
+            '          (cd "$temp/repo" && python scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py)',
+            '          test -z "$(git -C "$temp/repo" status --porcelain)"',
+            '          test -z "$(git status --porcelain)"',
+        ]
+        if (len(run_positions) != 3 or
+                [row for row in source_lines[run_positions[2] + 1:] if row.strip()]
+                != expected_local_shell):
+            issues.append("unreviewed local migration disposable clone source or shell")
     if len(head_positions) != 1:
         issues.append("missing, shadowed or duplicated exact-source HEAD comparison")
     else:
@@ -733,7 +750,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 166
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 176
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -825,7 +842,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         '          test -z "$(git status --porcelain)"\n'
     )
     migration_script = "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
-    exists = lambda script: script in {"scripts/check.py", migration_script}
+    local_script = "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
+    exists = lambda script: script in {"scripts/check.py", migration_script, local_script}
     if source_negative_reachability_issues(relative, fixture, exists):
         failures.append("source-negative reachability positive control failed")
         return
@@ -876,6 +894,28 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     if source_negative_reachability_issues(
             migration_relative, migration_fixture, exists):
         failures.append("source-negative migration clone positive control failed")
+        return
+    local_relative = ".github/workflows/local-migration-recovery-source-negative.yml"
+    local_fixture = fixture.replace(relative, local_relative).replace(
+        '      - "scripts/check.py"\n',
+        '      - "scripts/check.py"\n'
+        f'      - "{local_script}"\n',
+    )
+    local_fixture += (
+        "      - name: Prove local recovery in disposable exact-source clone\n"
+        "        run: |\n"
+        "          set -euo pipefail\n"
+        '          temp="$(mktemp -d)"\n'
+        '          trap \'rm -rf "$temp"\' EXIT\n'
+        '          git clone --no-hardlinks --no-checkout . "$temp/repo"\n'
+        '          git -C "$temp/repo" checkout --detach "$(git rev-parse HEAD)"\n'
+        '          test -z "$(git -C "$temp/repo" status --porcelain)"\n'
+        f'          (cd "$temp/repo" && python {local_script})\n'
+        '          test -z "$(git -C "$temp/repo" status --porcelain)"\n'
+        '          test -z "$(git status --porcelain)"\n'
+    )
+    if source_negative_reachability_issues(local_relative, local_fixture, exists):
+        failures.append("source-negative local recovery clone positive control failed")
         return
     nested = fixture.replace(
         "          python scripts/check.py",
@@ -935,6 +975,39 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             '            git diff --exit-code\n'
             '            test -z "$(git status --porcelain)"\n',
             '            git diff --exit-code\n'),
+        "local-clone unreviewed remote source": local_fixture.replace(
+            'git clone --no-hardlinks --no-checkout . "$temp/repo"',
+            'git clone --no-hardlinks --no-checkout https://example.invalid/repo "$temp/repo"'),
+        "local-clone wrong checkout ref": local_fixture.replace(
+            'checkout --detach "$(git rev-parse HEAD)"',
+            'checkout --detach main'),
+        "local-clone missing no-hardlinks": local_fixture.replace(
+            'git clone --no-hardlinks --no-checkout',
+            'git clone --no-checkout'),
+        "local-clone missing checkout": local_fixture.replace(
+            '          git -C "$temp/repo" checkout --detach "$(git rev-parse HEAD)"\n',
+            ""),
+        "local-clone missing pre-validator clean check": local_fixture.replace(
+            '          test -z "$(git -C "$temp/repo" status --porcelain)"\n'
+            '          (cd "$temp/repo" && python',
+            '          (cd "$temp/repo" && python'),
+        "local-clone wrong execution directory": local_fixture.replace(
+            '(cd "$temp/repo" && python',
+            '(cd /tmp && python'),
+        "local-clone validator replaced by echo": local_fixture.replace(
+            f'(cd "$temp/repo" && python {local_script})',
+            'echo skipped-local-recovery-validator'),
+        "local-clone malicious cleanup trap": local_fixture.replace(
+            '          trap \'rm -rf "$temp"\' EXIT\n',
+            "          trap 'exit 0' ERR\n"),
+        "local-clone missing post-validator clean check": local_fixture.replace(
+            f'          (cd "$temp/repo" && python {local_script})\n'
+            '          test -z "$(git -C "$temp/repo" status --porcelain)"\n',
+            f'          (cd "$temp/repo" && python {local_script})\n'),
+        "local-clone missing parent clean check": local_fixture.replace(
+            '          test -z "$(git -C "$temp/repo" status --porcelain)"\n'
+            '          test -z "$(git status --porcelain)"\n',
+            '          test -z "$(git -C "$temp/repo" status --porcelain)"\n'),
         "validator precedes source verification": reversed_fixture,
         "setup-go validator precedes source verification": reversed_go_fixture,
         "extra shell run step after validator": fixture + (
@@ -1483,6 +1556,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             case_relative, baseline = go_relative, go_fixture
         elif name.startswith("migration-clone "):
             case_relative, baseline = migration_relative, migration_fixture
+        elif name.startswith("local-clone "):
+            case_relative, baseline = local_relative, local_fixture
         else:
             case_relative, baseline = relative, fixture
         if mutation == baseline or not source_negative_reachability_issues(
