@@ -156,6 +156,23 @@ def metrics_trigger_matrix(
     ):
         if metrics_trigger_header(content) != expected:
             raise AssertionError("metrics " + label + " exact trigger matrix drift")
+        # A later valid YAML root mapping may shadow on, permissions or
+        # jobs even though the canonical event header remains unchanged.
+        expected_roots = {
+            "writer": ["name: Reconcile Metrics Authority", "on:",
+                       "permissions:", "concurrency:", "jobs:"],
+            "PR": ["name: Validate Metrics Authority on Pull Requests", "on:",
+                   "permissions:", "concurrency:", "jobs:"],
+            "independent": ["name: Metrics Authority Source Negative", "on:",
+                            "permissions:", "jobs:"],
+        }[label]
+        observed_roots = [
+            row for row in content.splitlines()
+            if row.strip() and not row[0].isspace()
+            and not row.lstrip().startswith("#")
+        ]
+        if observed_roots != expected_roots:
+            raise AssertionError("metrics " + label + " root YAML key shadow drift")
 
 
 def metrics_trigger_replace(content: str, old: str, new: str) -> str:
@@ -229,6 +246,35 @@ def metrics_trigger_negatives(writer: str, pr: str, independent: str) -> None:
     )
     for index, changed in topology:
         reject(index, changed)
+    # Preserve the exact reviewed event header while injecting a later
+    # effective YAML root key. Require the root guard's own diagnostic.
+    root_shadows = (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    )
+    root_negative_count = 0
+    for index, label, original in (
+        (0, "writer", writer), (1, "PR", pr), (2, "independent", independent)
+    ):
+        for name, suffix in root_shadows:
+            sources = [writer, pr, independent]
+            sources[index] = original + suffix
+            try:
+                metrics_trigger_matrix(*sources)
+            except AssertionError as exc:
+                expected = "metrics " + label + " root YAML key shadow drift"
+                if str(exc) != expected:
+                    raise AssertionError(
+                        "metrics root shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise AssertionError("metrics accepted root YAML shadow: " + label + " " + name)
+            root_negative_count += 1
+    if root_negative_count != 12:
+        raise AssertionError("metrics root shadow fixture count drift")
     print("PASS: metrics exact event trigger matrix: " + str(omissions)
           + " omissions, " + str(additions) + " additions/duplicates, "
           + str(shortened) + " shortened inventories, "
