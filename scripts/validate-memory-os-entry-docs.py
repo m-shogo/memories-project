@@ -1902,15 +1902,21 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         elif name.startswith("migration-clone "):
             expected_issue = "unreviewed migration disposable clone source or shell"
         elif name.startswith("local-clone "):
-            expected_issue = (
-                "local recovery third-step validator trigger missing"
-                if "trigger" in name
-                else "unreviewed local migration disposable clone source or shell"
-            )
+            if name == "local-clone PR missing independent validator trigger":
+                expected_issue = "pull_request: local recovery third-step validator trigger missing"
+            elif name == "local-clone push missing independent validator trigger":
+                expected_issue = "push: local recovery third-step validator trigger missing"
+            else:
+                expected_issue = "unreviewed local migration disposable clone source or shell"
         elif name.startswith("setup-go third-step "):
             expected_issue = "unreviewed Go third-step test or clean-source shell"
         elif name.startswith("setup-go ") and "test source trigger" in name:
-            expected_issue = "reviewed Go test source trigger missing"
+            event = "push" if "push" in name else "pull_request"
+            source_name = "live_load_test.go" if "second" in name else "live_object_load_test.go"
+            expected_issue = (
+                f"{event}: reviewed Go test source trigger missing: "
+                f"services/import-api/internal/httpserver/{source_name}"
+            )
         if name in checkout_input_cases:
             expected_issue = "checkout ref, depth or credential authority drift"
         elif name in python_input_cases:
@@ -2002,7 +2008,9 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         elif name in remaining_masked_command_cases:
             expected_issue = "unreviewed/bypassed direct Python command"
         elif name in remaining_missing_invocation_cases:
-            expected_issue = "missing invoked validator:"
+            missing_script = ("scripts/missing.py" if name == "missing validator"
+                              else "scripts/unreviewed.py")
+            expected_issue = f"missing invoked validator: {missing_script}"
         elif name == "disabled shell branch":
             expected_issue = "Python validator may be conditionally skipped by shell control flow"
         elif name == "missing shell fail closed":
@@ -2011,7 +2019,9 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = "exact-source verification must precede validator execution"
         if expected_issue is not None:
             diagnostic_bound += 1
-            if not any(expected_issue in issue for issue in issues):
+            # A prefix, suffix or unrelated diagnostic containing the
+            # expected words is not proof of the intended rejection.
+            if expected_issue not in issues:
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
