@@ -549,3 +549,20 @@
 - **Protected-authority check:** Nine protected contract/registry Git blob SHAs, the production-shaped failure-drill registry and canonical learning blob remained unchanged after the code commit. `productionDecision=NO_GO`; OPS-P0-007=`PREREQUISITES_BLOCKED`; registered/semantically eligible generations, approved objectives, executable reviewed requests, request-bound recovery evidence, complete typed eight-domain records and final candidates all remain zero. Human promotion is separate and non-automatic.
 - **Learning boundary:** This append-only supplemental history is not canonical learning authority or production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, independent review or promotion evidence.
 - **Next safe target:** Expand intended-diagnostic binding to remaining source-negative shell and event-topology mutations only after verifying their exact rejection diagnostics; separately retain the supplemental-history CI trigger gap as a scoped workflow-permission blocker.
+
+## 2026-10-28 — Event and job reachability negatives bound to intended diagnostics
+
+### Material failure prevented
+
+- **Symptom / evidence:** Fifteen existing source-negative fixtures for shadowed YAML event authority, PR/push filter drift, missing trigger paths, conditional steps, disabled/duplicate job conditions and missing HEAD verification previously passed on *any* rejection. This is a static harness masking risk, not an observed production incident.
+- **Verified root cause:** The shared negative loop bound only 82 fixtures to intended diagnostics; these 15 had a nonempty-issue assertion.
+- **Failed approach:** Treating 188 counted fixtures and an unrelated rejection as sufficient proof of each event/job/source invariant.
+- **Correction / executable recurrence guard:** [3f9f91cd](https://github.com/m-shogo/memories-project/commit/3f9f91cd75e620aac07cba642fb9e19bd4190700) binds eight event-filter, two trigger, two conditional-step, two job-condition and one exact-HEAD mutation to their expected diagnostics. Diagnostic-bound cases **82 → 97**, total executable source-negative fixtures **188**.
+- **Retry condition:** Change a mapping only following an independently reviewed event/job/source policy or diagnostic change with exact-source CI. Do not retry unchanged canonical learning transport, workflow-write permission, MinIO HTTP 401 or human-approval blockers.
+
+### Material success
+
+- **Outcome / evidence:** Exact-source [Autonomous Learning Guard #40686717459](https://github.com/m-shogo/memories-project/actions/runs/40686717459) **SUCCESS** for `3f9f91cd75e620aac07cba642fb9e19bd4190700`: 52 reviewed workflows, 63 direct Python commands, 188 source-negative fixtures, 128 canonical learning negatives, 1,186 helper-ancestor negatives, canonical append-only PASS and read-only clean execution. Compare shows only `scripts/validate-memory-os-entry-docs.py` changed (38 additions, 1 deletion).
+- **Why safe / reusable mechanism:** Existing read-only CI guard now rejects the 15 mutations for their intended CI reachability invariant; reviewed workflows, production evidence, backup/restore, RPO/RTO/skew, credentials, traffic, readiness and promotion were untouched.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/drill/evidence/non-resurrection/promotion registries, production-shaped drill registry, canonical learning and learning contract blobs were unchanged. `productionDecision=NO_GO`; OPS-P0-007=`PREREQUISITES_BLOCKED`; registered/semantically eligible generations, approved objectives, executable reviewed requests, request-bound evidence, complete typed eight-domain records and final candidates all zero. Human promotion remains separate.
+- **Boundary:** Supplemental append-only history is not canonical learning authority or production/readiness evidence. Supplemental-history CI-trigger gap remains blocked on unchanged workflow-write authority.
