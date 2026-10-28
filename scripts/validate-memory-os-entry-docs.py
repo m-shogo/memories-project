@@ -480,7 +480,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "          python scripts/check.py\n",
             '          case "$GITHUB_EVENT_NAME" in\n'
             "          push)\n          python scripts/check.py\n          ;;\n          esac\n"),
-        "conditional post-validator clean checks": fixture.replace(
+        "conditional tracked clean check": fixture.replace(
             "          python scripts/check.py\n          git diff --exit-code\n",
             '          python scripts/check.py\n          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then\n'
             "          git diff --exit-code\n          fi\n"),
@@ -594,6 +594,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             '      - "scripts/check.py"\n  push:',
             '      - "scripts/check.py"\n      - "scripts/check.py"\n  push:'),
     }
+    if len(cases) != 54:
+        failures.append(f"source-negative fixture inventory drift: expected 54, got {len(cases)}")
     for name, mutation in cases.items():
         if mutation == fixture or not source_negative_reachability_issues(relative, mutation, exists):
             failures.append(f"source-negative reachability negative escaped: {name}")
