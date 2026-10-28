@@ -11,6 +11,26 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/production-equivalent-dependency-contract.yml"
 INDEPENDENT = ".github/workflows/production-equivalent-dependency-source-negative.yml"
 SELF = "scripts/validate-memory-os-production-equivalent-dependency-workflow-source-negative.py"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/production-equivalent-dependency-contract.yml",
+    ".github/workflows/production-equivalent-dependency-source-negative.yml",
+    "scripts/validate-memory-os-production-equivalent-dependency-workflow-source-negative.py",
+    "contracts/operations/production-equivalent-dependency-contract.v1.json",
+    "contracts/operations/load-test-scenario-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/validate-memory-os-production-equivalent-dependencies.py",
+    "scripts/reconcile-memory-os-production-equivalent-foundation.py",
+    "scripts/validate-memory-os-production-equivalent-foundation-reconcile-negative.py",
+    "scripts/validate-memory-os-load-evidence-index.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/production-equivalent-dependency-contract.yml",
+    ".github/workflows/production-equivalent-dependency-source-negative.yml",
+    "scripts/validate-memory-os-production-equivalent-dependency-workflow-source-negative.py",
+)
 PUBLISHER_SHA = "912aa3fb3a05daac88561fb375f23784d73a5b9c"
 INDEPENDENT_SHA = "40621309545bc57e4729e9539d490837cadab707"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -84,7 +104,88 @@ INDEPENDENT_REQUIRED = (
 )
 
 
+
+def validate_trigger_reachability(
+    content: str, kind: str, *, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Enforce both reviewed event path inventories independently of complete Git blob SHA."""
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    if kind == "publisher":
+        canonical = PUBLISHER_TRIGGER_PATHS
+        end_marker = "  workflow_dispatch:\n"
+    elif kind == "independent":
+        canonical = INDEPENDENT_TRIGGER_PATHS
+        end_marker = "\npermissions:\n"
+    else:
+        raise SystemExit("production-equivalent dependency unknown trigger kind")
+    if trigger_paths is None:
+        trigger_paths = canonical
+    require(len(trigger_paths) == len(canonical) and len(set(trigger_paths)) == len(canonical),
+            kind + " trigger inventory shortened or duplicated")
+    for marker in (pr_marker, push_marker, end_marker):
+        require(content.count(marker) == 1, kind + " trigger event marker drift")
+    if kind == "publisher":
+        push = content.split(push_marker, 1)[1].split(pr_marker, 1)[0]
+        pr = content.split(pr_marker, 1)[1].split(end_marker, 1)[0]
+    else:
+        pr = content.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+        push = content.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    approved = tuple('      - "' + path + '"' for path in trigger_paths)
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        require(actual == approved, kind + " " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for kind, content, paths in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS),
+    ):
+        validate_trigger_reachability(content, kind)
+        for event in ("pull_request", "push"):
+            marker = pr_marker if event == "pull_request" else push_marker
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                require(content.count(token) == 2, kind + " mutation anchor drift: " + path)
+                prefix, suffix = content.split(marker, 1)
+                mutated = prefix + marker + suffix.replace(token, "", 1)
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("production-equivalent dependency " + kind + " accepted missing " + event + " trigger: " + path)
+            for label, injected in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                require(content.count(marker) == 1, kind + " addition marker drift: " + event)
+                mutated = content.replace(marker, marker + injected, 1)
+                require(mutated != content, kind + " addition fixture unchanged")
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("production-equivalent dependency " + kind + " accepted " + event + " addition: " + label)
+        try:
+            validate_trigger_reachability(content, kind, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("production-equivalent dependency " + kind + " shortened inventory accepted")
+    print("PASS: production-equivalent dependency CI event-specific triggers (30 removals; 16 additions; 2 shortened inventory negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
+    validate_trigger_reachability(publisher, "publisher")
+    validate_trigger_reachability(independent, "independent")
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
 
@@ -143,6 +244,7 @@ def runtime_proofs() -> None:
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
     return 0
