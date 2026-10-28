@@ -33,6 +33,11 @@ REQUIRED = (
 
 INDEPENDENT_PATH = ROOT / ".github/workflows/backup-restore-drill-preflight-reconcile-source-negative.yml"
 INDEPENDENT_BLOB = "31f8be5c3cb73e82d925684cc6bba47d03e37607"
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-drill-preflight-reconcile-negative.yml",
+    ".github/workflows/backup-restore-drill-preflight-reconcile-source-negative.yml",
+    "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py",
+)
 INDEPENDENT_REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
     ("push target", "  push:\n    branches:\n      - so\n    paths:\n", 1),
@@ -71,7 +76,58 @@ def validate(source: str, *, check_blob: bool = True) -> None:
 
 
 
+def validate_independent_trigger_reachability(
+    source: str, *, trigger_paths: tuple[str, ...] = INDEPENDENT_TRIGGER_PATHS
+) -> None:
+    """Pin each reviewed preflight reconcile source CI path under PR and push."""
+    if len(trigger_paths) != 3 or len(set(trigger_paths)) != 3:
+        raise SystemExit("semantic preflight reconcile independent trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    end_marker = "\npermissions:\n"
+    for marker in (pr_marker, push_marker, end_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("semantic preflight reconcile independent trigger marker drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
+            raise SystemExit("semantic preflight reconcile independent " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            if block.count('      - "' + item + '"' + chr(10)) != 1:
+                raise SystemExit("semantic preflight reconcile independent " + event + " trigger drift: " + item)
+
+
+def prove_independent_trigger_negatives(source: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for item in INDEPENDENT_TRIGGER_PATHS:
+            token = '      - "' + item + '"' + chr(10)
+            if source.count(token) != 2:
+                raise SystemExit("semantic preflight reconcile independent trigger fixture drift: " + item)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_independent_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("semantic preflight reconcile independent accepted missing " + event + " trigger: " + item)
+    try:
+        validate_independent_trigger_reachability(source, trigger_paths=INDEPENDENT_TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("semantic preflight reconcile independent shortened trigger inventory accepted")
+    print("PASS: semantic preflight reconcile independent event-specific triggers (6 removals; 1 shortened inventory negative)")
+
+
 def validate_independent(source: str, *, check_blob: bool = True) -> None:
+    validate_independent_trigger_reachability(source)
     for label, token, expected in INDEPENDENT_REQUIRED:
         if source.count(token) != expected:
             raise SystemExit("semantic preflight independent source drift: " + label)
@@ -199,6 +255,7 @@ def main() -> int:
     validate(source)
     independent = INDEPENDENT_PATH.read_text(encoding="utf-8")
     validate_independent(independent)
+    prove_independent_trigger_negatives(independent)
     prove_branch_guards_runtime()
     prove_sha_guard_runtime()
     prove_independent_runtime(independent)
