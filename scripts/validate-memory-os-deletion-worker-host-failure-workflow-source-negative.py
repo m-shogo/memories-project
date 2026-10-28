@@ -50,6 +50,79 @@ def blob(content: str) -> str:
     return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
 
 
+
+def validate_yaml_root_permission(publisher: str, independent: str, permission: str) -> None:
+    """Pin all three reviewed host-failure CI YAML roots and read-only permission leaves."""
+    for label, value, roots in (
+        ("publisher", publisher, ["name: Deletion Worker Host Failure Admission",
+                                  "on:", "permissions:", "concurrency:", "jobs:"]),
+        ("independent", independent, ["name: Deletion Worker Host Failure Source Negative",
+                                      "on:", "permissions:", "jobs:"]),
+        ("permission", permission, ["name: Deletion Host Failure Permission Negative",
+                                    "on:", "permissions:", "concurrency:", "jobs:"]),
+    ):
+        actual = [line for line in value.splitlines()
+                  if line.strip() and not line[0].isspace()
+                  and not line.lstrip().startswith("#")]
+        if actual != roots:
+            raise SystemExit("host-failure " + label + " root YAML key shadow drift")
+        if value.count("\npermissions:\n") != 1:
+            raise SystemExit("host-failure " + label + " permission boundary drift")
+        leaves = []
+        for line in value.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["  contents: read"]:
+            raise SystemExit("host-failure " + label + " permission leaf shadow drift")
+
+
+def yaml_root_permission_negatives(publisher: str, independent: str, permission: str) -> None:
+    """Prove eighteen exact-diagnostic root and permission shadows across three workflows."""
+    validate_yaml_root_permission(publisher, independent, permission)
+    originals = [publisher, independent, permission]
+    count = 0
+    for index, label in enumerate(("publisher", "independent", "permission")):
+        value = originals[index]
+        cases = [
+            (mutation, value + "\n" + suffix, "root YAML key shadow drift")
+            for mutation, suffix in (
+                ("spaced on", "on :\n  issues:\n"),
+                ("quoted on", "'on':\n  issues:\n"),
+                ("spaced jobs", "jobs : {}\n"),
+                ("quoted jobs", "'jobs': {}\n"),
+            )
+        ]
+        marker = "\npermissions:\n  contents: read\n"
+        if value.count(marker) != 1:
+            raise SystemExit("host-failure " + label + " permission fixture anchor drift")
+        for mutation, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((mutation, value.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for mutation, changed, diagnostic in cases:
+            if changed == value:
+                raise SystemExit("host-failure unchanged YAML fixture: " + label + " " + mutation)
+            mutated = list(originals)
+            mutated[index] = changed
+            try:
+                validate_yaml_root_permission(*mutated)
+            except SystemExit as exc:
+                expected = "host-failure " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("host-failure wrong YAML diagnostic: "
+                                     + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("host-failure accepted YAML shadow: " + label + " " + mutation)
+            count += 1
+    if count != 18:
+        raise SystemExit("host-failure YAML negative inventory drift")
+    print("PASS: host-failure triple-workflow root/permission YAML authority (18 exact-diagnostic negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
     publisher_required = (
         "  pull_request:\n    branches:\n      - so\n",
@@ -624,6 +697,8 @@ def main() -> int:
     permission = source(PERMISSION)
     permission_validator = source(PERMISSION_VALIDATOR)
     validate(publisher, independent)
+    validate_yaml_root_permission(publisher, independent, permission)
+    yaml_root_permission_negatives(publisher, independent, permission)
     validate_trigger_matrix(publisher, independent)
     trigger_matrix_negatives(publisher, independent)
     validate_permission(permission)
