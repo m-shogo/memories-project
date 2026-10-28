@@ -115,6 +115,86 @@ def observability_validate_trigger_matrix(
         if observability_trigger_header(content) != expected:
             raise SystemExit("observability-access " + label
                              + " exact event trigger inventory drift")
+    observability_validate_yaml_root_permissions(publisher, independent)
+
+
+
+def observability_validate_yaml_root_permissions(
+    publisher: str, independent: str
+) -> None:
+    """Pin effective CI root and read-only permission mapping."""
+    for label, content, expected_roots in (
+        ("publisher", publisher, [
+            "name: Reconcile Observability Access Policy", "on:",
+            "permissions:", "concurrency:", "jobs:",
+        ]),
+        ("independent", independent, [
+            "name: Observability Access Source Negative", "on:",
+            "permissions:", "jobs:",
+        ]),
+    ):
+        roots = [
+            line for line in content.splitlines()
+            if line.strip() and not line[0].isspace()
+            and not line.lstrip().startswith("#")
+        ]
+        if roots != expected_roots:
+            raise SystemExit("observability-access " + label + " root YAML key shadow drift")
+        if content.count("\npermissions:\n") != 1:
+            raise SystemExit("observability-access " + label + " permission leaf shadow drift")
+        permission_rows = []
+        for line in content.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                permission_rows.append(line)
+        if permission_rows != ["  contents: read"]:
+            raise SystemExit("observability-access " + label + " permission leaf shadow drift")
+
+
+def observability_yaml_shadow_negatives(publisher: str, independent: str) -> None:
+    total = 0
+    for label, content in (("publisher", publisher), ("independent", independent)):
+        cases = []
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            cases.append((name, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("observability-access " + label
+                             + " permission mutation anchor drift")
+        for name, extra in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((name, content.replace(anchor, anchor + extra, 1),
+                          "permission leaf shadow drift"))
+        for name, altered, diagnostic in cases:
+            if altered == content:
+                raise SystemExit("observability-access YAML fixture unchanged: " + name)
+            try:
+                if label == "publisher":
+                    observability_validate_trigger_matrix(altered, independent)
+                else:
+                    observability_validate_trigger_matrix(publisher, altered)
+            except SystemExit as exc:
+                expected = "observability-access " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "observability-access YAML wrong diagnostic: "
+                        + label + "/" + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit("observability-access accepted YAML shadow: "
+                                 + label + "/" + name)
+            total += 1
+    if total != 12:
+        raise SystemExit("observability-access YAML fixture count drift")
+    print("PASS: observability publisher/independent YAML root/permission (12 exact-diagnostic negatives)")
 
 
 def replace_observability_trigger_header(content: str, original: str, replacement: str) -> str:
@@ -319,6 +399,7 @@ def main() -> None:
     policy(source)
     observability_validate_trigger_matrix(source, independent)
     observability_trigger_matrix_negatives(source, independent)
+    observability_yaml_shadow_negatives(source, independent)
     for index, marker in enumerate(REQUIRED):
         changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
         if changed == source:
