@@ -1,0 +1,19 @@
+# Supplemental OPS learning — migration evidence registry dual CI YAML authority (2026-10-29)
+
+Append-only supplemental learning only; not canonical learning, production migration/recovery evidence, approved objectives, executable reviewed drills, typed eight-domain records, credentials, traffic, readiness or human promotion.
+
+## Material failure / recurrence prevention
+- **Symptom:** Migration evidence registry publisher and independent CI pinned exact trigger paths and Git blobs but lacked independent YAML event/root/permission shadow rejection. This was a static semantic gap, not observed migration evidence admission bypass.
+- **Observed evidence:** Existing `validate_trigger_reachability` pinned 29 publisher and five independent reviewed paths under both PR/push events; `validate` pinned source digests. YAML root/permission shadows relied on whole-source mismatch.
+- **Verified root cause:** Complete-source identity and visible trigger tokens cannot independently prove effective YAML mapping uniqueness or intended semantic rejection diagnostics.
+- **Failed approach:** Treating arbitrary blob mismatch as sufficient event/root/permission regression proof.
+- **Correction / executable recurrence guard:** [d55ae3a4](https://github.com/m-shogo/memories-project/commit/d55ae3a49629caeabd8cc99b2c32e3b0b418d6de) binds publisher PR/push/dispatch and independent PR/push event topology, root-key order and root read-only permission leaves. Eighteen exact-diagnostic negatives (nine per workflow) reject extra events, six root shadows and two permission shadows. Existing digest, runtime, privacy, atomic and symlink guards remain.
+- **Retry condition:** Revalidate only after reviewed workflow topology or validator change, or a demonstrated new semantic bypass; do not retry unchanged canonical learning transport, workflow-write permissions, MinIO HTTP 401 or human approval blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Migration Evidence Registry Source Negative #40737571502](https://github.com/m-shogo/memories-project/actions/runs/40737571502) and [Migration Evidence Registry #40737571365](https://github.com/m-shogo/memories-project/actions/runs/40737571365) both completed SUCCESS on exact source `d55ae3a4`. Logs confirm 18 YAML exact-diagnostic negatives, 68 trigger removals, 16 additions, two shortened inventories, 27 source negatives, 18 runtime branch/SHA cases, diagnostic redaction and atomic mode/replace/fsync/symlink runtime checks. Publisher validator exit code was 0; this does not establish production-equivalent recovery evidence.
+- **Why safe:** Only an existing CI-executed read-only source validator changed; reviewed workflows, production/recovery authorities, credentials, traffic and human promotion were untouched.
+- **Reusable mechanism:** Independently validate effective YAML event/root/permission semantics with diagnostic-specific negative fixtures while preserving complete-source digest and privacy-safe diagnostic boundaries.
+- **Protected-authority check:** Twelve protected production/recovery contracts, registries and canonical-learning Git blob SHAs matched baseline after code commit. `productionDecision=NO_GO`; OPS-P0-007 blocking; no registered/semantically eligible generations, approved objectives, executable reviewed requests, complete typed eight-domain records or final candidates. Human promotion remains separate/non-automatic; learning is not production evidence.
+- **Concurrency guard:** Both current-source CI workflows were terminal SUCCESS before this nonurgent Learning append; do not bypass or blindly retry stale-source CAS.
+- **Next safe target:** Audit release baseline and compatibility pair source-negative CI for root/permission shadows without duplicating their existing exact event trigger matrix.
