@@ -1662,6 +1662,44 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative duplicate literal-key negative escaped")
     if len(cases) != EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT:
         failures.append(f"source-negative fixture inventory drift: expected {EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT}, got {len(cases)}")
+    # Reviewed action and toolchain inputs are source authority too. Bind
+    # their negatives to the exact failing invariant, not an unrelated error.
+    checkout_input_cases = {
+        "checkout ref switched to branch",
+        "duplicate checkout ref key",
+        "missing checkout ref key",
+        "checkout fetch-depth widened",
+        "checkout credentials retained",
+        "duplicate checkout credential key",
+        "checkout token override",
+        "retained checkout credentials",
+    }
+    python_input_cases = {
+        "setup-python version changed",
+        "duplicate setup-python version",
+        "missing setup-python version",
+        "setup-python cache override",
+        "setup-python version file override",
+        "missing setup-python with block",
+    }
+    go_input_cases = {
+        "setup-go version changed",
+        "setup-go duplicate version",
+        "setup-go missing version",
+        "setup-go cache enabled",
+        "setup-go missing cache authority",
+        "setup-go extra input",
+    }
+    action_invocation_cases = {
+        "floating checkout action",
+        "substituted checkout action pin",
+        "floating setup-python action",
+        "extra unreviewed action step",
+        "duplicate setup-python action",
+        "unreviewed setup-go action",
+        "alternate checkout in wrong workflow",
+        "shadowed action uses key",
+    }
     diagnostic_bound = 0
     for name, mutation in cases.items():
         if name.startswith("setup-go "):
@@ -1693,13 +1731,21 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = "unreviewed Go third-step test or clean-source shell"
         elif name.startswith("setup-go ") and "test source trigger" in name:
             expected_issue = "reviewed Go test source trigger missing"
+        if name in checkout_input_cases:
+            expected_issue = "checkout ref, depth or credential authority drift"
+        elif name in python_input_cases:
+            expected_issue = "setup-python interpreter version/input authority drift"
+        elif name in go_input_cases:
+            expected_issue = "setup-go version/cache input authority drift"
+        elif name in action_invocation_cases:
+            expected_issue = "unreviewed or shadowed CI action invocation"
         if expected_issue is not None:
             diagnostic_bound += 1
             if not any(expected_issue in issue for issue in issues):
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 33:
+    if diagnostic_bound != 61:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
