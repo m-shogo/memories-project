@@ -60,9 +60,13 @@ def validate_trigger_reachability(
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
+        # Reject all unknown executable YAML lines, including unquoted paths.
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        expected = tuple(f'      - "{item}"' for item in trigger_paths)
+        if actual != expected:
             raise SystemExit("typed non-resurrection path CI " + event + " trigger inventory drift")
         for item in trigger_paths:
             if block.count('      - "' + item + '"' + chr(10)) != 1:
@@ -92,7 +96,28 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         pass
     else:
         raise SystemExit("typed non-resurrection path CI shortened trigger inventory accepted")
-    print("PASS: typed non-resurrection path CI event-specific triggers (20 removals; 1 shortened inventory negative)")
+    for event in ("pull_request", "push"):
+        first = '      - "' + TRIGGER_PATHS[0] + '"' + chr(10)
+        prefix, suffix = source.split(push_marker, 1)
+        for label, inserted in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", first),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + TRIGGER_PATHS[0] + "\n"),
+        ):
+            mutated = (
+                prefix.replace(first, inserted + first, 1) + push_marker + suffix
+                if event == "pull_request"
+                else prefix + push_marker + suffix.replace(first, inserted + first, 1)
+            )
+            if mutated == source:
+                raise SystemExit("typed non-resurrection path CI addition fixture missing: " + event + " " + label)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("typed non-resurrection path CI accepted " + event + " trigger addition: " + label)
+    print("PASS: typed non-resurrection path CI event-specific triggers (20 removals; 8 additions; 1 shortened inventory negative)")
 
 
 
