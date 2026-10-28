@@ -116,6 +116,44 @@ def validate_trigger_reachability(
         approved = tuple('      - "' + path + '"' for path in approved_paths)
         if actual != approved:
             raise SystemExit("contact-routing CI " + event + " exact trigger path drift")
+    # Bind the exclusive full event header and effective YAML root mapping,
+    # not just individual PR/push path blocks.
+    expected_header = (
+        ("name: Incident Contact Routing Admission" if publisher
+         else "name: Incident Contact Routing Source Negative")
+        + "\n\non:\n"
+        + pr + "".join('      - "' + path + '"\n' for path in approved_pr)
+        + push + "".join('      - "' + path + '"\n' for path in approved_push)
+        + ("  workflow_dispatch:\n" if publisher else "")
+    )
+    if (value.count("\npermissions:\n") != 1
+            or value.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("contact-routing CI exact event header drift")
+    expected_roots = (
+        ["name: Incident Contact Routing Admission", "on:", "permissions:",
+         "concurrency:", "jobs:"]
+        if publisher else
+        ["name: Incident Contact Routing Source Negative", "on:",
+         "permissions:", "jobs:"]
+    )
+    observed_roots = [
+        row for row in value.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if observed_roots != expected_roots:
+        raise SystemExit("contact-routing CI root YAML key shadow drift")
+    # Both workflow-level permission scopes are read-only; reject YAML
+    # quoted or whitespace-colon contents leaf shadows.
+    permission_lines = value.split("\npermissions:\n", 1)[1].splitlines()
+    permission_rows = []
+    for row in permission_lines:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            permission_rows.append(row)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("contact-routing CI permission leaf shadow drift")
 
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
@@ -170,6 +208,80 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
                 pass
             else:
                 raise SystemExit("contact-routing CI accepted shortened " + label + " " + event + " inventory")
+    # Additional events before the PR block preserve both reviewed path
+    # inventories and must fail the exact full-header guard.
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        mutated = original.replace("on:\n", "on:\n  issues:\n", 1)
+        if mutated == original:
+            raise SystemExit("contact-routing CI header negative anchor drift: " + label)
+        try:
+            validate_trigger_reachability(mutated, publisher=is_publisher)
+        except SystemExit as exc:
+            if str(exc) != "contact-routing CI exact event header drift":
+                raise SystemExit(
+                    "contact-routing CI header rejected for wrong reason: "
+                    + label + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("contact-routing CI accepted extra event: " + label)
+    root_shadows = (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    )
+    root_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        for name, suffix in root_shadows:
+            try:
+                validate_trigger_reachability(original + suffix, publisher=is_publisher)
+            except SystemExit as exc:
+                if str(exc) != "contact-routing CI root YAML key shadow drift":
+                    raise SystemExit(
+                        "contact-routing CI root shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit("contact-routing CI accepted root shadow: " + label + " " + name)
+            root_negative_count += 1
+    if root_negative_count != 8:
+        raise SystemExit("contact-routing CI root shadow fixture count drift")
+    permission_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        anchor = "permissions:\n  contents: read\n"
+        if original.count(anchor) != 1:
+            raise SystemExit("contact-routing CI permission negative anchor drift: " + label)
+        for name, extra in (
+            ("spaced", "  contents : write\n"),
+            ("quoted", "  'contents': write\n"),
+        ):
+            mutated = original.replace(anchor, anchor + extra, 1)
+            try:
+                validate_trigger_reachability(mutated, publisher=is_publisher)
+            except SystemExit as exc:
+                if str(exc) != "contact-routing CI permission leaf shadow drift":
+                    raise SystemExit(
+                        "contact-routing CI permission shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "contact-routing CI accepted permission leaf shadow: " + label + " " + name
+                )
+            permission_negative_count += 1
+    if permission_negative_count != 4:
+        raise SystemExit("contact-routing CI permission leaf fixture count drift")
+    print("PASS: contact-routing CI semantic YAML negatives "
+          "(2 extra-event, 8 root, 4 permission exact-diagnostic cases)")
     print("PASS: contact-routing CI event triggers (52 removals; 16 additions; 4 shortened inventory negatives)")
 
 
