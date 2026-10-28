@@ -74,14 +74,12 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
             raise SystemExit("typed non-resurrection reconcile CI trigger marker drift")
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    expected = ['      - "' + item + '"' for item in trigger_paths]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
-            raise SystemExit("typed non-resurrection reconcile CI " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            if block.count('      - "' + item + '"' + chr(10)) != 1:
-                raise SystemExit("typed non-resurrection reconcile CI " + event + " trigger path drift: " + item)
+        actual = [line for line in block.splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")]
+        if actual != expected:
+            raise SystemExit("typed non-resurrection reconcile CI " + event + " exact trigger inventory drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -101,6 +99,23 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("typed non-resurrection reconcile CI accepted missing " + event + " trigger: " + item)
+    # Unquoted YAML paths must not bypass a quoted-only semantic inventory.
+    for event, marker in (
+        ("pull_request", "  pull_request:\n    branches:\n      - so\n    paths:\n"),
+        ("push", push_marker),
+    ):
+        for label, injected in (
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + TRIGGER_PATHS[0] + "\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("typed non-resurrection reconcile CI unquoted fixture marker drift")
+            mutated = source.replace(marker, marker + injected, 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("typed non-resurrection reconcile CI accepted " + event + " " + label)
     try:
         validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
     except SystemExit:
