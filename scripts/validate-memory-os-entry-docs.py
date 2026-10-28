@@ -353,6 +353,12 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             if any(re.match(r" {10,}(?:if|elif|case|while|until|for)\b", previous)
                    for previous in block[:offset]):
                 issues.append("Python validator may be conditionally skipped by shell control flow")
+            # Shell AND/OR lists may skip a syntactically present validator
+            # while the subsequent clean-source checks still exit successfully.
+            prior = [row.strip() for row in block[:offset]
+                     if row.strip() and not row.lstrip().startswith("#")]
+            if (prior and prior[-1].rstrip().removesuffix("\\").rstrip().endswith(("&&", "||"))):
+                issues.append("Python validator short-circuited by preceding shell list")
             commands.append(match.group(1))
             last_python = offset
         if last_python >= 0:
@@ -461,6 +467,12 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "          python scripts/check.py\n",
             '          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then\n'
             "          python scripts/check.py\n          fi\n"),
+        "validator skipped by true-or shell list": fixture.replace(
+            "          python scripts/check.py\n",
+            "          true ||\n          python scripts/check.py\n"),
+        "validator skipped by false-and shell list": fixture.replace(
+            "          python scripts/check.py\n",
+            "          false &&\n          python scripts/check.py\n"),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
@@ -621,7 +633,7 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 51 negative fixtures")
+              f"{invocation_count} direct Python commands, 53 negative fixtures")
 
 
 def main() -> int:
