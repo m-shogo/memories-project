@@ -71,6 +71,152 @@ REQUIRED = (
 )
 
 
+PREFENCE_MUTATION_PUBLISHER_PUSH = (
+    ".github/workflows/deletion-prefence-mutation-linearization.yml",
+    "contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json",
+    "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py",
+    "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py",
+    "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py",
+    "services/import-api/internal/httpserver/deletion_prefence_mutation_linearization_test.go",
+    "services/import-api/internal/httpserver/deletion_prefence_linearization_test.go",
+    "services/import-api/internal/httpserver/server_live_test.go",
+    "services/import-api/internal/httpserver/server.go",
+    "services/import-api/internal/fenced/**",
+    "services/import-api/internal/epochguard/**",
+    "services/import-api/internal/authstore/**",
+    "services/import-api/internal/accountdelete/**",
+    "services/import-api/internal/pgrepo/**",
+    "services/import-api/internal/dbscope/**",
+    "services/import-api/internal/pgscope/**",
+    "services/import-api/internal/upload/**",
+    "infra/postgresql/security/**",
+    "services/import-api/go.mod",
+    "services/import-api/go.sum",
+)
+
+PREFENCE_MUTATION_INDEPENDENT_PR = (
+    ".github/workflows/deletion-prefence-mutation-linearization.yml",
+    ".github/workflows/deletion-prefence-mutation-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-source-negative.py",
+    "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py",
+    "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py",
+    "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py",
+)
+
+PREFENCE_MUTATION_INDEPENDENT_PUSH = (
+    ".github/workflows/deletion-prefence-mutation-linearization.yml",
+    ".github/workflows/deletion-prefence-mutation-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-deletion-prefence-mutation-diagnostic-source-negative.py",
+    "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py",
+    "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py",
+    "scripts/validate-memory-os-deletion-prefence-mutation-linearization-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-prefence-mutation-reconcile-negative.py",
+)
+
+def prefence_mutation_trigger_event(event, paths):
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def prefence_mutation_trigger_header(content):
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise AssertionError("pre-fence mutation workflow event header ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def prefence_mutation_trigger_matrix(
+    publisher, independent,
+    publisher_push=PREFENCE_MUTATION_PUBLISHER_PUSH,
+    independent_pr=PREFENCE_MUTATION_INDEPENDENT_PR,
+    independent_push=PREFENCE_MUTATION_INDEPENDENT_PUSH,
+):
+    expected_publisher = (prefence_mutation_trigger_event("push", publisher_push)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (prefence_mutation_trigger_event("pull_request", independent_pr)
+                            + prefence_mutation_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if prefence_mutation_trigger_header(content) != expected:
+            raise AssertionError("pre-fence mutation " + label + " exact trigger matrix drift")
+
+
+def prefence_mutation_trigger_replace(content, old, new):
+    anchor = "\non:\n" + old + "\npermissions:\n"
+    if content.count(anchor) != 1 or old == new:
+        raise AssertionError("pre-fence mutation trigger mutation fixture unreachable")
+    return content.replace(anchor, "\non:\n" + new + "\npermissions:\n", 1)
+
+
+def prefence_mutation_trigger_negatives(publisher, independent):
+    def reject(p, i):
+        try:
+            prefence_mutation_trigger_matrix(p, i)
+        except AssertionError:
+            return
+        raise AssertionError("pre-fence mutation accepted event trigger mutation")
+
+    omissions = additions = 0
+    for label, event, paths in (
+        ("publisher", "push", PREFENCE_MUTATION_PUBLISHER_PUSH),
+        ("independent", "pull_request", PREFENCE_MUTATION_INDEPENDENT_PR),
+        ("independent", "push", PREFENCE_MUTATION_INDEPENDENT_PUSH),
+    ):
+        original = publisher if label == "publisher" else independent
+        header = prefence_mutation_trigger_header(original)
+        block = prefence_mutation_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise AssertionError("pre-fence mutation event fixture ambiguous")
+        for index in range(len(paths)):
+            changed = prefence_mutation_trigger_replace(
+                original, header,
+                header.replace(block, prefence_mutation_trigger_event(
+                    event, paths[:index] + paths[index + 1:]), 1))
+            reject(changed, independent) if label == "publisher" else reject(publisher, changed)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for extra in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            changed = prefence_mutation_trigger_replace(
+                original, header,
+                header.replace(block, block.replace(first, first + extra, 1), 1))
+            reject(changed, independent) if label == "publisher" else reject(publisher, changed)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_push", PREFENCE_MUTATION_PUBLISHER_PUSH),
+        ("independent_pr", PREFENCE_MUTATION_INDEPENDENT_PR),
+        ("independent_push", PREFENCE_MUTATION_INDEPENDENT_PUSH),
+    ):
+        try:
+            prefence_mutation_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except AssertionError:
+            shortened += 1
+        else:
+            raise AssertionError("pre-fence mutation accepted shortened trigger inventory")
+
+    ph, ih = prefence_mutation_trigger_header(publisher), prefence_mutation_trigger_header(independent)
+    topology = (
+        (prefence_mutation_trigger_replace(
+            publisher, ph, "  pull_request:\n    branches:\n      - so\n" + ph), independent),
+        (prefence_mutation_trigger_replace(
+            publisher, ph, ph.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (publisher, prefence_mutation_trigger_replace(
+            independent, ih, ih + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        reject(p, i)
+    print("PASS: pre-fence mutation exact trigger matrix: " + str(omissions)
+          + " omissions, " + str(additions) + " additions/duplicates, "
+          + str(shortened) + " shortened inventories, "
+          + str(len(topology)) + " event topology negatives")
+
+
 def policy(value):
     for marker in REQUIRED:
         if marker not in value:
@@ -845,6 +991,8 @@ def main():
         raise SystemExit("pre-fence mutation secondary rollback negative complete Git blob unreviewed")
     identity_runtime(independent, "Require exact clean pre-fence mutation diagnostic source")
     policy(publisher)
+    prefence_mutation_trigger_matrix(publisher, independent)
+    prefence_mutation_trigger_negatives(publisher, independent)
     mutations(publisher)
     writer_runtime(publisher)
     result_commit_runtime(publisher)
