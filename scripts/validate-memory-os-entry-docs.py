@@ -843,6 +843,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "        run: |\n"
         "          set -euo pipefail\n"
         "          (cd services/import-api && go test ./internal/httpserver -run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter)$' -count=1)\n"
+        "          git diff --check\n"
         "          git diff --exit-code\n"
         '          test -z "$(git status --porcelain)"\n'
     )
