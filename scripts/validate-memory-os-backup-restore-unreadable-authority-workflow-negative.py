@@ -217,9 +217,81 @@ def prove_trigger_reachability_negatives(source: str) -> None:
     print("PASS: unreadable-authority CI event-specific trigger reachability (70 removals; 8 additions; 1 shortened inventory negative)")
 
 
+
+def validate_job_authority(source: str) -> None:
+    """Pin the sole inherited-read-only unreadable-authority CI job."""
+    if source.count("\njobs:\n") != 1:
+        raise SystemExit("unreadable-authority CI job mapping shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    headings = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and len(line) > 2 and line[2] != " "
+        and not line.lstrip().startswith("#")
+    ]
+    if headings != ["  validate:"]:
+        raise SystemExit("unreadable-authority CI job mapping shadow drift")
+    keys = [
+        line for line in body.splitlines()[1:]
+        if line.startswith("    ") and len(line) > 4 and line[4] != " "
+        and not line.lstrip().startswith("#")
+    ]
+    if keys != [
+        "    runs-on: ubuntu-latest",
+        "    timeout-minutes: 5",
+        "    steps:",
+    ]:
+        raise SystemExit("unreadable-authority CI job key shadow drift")
+
+
+def prove_job_authority_negatives(source: str) -> None:
+    """Reject eleven nested job mapping and execution shadows for the exact reason."""
+    validate_job_authority(source)
+    header = "  validate:\n"
+    if source.count(header) != 1:
+        raise SystemExit("unreadable-authority CI job fixture header drift")
+
+    def in_job(old: str, new: str) -> str:
+        prefix, suffix = source.split(header, 1)
+        if old not in suffix:
+            raise SystemExit("unreadable-authority CI job fixture anchor missing")
+        return prefix + header + suffix.replace(old, new, 1)
+
+    runner = "    runs-on: ubuntu-latest\n"
+    timeout = "    timeout-minutes: 5\n"
+    steps = "    steps:\n"
+    cases = [
+        ("duplicate mapping", source + "\n" + header + "    runs-on: ubuntu-latest\n", "job mapping shadow drift"),
+        ("quoted mapping", source.replace(header, "  'validate':\n", 1), "job mapping shadow drift"),
+        ("spaced mapping", source.replace(header, "  validate :\n", 1), "job mapping shadow drift"),
+        ("condition override", in_job(runner, "    if: always()\n" + runner), "job key shadow drift"),
+        ("write permission", in_job(runner, "    permissions:\n      contents: write\n" + runner), "job key shadow drift"),
+        ("quoted write permission", in_job(runner, "    'permissions':\n      contents: write\n" + runner), "job key shadow drift"),
+        ("runner shadow", in_job(runner, runner + "    runs-on : ubuntu-latest\n"), "job key shadow drift"),
+        ("timeout shadow", in_job(timeout, timeout + "    timeout-minutes : 1\n"), "job key shadow drift"),
+        ("steps shadow", in_job(steps, "    steps : []\n" + steps), "job key shadow drift"),
+        ("continuation override", in_job(steps, "    continue-on-error: true\n" + steps), "job key shadow drift"),
+        ("dependency override", in_job(runner, "    needs: unreviewed\n" + runner), "job key shadow drift"),
+    ]
+    if len(cases) != 11:
+        raise SystemExit("unreadable-authority CI job negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("unreadable-authority CI unchanged job fixture: " + label)
+        try:
+            validate_job_authority(mutated)
+        except SystemExit as exc:
+            expected = "unreadable-authority CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("unreadable-authority CI wrong job diagnostic: " + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("unreadable-authority CI accepted job shadow: " + label)
+    print("PASS: unreadable-authority CI nested read-only job authority (11 exact-diagnostic negatives)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
     validate_yaml_authority(source)
+    validate_job_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"unreadable-authority negative workflow source boundary drift: {label}")
@@ -1289,6 +1361,7 @@ def main() -> int:
     validate(source)
     prove_trigger_reachability_negatives(source)
     prove_yaml_authority_negatives(source)
+    prove_job_authority_negatives(source)
     prove_branch_guards_runtime()
     prove_generation_json_negative_removal_rejected()
     prove_generation_json_parent_swap_negative_removal_rejected()
