@@ -397,9 +397,9 @@ def gofmt_yaml_authority_negatives(publisher: str, independent: str) -> None:
             else:
                 raise SystemExit("live-load-gofmt accepted YAML mutation: " + label)
             count += 1
-    if count != 26:
+    if count != 28:
         raise SystemExit("live-load-gofmt YAML negative population drift: " + str(count))
-    print("PASS: live-load-gofmt effective YAML authority (26 exact-diagnostic negatives)")
+    print("PASS: live-load-gofmt effective YAML authority (28 exact-diagnostic negatives)")
 
 
 def main() -> None:
