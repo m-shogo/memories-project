@@ -80,6 +80,7 @@ def validate(publisher: str, independent: str) -> None:
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
     ):
+        validate_yaml_authority(content, name)
         for label, token, count in required:
             if content.count(token) != count:
                 raise SystemExit("operability inventory " + name + " source drift: " + label)
@@ -87,6 +88,95 @@ def validate(publisher: str, independent: str) -> None:
         blob = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
         if hashlib.sha1(blob).hexdigest() != digest:
             raise SystemExit("operability inventory " + name + " complete source drift")
+
+
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Reject effective YAML event/root/permission shadows without relying on blob identity."""
+    if kind == "publisher":
+        expected_name = "name: Operability Admission Inventory"
+        events = ["  push:", "  workflow_dispatch:"]
+        roots = [expected_name, "on:", "permissions:", "concurrency:", "jobs:"]
+    elif kind == "independent":
+        expected_name = "name: Operability Admission Inventory Source Negative"
+        events = ["  pull_request:", "  push:"]
+        roots = [expected_name, "on:", "permissions:", "jobs:"]
+    else:
+        raise SystemExit("operability inventory unknown YAML authority kind")
+    prefix = "operability inventory " + kind + " "
+    if (content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1
+            or not content.startswith(expected_name + "\n\non:\n")):
+        raise SystemExit(prefix + "event header drift")
+    event_block = content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    event_keys = [
+        line for line in event_block.splitlines()
+        if line.startswith("  ") and not line.startswith("    ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if event_keys != events:
+        raise SystemExit(prefix + "event topology drift")
+    root_keys = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if root_keys != roots:
+        raise SystemExit(prefix + "root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit(prefix + "permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    """Pin intended diagnostics for both publisher and independent CI shadow fixtures."""
+    count = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        validate_yaml_authority(content, kind)
+        event = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if event == content:
+            raise SystemExit("operability inventory " + kind + " event fixture anchor drift")
+        cases = [("extra event", event, "event topology drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content.rstrip("\n") + "\n" + suffix,
+                          "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: read\n"
+        if content.count(marker) != 1:
+            raise SystemExit("operability inventory " + kind + " permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, content.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        if len(cases) != 9:
+            raise SystemExit("operability inventory " + kind + " YAML fixture count drift")
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("operability inventory " + kind + " unchanged YAML fixture: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "operability inventory " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("operability inventory " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("operability inventory " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 18:
+        raise SystemExit("operability inventory YAML negative population drift")
+    print("PASS: operability inventory publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
 
 
 def runtime(publisher: str, independent: str) -> None:
@@ -295,6 +385,7 @@ def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
     validate(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     diagnostic_runtime(publisher)
     runtime(publisher, independent)
     negatives(publisher, independent)
