@@ -47,6 +47,154 @@ REQUIRED = (
     'git commit -m "test(load): classify MinIO lifecycle failures"',
 )
 
+LIVE_OBJECT_PUBLISHER_PR_PATHS = (
+    ".github/workflows/reconcile-live-object-stage-diagnostics.yml",
+    "scripts/reconcile-memory-os-live-object-stage-diagnostics.py",
+    "services/import-api/internal/httpserver/live_object_load_test.go",
+)
+
+LIVE_OBJECT_PUBLISHER_PUSH_PATHS = (
+    ".github/workflows/reconcile-live-object-stage-diagnostics.yml",
+    "scripts/reconcile-memory-os-live-object-stage-diagnostics.py",
+    "services/import-api/internal/httpserver/live_object_load_test.go",
+)
+
+LIVE_OBJECT_INDEPENDENT_PR_PATHS = (
+    ".github/workflows/reconcile-live-object-stage-diagnostics.yml",
+    ".github/workflows/live-object-stage-source-negative.yml",
+    "scripts/validate-memory-os-live-object-stage-source-negative.py",
+    "scripts/reconcile-memory-os-live-object-stage-diagnostics.py",
+    "scripts/validate-memory-os-live-object-load.py",
+    "contracts/operations/live-object-load-scenario-contract.v1.json",
+    "services/import-api/internal/httpserver/live_object_load_test.go",
+    "services/import-api/internal/httpserver/live_load_test.go",
+    "services/import-api/internal/httpserver/live_result_atomic_test.go",
+)
+
+LIVE_OBJECT_INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/reconcile-live-object-stage-diagnostics.yml",
+    ".github/workflows/live-object-stage-source-negative.yml",
+    "scripts/validate-memory-os-live-object-stage-source-negative.py",
+    "scripts/reconcile-memory-os-live-object-stage-diagnostics.py",
+    "scripts/validate-memory-os-live-object-load.py",
+    "contracts/operations/live-object-load-scenario-contract.v1.json",
+    "services/import-api/internal/httpserver/live_object_load_test.go",
+    "services/import-api/internal/httpserver/live_load_test.go",
+    "services/import-api/internal/httpserver/live_result_atomic_test.go",
+)
+
+def live_object_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def live_object_trigger_header(content: str) -> str:
+    # Exact, ordered event header: reject unknown, unquoted, duplicate and
+    # unexpected event paths instead of depending only on a Git blob digest.
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise SystemExit("live-object-stage trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def live_object_validate_trigger_matrix(
+    publisher: str, independent: str,
+    publisher_pr: tuple[str, ...] = LIVE_OBJECT_PUBLISHER_PR_PATHS,
+    publisher_push: tuple[str, ...] = LIVE_OBJECT_PUBLISHER_PUSH_PATHS,
+    independent_pr: tuple[str, ...] = LIVE_OBJECT_INDEPENDENT_PR_PATHS,
+    independent_push: tuple[str, ...] = LIVE_OBJECT_INDEPENDENT_PUSH_PATHS,
+) -> None:
+    expected_publisher = (live_object_trigger_event("push", publisher_push)
+                          + live_object_trigger_event("pull_request", publisher_pr)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (live_object_trigger_event("pull_request", independent_pr)
+                            + live_object_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if live_object_trigger_header(content) != expected:
+            raise SystemExit("live-object-stage " + label
+                             + " exact event trigger inventory drift")
+
+
+def replace_live_object_trigger_header(content: str, original: str, replacement: str) -> str:
+    old = "\non:\n" + original + "\npermissions:\n"
+    if content.count(old) != 1 or original == replacement:
+        raise SystemExit("live-object-stage trigger negative fixture unreachable")
+    return content.replace(old, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def live_object_trigger_matrix_negatives(publisher: str, independent: str) -> None:
+    def must_reject(p: str, i: str) -> None:
+        try:
+            live_object_validate_trigger_matrix(p, i)
+        except SystemExit:
+            return
+        raise SystemExit("live-object-stage accepted event trigger mutation")
+
+    omissions = additions = 0
+    cases = (
+        ("publisher", "pull_request", LIVE_OBJECT_PUBLISHER_PR_PATHS),
+        ("publisher", "push", LIVE_OBJECT_PUBLISHER_PUSH_PATHS),
+        ("independent", "pull_request", LIVE_OBJECT_INDEPENDENT_PR_PATHS),
+        ("independent", "push", LIVE_OBJECT_INDEPENDENT_PUSH_PATHS),
+    )
+    for label, event, paths in cases:
+        original = publisher if label == "publisher" else independent
+        header = live_object_trigger_header(original)
+        block = live_object_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise SystemExit("live-object-stage trigger event fixture ambiguous")
+        for index in range(len(paths)):
+            shorter = paths[:index] + paths[index + 1:]
+            mutated = replace_live_object_trigger_header(
+                original, header, header.replace(block, live_object_trigger_event(event, shorter), 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for addition in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            mutated_block = block.replace(first, first + addition, 1)
+            mutated = replace_live_object_trigger_header(
+                original, header, header.replace(block, mutated_block, 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_pr", LIVE_OBJECT_PUBLISHER_PR_PATHS),
+        ("publisher_push", LIVE_OBJECT_PUBLISHER_PUSH_PATHS),
+        ("independent_pr", LIVE_OBJECT_INDEPENDENT_PR_PATHS),
+        ("independent_push", LIVE_OBJECT_INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            live_object_validate_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except SystemExit:
+            shortened += 1
+        else:
+            raise SystemExit("live-object-stage accepted shortened trigger inventory")
+
+    p_header, i_header = live_object_trigger_header(publisher), live_object_trigger_header(independent)
+    topology = (
+        (replace_live_object_trigger_header(
+            publisher, p_header, p_header.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (replace_live_object_trigger_header(
+            publisher, p_header, p_header.replace(
+                "  workflow_dispatch:\n",
+                "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)), independent),
+        (publisher, replace_live_object_trigger_header(
+            independent, i_header, i_header + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        must_reject(p, i)
+    print("PASS: live-object-stage exact trigger matrix: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def policy(text):
     for marker in REQUIRED:
         if marker not in text:
@@ -481,6 +629,8 @@ def main():
         if marker not in reconciler_source:
             raise AssertionError("live object stage reconciler write safety drift: " + marker)
     policy(publisher)
+    live_object_validate_trigger_matrix(publisher, independent)
+    live_object_trigger_matrix_negatives(publisher, independent)
     negatives(publisher)
     runtime(publisher, "Validate diagnostic source read-only", False)
     runtime(publisher, "Reconcile stage diagnostics", True)
