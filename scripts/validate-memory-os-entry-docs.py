@@ -372,6 +372,14 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                     row,
                 ) for row in prior):
                 issues.append("Python validator may be trapped in shell function")
+            # A visible command can resolve to a shell alias, hash pin or
+            # sourced executable instead of the reviewed Python interpreter.
+            if any(re.match(
+                    r"(?:alias|unalias|hash|source|eval|exec|command|builtin)\b|"
+                    r"\.\s|(?:export\s+)?(?:PATH|PYTHONPATH|BASH_ENV|ENV)=",
+                    row,
+                ) for row in prior):
+                issues.append("Python validator command resolution may be overridden")
             commands.append(match.group(1))
             last_python = offset
         if last_python >= 0:
@@ -409,7 +417,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 58
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 64
 
 
 def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
@@ -515,6 +523,30 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "          {\n"
             "          python scripts/check.py\n"
             "          }\n"),
+        "validator shadowed by python alias": fixture.replace(
+            "          python scripts/check.py\n",
+            "          alias python=true\n"
+            "          python scripts/check.py\n"),
+        "validator shadowed by hash pin": fixture.replace(
+            "          python scripts/check.py\n",
+            "          hash -p /bin/true python\n"
+            "          python scripts/check.py\n"),
+        "validator shadowed by sourced shell": fixture.replace(
+            "          python scripts/check.py\n",
+            "          source ./unreviewed.sh\n"
+            "          python scripts/check.py\n"),
+        "validator shadowed by PATH assignment": fixture.replace(
+            "          python scripts/check.py\n",
+            "          PATH=/tmp/unreviewed\n"
+            "          python scripts/check.py\n"),
+        "validator shadowed by exported PYTHONPATH": fixture.replace(
+            "          python scripts/check.py\n",
+            "          export PYTHONPATH=/tmp/unreviewed\n"
+            "          python scripts/check.py\n"),
+        "validator shadowed by eval": fixture.replace(
+            "          python scripts/check.py\n",
+            '          eval "alias python=true"\n'
+            "          python scripts/check.py\n"),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
