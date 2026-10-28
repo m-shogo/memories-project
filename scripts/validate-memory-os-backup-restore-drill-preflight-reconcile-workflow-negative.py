@@ -59,8 +59,170 @@ INDEPENDENT_REQUIRED = (
 )
 
 
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-drill-preflight-reconcile-negative.yml",
+    "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/memory_os_environment_generation_eligibility.py",
+    "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-backup-restore-drill-request.py",
+    "scripts/validate-memory-os-backup-restore-drill-preflight.py",
+    "scripts/reconcile-memory-os-backup-restore-drill-preflight.py",
+    "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py",
+    "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-workflow-negative.py",
+    "scripts/validate-memory-os-operability.py",
+)
+
+
+def validate_publisher_yaml_authority(
+    source: str, *, trigger_paths: tuple[str, ...] = PUBLISHER_TRIGGER_PATHS
+) -> None:
+    """Pin semantic preflight reconcile CI event, path, root and job authority."""
+    if len(trigger_paths) != 16 or len(set(trigger_paths)) != 16:
+        raise SystemExit("semantic preflight reconcile publisher trigger inventory drift")
+    paths = "".join('      - "' + item + '"\n' for item in trigger_paths)
+    header = (
+        "name: Backup Restore Drill Preflight Reconcile Negative\n\non:\n"
+        + "  pull_request:\n    branches:\n      - so\n    paths:\n" + paths
+        + "  push:\n    branches:\n      - so\n    paths:\n" + paths
+        + "  workflow_dispatch:\n"
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != header):
+        raise SystemExit("semantic preflight reconcile publisher exact event header drift")
+    roots = [
+        row for row in source.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Backup Restore Drill Preflight Reconcile Negative",
+        "on:", "permissions:", "concurrency:", "jobs:",
+    ]:
+        raise SystemExit("semantic preflight reconcile publisher root YAML key shadow drift")
+    leaves = []
+    for row in source.split("\npermissions:\n", 1)[1].splitlines():
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            leaves.append(row)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("semantic preflight reconcile publisher permission leaf shadow drift")
+    body = source.split("\n" + "jobs:\n", 1)[1]
+    job_rows = [
+        row for row in body.splitlines()
+        if row.startswith("  ") and not row.startswith("   ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_rows != ["  validate:"]:
+        raise SystemExit("semantic preflight reconcile publisher job mapping shadow drift")
+    job_keys = [
+        row for row in body.splitlines()
+        if row.startswith("    ") and not row.startswith("     ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_keys != ["    runs-on: ubuntu-latest", "    timeout-minutes: 10", "    steps:"]:
+        raise SystemExit("semantic preflight reconcile publisher job key/permission shadow drift")
+
+
+def prove_publisher_yaml_authority_negatives(source: str) -> None:
+    """Reject reviewed preflight reconcile CI path and YAML mutations by exact diagnostic."""
+    validate_publisher_yaml_authority(source)
+    extra = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra == source:
+        raise SystemExit("semantic preflight reconcile publisher extra-event fixture drift")
+    cases = [("extra event", extra, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "root YAML key shadow drift"))
+    marker = "\npermissions:\n  contents: read\n"
+    if source.count(marker) != 1:
+        raise SystemExit("semantic preflight reconcile publisher root permission fixture drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(marker, marker + leaf, 1),
+                      "permission leaf shadow drift"))
+    for label, suffix in (
+        ("duplicate job", "  validate: {}\n"),
+        ("spaced job", "  validate : {}\n"),
+        ("quoted job", "  'validate': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    runs_on = "    runs-on: ubuntu-latest\n"
+    if source.count(runs_on) != 1:
+        raise SystemExit("semantic preflight reconcile publisher job fixture anchor drift")
+    for label, leaf in (
+        ("job permission", "    permissions:\n      contents: write\n"),
+        ("spaced job permission", "    permissions :\n      contents: write\n"),
+        ("quoted job permission", "    'permissions':\n      contents: write\n"),
+    ):
+        cases.append((label, source.replace(runs_on, runs_on + leaf, 1),
+                      "job key/permission shadow drift"))
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for path in PUBLISHER_TRIGGER_PATHS:
+            token = '      - "' + path + '"\n'
+            if source.count(token) != 2:
+                raise SystemExit("semantic preflight reconcile publisher trigger fixture drift: " + path)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            cases.append((event + " removed " + path, mutated, "exact event header drift"))
+    for event, marker in (("pull_request", pr_marker), ("push", push_marker)):
+        for label, extra_path in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + PUBLISHER_TRIGGER_PATHS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + PUBLISHER_TRIGGER_PATHS[0] + "\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("semantic preflight reconcile publisher addition fixture anchor drift")
+            cases.append((event + " " + label, source.replace(marker, marker + extra_path, 1),
+                          "exact event header drift"))
+    if len(cases) != 55:
+        raise SystemExit("semantic preflight reconcile publisher YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("semantic preflight reconcile publisher unchanged negative: " + label)
+        try:
+            validate_publisher_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "semantic preflight reconcile publisher " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("semantic preflight reconcile publisher wrong diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("semantic preflight reconcile publisher accepted mutation: " + label)
+    try:
+        validate_publisher_yaml_authority(source, trigger_paths=PUBLISHER_TRIGGER_PATHS[:-1])
+    except SystemExit as exc:
+        if str(exc) != "semantic preflight reconcile publisher trigger inventory drift":
+            raise SystemExit("semantic preflight reconcile publisher shortened inventory wrong diagnostic") from exc
+    else:
+        raise SystemExit("semantic preflight reconcile publisher shortened inventory accepted")
+    print("PASS: semantic preflight reconcile publisher event/root/job/permission authority (55 exact-diagnostic negatives; 1 shortened inventory)")
+
 
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_publisher_yaml_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"semantic preflight reconcile workflow source boundary drift: {label}")
@@ -394,6 +556,7 @@ def prove_sha_guard_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_publisher_yaml_authority_negatives(source)
     independent = INDEPENDENT_PATH.read_text(encoding="utf-8")
     validate_independent(independent)
     prove_independent_trigger_negatives(independent)
