@@ -468,6 +468,19 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             ]
             if clone_lines != expected_clone_lines:
                 issues.append("unreviewed migration disposable clone source or shell")
+    # Bind the reviewed Go-only third step to actual tests and clean checks.
+    if relative == ".github/workflows/live-object-stage-source-negative.yml":
+        expected_go_shell = [
+            "          set -euo pipefail",
+            "          (cd services/import-api && go test ./internal/httpserver -run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter)$' -count=1)",
+            "          git diff --check",
+            "          git diff --exit-code",
+            '          test -z "$(git status --porcelain)"',
+        ]
+        if (len(run_positions) != 3 or
+                [row for row in source_lines[run_positions[2] + 1:] if row.strip()]
+                != expected_go_shell):
+            issues.append("unreviewed Go third-step test or clean-source shell")
     if len(head_positions) != 1:
         issues.append("missing, shadowed or duplicated exact-source HEAD comparison")
     else:
@@ -720,7 +733,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 163
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 166
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -829,7 +842,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "      - name: Prove reviewed Go checks\n"
         "        run: |\n"
         "          set -euo pipefail\n"
-        "          go version\n"
+        "          (cd services/import-api && go test ./internal/httpserver -run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter)$' -count=1)\n"
         "          git diff --exit-code\n"
         '          test -z "$(git status --porcelain)"\n'
     )
@@ -888,6 +901,13 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     reversed_fixture = reversed_shell_steps(fixture)
     reversed_go_fixture = reversed_shell_steps(go_fixture)
     cases = {
+        "setup-go third-step command replaced": go_fixture.replace(
+            "(cd services/import-api && go test ./internal/httpserver -run '^(TestLiveObjectStageLabelClosedVocabulary|TestAtomicLocalLoadResultWriter)$' -count=1)",
+            "echo skipped-go-tests"),
+        "setup-go third-step count removed": go_fixture.replace(
+            "-count=1)", ")"),
+        "setup-go third-step directory changed": go_fixture.replace(
+            "(cd services/import-api && go test", "(cd /tmp && go test"),
         "migration-clone unreviewed remote source": migration_fixture.replace(
             'git clone --quiet --no-hardlinks --no-checkout . "$sandbox/repo"',
             'git clone --quiet --no-hardlinks --no-checkout https://example.invalid/repo "$sandbox/repo"'),
