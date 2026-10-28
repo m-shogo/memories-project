@@ -333,7 +333,10 @@ def negative_proofs(publisher: str, independent: str) -> None:
     for label, publisher_case, before, after in cases:
         original = publisher if publisher_case else independent
         require(before in original, "mutation anchor missing: " + label)
-        changed = original.replace(before, after, 1)
+        # Digest-only fixtures must preserve effective YAML semantics so
+        # the Git blob guard, not the event/root guard, owns their rejection.
+        changed = (original + after if "digest-only" in label
+                   else original.replace(before, after, 1))
         require(changed != original, "mutation unchanged: " + label)
         try:
             validate(changed, independent) if publisher_case else validate(publisher, changed)
