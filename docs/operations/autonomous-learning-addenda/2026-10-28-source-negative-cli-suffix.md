@@ -21,3 +21,20 @@
 - **Known blocker (unchanged):** The canonical learning file is approximately 4.17 MB and prior full-file Contents API and later Git blob/tree attempts encountered HTTP/2 transport failures. Root cause remains explicitly unknown. The same unchanged large-payload write was not retried. This small addendum is supplementary and must never substitute for the canonical learning authority.
 - **New bounded-call lesson:** A single request batching 52 GitHub file reads exceeded the connector's maximum tool-call count. The failed approach was the oversized batch; the correction was five bounded read batches (12/12/12/12/4) which successfully verified all 52 workflows. Keep future connector batches bounded and retry a larger batch only if the call limit changes.
 - **Next safe target:** Obtain exact-source CI evidence for the CLI suffix guard, then inspect whether source-negative workflow shell step metadata can shadow or skip the validator despite the exact command check. Preserve protected authority and append-only history.
+
+## 2026-10-28 — Shell AND/OR short-circuit cannot bypass CI validators
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach, correction, recurrence guard, retry condition
+
+- **Symptom / observed evidence:** The prior common reachability scanner could see a syntactically valid `python scripts/check.py` line while a preceding `true ||` or `false &&` shell list skipped its execution. This is a static bypass discovered by review, not an observed production incident.
+- **Verified root cause:** The scanner checked shell control keywords, unconditional exit and disabled errexit but not the immediately preceding shell AND/OR list operator.
+- **Failed approach:** A literal command line plus `set -euo pipefail` does not prove execution when the command is the short-circuited operand of an AND/OR list.
+- **Correction / executable recurrence guard:** [d5c28d23](https://github.com/m-shogo/memories-project/commit/d5c28d23d233ee44c5f94ac29dcd7b456e9d3002) rejects a direct validator preceded by a non-comment shell line ending `&&` or `||`. Two semantic negative fixtures model `true ||` and `false &&`; total shared reachability negatives advance from 51 to 53.
+- **Retry condition:** Revisit when the reviewed shell execution topology changes, especially if multiline shell list syntax is introduced. Do not retry unchanged external MinIO or human-approval blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **Outcome / evidence:** The code commit `d5c28d23` was accepted. A separate local Python classifier smoke test passed 3 positive and 3 negative inputs, including a trailing-backslash shell-list variant. The actual GitHub Actions exact-source run remains unconfirmed; a local classifier is not a CI success or production proof.
+- **Why safe / reusable mechanism:** Only the shared read-only CI entrypoint was changed; no reviewed workflow, generation/objective/drill/evidence registry, credential, traffic or human promotion authority was modified.
+- **Protected-authority check:** All nine protected authority blob SHAs were re-read after the code change and remained identical to their pre-write values. `productionDecision=NO_GO` and OPS-P0-007 `PREREQUISITES_BLOCKED` remain authoritative. Learning and fixture outcomes cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, independent review or promotion gates.
+- **Next safe target:** Obtain exact-source CI run/job evidence for both guards. Then inspect heredoc or shell function wrappers that could make a visible Python line non-executable, without broadening reviewed workflow permissions or mutating production authority.
