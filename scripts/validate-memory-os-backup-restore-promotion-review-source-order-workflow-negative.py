@@ -63,6 +63,13 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
     push_block = source.split(push_marker, 1)[1].split(pr_marker, 1)[0]
     pr_block = source.split(pr_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("push", push_block), ("pull_request", pr_block)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        expected = tuple(f"      - '{path}'" for path in trigger_paths)
+        if actual != expected:
+            raise SystemExit("promotion source-order CI " + event + " trigger inventory drift")
         for path in trigger_paths:
             token = "      - '" + path + "'\n"
             if block.count(token) != 1:
@@ -94,6 +101,28 @@ def prove_trigger_reachability_negatives(source: str) -> None:
     else:
         raise SystemExit("promotion source-order CI shortened trigger inventory accepted")
     print(f"PASS: promotion source-order CI PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 1 shortened inventory negative)")
+    for event in ("push", "pull_request"):
+        for label, inserted in (
+            ("single-quoted extra", "      - 'unreviewed/**'\n"),
+            ("single-quoted duplicate", f"      - '{TRIGGER_PATHS[0]}'\n"),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", f"      - {TRIGGER_PATHS[0]}\n"),
+        ):
+            token = f"      - '{TRIGGER_PATHS[0]}'\n"
+            prefix, suffix = source.split(pr_marker, 1)
+            if event == "push":
+                mutated = prefix.replace(token, inserted + token, 1) + pr_marker + suffix
+            else:
+                mutated = prefix + pr_marker + suffix.replace(token, inserted + token, 1)
+            if mutated == source:
+                raise SystemExit(f"promotion source-order CI addition fixture missing: {event} {label}")
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit(f"promotion source-order CI accepted {event} addition: {label}")
+    print("PASS: promotion source-order CI trigger additions (8 event-specific semantic negatives)")
+
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
