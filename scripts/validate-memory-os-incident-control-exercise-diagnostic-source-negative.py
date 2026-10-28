@@ -78,6 +78,18 @@ def validate_trigger_reachability(
         ]
         if observed_roots != expected_roots:
             raise SystemExit("incident control " + label + " root YAML key shadow drift")
+        # Preserve the publisher's reviewed write authority and the
+        # independent CI's read-only authority against YAML leaf shadows.
+        permission_lines = value.split("\npermissions:\n", 1)[1].splitlines()
+        permission_rows = []
+        for row in permission_lines:
+            if row.strip() and not row[0].isspace():
+                break
+            if row.strip() and not row.lstrip().startswith("#"):
+                permission_rows.append(row)
+        expected_permission = "  contents: write" if label == "publisher" else "  contents: read"
+        if permission_rows != [expected_permission]:
+            raise SystemExit("incident control " + label + " permission leaf shadow drift")
 
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
@@ -185,6 +197,41 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
             root_negative_count += 1
     if root_negative_count != 8:
         raise SystemExit("incident control root shadow fixture count drift")
+    permission_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        reviewed_leaf = "write" if is_publisher else "read"
+        shadow_leaf = "read" if is_publisher else "write"
+        anchor = "permissions:\n  contents: " + reviewed_leaf + "\n"
+        if original.count(anchor) != 1:
+            raise SystemExit("incident control permission negative anchor drift: " + label)
+        for name, extra in (
+            ("spaced", "  contents : " + shadow_leaf + "\n"),
+            ("quoted", "  'contents': " + shadow_leaf + "\n"),
+        ):
+            mutated = original.replace(anchor, anchor + extra, 1)
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, independent)
+                else:
+                    validate_trigger_reachability(publisher, mutated)
+            except SystemExit as exc:
+                expected = "incident control " + label + " permission leaf shadow drift"
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "incident control permission shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "incident control accepted permission leaf shadow: " + label + " " + name
+                )
+            permission_negative_count += 1
+    if permission_negative_count != 4:
+        raise SystemExit("incident control permission leaf fixture count drift")
+    print("PASS: incident control permission leaf shadows (4 exact-diagnostic negatives)")
     if (omitted, added) != (32, 12):
         raise SystemExit("incident control trigger negative coverage drift")
     print("PASS: incident control exact event triggers (32 omissions; 12 additions; "
