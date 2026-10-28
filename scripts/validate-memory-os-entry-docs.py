@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import sys
@@ -435,6 +436,35 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
 EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 74
 
 
+def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
+    """Reject shadowed dictionary keys before Python silently overwrites them."""
+    try:
+        module = ast.parse(source)
+    except SyntaxError:
+        return None
+    functions = [
+        node for node in module.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "prove_source_negative_reachability_negatives"
+    ]
+    if len(functions) != 1:
+        return None
+    assignments = [
+        node.value for node in functions[0].body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "cases"
+                for target in node.targets)
+    ]
+    if len(assignments) != 1 or not isinstance(assignments[0], ast.Dict):
+        return None
+    keys = assignments[0].keys
+    if any(not isinstance(key, ast.Constant) or not isinstance(key.value, str)
+           for key in keys):
+        return None
+    names = tuple(key.value for key in keys)
+    return names if len(names) == len(set(names)) else None
+
+
 def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     """Positive control plus independent mutations; no digest-only success."""
     relative = ".github/workflows/example-source-negative.yml"
@@ -721,6 +751,19 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             '      - "scripts/check.py"\n  push:',
             '      - "scripts/check.py"\n      - "scripts/check.py"\n  push:'),
     }
+    own_source = Path(__file__).read_text(encoding="utf-8")
+    literal_names = source_negative_fixture_literal_names(own_source)
+    if literal_names is None or len(literal_names) != len(cases):
+        failures.append("source-negative fixture literal names are shadowed or missing")
+    # A duplicate source-level dict key must fail even if the resulting dict
+    # happens to have the expected number of entries.
+    duplicate_probe = own_source.replace(
+        '"validator inside shell loop":',
+        '"validator inert in cat heredoc":', 1,
+    )
+    if (duplicate_probe == own_source
+            or source_negative_fixture_literal_names(duplicate_probe) is not None):
+        failures.append("source-negative duplicate literal-key negative escaped")
     if len(cases) != EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT:
         failures.append(f"source-negative fixture inventory drift: expected {EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT}, got {len(cases)}")
     for name, mutation in cases.items():
