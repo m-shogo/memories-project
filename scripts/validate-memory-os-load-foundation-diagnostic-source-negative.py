@@ -85,6 +85,183 @@ REQUIRED = (
     "os.replace(tmp, path)",
     "tmp.unlink()",
 )
+LOAD_FOUNDATION_PUBLISHER_PR_PATHS = (
+    ".github/workflows/reconcile-load-foundation-authorities.yml",
+    "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
+    "contracts/operations/capacity-ramp-contract.v1.json",
+    "contracts/operations/short-stability-sample-contract.v1.json",
+    "contracts/operations/deletion-under-load-contract.v1.json",
+    "contracts/operations/load-test-scenario-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/validate-memory-os-capacity-ramp.py",
+    "scripts/validate-memory-os-capacity-ramp-authority-negative.py",
+    "scripts/reconcile-memory-os-capacity-ramp-status.py",
+    "scripts/validate-memory-os-short-stability-sample.py",
+    "scripts/validate-memory-os-short-stability-authority-negative.py",
+    "scripts/validate-memory-os-short-stability-reconcile-negative.py",
+    "scripts/reconcile-memory-os-short-stability-status.py",
+    "scripts/reconcile-memory-os-sustained-local-soak-status.py",
+    "scripts/validate-memory-os-deletion-under-load.py",
+    "scripts/validate-memory-os-deletion-under-load-authority-negative.py",
+    "scripts/reconcile-memory-os-deletion-under-load-status.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+)
+
+LOAD_FOUNDATION_PUBLISHER_PUSH_PATHS = (
+    ".github/workflows/reconcile-load-foundation-authorities.yml",
+    "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
+    "contracts/operations/capacity-ramp-contract.v1.json",
+    "contracts/operations/short-stability-sample-contract.v1.json",
+    "contracts/operations/deletion-under-load-contract.v1.json",
+    "contracts/operations/load-test-scenario-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/validate-memory-os-capacity-ramp.py",
+    "scripts/validate-memory-os-capacity-ramp-authority-negative.py",
+    "scripts/reconcile-memory-os-capacity-ramp-status.py",
+    "scripts/validate-memory-os-short-stability-sample.py",
+    "scripts/validate-memory-os-short-stability-authority-negative.py",
+    "scripts/validate-memory-os-short-stability-reconcile-negative.py",
+    "scripts/reconcile-memory-os-short-stability-status.py",
+    "scripts/reconcile-memory-os-sustained-local-soak-status.py",
+    "scripts/validate-memory-os-deletion-under-load.py",
+    "scripts/validate-memory-os-deletion-under-load-authority-negative.py",
+    "scripts/reconcile-memory-os-deletion-under-load-status.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+)
+
+LOAD_FOUNDATION_INDEPENDENT_PR_PATHS = (
+    ".github/workflows/reconcile-load-foundation-authorities.yml",
+    ".github/workflows/load-foundation-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-load-foundation-diagnostic-source-negative.py",
+)
+
+LOAD_FOUNDATION_INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/reconcile-load-foundation-authorities.yml",
+    ".github/workflows/load-foundation-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-load-foundation-diagnostic-source-negative.py",
+)
+
+def load_foundation_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def load_foundation_trigger_header(content: str) -> str:
+    # Exact, ordered event header: reject unknown, unquoted, duplicate and
+    # unexpected event paths instead of depending only on a Git blob digest.
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise SystemExit("load-foundation trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def load_foundation_validate_trigger_matrix(
+    publisher: str, independent: str,
+    publisher_pr: tuple[str, ...] = LOAD_FOUNDATION_PUBLISHER_PR_PATHS,
+    publisher_push: tuple[str, ...] = LOAD_FOUNDATION_PUBLISHER_PUSH_PATHS,
+    independent_pr: tuple[str, ...] = LOAD_FOUNDATION_INDEPENDENT_PR_PATHS,
+    independent_push: tuple[str, ...] = LOAD_FOUNDATION_INDEPENDENT_PUSH_PATHS,
+) -> None:
+    expected_publisher = (load_foundation_trigger_event("pull_request", publisher_pr)
+                          + load_foundation_trigger_event("push", publisher_push)
+                          + '  schedule:\n    - cron: "7 19 * * *"\n'
+                          + "  workflow_dispatch:\n")
+    expected_independent = (load_foundation_trigger_event("pull_request", independent_pr)
+                            + load_foundation_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if load_foundation_trigger_header(content) != expected:
+            raise SystemExit("load-foundation " + label
+                             + " exact event trigger inventory drift")
+
+
+def replace_load_foundation_trigger_header(content: str, original: str, replacement: str) -> str:
+    old = "\non:\n" + original + "\npermissions:\n"
+    if content.count(old) != 1 or original == replacement:
+        raise SystemExit("load-foundation trigger negative fixture unreachable")
+    return content.replace(old, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def load_foundation_trigger_matrix_negatives(publisher: str, independent: str) -> None:
+    def must_reject(p: str, i: str) -> None:
+        try:
+            load_foundation_validate_trigger_matrix(p, i)
+        except SystemExit:
+            return
+        raise SystemExit("load-foundation accepted event trigger mutation")
+
+    omissions = additions = 0
+    cases = (
+        ("publisher", "pull_request", LOAD_FOUNDATION_PUBLISHER_PR_PATHS),
+        ("publisher", "push", LOAD_FOUNDATION_PUBLISHER_PUSH_PATHS),
+        ("independent", "pull_request", LOAD_FOUNDATION_INDEPENDENT_PR_PATHS),
+        ("independent", "push", LOAD_FOUNDATION_INDEPENDENT_PUSH_PATHS),
+    )
+    for label, event, paths in cases:
+        original = publisher if label == "publisher" else independent
+        header = load_foundation_trigger_header(original)
+        block = load_foundation_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise SystemExit("load-foundation trigger event fixture ambiguous")
+        for index in range(len(paths)):
+            shorter = paths[:index] + paths[index + 1:]
+            mutated = replace_load_foundation_trigger_header(
+                original, header, header.replace(block, load_foundation_trigger_event(event, shorter), 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for addition in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            mutated_block = block.replace(first, first + addition, 1)
+            mutated = replace_load_foundation_trigger_header(
+                original, header, header.replace(block, mutated_block, 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_pr", LOAD_FOUNDATION_PUBLISHER_PR_PATHS),
+        ("publisher_push", LOAD_FOUNDATION_PUBLISHER_PUSH_PATHS),
+        ("independent_pr", LOAD_FOUNDATION_INDEPENDENT_PR_PATHS),
+        ("independent_push", LOAD_FOUNDATION_INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            load_foundation_validate_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except SystemExit:
+            shortened += 1
+        else:
+            raise SystemExit("load-foundation accepted shortened trigger inventory")
+
+    p_header, i_header = load_foundation_trigger_header(publisher), load_foundation_trigger_header(independent)
+    topology = (
+        (replace_load_foundation_trigger_header(
+            publisher, p_header, p_header.replace("7 19 * * *", "0 0 * * *", 1)), independent),
+        (replace_load_foundation_trigger_header(
+            publisher, p_header, p_header.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (replace_load_foundation_trigger_header(
+            publisher, p_header, p_header.replace(
+                "  workflow_dispatch:\n",
+                "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)), independent),
+        (publisher, replace_load_foundation_trigger_header(
+            independent, i_header, i_header + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        must_reject(p, i)
+    print("PASS: load-foundation exact trigger matrix: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -301,6 +478,8 @@ def main() -> None:
     writer_identity_runtime(publisher)
     independent_identity_runtime(independent)
     policy(publisher)
+    load_foundation_validate_trigger_matrix(publisher, independent)
+    load_foundation_trigger_matrix_negatives(publisher, independent)
     mutations(publisher)
     writer_runtime(publisher)
     capture_shell_runtime(publisher)
