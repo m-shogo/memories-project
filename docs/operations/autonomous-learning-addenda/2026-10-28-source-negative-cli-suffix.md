@@ -71,3 +71,20 @@
 - **Why safe / reusable mechanism:** The CI output is now coupled to the same executable fixture count gate, preventing a stale hardcoded count from being used as evidence. No reviewed workflow, production evidence, registry, credential, traffic, readiness or human approval authority changed.
 - **Protected-authority check:** All nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007=`PREREQUISITES_BLOCKED`. The learning addendum is supplemental append-only history, not production or promotion evidence.
 - **Next safe target:** Verify the corrected exact-source CI, then audit inert heredoc/function-wrapped Python commands and add bounded semantic negative fixtures.
+
+## 2026-10-28 — Heredoc and uninvoked shell-function CI bypasses fail closed
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach, correction, recurrence guard, retry condition
+
+- **Symptom / evidence:** Review of the common source-negative CI scanner showed that it recognized a line `python scripts/check.py` without proving the line was executable shell rather than inert heredoc content or a function body never called. All 52 current reviewed workflows were re-read in bounded groups; none used heredoc or function wrappers around the 63 direct Python commands. This is a static guard gap, not an observed production failure.
+- **Verified root cause:** The parser matched direct Python line shape and preceding conditionals but did not classify earlier heredoc introducers or shell-function declarations in the same `run: |` block.
+- **Failed approach:** Presence of an exact Python command and subsequent clean-source checks cannot prove the validator ran when the command is data or inside an uninvoked function.
+- **Correction / executable recurrence guard:** [9d4a5d27](https://github.com/m-shogo/memories-project/commit/9d4a5d274623f5a69f44b68cfa347c302917cbec) rejects heredoc introducers and shell-function declarations preceding a direct validator. Five semantic negatives cover `cat <<`, `: <<`, `name() {`, `function name {` and a multiline function declaration. The exact executable fixture inventory is now 58 cases, with the count assertion and printed proof sharing the same constant.
+- **Retry condition:** Revisit only when an independently reviewed source-negative workflow requires heredoc or function execution topology, and prove actual execution rather than weakening the guard. Do not retry unchanged canonical large-file transport, MinIO HTTP 401 or human-promotion blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **Outcome / evidence:** Post-write source/diff inspection confirmed `9d4a5d27` changed only `scripts/validate-memory-os-entry-docs.py` (40 additions, 1 deletion); 58 literal fixture names were statically enumerated and found unique before write. Exact-source GitHub Actions CI remained unobserved at this record's creation; no CI success is asserted.
+- **Why safe / reusable mechanism:** The shared read-only validator now rejects two ways to make a visible Python line non-executable. No reviewed workflow, production registry/evidence, credential, traffic, readiness or human promotion authority was modified.
+- **Protected-authority check:** All nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007=`PREREQUISITES_BLOCKED`, with zero registered/semantically eligible generations, approved recovery objectives, executable reviewed requests, generation evidence, complete typed eight-domain records or final candidates. Learning remains supplementary history, never production or promotion evidence.
+- **Next safe target:** Confirm exact-source CI, then examine command-resolution shadowing (aliases, shell functions named `python`, PATH changes) and whether CI still validates all 52 workflows on each relevant source change.
