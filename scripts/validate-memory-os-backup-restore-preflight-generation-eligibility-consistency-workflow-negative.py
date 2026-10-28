@@ -75,13 +75,13 @@ def validate_trigger_reachability(
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
-            raise SystemExit("preflight eligibility consistency CI " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            if block.count('      - "' + item + '"' + chr(10)) != 1:
-                raise SystemExit("preflight eligibility consistency CI " + event + " trigger path drift: " + item)
+        approved = tuple('      - "' + item + '"' for item in trigger_paths)
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != approved:
+            raise SystemExit("preflight eligibility consistency CI " + event + " exact trigger inventory drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -101,13 +101,31 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("preflight eligibility consistency CI accepted missing " + event + " trigger: " + item)
+    for event in ("pull_request", "push"):
+        marker = "  pull_request:\n    branches:\n      - so\n    paths:\n" if event == "pull_request" else push_marker
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + TRIGGER_PATHS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + TRIGGER_PATHS[0] + "\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("preflight eligibility consistency CI addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            if mutated == source:
+                raise SystemExit("preflight eligibility consistency CI addition fixture unchanged")
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("preflight eligibility consistency CI accepted " + event + " addition: " + label)
     try:
         validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
     except SystemExit:
         pass
     else:
         raise SystemExit("preflight eligibility consistency CI shortened trigger inventory accepted")
-    print("PASS: preflight eligibility consistency CI event-specific triggers (46 removals; 1 shortened inventory negative)")
+    print("PASS: preflight eligibility consistency CI event-specific triggers (46 removals; 8 additions; 1 shortened inventory negative)")
 
 
 
