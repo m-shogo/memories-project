@@ -152,10 +152,24 @@ def validate_yaml_authority(source: str) -> None:
             leaves.append(line)
     if leaves != ["  contents: read"]:
         raise SystemExit("promotion-review readonly permission leaf shadow drift")
+    # No job-scoped permission escalation is approved: this job inherits root read.
+    if source.count("\njobs:\n") != 1:
+        raise SystemExit("promotion-review readonly job mapping shadow drift")
+    job_body = source.split("\njobs:\n", 1)[1]
+    job_headers = [line for line in job_body.splitlines()
+                   if line.startswith("  ") and not line.startswith("   ")
+                   and line.strip() and not line.lstrip().startswith("#")]
+    if job_headers != ["  validate:"]:
+        raise SystemExit("promotion-review readonly job mapping shadow drift")
+    job_keys = [line for line in job_body.splitlines()
+                if line.startswith("    ") and not line.startswith("     ")
+                and line.strip() and not line.lstrip().startswith("#")]
+    if job_keys != ["    runs-on: ubuntu-latest", "    timeout-minutes: 10", "    steps:"]:
+        raise SystemExit("promotion-review readonly job authority shadow drift")
 
 
 def prove_yaml_authority_negatives(source: str) -> None:
-    """Require nine exact-diagnostic YAML shadow rejections without blob fallback."""
+    """Require fourteen exact-diagnostic YAML shadow rejections without blob fallback."""
     validate_yaml_authority(source)
     event = source.replace("on:\n", "on:\n  issues:\n", 1)
     if event == source:
@@ -179,7 +193,23 @@ def prove_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(marker, marker + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for label, suffix in (
+        ("spaced validate job", "  validate : {}\n"),
+        ("quoted validate job", "  'validate': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    for label, injected in (
+        ("plain job write permission", "    permissions:\n      contents: write\n"),
+        ("spaced job write permission", "    permissions :\n      contents: write\n"),
+        ("quoted job write permission", "    'permissions':\n      contents: write\n"),
+    ):
+        marker = "  validate:\n"
+        if source.count(marker) != 1:
+            raise SystemExit("promotion-review readonly job permission fixture anchor drift")
+        cases.append((label, source.replace(marker, marker + injected, 1),
+                      "job authority shadow drift"))
+    if len(cases) != 14:
         raise SystemExit("promotion-review readonly YAML negative inventory drift")
     for label, mutated, diagnostic in cases:
         if mutated == source:
@@ -193,7 +223,7 @@ def prove_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("promotion-review readonly accepted YAML mutation: " + label)
-    print("PASS: promotion-review readonly YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: promotion-review readonly YAML event/root/permission authority (14 exact-diagnostic negatives)")
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
