@@ -11,6 +11,40 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/reconcile-backup-authority.yml"
 INDEPENDENT = ".github/workflows/reconcile-backup-authority-source-negative.yml"
 SELF = "scripts/validate-memory-os-reconcile-backup-authority-workflow-source-negative.py"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/reconcile-backup-authority.yml",
+    "contracts/operations/backup-local-foundation-evidence.v1.json",
+    "contracts/operations/backup-restore-contract.v1.json",
+    "contracts/operations/local-apple-replay-restore-contract.v1.json",
+    "contracts/operations/local-coherent-recovery-set-contract.v1.json",
+    "contracts/operations/local-logical-restore-contract.v1.json",
+    "contracts/operations/local-object-version-restore-contract.v1.json",
+    "contracts/operations/migration-lifecycle-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/validate-memory-os-backup-local-foundations.py",
+    "scripts/validate-memory-os-backup-restore.py",
+    "scripts/validate-memory-os-backup-restore-blockers-negative.py",
+    "scripts/validate-memory-os-backup-authority-atomic-negative.py",
+    "scripts/validate-memory-os-local-apple-replay-restore.py",
+    "scripts/validate-memory-os-local-logical-restore.py",
+    "scripts/validate-memory-os-local-object-version-restore.py",
+    "scripts/validate-memory-os-local-coherent-recovery-set.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/reconcile-memory-os-backup-authority.py",
+    "scripts/reconcile-memory-os-backup-coherent-authority.py",
+    "scripts/reconcile-memory-os-backup-semantic-overlay.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/reconcile-backup-authority.yml",
+    ".github/workflows/reconcile-backup-authority-source-negative.yml",
+    "scripts/validate-memory-os-reconcile-backup-authority-workflow-source-negative.py",
+)
 REVIEWED_PUBLISHER = "0f899f534dbf5b8ed20514b714a307a3d15d85bf"
 REVIEWED_INDEPENDENT = "dda019a86d19590da03ff12a6c05586da4c054e5"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
@@ -40,7 +74,92 @@ def blob(content: str) -> str:
     return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
 
 
+
+def validate_trigger_reachability(
+    content: str, kind: str, *, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Pin reviewed PR/push paths while preserving the separately authorized schedule."""
+    if kind == "publisher":
+        canonical = PUBLISHER_TRIGGER_PATHS
+        end_marker = "  schedule:\n"
+    elif kind == "independent":
+        canonical = INDEPENDENT_TRIGGER_PATHS
+        end_marker = "\npermissions:\n"
+    else:
+        raise SystemExit("backup authority unknown CI trigger kind")
+    if trigger_paths is None:
+        trigger_paths = canonical
+    if len(trigger_paths) != len(canonical) or len(set(trigger_paths)) != len(canonical):
+        raise SystemExit("backup authority " + kind + " trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for marker in (pr_marker, push_marker, end_marker):
+        if content.count(marker) != 1:
+            raise SystemExit("backup authority " + kind + " event marker drift")
+    pr = content.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = content.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    approved = tuple('      - "' + path + '"' for path in trigger_paths)
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != approved:
+            raise SystemExit("backup authority " + kind + " " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    for kind, content, paths in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS),
+    ):
+        validate_trigger_reachability(content, kind)
+        for event in ("pull_request", "push"):
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if content.count(token) != 2:
+                    raise SystemExit("backup authority " + kind + " mutation anchor drift: " + path)
+                if event == "pull_request":
+                    mutated = content.replace(token, "", 1)
+                else:
+                    prefix, suffix = content.split(push_marker, 1)
+                    mutated = prefix + push_marker + suffix.replace(token, "", 1)
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("backup authority " + kind + " accepted missing " + event + " trigger: " + path)
+            marker = pr_marker if event == "pull_request" else push_marker
+            for label, injected in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                if content.count(marker) != 1:
+                    raise SystemExit("backup authority " + kind + " addition marker drift: " + event)
+                mutated = content.replace(marker, marker + injected, 1)
+                if mutated == content:
+                    raise SystemExit("backup authority " + kind + " addition fixture unchanged")
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("backup authority " + kind + " accepted " + event + " addition: " + label)
+        try:
+            validate_trigger_reachability(content, kind, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("backup authority " + kind + " shortened inventory accepted")
+    print("PASS: backup authority publisher/independent CI event-specific triggers (58 removals; 16 additions; 2 shortened inventory negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
+    validate_trigger_reachability(publisher, "publisher")
+    validate_trigger_reachability(independent, "independent")
     publisher_required = (
         ("  pull_request:\n    branches:\n      - so\n", 1),
         ("  push:\n    branches:\n      - so\n", 1),
@@ -167,6 +286,7 @@ def source_negatives(publisher: str, independent: str) -> None:
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     predicate_runtime(publisher, independent)
     source_negatives(publisher, independent)
     print("production evidence generated: false")
