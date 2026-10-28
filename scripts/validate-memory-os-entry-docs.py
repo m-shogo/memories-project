@@ -382,6 +382,26 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
         ]
         if checkout_settings != expected_checkout_settings:
             issues.append("checkout ref, depth or credential authority drift")
+    # setup-python's pinned Action is insufficient if its with mapping is
+    # changed, duplicated or shadowed by another version-selection input.
+    python_indices = [
+        index for index, row in enumerate(source_lines)
+        if row.startswith("      - uses: actions/setup-python@")
+    ]
+    if len(python_indices) != 1:
+        issues.append("missing or duplicate setup-python settings authority")
+    else:
+        python_settings = []
+        for row in source_lines[python_indices[0] + 1:]:
+            if row.startswith("      - "):
+                break
+            if row.strip():
+                python_settings.append(row)
+        if python_settings != [
+            "        with:",
+            '          python-version: "3.12"',
+        ]:
+            issues.append("setup-python interpreter version/input authority drift")
 
     commands: list[str] = []
     lines = source.splitlines()
@@ -488,7 +508,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 94
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 100
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -756,6 +776,27 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "          persist-credentials: false\n",
             "          persist-credentials: false\n"
             "          token: unreviewed\n", 1),
+        "setup-python version changed": fixture.replace(
+            '          python-version: "3.12"\n',
+            '          python-version: "2.7"\n', 1),
+        "duplicate setup-python version": fixture.replace(
+            '          python-version: "3.12"\n',
+            '          python-version: "3.12"\n'
+            '          python-version: "2.7"\n', 1),
+        "missing setup-python version": fixture.replace(
+            '          python-version: "3.12"\n', "", 1),
+        "setup-python cache override": fixture.replace(
+            '          python-version: "3.12"\n',
+            '          python-version: "3.12"\n'
+            "          cache: pip\n", 1),
+        "setup-python version file override": fixture.replace(
+            '          python-version: "3.12"\n',
+            '          python-version: "3.12"\n'
+            "          python-version-file: .python-version\n", 1),
+        "missing setup-python with block": fixture.replace(
+            "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
+            "        with:\n",
+            "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
