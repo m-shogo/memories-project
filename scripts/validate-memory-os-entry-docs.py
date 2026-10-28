@@ -293,6 +293,8 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
         issues.append("missing reviewed live PR/push job condition")
     if not re.search(r"(?m)^permissions:\n  contents: read$", source):
         issues.append("missing read-only workflow permissions")
+    if re.search(r"(?m)^ {8}if:\s*\S+", source):
+        issues.append("conditional CI step may skip source-negative validator")
     if re.search(r"(?m)^\s+continue-on-error:\s*(?!false\s*$)\S+", source):
         issues.append("CI validator failure may be suppressed by continue-on-error")
     if "persist-credentials: false" not in source:
@@ -390,6 +392,12 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "disabled validator step": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        if: false\n"),
+        "unreviewed event conditional step": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        if: github.event_name == 'workflow_dispatch'\n"),
         "unconditional early exit": fixture.replace(
             "          python scripts/check.py",
             "          exit 0\n          python scripts/check.py"),
@@ -478,7 +486,7 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 19 negative fixtures")
+              f"{invocation_count} direct Python commands, 21 negative fixtures")
 
 
 def main() -> int:
