@@ -21,6 +21,118 @@ SHA = '[[ "' + D + 'expected" =~ ^[0-9a-f]{40}' + D + ' ]]'
 HEAD = 'test "$(git rev-parse HEAD)" = "$expected"'
 
 
+PR_TRIGGER_PATHS = tuple([".github/workflows/operability-admission-inventory-pr.yml",".github/workflows/operability-admission-inventory-pr-source-negative.yml","scripts/validate-memory-os-operability-admission-inventory-pr-source-negative.py",".github/workflows/operability-admission-inventory.yml","contracts/operations/**","docs/evidence/backup-restore/**","docs/evidence/recovery-objectives/approvals/**","docs/evidence/sustained-soak/**","docs/fixtures/memory-os-operability/**","docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md","scripts/generate-memory-os-operability-admission-inventory.py","scripts/validate-memory-os-operability-admission-inventory*.py","scripts/memory_os_backup_restore_blockers.py","scripts/memory_os_environment_generation_eligibility.py","scripts/register-memory-os-backup-restore-*.py","scripts/register-memory-os-recovery-objectives.py","scripts/register-memory-os-production-equivalent-environment-generation.py","scripts/validate-memory-os-production-equivalent-environment-generation.py","scripts/reconcile-memory-os-backup-restore-*.py","scripts/reconcile-memory-os-backup-non-resurrection-authority.py","scripts/validate-memory-os-backup-restore-*.py","scripts/validate-memory-os-recovery-objectives*.py","scripts/validate-memory-os-sustained-*.py"])
+GUARD_TRIGGER_PATHS = tuple([".github/workflows/operability-admission-inventory-pr.yml",".github/workflows/operability-admission-inventory-pr-source-negative.yml","scripts/validate-memory-os-operability-admission-inventory-pr-source-negative.py"])
+
+
+
+def validate_trigger_reachability(
+    pr: str, guard: str, *,
+    pr_paths: tuple[str, ...] | None = None,
+    guard_paths: tuple[str, ...] | None = None,
+) -> None:
+    """Keep the publisher PR-only and independent PR/push trigger matrices exact."""
+    pub = PR_TRIGGER_PATHS if pr_paths is None else pr_paths
+    ind = GUARD_TRIGGER_PATHS if guard_paths is None else guard_paths
+    if (len(pub) != len(PR_TRIGGER_PATHS) or len(ind) != len(GUARD_TRIGGER_PATHS) or
+        len(set(pub)) != len(pub) or len(set(ind)) != len(ind)):
+        raise SystemExit("inventory PR event trigger inventory shortened/duplicated")
+    pub_lines = "".join('      - "' + path + '"\n' for path in pub)
+    ind_lines = "".join('      - "' + path + '"\n' for path in ind)
+    expected_pub = (
+        "name: Operability Admission Inventory PR\n\non:\n"
+        "  pull_request:\n    branches:\n      - so\n    paths:\n" + pub_lines
+    )
+    expected_guard = (
+        "name: Operability Admission Inventory PR Source Negative\n\non:\n"
+        "  pull_request:\n    branches: [so]\n    paths:\n" + ind_lines +
+        "  push:\n    branches: [so]\n    paths:\n" + ind_lines
+    )
+    for label, value, expected in (("publisher", pr, expected_pub),
+                                   ("independent", guard, expected_guard)):
+        if value.count("\npermissions:\n") != 1:
+            raise SystemExit("inventory PR " + label + " permissions boundary drift")
+        if value.split("\npermissions:\n", 1)[0] != expected:
+            raise SystemExit("inventory PR " + label + " exact trigger event drift")
+
+
+def trigger_negatives(pr: str, guard: str) -> None:
+    """Prove all reviewed event paths, unquoted extras, truncation and event topology."""
+    cases = (
+        ("publisher PR", pr, "  pull_request:\n    branches:\n      - so\n    paths:\n",
+         "\npermissions:\n", PR_TRIGGER_PATHS, True),
+        ("independent PR", guard, "  pull_request:\n    branches: [so]\n    paths:\n",
+         "  push:\n", GUARD_TRIGGER_PATHS, False),
+        ("independent push", guard, "  push:\n    branches: [so]\n    paths:\n",
+         "\npermissions:\n", GUARD_TRIGGER_PATHS, False),
+    )
+    omitted = added = 0
+    for label, value, start, stop, paths, is_publisher in cases:
+        if value.count(start) != 1 or value.count(stop) != 1:
+            raise SystemExit("inventory PR trigger negative event anchor drift: " + label)
+        begin = value.index(start) + len(start)
+        end = value.index(stop, begin)
+        block = value[begin:end]
+        mutations = []
+        for path in paths:
+            token = '      - "' + path + '"\n'
+            if block.count(token) != 1:
+                raise SystemExit("inventory PR trigger omission fixture drift: " + path)
+            mutations.append(("omission " + path, block.replace(token, "", 1), True))
+        mutations.extend((
+            ("quoted extra", block + '      - "unreviewed/**"\n', False),
+            ("quoted duplicate", block + '      - "' + paths[0] + '"\n', False),
+            ("unquoted extra", block + "      - unreviewed/**\n", False),
+            ("unquoted duplicate", block + "      - " + paths[0] + "\n", False),
+        ))
+        for name, changed, is_omission in mutations:
+            mutated = value[:begin] + changed + value[end:]
+            if mutated == value:
+                raise SystemExit("inventory PR unchanged negative: " + name)
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, guard)
+                else:
+                    validate_trigger_reachability(pr, mutated)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("inventory PR accepted " + label + " " + name)
+            omitted += int(is_omission)
+            added += int(not is_omission)
+    for label, kwargs in (
+        ("publisher", {"pr_paths": PR_TRIGGER_PATHS[:-1]}),
+        ("independent", {"guard_paths": GUARD_TRIGGER_PATHS[:-1]}),
+    ):
+        try:
+            validate_trigger_reachability(pr, guard, **kwargs)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("inventory PR accepted shortened " + label + " inventory")
+    for label, mutated, is_publisher in (
+        ("publisher push event", pr.replace(
+            "\npermissions:\n", "  push:\n    branches: [so]\n\npermissions:\n", 1), True),
+        ("publisher dispatch event", pr.replace(
+            "\npermissions:\n", "  workflow_dispatch:\n\npermissions:\n", 1), True),
+        ("independent dispatch event", guard.replace(
+            "\npermissions:\n", "  workflow_dispatch:\n\npermissions:\n", 1), False),
+    ):
+        try:
+            if is_publisher:
+                validate_trigger_reachability(mutated, guard)
+            else:
+                validate_trigger_reachability(pr, mutated)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("inventory PR accepted event topology mutation: " + label)
+    if (omitted, added) != (29, 12):
+        raise SystemExit("inventory PR event trigger negative population drift")
+    print("PASS: inventory PR exact event triggers (29 omissions; 12 additions; "
+          "2 shortened inventories; 3 event topology negatives)")
+
+
 def source(relative: str) -> str:
     path = ROOT / relative
     try:
@@ -34,6 +146,7 @@ def source(relative: str) -> str:
 
 
 def validate(pr: str, guard: str) -> None:
+    validate_trigger_reachability(pr, guard)
     checks = (
         ("PR", pr, PR_BLOB, (
             (CHECKOUT, 1), (SETUP, 1), ("  pull_request:\n    branches:\n      - so\n", 1),
@@ -133,6 +246,7 @@ def negatives(pr: str, guard: str) -> None:
 def main() -> int:
     pr, guard = source(PR), source(GUARD)
     validate(pr, guard)
+    trigger_negatives(pr, guard)
     runtime()
     negatives(pr, guard)
     return 0
