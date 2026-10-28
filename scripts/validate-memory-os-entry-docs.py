@@ -331,6 +331,16 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     if (len(jobs) != 2 or
             len(re.findall(r"(?m)^  [A-Za-z0-9_-]+:\s*$", jobs[1])) != 1):
         issues.append("missing or duplicate source-negative CI job")
+    # YAML accepts whitespace before the mapping colon and quoted keys.
+    # Either can shadow a reviewed job ID without matching the count above.
+    job_header_rows = ([
+        row for row in jobs[1].splitlines()
+        if re.match(r"^ {2}\S", row) and not row.lstrip().startswith("#")
+    ] if len(jobs) == 2 else [])
+    if (len(job_header_rows) != 1 or not re.fullmatch(
+            r"  (?:source-admission|source-negative):", job_header_rows[0]
+    )):
+        issues.append("missing or duplicate source-negative CI job")
     # GitHub Actions metadata can change the execution source even when the
     # pinned actions and a visible Python command remain unchanged.
     root_keys = re.findall(r"(?m)^([A-Za-z][A-Za-z0-9_-]*):", source)
@@ -834,7 +844,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 197
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 200
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -1386,6 +1396,9 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "      - name: Execute negative validator\n"
             "        continue-on-error : true\n"),
         "spaced shadow validator run": fixture + "        run : echo skipped\n",
+        "spaced shadow source-negative job": fixture + "  source-admission : {}\n",
+        "quoted shadow source-negative job": fixture + "  'source-admission': {}\n",
+        "spaced unreviewed extra job": fixture + "  unreviewed : {}\n",
         "unreviewed PR paths-ignore filter": fixture.replace(
             "    paths:\n", "    paths-ignore:\n      - 'scripts/**'\n    paths:\n", 1),
         "unreviewed push branches-ignore filter": fixture.replace(
@@ -1791,6 +1804,11 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "spaced shadow on authority",
         "spaced shadow jobs authority",
     }
+    job_header_cases = {
+        "spaced shadow source-negative job",
+        "quoted shadow source-negative job",
+        "spaced unreviewed extra job",
+    }
     job_metadata_cases = {
         "job container override",
         "job environment override",
@@ -2019,6 +2037,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = "unreviewed or shadowed CI action invocation"
         elif name in workflow_metadata_cases:
             expected_issue = "unreviewed workflow-level execution metadata"
+        elif name in job_header_cases:
+            expected_issue = "missing or duplicate source-negative CI job"
         elif name in job_metadata_cases:
             expected_issue = "unreviewed job runner, timeout or execution metadata"
         elif name in job_runner_cases:
@@ -2117,7 +2137,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 197:
+    if diagnostic_bound != 200:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
