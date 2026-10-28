@@ -327,6 +327,12 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
         issues.append("cross-step CI command resolution may be overridden")
     if re.search(r"(?m)^ {2,10}(?:PATH|PYTHONPATH|BASH_ENV|ENV):\s*\S+", source):
         issues.append("CI interpreter environment may be overridden")
+    # A custom shell can exit zero without running the reviewed run block;
+    # defaults may silently override even steps without an explicit shell key.
+    if re.search(r"(?m)^ {0,8}defaults:\s*$", source):
+        issues.append("unreviewed workflow/job shell defaults")
+    if re.search(r"(?m)^ {4,10}shell:\s*\S+", source):
+        issues.append("unreviewed CI step shell override")
 
     commands: list[str] = []
     lines = source.splitlines()
@@ -433,7 +439,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 74
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 79
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -630,6 +636,22 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "          python scripts/check.py\n",
             "          trap 'rm -rf /tmp/unreviewed' EXIT\n"
             "          python scripts/check.py\n"),
+        "validator step shell override": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n"
+            "        shell: /bin/true {0}\n"),
+        "post-run validator shell override": fixture + "        shell: /bin/true {0}\n",
+        "source verification step shell override": fixture.replace(
+            "      - name: Verify source\n",
+            "      - name: Verify source\n"
+            "        shell: /bin/true {0}\n"),
+        "workflow default shell override": fixture.replace(
+            "permissions:\n",
+            "defaults:\n  run:\n    shell: /bin/true {0}\npermissions:\n", 1),
+        "job default shell override": fixture.replace(
+            "    permissions:\n      contents: read\n",
+            "    defaults:\n      run:\n        shell: /bin/true {0}\n"
+            "    permissions:\n      contents: read\n", 1),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
