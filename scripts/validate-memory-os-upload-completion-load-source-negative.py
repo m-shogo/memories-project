@@ -141,6 +141,86 @@ def upload_completion_validate_trigger_matrix(
         if upload_completion_trigger_header(content) != expected:
             raise SystemExit("upload-completion-load " + label
                              + " exact event trigger inventory drift")
+    upload_completion_validate_yaml_root_permissions(publisher, independent)
+
+
+
+def upload_completion_validate_yaml_root_permissions(
+    publisher: str, independent: str
+) -> None:
+    """Pin effective CI root and read-only permission mapping."""
+    for label, content, expected_roots in (
+        ("publisher", publisher, [
+            "name: Reconcile Upload Completion Load Authority", "on:",
+            "permissions:", "concurrency:", "jobs:",
+        ]),
+        ("independent", independent, [
+            "name: Upload Completion Load Source Negative", "on:",
+            "permissions:", "jobs:",
+        ]),
+    ):
+        roots = [
+            line for line in content.splitlines()
+            if line.strip() and not line[0].isspace()
+            and not line.lstrip().startswith("#")
+        ]
+        if roots != expected_roots:
+            raise SystemExit("upload-completion-load " + label + " root YAML key shadow drift")
+        if content.count("\npermissions:\n") != 1:
+            raise SystemExit("upload-completion-load " + label + " permission leaf shadow drift")
+        permission_rows = []
+        for line in content.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                permission_rows.append(line)
+        if permission_rows != ["  contents: read"]:
+            raise SystemExit("upload-completion-load " + label + " permission leaf shadow drift")
+
+
+def upload_completion_yaml_shadow_negatives(publisher: str, independent: str) -> None:
+    total = 0
+    for label, content in (("publisher", publisher), ("independent", independent)):
+        cases = []
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            cases.append((name, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("upload-completion-load " + label
+                             + " permission mutation anchor drift")
+        for name, extra in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((name, content.replace(anchor, anchor + extra, 1),
+                          "permission leaf shadow drift"))
+        for name, altered, diagnostic in cases:
+            if altered == content:
+                raise SystemExit("upload-completion-load YAML fixture unchanged: " + name)
+            try:
+                if label == "publisher":
+                    upload_completion_validate_trigger_matrix(altered, independent)
+                else:
+                    upload_completion_validate_trigger_matrix(publisher, altered)
+            except SystemExit as exc:
+                expected = "upload-completion-load " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "upload-completion-load YAML wrong diagnostic: "
+                        + label + "/" + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit("upload-completion-load accepted YAML shadow: "
+                                 + label + "/" + name)
+            total += 1
+    if total != 12:
+        raise SystemExit("upload-completion-load YAML fixture count drift")
+    print("PASS: upload completion publisher/independent YAML root/permission (12 exact-diagnostic negatives)")
 
 
 def replace_upload_completion_trigger_header(content: str, original: str, replacement: str) -> str:
@@ -295,6 +375,7 @@ def main() -> None:
     policy(publisher)
     upload_completion_validate_trigger_matrix(publisher, independent)
     upload_completion_trigger_matrix_negatives(publisher, independent)
+    upload_completion_yaml_shadow_negatives(publisher, independent)
     mutations(publisher)
     identity(publisher, "Validate exact PR-head upload completion authority", False)
     identity(publisher, "Capture exact source", True)
