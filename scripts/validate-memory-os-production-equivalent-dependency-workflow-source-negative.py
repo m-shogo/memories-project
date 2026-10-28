@@ -55,14 +55,18 @@ def read(path: str) -> str:
     return file.read_text(encoding="utf-8")
 
 
-def check_source(name: str, source: str, expected: str, required: tuple[tuple[str, int], ...]) -> None:
+def check_source(
+    name: str, source: str, expected: str, required: tuple[tuple[str, int], ...], *,
+    check_blob: bool = True,
+) -> None:
     for token, count in required:
         require(source.count(token) == count, name + " required source inventory drift: " + token[:55])
     for forbidden in ("pull_request_target:", "secrets.", "actions/checkout@v4", "actions/setup-python@v5"):
         require(forbidden not in source, name + " unreviewed source")
     data = source.encode("utf-8")
     digest = hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
-    require(digest == expected, name + " complete Git blob drift")
+    if check_blob:
+        require(digest == expected, name + " complete Git blob drift")
 
 
 PUBLISHER_REQUIRED = (
@@ -183,11 +187,16 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
     print("PASS: production-equivalent dependency CI event-specific triggers (30 removals; 16 additions; 2 shortened inventory negatives)")
 
 
-def validate(publisher: str, independent: str) -> None:
+def validate(
+    publisher: str, independent: str, *,
+    check_publisher_blob: bool = True, check_independent_blob: bool = True,
+) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
-    check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
-    check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
+    check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED,
+                 check_blob=check_publisher_blob)
+    check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED,
+                 check_blob=check_independent_blob)
 
 
 def negative_proofs(publisher: str, independent: str) -> None:
@@ -206,18 +215,44 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("independent checkout pin", False, CHECKOUT, "uses: actions/checkout@v4"),
         ("independent credentials", False, "persist-credentials: false", "persist-credentials: true"),
         ("independent self guard", False, "python " + SELF, "echo skip"),
+        ("publisher unreviewed Action", True, "      - name: Capture exact authority source\n",
+         "      - uses: unreviewed/action@v1\n      - name: Capture exact authority source\n"),
+        ("publisher unreviewed shell", True, "      - name: Capture exact authority source\n",
+         "      - run: echo unreviewed\n      - name: Capture exact authority source\n"),
+        ("independent unreviewed Action", False, "      - name: Prove publisher and independent source boundary\n",
+         "      - uses: unreviewed/action@v1\n      - name: Prove publisher and independent source boundary\n"),
+        ("independent unreviewed shell", False, "      - name: Prove publisher and independent source boundary\n",
+         "      - run: echo unreviewed\n      - name: Prove publisher and independent source boundary\n"),
     )
+    digest_only = {
+        "publisher unreviewed Action", "publisher unreviewed shell",
+        "independent unreviewed Action", "independent unreviewed shell",
+    }
+    semantic_count = 0
+    digest_count = 0
     for label, publisher_case, before, after in cases:
         original = publisher if publisher_case else independent
+        required = PUBLISHER_REQUIRED if publisher_case else INDEPENDENT_REQUIRED
         require(before in original, "mutation anchor missing: " + label)
         changed = original.replace(before, after, 1)
         require(changed != original, "mutation unchanged: " + label)
+        semantic = any(changed.count(token) != original.count(token)
+                       for token, _ in required)
+        require(semantic == (label not in digest_only),
+                "semantic/digest source negative classification drift: " + label)
+        semantic_count += int(semantic)
+        digest_count += int(not semantic)
         try:
-            validate(changed, independent) if publisher_case else validate(publisher, changed)
+            if publisher_case:
+                validate(changed, independent, check_publisher_blob=not semantic)
+            else:
+                validate(publisher, changed, check_independent_blob=not semantic)
         except SystemExit:
             continue
         raise SystemExit("production-equivalent dependency source negative accepted: " + label)
-    print("PASS: production-equivalent dependency CI source negatives (14 cases)")
+    require((semantic_count, digest_count) == (14, 4),
+            "production-equivalent dependency source negative coverage drift")
+    print("PASS: production-equivalent dependency CI source negatives (14 semantic; 4 blob-only)")
 
 
 def runtime_proofs() -> None:
