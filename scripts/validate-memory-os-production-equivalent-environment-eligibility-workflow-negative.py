@@ -204,9 +204,132 @@ def prove_trigger_reachability_negatives(source: str) -> None:
     print("PASS: semantic eligibility CI event-specific triggers (32 removals; 8 additions; 1 shortened inventory negative)")
 
 
+
+def validate_job_authority(source: str) -> None:
+    """Pin reviewed PR read and publisher write job semantics independently of SHA."""
+    jobs = (
+        ("validate-pr", "github.event_name == 'pull_request'", "read", 8),
+        ("validate",
+         "(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'",
+         "write", 8),
+    )
+    prefix = "semantic eligibility CI "
+    if source.count("\njobs:\n") != 1:
+        raise SystemExit(prefix + "job mapping shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    actual: list[str] = []
+    for line in body.splitlines():
+        if (line.startswith("  ") and len(line) > 2 and line[2] != " "
+                and not line.lstrip().startswith("#")):
+            current = line
+            actual.append(line)
+            sections[current] = []
+        elif current is not None:
+            sections[current].append(line)
+    if actual != ["  " + name + ":" for name, _, _, _ in jobs]:
+        raise SystemExit(prefix + "job mapping shadow drift")
+    for name, condition, scope, timeout in jobs:
+        lines = sections["  " + name + ":"]
+        keys = [
+            line for line in lines
+            if line.startswith("    ") and len(line) > 4 and line[4] != " "
+            and not line.lstrip().startswith("#")
+        ]
+        if keys != [
+            "    if: " + condition,
+            "    permissions:",
+            "    runs-on: ubuntu-latest",
+            "    timeout-minutes: " + str(timeout),
+            "    steps:",
+        ]:
+            raise SystemExit(prefix + name + " job key shadow drift")
+        leaves: list[str] = []
+        for line in lines[lines.index("    permissions:") + 1:]:
+            if line.startswith("    ") and len(line) > 4 and line[4] != " ":
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["      contents: " + scope]:
+            raise SystemExit(prefix + name + " job permission leaf shadow drift")
+
+
+def prove_job_authority_negatives(source: str) -> None:
+    """Prove 24 exact-diagnostic job mapping, execution and permission negatives."""
+    validate_job_authority(source)
+    jobs = (
+        ("validate-pr", "github.event_name == 'pull_request'", "read", 8),
+        ("validate",
+         "(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'",
+         "write", 8),
+    )
+    count = 0
+    for name, condition, scope, timeout in jobs:
+        header = "  " + name + ":\n"
+        if source.count(header) != 1:
+            raise SystemExit("semantic eligibility CI job fixture header drift: " + name)
+
+        def in_job(before: str, after: str) -> str:
+            prefix, suffix = source.split(header, 1)
+            if before not in suffix:
+                raise SystemExit("semantic eligibility CI job fixture anchor drift: " + name)
+            return prefix + header + suffix.replace(before, after, 1)
+
+        condition_anchor = "    if: " + condition + "\n"
+        permission = "    permissions:\n      contents: " + scope + "\n"
+        runner = "    runs-on: ubuntu-latest\n"
+        timeout_anchor = "    timeout-minutes: " + str(timeout) + "\n"
+        steps = "    steps:\n"
+        cases = [
+            ("duplicate mapping", source + "\n" + header + "    runs-on: ubuntu-latest\n",
+             "job mapping shadow drift"),
+            ("quoted mapping", source.replace(header, "  '" + name + "':\n", 1),
+             "job mapping shadow drift"),
+            ("spaced mapping", source.replace(header, "  " + name + " :\n", 1),
+             "job mapping shadow drift"),
+            ("condition shadow", in_job(condition_anchor, condition_anchor + "    if : true\n"),
+             name + " job key shadow drift"),
+            ("permission shadow", in_job(permission, permission + "    permissions :\n      contents: write\n"),
+             name + " job key shadow drift"),
+            ("runner shadow", in_job(runner, runner + "    runs-on : ubuntu-latest\n"),
+             name + " job key shadow drift"),
+            ("timeout shadow", in_job(timeout_anchor, timeout_anchor + "    timeout-minutes : 1\n"),
+             name + " job key shadow drift"),
+            ("steps shadow", in_job(steps, "    steps : []\n" + steps),
+             name + " job key shadow drift"),
+            ("continuation override", in_job(steps, "    continue-on-error: true\n" + steps),
+             name + " job key shadow drift"),
+            ("direct permission change", in_job(permission, permission.replace(
+                "contents: " + scope, "contents: " + ("read" if scope == "write" else "write"))),
+             name + " job permission leaf shadow drift"),
+            ("spaced permission leaf", in_job(permission, permission + "      contents : write\n"),
+             name + " job permission leaf shadow drift"),
+            ("quoted permission leaf", in_job(permission, permission + "      'contents': write\n"),
+             name + " job permission leaf shadow drift"),
+        ]
+        for mutation, changed, diagnostic in cases:
+            if changed == source:
+                raise SystemExit("semantic eligibility CI unchanged job fixture: " + mutation)
+            try:
+                validate_job_authority(changed)
+            except SystemExit as exc:
+                expected = "semantic eligibility CI " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("semantic eligibility CI wrong job diagnostic: "
+                                     + name + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("semantic eligibility CI accepted job shadow: " + name + " " + mutation)
+            count += 1
+    if count != 24:
+        raise SystemExit("semantic eligibility CI job negative inventory drift")
+    print("PASS: semantic eligibility CI job authority (24 exact-diagnostic negatives)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
     validate_yaml_authority(source)
+    validate_job_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit("semantic eligibility CI workflow source drift: " + label)
@@ -272,6 +395,7 @@ def main() -> int:
     validate(source)
     prove_trigger_reachability_negatives(source)
     prove_yaml_authority_negatives(source)
+    prove_job_authority_negatives(source)
     prove_branch_guards_runtime()
     prove_diagnostic_redaction_runtime(source)
     cases = (
