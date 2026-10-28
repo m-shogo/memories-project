@@ -1,0 +1,15 @@
+# Supplemental OPS learning — environment generation reconcile CI YAML authority (2026-10-29)
+
+Append-only supplemental learning only. Not canonical learning authority, production evidence, registered or semantically eligible environment generation, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion authority.
+
+## Material failure / recurrence prevention
+- **Symptom/evidence:** The environment generation reconcile source-negative validator pinned reviewed PR/push path inventories and full Git blob identity but did not independently reject an extra event, quoted/spaced root YAML shadows, or quoted/spaced overriding `contents: write` permission leaves. This was a static semantic guard gap, not observed generation admission or production activity.
+- **Verified root cause / failed approach:** Path-block equality and full-source SHA do not separately prove effective YAML root/permission mapping uniqueness; a visible `permissions: contents: read` token alone does not prevent a shadow mapping.
+- **Correction / executable recurrence guard:** [7bb6e6b7](https://github.com/m-shogo/memories-project/commit/7bb6e6b76a933deb528d61277bc35c96e475ee9e) adds exact reviewed event-header, root-key and read-only permission-leaf checks, with nine exact-diagnostic in-memory negatives (one extra event, six root shadows, two permission shadows). Existing branch, source-identity and reconcile rollback checks are preserved.
+- **Retry condition:** Revalidate after independently reviewed event/permission topology change or demonstrated new bypass. Do not retry unchanged canonical learning transport, supplemental-history CI trigger permission, MinIO 401 or human approval blockers.
+
+## Material success / protected authority
+- **Outcome/evidence:** [Environment Generation Reconcile Negative #40716823211](https://github.com/m-shogo/memories-project/actions/runs/40716823211) completed SUCCESS on exact source `7bb6e6b7`. Logs prove nine YAML negatives, 26 PR/push path removals, eight additions, one shortened inventory, crash-safe diagnostic publication, mode-preserving rollback and continued restoration after a failed restore.
+- **Why safe / reusable mechanism:** Only the already CI-reachable read-only Python validator changed (+74/-0); reviewed workflow and production generation authorities remained unchanged. Synthetic in-memory negative source tests do not register environment generations or grant semantic preflight eligibility.
+- **Protected-authority check:** Ten protected production/OPS-P0-007/registry/learning-contract/canonical-learning blob SHAs unchanged after code commit. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; registered and semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records and final candidates remain zero. Human promotion remains separate/non-automatic.
+- **Next safe target:** Continue read-only audit of remaining source-negative CI event/root/permission semantic guards; do not infer production-equivalent generation or readiness from successful CI.
