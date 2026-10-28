@@ -255,6 +255,84 @@ def release_baseline_trigger_matrix_negatives(publisher: str, independent: str) 
 def validate(publisher: str, independent: str) -> None:
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
+    validate_yaml_root_permission_authority(publisher, 'publisher')
+    validate_yaml_root_permission_authority(independent, 'independent')
+
+
+def validate_yaml_root_permission_authority(content: str, kind: str) -> None:
+    """Pin effective YAML root and read-only permission mapping separately from exact event matrix."""
+    if kind == "publisher":
+        name = "name: Release Baseline Registry"
+        roots = [name, "on:", "permissions:", "concurrency:", "jobs:"]
+    elif kind == "independent":
+        name = "name: Release Baseline Registry Source Negative"
+        roots = [name, "on:", "permissions:", "jobs:"]
+    else:
+        raise SystemExit("release baseline unknown YAML authority kind")
+    prefix = "release baseline " + kind + " "
+    if (content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1
+            or not content.startswith(name + "\n\non:\n")):
+        raise SystemExit(prefix + "root YAML header drift")
+    root_keys = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if root_keys != roots:
+        raise SystemExit(prefix + "root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit(prefix + "permission leaf shadow drift")
+
+
+def prove_yaml_root_permission_negatives(publisher: str, independent: str) -> None:
+    """Exact-diagnostic negatives complement existing exact PR/push/schedule event matrix."""
+    count = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        validate_yaml_root_permission_authority(content, kind)
+        cases = []
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content.rstrip("\n") + "\n" + suffix,
+                          "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: read\n"
+        if content.count(marker) != 1:
+            raise SystemExit("release baseline " + kind + " permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, content.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        if len(cases) != 8:
+            raise SystemExit("release baseline " + kind + " YAML fixture count drift")
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("release baseline " + kind + " unchanged YAML fixture: " + label)
+            try:
+                validate_yaml_root_permission_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "release baseline " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("release baseline " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("release baseline " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 16:
+        raise SystemExit("release baseline YAML negative population drift")
+    print("PASS: release baseline publisher/independent YAML root/permission authority (16 exact-diagnostic negatives)")
 
 
 def negatives(publisher: str, independent: str) -> None:
@@ -318,6 +396,7 @@ def runtime() -> None:
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
+    prove_yaml_root_permission_negatives(publisher, independent)
     release_baseline_validate_trigger_matrix(publisher, independent)
     release_baseline_trigger_matrix_negatives(publisher, independent)
     negatives(publisher, independent)
