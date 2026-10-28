@@ -58,6 +58,7 @@ def validate(main: str, guard: str) -> None:
             ('      - "' + SELF + '"\n', 2),
         )),
     ):
+        validate_yaml_authority(content, label)
         for token, count in checks:
             if content.count(token) != count:
                 raise SystemExit("transactional " + label + " anchor drift: " + token[:70])
@@ -65,6 +66,95 @@ def validate(main: str, guard: str) -> None:
         git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
         if hashlib.sha1(git_blob).hexdigest() != blob:
             raise SystemExit("transactional " + label + " complete source drift")
+
+
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Pin effective event/root/read-only permission YAML semantics independently of blob SHA."""
+    if kind == "publisher":
+        name = "name: Operability Admission Inventory Transactional"
+        events = ["  push:", "  workflow_dispatch:"]
+        roots = [name, "on:", "permissions:", "concurrency:", "jobs:"]
+    elif kind == "independent":
+        name = "name: Operability Admission Inventory Transactional Source Negative"
+        events = ["  pull_request:", "  push:"]
+        roots = [name, "on:", "permissions:", "jobs:"]
+    else:
+        raise SystemExit("transactional unknown YAML authority kind")
+    prefix = "transactional " + kind + " "
+    if (content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1
+            or not content.startswith(name + "\n\non:\n")):
+        raise SystemExit(prefix + "event header drift")
+    event_block = content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    event_keys = [
+        line for line in event_block.splitlines()
+        if line.startswith("  ") and not line.startswith("    ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if event_keys != events:
+        raise SystemExit(prefix + "event topology drift")
+    root_keys = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if root_keys != roots:
+        raise SystemExit(prefix + "root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit(prefix + "permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(main: str, guard: str) -> None:
+    """Require intended semantic diagnostics for both transactional CI workflow authorities."""
+    count = 0
+    for kind, content in (("publisher", main), ("independent", guard)):
+        validate_yaml_authority(content, kind)
+        event = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if event == content:
+            raise SystemExit("transactional " + kind + " event fixture anchor drift")
+        cases = [("extra event", event, "event topology drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content.rstrip("\n") + "\n" + suffix,
+                          "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: read\n"
+        if content.count(marker) != 1:
+            raise SystemExit("transactional " + kind + " permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, content.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        if len(cases) != 9:
+            raise SystemExit("transactional " + kind + " YAML fixture count drift")
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("transactional " + kind + " unchanged YAML fixture: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "transactional " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("transactional " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("transactional " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 18:
+        raise SystemExit("transactional YAML negative population drift")
+    print("PASS: transactional publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
 
 
 def runtime(main: str, guard: str) -> None:
@@ -132,6 +222,7 @@ def negatives(main: str, guard: str) -> None:
 def main() -> int:
     main_content, guard_content = source(MAIN), source(GUARD)
     validate(main_content, guard_content)
+    prove_yaml_authority_negatives(main_content, guard_content)
     runtime(main_content, guard_content)
     negatives(main_content, guard_content)
     return 0
