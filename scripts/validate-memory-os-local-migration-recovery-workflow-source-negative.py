@@ -255,9 +255,13 @@ def negative_proofs(publisher: str, independent: str) -> None:
                         else "complete Git blob drift" if "digest-only" in label
                         else "required source inventory drift")
             reason = str(exc)
-            require(reason.startswith("local migration recovery CI source guard: ")
-                    and expected in reason,
-                    "negative rejected for wrong reason: " + label + ": " + reason)
+            if label in {"publisher event scope", "independent event scope"}:
+                require(reason == expected,
+                        "negative rejected for wrong trigger reason: " + label + ": " + reason)
+            else:
+                require(reason.startswith("local migration recovery CI source guard: ")
+                        and expected in reason,
+                        "negative rejected for wrong reason: " + label + ": " + reason)
             continue
         raise SystemExit("local migration recovery source negative accepted: " + label)
     suite = read(LOCAL_NEGATIVE)
