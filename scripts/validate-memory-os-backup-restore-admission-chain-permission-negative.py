@@ -20,6 +20,26 @@ READONLY_WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-rea
 REVIEWED_READONLY_WORKFLOW_BLOB_SHA = "d6a35451b4b76545b20c0a8ab74e487d9e469f8d"
 
 
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-admission-chain.yml",
+    "contracts/operations/backup-restore-*.json",
+    "contracts/operations/production-equivalent-environment-*.json",
+    "contracts/operations/recovery-objectives-*.json",
+    "contracts/operations/operability-admission-inventory.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/evidence/backup-restore/**",
+    "docs/evidence/recovery-objectives/approvals/**",
+    "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**",
+    "docs/fixtures/memory-os-operability/recovery-objectives-approval/**",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/memory_os_environment_generation_eligibility.py",
+    "scripts/*backup*.py",
+    "scripts/*recovery*objective*.py",
+    "scripts/*production*equivalent*environment*.py",
+    "scripts/validate-memory-os-operability.py",
+)
+
+
 class Fail(RuntimeError):
     pass
 
@@ -522,6 +542,54 @@ def run_independent_workflow_permission_negative() -> None:
     print("PASS: CI-reachable independent permission trigger negatives (36 + 152 omissions; 2 inventory negatives)")
 
 
+def validate_publisher_trigger_paths(source: str, *, trigger_paths: tuple[str, ...] = PUBLISHER_TRIGGER_PATHS) -> None:
+    """Bind publisher CI paths per event without depending on complete-source hash admission."""
+    require(len(trigger_paths) == 16 and len(set(trigger_paths)) == 16,
+            "admission publisher trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        require(source.count(marker) == 1, "admission publisher trigger boundary drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
+                "admission publisher " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            require(block.count('      - "' + item + '"\n') == 1,
+                    "admission publisher " + event + " missing or duplicate trigger: " + item)
+
+
+def prove_publisher_trigger_path_negatives(source: str) -> None:
+    """Reject PR-only/push-only path omissions and a shortened reviewed trigger inventory."""
+    validate_publisher_trigger_paths(source)
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for item in PUBLISHER_TRIGGER_PATHS:
+            token = '      - "' + item + '"\n'
+            require(source.count(token) == 2, "admission publisher trigger mutation anchor drift: " + item)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_publisher_trigger_paths(mutated)
+            except Fail:
+                continue
+            raise Fail("admission publisher accepted missing " + event + " trigger: " + item)
+    try:
+        validate_publisher_trigger_paths(source, trigger_paths=PUBLISHER_TRIGGER_PATHS[:-1])
+    except Fail:
+        pass
+    else:
+        raise Fail("admission publisher accepted shortened trigger inventory")
+    print("PASS: admission publisher event-specific trigger reachability (32 removals; 1 shortened inventory negative)")
+
+
 def main() -> int:
     require(NEGATIVE_WORKFLOW.is_file() and not NEGATIVE_WORKFLOW.is_symlink(),
             "admission negative CI workflow missing or substituted")
@@ -530,6 +598,7 @@ def main() -> int:
             "admission readonly CI workflow missing or substituted")
     require_readonly_workflow_source_negatives(READONLY_WORKFLOW.read_text(encoding="utf-8"))
     text = WORKFLOW.read_text(encoding="utf-8")
+    prove_publisher_trigger_path_negatives(text)
     require_root_event_negatives(text)
     require_trigger_path_negatives(text)
     require_run_body_negatives(text)
