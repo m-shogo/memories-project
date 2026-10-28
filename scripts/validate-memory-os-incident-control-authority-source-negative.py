@@ -53,6 +53,23 @@ def validate_trigger_reachability(
             raise AssertionError("incident authority " + label + " permissions boundary drift")
         if value.split("\npermissions:\n", 1)[0] != expected:
             raise AssertionError("incident authority " + label + " exact event trigger drift")
+        # Exact event prefixes alone cannot reject a later YAML root key
+        # (including quoted or whitespace-colon shadows) that overrides on,
+        # permissions or jobs after the reviewed event boundary.
+        expected_roots = (
+            ["name: Reconcile Incident Control Authority", "on:", "permissions:",
+             "concurrency:", "jobs:"]
+            if label == "publisher" else
+            ["name: Incident Control Authority Source Negative", "on:",
+             "permissions:", "jobs:"]
+        )
+        observed_roots = [
+            row for row in value.splitlines()
+            if row.strip() and not row[0].isspace()
+            and not row.lstrip().startswith("#")
+        ]
+        if observed_roots != expected_roots:
+            raise AssertionError("incident authority " + label + " root YAML key shadow drift")
 
 
 def trigger_negatives(publisher: str, independent: str) -> None:
@@ -128,10 +145,44 @@ def trigger_negatives(publisher: str, independent: str) -> None:
             pass
         else:
             raise AssertionError("incident authority accepted event topology mutation: " + label)
+    # These mutations preserve the entire reviewed event prefix. They must
+    # fail the semantic root-key guard, not merely a separate Git blob pin.
+    root_shadows = (
+        ("spaced on", "on :\n  workflow_dispatch:\n"),
+        ("quoted on", "'on':\n  workflow_dispatch:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    )
+    root_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        for name, suffix in root_shadows:
+            mutated = original + suffix
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, independent)
+                else:
+                    validate_trigger_reachability(publisher, mutated)
+            except AssertionError as exc:
+                expected = "incident authority " + label + " root YAML key shadow drift"
+                if str(exc) != expected:
+                    raise AssertionError(
+                        "incident authority root shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise AssertionError(
+                    "incident authority accepted root YAML shadow: " + label + " " + name
+                )
+            root_negative_count += 1
+    if root_negative_count != 8:
+        raise AssertionError("incident authority root shadow fixture count drift")
     if (omitted, added) != (26, 16):
         raise AssertionError("incident authority trigger negative population drift")
     print("PASS: incident authority exact event triggers (26 omissions; 16 additions; "
-          "2 shortened inventories; 3 event topology negatives)")
+          "2 shortened inventories; 3 event topology; 8 root shadow negatives)")
 
 
 def blob(content: str) -> str:
