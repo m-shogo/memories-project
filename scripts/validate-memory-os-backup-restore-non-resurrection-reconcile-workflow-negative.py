@@ -127,7 +127,78 @@ def prove_trigger_reachability_negatives(source: str) -> None:
     print("PASS: typed non-resurrection reconcile CI event-specific trigger reachability (54 removals; 8 additions; 1 shortened inventory negative)")
 
 
+
+def validate_yaml_authority(source: str) -> None:
+    """Reject unreviewed typed non-resurrection reconcile CI YAML shadows."""
+    name = "name: Backup Restore Non-Resurrection Reconcile Negative"
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    paths = "".join('      - "' + item + '"\n' for item in TRIGGER_PATHS)
+    header = name + "\n\non:\n" + pr + paths + push + paths + "  workflow_dispatch:\n"
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != header):
+        raise SystemExit("typed non-resurrection reconcile CI exact event header drift")
+    roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [name, "on:", "permissions:", "jobs:"]:
+        raise SystemExit("typed non-resurrection reconcile CI root YAML key shadow drift")
+    leaves = []
+    for line in source.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            leaves.append(line)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("typed non-resurrection reconcile CI permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    """Require nine exact YAML shadow diagnostics independently of Git blob identity."""
+    validate_yaml_authority(source)
+    event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if event == source:
+        raise SystemExit("typed non-resurrection reconcile CI YAML event fixture anchor drift")
+    cases = [("extra event", event, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source + "\n" + suffix, "root YAML key shadow drift"))
+    marker = "\npermissions:\n  contents: read\n"
+    if source.count(marker) != 1:
+        raise SystemExit("typed non-resurrection reconcile CI YAML permission fixture anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(marker, marker + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("typed non-resurrection reconcile CI YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("typed non-resurrection reconcile CI unchanged YAML fixture: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "typed non-resurrection reconcile CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("typed non-resurrection reconcile CI wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("typed non-resurrection reconcile CI accepted YAML mutation: " + label)
+    print("PASS: typed non-resurrection reconcile CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_yaml_authority(source)
     validate_trigger_reachability(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
@@ -217,6 +288,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
     prove_private_rollback_negative_deletion_rejected()
     cases = (
