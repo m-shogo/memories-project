@@ -378,6 +378,20 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     # A pinned checkout action still needs the exact PR-head/push-source ref
     # and no credential/token/duplicate-key overrides in its with block.
     source_lines = source.splitlines()
+    # Extra or folded run steps can execute outside the reviewed source
+    # verification and validator steps, after all visible checks have passed.
+    # Three workflows have a separately reviewed third Go/migration step.
+    reviewed_third_run = {
+        ".github/workflows/live-object-stage-source-negative.yml",
+        ".github/workflows/local-migration-recovery-source-negative.yml",
+        ".github/workflows/migration-evidence-registry-source-negative.yml",
+    }
+    expected_run_count = 3 if relative in reviewed_third_run else 2
+    actual_run_rows = [
+        row for row in source_lines if re.match(r"^ {8}run:", row)
+    ]
+    if actual_run_rows != ["        run: |"] * expected_run_count:
+        issues.append("unreviewed, missing or folded source-negative CI run step")
     # The only reviewed environment mapping is the PR-head binding in the
     # exact-source verification step. Extra env blocks or shadowed keys can
     # replace Python command resolution or the checked-out source identity.
@@ -647,7 +661,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 145
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 153
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -751,6 +765,14 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "          cache: false\n"
         "      - name: Verify source\n",
     )
+    go_fixture += (
+        "      - name: Prove reviewed Go checks\n"
+        "        run: |\n"
+        "          set -euo pipefail\n"
+        "          go version\n"
+        "          git diff --exit-code\n"
+        '          test -z "$(git status --porcelain)"\n'
+    )
     if source_negative_reachability_issues(go_relative, go_fixture, exists):
         failures.append("source-negative setup-go positive control failed")
         return
@@ -762,6 +784,49 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "extra shell run step after validator": fixture + (
+            "      - name: Unreviewed extra shell\n"
+            "        run: |\n"
+            "          echo unreviewed\n"),
+        "folded extra shell run step": fixture + (
+            "      - name: Unreviewed folded shell\n"
+            "        run: >\n"
+            "          echo unreviewed\n"),
+        "extra shell run step before validator": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Unreviewed early shell\n"
+            "        run: |\n"
+            "          echo unreviewed\n"
+            "      - name: Execute negative validator\n"),
+        "duplicate validator run metadata": fixture.replace(
+            "      - name: Execute negative validator\n"
+            "        run: |\n",
+            "      - name: Execute negative validator\n"
+            "        run: |\n"
+            "        run: |\n"),
+        "folded validator run scalar": fixture.replace(
+            "      - name: Execute negative validator\n"
+            "        run: |\n",
+            "      - name: Execute negative validator\n"
+            "        run: >\n"),
+        "folded source verification run scalar": fixture.replace(
+            "      - name: Verify source\n"
+            "        env:\n"
+            "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n"
+            "        run: |\n",
+            "      - name: Verify source\n"
+            "        env:\n"
+            "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n"
+            "        run: >\n"),
+        "setup-go extra shell run step": go_fixture + (
+            "      - name: Unreviewed Go shell\n"
+            "        run: |\n"
+            "          echo unreviewed\n"),
+        "setup-go folded third run scalar": go_fixture.replace(
+            "      - name: Prove reviewed Go checks\n"
+            "        run: |\n",
+            "      - name: Prove reviewed Go checks\n"
+            "        run: >\n"),
         "tracked clean check skipped by true-or": fixture.replace(
             "          git diff --exit-code\n",
             "          true ||\n          git diff --exit-code\n"),
