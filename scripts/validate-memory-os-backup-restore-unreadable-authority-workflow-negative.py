@@ -13,6 +13,43 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-unreadable-authority-negative.yml"
 LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
 REVIEWED_WORKFLOW_BLOB_SHA = "f1a8c3d7b2503c5192ca3de57892ae31ab521ba7"
+TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-unreadable-authority-negative.yml",
+    "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/validate-memory-os-production-equivalent-environment-eligibility.py",
+    "scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py",
+    "scripts/validate-memory-os-backup-restore-drill-preflight.py",
+    "scripts/reconcile-memory-os-backup-restore-drill-preflight.py",
+    "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py",
+    "scripts/request-memory-os-backup-restore-drill.py",
+    "scripts/reconcile-memory-os-backup-restore-drill-request.py",
+    "scripts/validate-memory-os-backup-restore-drill-request.py",
+    "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py",
+    "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py",
+    "scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py",
+    "scripts/register-memory-os-backup-restore-generation-evidence.py",
+    "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py",
+    "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+    "scripts/reconcile-memory-os-backup-non-resurrection-authority.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py",
+    "scripts/validate-memory-os-backup-restore-unreadable-authority-workflow-negative.py",
+)
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -34,7 +71,56 @@ REQUIRED = (
 )
 
 
+def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS) -> None:
+    """Require every reviewed unreadable-authority CI path in each event."""
+    if len(trigger_paths) != 35 or len(set(trigger_paths)) != 35:
+        raise SystemExit("unreadable-authority CI trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("unreadable-authority CI trigger marker drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
+            raise SystemExit("unreadable-authority CI " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            if block.count('      - "' + item + '"' + chr(10)) != 1:
+                raise SystemExit("unreadable-authority CI " + event + " trigger path drift: " + item)
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for item in TRIGGER_PATHS:
+            token = '      - "' + item + '"' + chr(10)
+            if source.count(token) != 2:
+                raise SystemExit("unreadable-authority CI trigger mutation anchor drift: " + item)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("unreadable-authority CI accepted missing " + event + " trigger: " + item)
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("unreadable-authority CI shortened trigger inventory accepted")
+    print("PASS: unreadable-authority CI event-specific trigger reachability (70 removals; 1 shortened inventory negative)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_trigger_reachability(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"unreadable-authority negative workflow source boundary drift: {label}")
@@ -1102,6 +1188,7 @@ def prove_semantic_eligibility_pinned_import_source_guard() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_trigger_reachability_negatives(source)
     prove_branch_guards_runtime()
     prove_generation_json_negative_removal_rejected()
     prove_generation_json_parent_swap_negative_removal_rejected()
