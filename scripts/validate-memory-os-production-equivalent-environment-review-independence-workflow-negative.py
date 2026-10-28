@@ -84,6 +84,82 @@ def validate_trigger_reachability(
             raise SystemExit("review independence CI " + event + " exact trigger inventory drift")
 
 
+def validate_yaml_authority(source: str) -> None:
+    """Bind reviewed YAML event, root and read-only permission semantics independently of blob SHA."""
+    expected_header = (
+        "name: Production Equivalent Environment Review Independence\n\non:\n"
+        + "  pull_request:\n    branches:\n      - so\n    paths:\n"
+        + "".join('      - "' + path + '"\n' for path in TRIGGER_PATHS)
+        + "  push:\n    branches:\n      - so\n    paths:\n"
+        + "".join('      - "' + path + '"\n' for path in TRIGGER_PATHS)
+        + "  workflow_dispatch:\n"
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("review independence CI exact event header drift")
+    roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Production Equivalent Environment Review Independence",
+        "on:", "permissions:", "concurrency:", "jobs:",
+    ]:
+        raise SystemExit("review independence CI root YAML key shadow drift")
+    permission_rows = []
+    for line in source.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("review independence CI permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    """Check intended semantic diagnostics for each bypass, not only a blob mismatch."""
+    validate_yaml_authority(source)
+    event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if event == source:
+        raise SystemExit("review independence CI YAML event mutation anchor drift")
+    cases = [("extra event", event, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "root YAML key shadow drift"))
+    marker = "\npermissions:\n  contents: read\n"
+    if source.count(marker) != 1:
+        raise SystemExit("review independence CI permission mutation anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(marker, marker + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("review independence CI YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("review independence CI unchanged YAML mutation: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "review independence CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("review independence CI wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("review independence CI accepted YAML mutation: " + label)
+    print("PASS: review independence CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
 def prove_trigger_reachability_negatives(source: str) -> None:
     push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
     pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
@@ -130,6 +206,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
+    validate_yaml_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit("review independence CI workflow source drift: " + label)
@@ -194,6 +271,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
     prove_diagnostic_redaction_runtime(source)
     cases = (
