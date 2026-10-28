@@ -77,6 +77,80 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
             raise SystemExit("generation independent review " + event + " exact trigger inventory drift")
 
 
+def validate_yaml_authority(source: str) -> None:
+    """Protect independent review CI event and read-only YAML semantics without a digest shortcut."""
+    paths = "".join('      - "' + path + '"\n' for path in TRIGGER_PATHS)
+    expected_header = (
+        "name: Backup Restore Generation Independent Review Negative\n\non:\n"
+        + "  pull_request:\n    branches:\n      - so\n    paths:\n" + paths
+        + "  push:\n    branches:\n      - so\n    paths:\n" + paths
+        + "  workflow_dispatch:\n"
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("generation independent review exact event header drift")
+    roots = [
+        row for row in source.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Backup Restore Generation Independent Review Negative",
+        "on:", "permissions:", "concurrency:", "jobs:",
+    ]:
+        raise SystemExit("generation independent review root YAML key shadow drift")
+    leaves = []
+    for row in source.split("\npermissions:\n", 1)[1].splitlines():
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            leaves.append(row)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("generation independent review permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    validate_yaml_authority(source)
+    extra = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra == source:
+        raise SystemExit("generation independent review event negative anchor drift")
+    cases = [("extra event", extra, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source + "\n" + suffix, "root YAML key shadow drift"))
+    anchor = "\npermissions:\n  contents: read\n"
+    if source.count(anchor) != 1:
+        raise SystemExit("generation independent review permission negative anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(anchor, anchor + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("generation independent review YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("generation independent review unchanged YAML negative: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "generation independent review " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("generation independent review wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation independent review accepted YAML mutation: " + label)
+    print("PASS: generation independent review YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
+
 def prove_trigger_reachability_negatives(source: str) -> None:
     """Reject one-event-only path removal and validator inventory shortening."""
     push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
@@ -125,6 +199,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
+    validate_yaml_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"generation independent review workflow source boundary drift: {label}")
@@ -549,6 +624,7 @@ def main() -> int:
         raise SystemExit(PRIVATE_SOURCE_ERROR) from None
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     helper_source = read_bounded_regular(HELPER)
     validate_helper_source(helper_source)
     transport_source = read_bounded_regular(TRANSPORT)
