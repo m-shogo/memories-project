@@ -83,6 +83,160 @@ REQUIRED = (
     "git fetch origin so",
 )
 
+LIVE_LOAD_WRITER_PUSH = (
+    ".github/workflows/reconcile-live-load-authority-v2.yml",
+    ".github/workflows/reconcile-live-load-authority-v2-pr.yml",
+    "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+    "contracts/operations/live-object-load-scenario-contract.v1.json",
+    "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json",
+    "scripts/validate-memory-os-live-load.py",
+    "scripts/validate-memory-os-live-object-load.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/reconcile-memory-os-live-load-status.py",
+    "scripts/validate-memory-os-live-load-reconcile-rollback-negative.py",
+)
+
+LIVE_LOAD_PR_PATHS = (
+    ".github/workflows/reconcile-live-load-authority-v2.yml",
+    ".github/workflows/reconcile-live-load-authority-v2-pr.yml",
+    "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+    "contracts/operations/live-object-load-scenario-contract.v1.json",
+    "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json",
+    "scripts/validate-memory-os-live-load.py",
+    "scripts/validate-memory-os-live-object-load.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/reconcile-memory-os-live-load-status.py",
+    "scripts/validate-memory-os-live-load-reconcile-rollback-negative.py",
+)
+
+LIVE_LOAD_INDEPENDENT_PR = (
+    ".github/workflows/reconcile-live-load-authority-v2.yml",
+    ".github/workflows/reconcile-live-load-authority-v2-pr.yml",
+    ".github/workflows/live-load-authority-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-live-load-diagnostic-source-negative.py",
+)
+
+LIVE_LOAD_INDEPENDENT_PUSH = (
+    ".github/workflows/reconcile-live-load-authority-v2.yml",
+    ".github/workflows/reconcile-live-load-authority-v2-pr.yml",
+    ".github/workflows/live-load-authority-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-live-load-diagnostic-source-negative.py",
+)
+
+def live_load_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def live_load_trigger_header(content: str) -> str:
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise AssertionError("live-load event trigger header ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def live_load_trigger_matrix(
+    writer: str, pr: str, independent: str,
+    writer_push: tuple[str, ...] = LIVE_LOAD_WRITER_PUSH,
+    pr_paths: tuple[str, ...] = LIVE_LOAD_PR_PATHS,
+    independent_pr: tuple[str, ...] = LIVE_LOAD_INDEPENDENT_PR,
+    independent_push: tuple[str, ...] = LIVE_LOAD_INDEPENDENT_PUSH,
+) -> None:
+    expected_writer = (live_load_trigger_event("push", writer_push)
+                       + '  schedule:\n    - cron: "7 6 * * *"\n'
+                       + "  workflow_dispatch:\n")
+    expected_pr = live_load_trigger_event("pull_request", pr_paths)
+    expected_independent = (live_load_trigger_event("pull_request", independent_pr)
+                            + live_load_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("writer", writer, expected_writer),
+        ("PR", pr, expected_pr),
+        ("independent", independent, expected_independent),
+    ):
+        if live_load_trigger_header(content) != expected:
+            raise AssertionError("live-load " + label + " exact trigger matrix drift")
+
+
+def live_load_trigger_replace(content: str, old: str, new: str) -> str:
+    anchor = "\non:\n" + old + "\npermissions:\n"
+    if content.count(anchor) != 1 or old == new:
+        raise AssertionError("live-load trigger mutation fixture unreachable")
+    return content.replace(anchor, "\non:\n" + new + "\npermissions:\n", 1)
+
+
+def live_load_trigger_negatives(writer: str, pr: str, independent: str) -> None:
+    def reject(index: int, altered: str) -> None:
+        sources = [writer, pr, independent]
+        sources[index] = altered
+        try:
+            live_load_trigger_matrix(*sources)
+        except AssertionError:
+            return
+        raise AssertionError("live-load accepted event trigger mutation")
+
+    omissions = additions = 0
+    for index, event, paths in (
+        (0, "push", LIVE_LOAD_WRITER_PUSH),
+        (1, "pull_request", LIVE_LOAD_PR_PATHS),
+        (2, "pull_request", LIVE_LOAD_INDEPENDENT_PR),
+        (2, "push", LIVE_LOAD_INDEPENDENT_PUSH),
+    ):
+        original = (writer, pr, independent)[index]
+        header = live_load_trigger_header(original)
+        block = live_load_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise AssertionError("live-load event trigger fixture ambiguous")
+        for position in range(len(paths)):
+            changed = live_load_trigger_replace(
+                original, header,
+                header.replace(block, live_load_trigger_event(
+                    event, paths[:position] + paths[position + 1:]), 1))
+            reject(index, changed)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for extra in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            changed = live_load_trigger_replace(
+                original, header,
+                header.replace(block, block.replace(first, first + extra, 1), 1))
+            reject(index, changed)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("writer_push", LIVE_LOAD_WRITER_PUSH),
+        ("pr_paths", LIVE_LOAD_PR_PATHS),
+        ("independent_pr", LIVE_LOAD_INDEPENDENT_PR),
+        ("independent_push", LIVE_LOAD_INDEPENDENT_PUSH),
+    ):
+        try:
+            live_load_trigger_matrix(writer, pr, independent, **{field: paths[:-1]})
+        except AssertionError:
+            shortened += 1
+        else:
+            raise AssertionError("live-load accepted shortened trigger inventory")
+
+    wh, ph, ih = map(live_load_trigger_header, (writer, pr, independent))
+    topology = (
+        (0, live_load_trigger_replace(writer, wh, "  pull_request:\n    branches:\n      - so\n" + wh)),
+        (0, live_load_trigger_replace(writer, wh, wh.replace('  schedule:\n    - cron: "7 6 * * *"\n', "", 1))),
+        (0, live_load_trigger_replace(writer, wh, wh.replace('7 6 * * *', '0 0 * * *', 1))),
+        (1, live_load_trigger_replace(pr, ph, ph + "  push:\n    branches:\n      - so\n")),
+        (2, live_load_trigger_replace(independent, ih, ih + "  workflow_dispatch:\n")),
+    )
+    for index, changed in topology:
+        reject(index, changed)
+    print("PASS: live-load exact event trigger matrix: " + str(omissions)
+          + " omissions, " + str(additions) + " additions/duplicates, "
+          + str(shortened) + " shortened inventories, "
+          + str(len(topology)) + " event topology/schedule negatives")
+
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -306,6 +460,8 @@ def main() -> None:
     reviewed_blob_negatives(publisher, pr, independent)
     independent_identity_runtime(independent)
     policy(publisher)
+    live_load_trigger_matrix(publisher, pr, independent)
+    live_load_trigger_negatives(publisher, pr, independent)
     mutations(publisher)
     writer_runtime(publisher)
     validator_shell_runtime(publisher)
