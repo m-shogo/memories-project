@@ -66,6 +66,7 @@ def validate(main: str, guard: str) -> None:
         ("atomic publisher", main, MAIN_BLOB, main_checks),
         ("atomic independent", guard, GUARD_BLOB, guard_checks),
     ):
+        validate_yaml_authority(content, 'publisher' if label == 'atomic publisher' else 'independent')
         for token, count in checks:
             if content.count(token) != count:
                 raise SystemExit(label + " anchor drift: " + repr(token[:75]))
@@ -73,6 +74,97 @@ def validate(main: str, guard: str) -> None:
         git_blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
         if hashlib.sha1(git_blob).hexdigest() != expected_blob:
             raise SystemExit(label + " complete source drift")
+
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Pin effective event/root/read-only permission YAML semantics for three atomic CI sources."""
+    if kind == "publisher":
+        name = "name: Operability Admission Inventory Atomic Write Negative"
+        events = ["  push:", "  pull_request:", "  workflow_dispatch:"]
+    elif kind == "independent":
+        name = "name: Operability Admission Inventory Atomic Write Source Negative"
+        events = ["  pull_request:", "  push:"]
+    elif kind == "replacement":
+        name = "name: Operability Admission Inventory Atomic Replacement Negative"
+        events = ["  pull_request:", "  push:"]
+    else:
+        raise SystemExit("atomic unknown YAML authority kind")
+    prefix = "atomic " + kind + " "
+    if (content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1
+            or not content.startswith(name + "\n\non:\n")):
+        raise SystemExit(prefix + "event header drift")
+    event_block = content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    event_keys = [
+        line for line in event_block.splitlines()
+        if line.startswith("  ") and not line.startswith("    ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if event_keys != events:
+        raise SystemExit(prefix + "event topology drift")
+    roots = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [name, "on:", "permissions:", "jobs:"]:
+        raise SystemExit(prefix + "root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit(prefix + "permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(main: str, guard: str, replacement: str) -> None:
+    """Require intended semantic diagnostics for all three atomic CI source authorities."""
+    count = 0
+    for kind, content in (("publisher", main), ("independent", guard),
+                          ("replacement", replacement)):
+        validate_yaml_authority(content, kind)
+        event = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if event == content:
+            raise SystemExit("atomic " + kind + " event fixture anchor drift")
+        cases = [("extra event", event, "event topology drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content.rstrip("\n") + "\n" + suffix,
+                          "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: read\n"
+        if content.count(marker) != 1:
+            raise SystemExit("atomic " + kind + " permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, content.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        if len(cases) != 9:
+            raise SystemExit("atomic " + kind + " YAML fixture count drift")
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("atomic " + kind + " unchanged YAML fixture: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "atomic " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("atomic " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("atomic " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 27:
+        raise SystemExit("atomic YAML negative population drift")
+    print("PASS: atomic publisher/independent/replacement YAML event/root/permission authority (27 exact-diagnostic negatives)")
+
 
 def runtime(main: str, guard: str) -> None:
     for label, source in (("publisher", main), ("independent", guard)):
@@ -133,6 +225,7 @@ def negatives(main: str, guard: str) -> None:
 
 
 def validate_replacement(source: str) -> None:
+    validate_yaml_authority(source, 'replacement')
     checks = (
         (CHECKOUT, 1), (SETUP, 1), (BASE, 1), (REF, 1), (SHA, 1), (HEAD, 1),
         ("          persist-credentials: false\n", 1),
@@ -200,6 +293,7 @@ def main() -> int:
     replacement_source = read(REPLACEMENT)
     validate(main_source, guard_source)
     validate_replacement(replacement_source)
+    prove_yaml_authority_negatives(main_source, guard_source, replacement_source)
     runtime(main_source, guard_source)
     runtime_replacement(replacement_source)
     negatives(main_source, guard_source)
