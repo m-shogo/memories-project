@@ -110,6 +110,23 @@ def validate_yaml_authority(source: str) -> None:
             permission_rows.append(line)
     if permission_rows != ["  contents: read"]:
         raise SystemExit("admission linkage readonly permission leaf shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    job_rows = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_rows != ["  prove-readonly:"]:
+        raise SystemExit("admission linkage readonly job mapping shadow drift")
+    job_keys = [
+        line for line in body.splitlines()
+        if line.startswith("    ") and not line.startswith("     ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_keys != [
+        "    runs-on: ubuntu-latest", "    timeout-minutes: 6", "    steps:",
+    ]:
+        raise SystemExit("admission linkage readonly job key/permission shadow drift")
 
 
 def prove_yaml_authority_negatives(source: str) -> None:
@@ -138,7 +155,27 @@ def prove_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(marker, marker + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for label, suffix in (
+        ("duplicate job", "  prove-readonly: {}\n"),
+        ("spaced job", "  prove-readonly : {}\n"),
+        ("quoted job", "  'prove-readonly': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    runs_on = "    runs-on: ubuntu-latest\n"
+    if source.count(runs_on) != 1:
+        raise SystemExit("admission linkage readonly job fixture anchor drift")
+    for label, leaf in (
+        ("job permission", "    permissions:\n      contents: write\n"),
+        ("spaced job permission", "    permissions :\n      contents: write\n"),
+        ("quoted job permission", "    'permissions':\n      contents: write\n"),
+        ("job bypass", "    if: false\n"),
+        ("job timeout shadow", "    timeout-minutes : 0\n"),
+        ("job continuation shadow", "    continue-on-error: true\n"),
+    ):
+        cases.append((label, source.replace(runs_on, runs_on + leaf, 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 18:
         raise SystemExit("admission linkage readonly YAML negative inventory drift")
     for label, mutated, diagnostic in cases:
         if mutated == source:
@@ -152,7 +189,7 @@ def prove_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("admission linkage readonly accepted YAML mutation: " + label)
-    print("PASS: admission linkage readonly YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: admission linkage readonly YAML event/root/permission authority (18 exact-diagnostic negatives)")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
