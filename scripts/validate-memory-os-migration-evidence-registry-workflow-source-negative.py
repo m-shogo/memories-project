@@ -217,8 +217,99 @@ def validate(publisher: str, independent: str, authority_negative: str | None = 
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
     validate_trigger_reachability(publisher, publisher=True)
     validate_trigger_reachability(independent, publisher=False)
+    validate_yaml_authority(publisher, 'publisher')
+    validate_yaml_authority(independent, 'independent')
     check_source("lifecycle negative", read(AUTHORITY_NEGATIVE) if authority_negative is None else authority_negative,
                  AUTHORITY_NEGATIVE_SHA, ())
+
+
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Bind reviewed migration evidence YAML event/root/permission semantics without blob-only reliance."""
+    if kind == "publisher":
+        name = "name: Migration Evidence Registry"
+        events = ["  pull_request:", "  push:", "  workflow_dispatch:"]
+        roots = [name, "on:", "permissions:", "concurrency:", "jobs:"]
+    elif kind == "independent":
+        name = "name: Migration Evidence Registry Source Negative"
+        events = ["  pull_request:", "  push:"]
+        roots = [name, "on:", "permissions:", "jobs:"]
+    else:
+        raise SystemExit("migration evidence unknown YAML authority kind")
+    prefix = "migration evidence " + kind + " "
+    if (content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1
+            or not content.startswith(name + "\n\non:\n")):
+        raise SystemExit(prefix + "event header drift")
+    event_block = content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    event_keys = [
+        line for line in event_block.splitlines()
+        if line.startswith("  ") and not line.startswith("    ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if event_keys != events:
+        raise SystemExit(prefix + "event topology drift")
+    root_keys = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if root_keys != roots:
+        raise SystemExit(prefix + "root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit(prefix + "permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    """Require intended diagnostics for publisher and independent CI shadow mutations."""
+    count = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        validate_yaml_authority(content, kind)
+        event = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if event == content:
+            raise SystemExit("migration evidence " + kind + " event fixture anchor drift")
+        cases = [("extra event", event, "event topology drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content.rstrip("\n") + "\n" + suffix,
+                          "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: read\n"
+        if content.count(marker) != 1:
+            raise SystemExit("migration evidence " + kind + " permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, content.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        if len(cases) != 9:
+            raise SystemExit("migration evidence " + kind + " YAML fixture count drift")
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("migration evidence " + kind + " unchanged YAML fixture: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "migration evidence " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("migration evidence " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("migration evidence " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 18:
+        raise SystemExit("migration evidence YAML negative population drift")
+    print("PASS: migration evidence publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
 
 
 def negative_proofs(publisher: str, independent: str) -> None:
@@ -471,6 +562,7 @@ def diagnostic_atomic_runtime(publisher: str) -> None:
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
