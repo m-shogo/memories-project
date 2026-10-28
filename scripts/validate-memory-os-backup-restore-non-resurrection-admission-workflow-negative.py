@@ -171,13 +171,15 @@ def validate_trigger_reachability(
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(end_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != expected or set(actual) != set(trigger_paths):
-            raise SystemExit("typed non-resurrection " + label + " " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            if block.count('      - "' + item + '"' + chr(10)) != 1:
-                raise SystemExit("typed non-resurrection " + label + " " + event + " trigger drift: " + item)
+        # Reject every unexpected YAML line, including unquoted additions.
+        # The negative fixtures exercise this independently of the Git blob SHA.
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        approved = tuple('      - "' + item + '"' for item in trigger_paths)
+        if actual != approved:
+            raise SystemExit("typed non-resurrection " + label + " " + event + " exact trigger inventory drift")
 
 
 def validate_all_trigger_reachability(publisher: str, independent: str) -> None:
@@ -222,7 +224,32 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
             pass
         else:
             raise SystemExit("typed non-resurrection " + label + " shortened trigger inventory accepted")
-    print("PASS: typed non-resurrection admission CI event-specific triggers (120 removals; 2 shortened inventory negatives)")
+        for event in ("pull_request", "push"):
+            marker = (
+                "  pull_request:\n    branches:\n      - so\n    paths:\n"
+                if event == "pull_request" else push_marker
+            )
+            for case, injected in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                if source.count(marker) != 1:
+                    raise SystemExit("typed non-resurrection " + label + " addition marker drift")
+                mutated = source.replace(marker, marker + injected, 1)
+                if mutated == source:
+                    raise SystemExit("typed non-resurrection " + label + " addition fixture unchanged")
+                try:
+                    validate_trigger_reachability(
+                        mutated, paths, expected=expected, end_marker=end_marker, label=label
+                    )
+                except SystemExit:
+                    continue
+                raise SystemExit(
+                    "typed non-resurrection " + label + " accepted " + event + " addition: " + case
+                )
+    print("PASS: typed non-resurrection admission CI event-specific triggers (120 removals; 16 additions; 2 shortened inventory negatives)")
 
 
 
