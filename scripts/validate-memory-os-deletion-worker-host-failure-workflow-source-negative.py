@@ -100,6 +100,177 @@ def validate(publisher: str, independent: str) -> None:
         raise SystemExit("deletion-host-failure diagnostic creates unchecked parent")
 
 
+PUBLISHER_PR_PATHS = (
+    ".github/workflows/deletion-worker-host-failure-admission.yml",
+    "contracts/operations/deletion-worker-host-failure-contract.v1.json",
+    "contracts/operations/load-test-scenario-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py",
+    "scripts/reconcile-memory-os-deletion-worker-host-failure.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+)
+
+PUBLISHER_PUSH_PATHS = (
+    ".github/workflows/deletion-worker-host-failure-admission.yml",
+    "contracts/operations/deletion-worker-host-failure-contract.v1.json",
+    "contracts/operations/load-test-scenario-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py",
+    "scripts/reconcile-memory-os-deletion-worker-host-failure.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+)
+
+INDEPENDENT_PR_PATHS = (
+    ".github/workflows/deletion-worker-host-failure-admission.yml",
+    ".github/workflows/deletion-worker-host-failure-permission-negative.yml",
+    ".github/workflows/deletion-worker-host-failure-source-negative.yml",
+    "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py",
+    "scripts/reconcile-memory-os-deletion-worker-host-failure.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py",
+)
+
+INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/deletion-worker-host-failure-admission.yml",
+    ".github/workflows/deletion-worker-host-failure-permission-negative.yml",
+    ".github/workflows/deletion-worker-host-failure-source-negative.yml",
+    "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure-workflow-source-negative.py",
+    "scripts/reconcile-memory-os-deletion-worker-host-failure.py",
+    "scripts/validate-memory-os-deletion-worker-host-failure-reconcile-negative.py",
+)
+
+
+def trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def trigger_header(content: str) -> str:
+    # Exact, ordered event header: reject unknown, unquoted, duplicate and
+    # unexpected event paths instead of depending only on a Git blob digest.
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise SystemExit("deletion-host-failure trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def validate_trigger_matrix(
+    publisher: str, independent: str,
+    publisher_pr: tuple[str, ...] = PUBLISHER_PR_PATHS,
+    publisher_push: tuple[str, ...] = PUBLISHER_PUSH_PATHS,
+    independent_pr: tuple[str, ...] = INDEPENDENT_PR_PATHS,
+    independent_push: tuple[str, ...] = INDEPENDENT_PUSH_PATHS,
+) -> None:
+    expected_publisher = (trigger_event("pull_request", publisher_pr)
+                          + trigger_event("push", publisher_push)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (trigger_event("pull_request", independent_pr)
+                            + trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if trigger_header(content) != expected:
+            raise SystemExit("deletion-host-failure " + label
+                             + " exact event trigger inventory drift")
+
+
+def replace_trigger_header(content: str, original: str, replacement: str) -> str:
+    old = "\non:\n" + original + "\npermissions:\n"
+    if content.count(old) != 1 or original == replacement:
+        raise SystemExit("deletion-host-failure trigger negative fixture unreachable")
+    return content.replace(old, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def trigger_matrix_negatives(publisher: str, independent: str) -> None:
+    def must_reject(p: str, i: str) -> None:
+        try:
+            validate_trigger_matrix(p, i)
+        except SystemExit:
+            return
+        raise SystemExit("deletion-host-failure accepted event trigger mutation")
+
+    omissions = additions = 0
+    cases = (
+        ("publisher", "pull_request", PUBLISHER_PR_PATHS),
+        ("publisher", "push", PUBLISHER_PUSH_PATHS),
+        ("independent", "pull_request", INDEPENDENT_PR_PATHS),
+        ("independent", "push", INDEPENDENT_PUSH_PATHS),
+    )
+    for label, event, paths in cases:
+        original = publisher if label == "publisher" else independent
+        header = trigger_header(original)
+        block = trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise SystemExit("deletion-host-failure trigger event fixture ambiguous")
+        for index in range(len(paths)):
+            shorter = paths[:index] + paths[index + 1:]
+            mutated = replace_trigger_header(
+                original, header, header.replace(block, trigger_event(event, shorter), 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for addition in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            mutated_block = block.replace(first, first + addition, 1)
+            mutated = replace_trigger_header(
+                original, header, header.replace(block, mutated_block, 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_pr", PUBLISHER_PR_PATHS),
+        ("publisher_push", PUBLISHER_PUSH_PATHS),
+        ("independent_pr", INDEPENDENT_PR_PATHS),
+        ("independent_push", INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            validate_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except SystemExit:
+            shortened += 1
+        else:
+            raise SystemExit("deletion-host-failure accepted shortened trigger inventory")
+
+    p_header, i_header = trigger_header(publisher), trigger_header(independent)
+    topology = (
+        (replace_trigger_header(
+            publisher, p_header, p_header.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (replace_trigger_header(
+            publisher, p_header, p_header.replace(
+                "  workflow_dispatch:\n",
+                "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)), independent),
+        (publisher, replace_trigger_header(
+            independent, i_header, i_header + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        must_reject(p, i)
+    print("PASS: deletion-host-failure exact trigger matrix: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def validate_permission(content: str) -> None:
     required = (
         "  pull_request:\n    branches:\n      - so\n",
@@ -453,6 +624,8 @@ def main() -> int:
     permission = source(PERMISSION)
     permission_validator = source(PERMISSION_VALIDATOR)
     validate(publisher, independent)
+    validate_trigger_matrix(publisher, independent)
+    trigger_matrix_negatives(publisher, independent)
     validate_permission(permission)
     validate_permission_validator(permission_validator)
     permission_validator_negatives(permission_validator)
