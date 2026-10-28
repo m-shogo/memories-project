@@ -294,3 +294,27 @@
 - **Why safe / reusable mechanism:** Fifteen new synthetic metadata mutations cover workflow concurrency/defaults/environment, job runner/timeout/container/strategy/environment, and step working directory/ID/environment/PR-head/continue-on-error/timeout. Production workflows and authorities were not edited.
 - **Protected-authority check:** The nine protected production status, OPS-P0-007 snapshot, generation/objective/drill/evidence/typed-non-resurrection/promotion registries and canonical learning contract remained byte-identical by blob SHA on the checked branch. `productionDecision=NO_GO`, OPS-P0-007 has zero eligible generations, objectives, executable requests, recovery evidence, typed eight-domain records and final candidates. No production or human-promotion authority was created.
 - **Learning boundary:** This is append-only supplemental history, not the canonical 4.17 MB learning authority and never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence. Canonical transport blocker remains unchanged; do not retry it blindly.
+
+## 2026-10-28 — Exact-source metadata and shell-boundary CI closures
+
+### Material success: exact workflow/job/step metadata authority
+
+- **Outcome / observed evidence:** [Autonomous Learning Guard #40678750672](https://github.com/m-shogo/memories-project/actions/runs/40678750672) completed SUCCESS on exact code `71979b00bb25501b914d1a2f9fc4552023ef9041`. The job log proves 52 source-negative workflows, 63 direct Python validator commands, 121 executed reachability negative fixtures, 128 canonical learning negatives and 1,186 helper ancestor negatives. The prior two failures are closed by executable checks, not by ignoring the fixtures.
+- **Why safe:** Reviewed workflows were read only; the common CI entrypoint was the sole code target. The positive fixture contains the reviewed PR-head environment and job runner/timeout; unknown workflow/job/step metadata and environment shadows fail closed.
+- **Reusable mechanism:** Require exact approved metadata keys, runner and timeout scalar values, sole `PR_HEAD_SHA` environment mapping and pinned checkout/toolchain settings, plus negative mutation proof.
+- **Protected-authority check:** All nine protected authority blob SHAs were unchanged. `productionDecision=NO_GO`, OPS-P0-007 remains prerequisite-blocked with zero registered/eligible generations, approved objectives, executable reviewed requests, recovery evidence, complete typed non-resurrection records or final candidates.
+
+### Material failure prevented: inert or weakened exact-source shell
+
+- **Symptom / observed evidence:** A read-only audit of all 52 source-negative workflows found 50 with the same reviewed PR-head/push verification shell template and two explicit operability-inventory variants (atomic-write uses `PR_HEAD_SHA:-`; both omit the diagnostic echo). The previous common guard merely searched for `git rev-parse HEAD` and `git status --porcelain` substrings, which comments, echoes or short-circuited commands could satisfy. No observed production failure.
+- **Verified root cause:** Source substring presence is not equivalent to an executable exact-source comparison in the correct shell step.
+- **Failed approach:** Relying on the checkout Action ref and textual HEAD-command fragments without verifying the reviewed source-verification shell block.
+- **Correction / executable recurrence guard:** [`e16a50ea`](https://github.com/m-shogo/memories-project/commit/e16a50ea5d3f5414a1d9badb62a3fefb21ae0197) requires the complete reviewed fail-closed PR/push source-verification shell, with only the two observed explicit variants. Fourteen synthetic negatives reject commented, echoed, inverted, short-circuited, conditional, duplicated, or omitted HEAD/clean checks; early exits, disabled errexit, wrong expected SHA assignments, disabled event rejection and extra shell execution. Total shared reachability negatives: 135.
+- **Retry condition:** Revisit the exact template only after a separately reviewed source-verification workflow change and exact-source positive/negative CI evidence; never weaken it for a hypothetical workflow variant.
+
+### Material success: exact-source shell proof
+
+- **Outcome / observed evidence:** [Autonomous Learning Guard #40679211756](https://github.com/m-shogo/memories-project/actions/runs/40679211756) completed SUCCESS on exact `e16a50ea5d3f5414a1d9badb62a3fefb21ae0197`. Job logs show 52 workflows, 63 Python commands, 135 reachability negative fixtures, 128 canonical learning negatives, 1,186 helper ancestor negatives and append-only canonical learning PASS.
+- **Why safe / reusable mechanism:** This is a read-only static guard with synthetic mutations. The 52 reviewed workflow files, protected contracts/registries, production credentials, traffic, readiness and human promotion were not modified.
+- **Protected-authority check:** The nine protected contract/registry blob SHAs remained identical; `productionDecision=NO_GO` and all OPS-P0-007 real-evidence gates remain unsatisfied. Supplemental learning cannot satisfy any production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gate.
+- **Next safe target:** Audit whether post-validator clean-source checks can be bypassed by shell short-circuit lists, heredocs, traps or function wrappers while preserving the exact-source and authority guards. Canonical large-file transport, MinIO Quay HTTP 401 and human approval blockers are unchanged; do not retry them.
