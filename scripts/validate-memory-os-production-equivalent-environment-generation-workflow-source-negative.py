@@ -86,6 +86,7 @@ PUBLISHER_REQUIRED = (
     ("HEAD identity", 'test "$(git rev-parse HEAD)" = "$expected"', 2),
     ("redacted diagnostic", REDACTION, 1),
     ("suppressed CI log", SUPPRESS, 1),
+    ("diagnostic symlink rejection", "          if path.is_symlink():\n              raise SystemExit('environment generation diagnostic target must not be a symlink')\n", 1),
     ("no raw tail", "text[-12000:]", 0),
     ("no raw CI log", '          cat "$log"\n', 0),
 )
@@ -202,7 +203,10 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
     print("PASS: environment generation publisher/independent CI event-specific triggers (48 removals; 16 additions; 2 shortened inventory negatives)")
 
 
-def validate(publisher: str, independent: str) -> None:
+def validate(
+    publisher: str, independent: str, *,
+    check_publisher_blob: bool = True, check_independent_blob: bool = True,
+) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
     for name, source, required, reviewed in (
@@ -214,7 +218,8 @@ def validate(publisher: str, independent: str) -> None:
                 raise SystemExit("environment generation " + name + " source drift: " + label)
         data = source.encode("utf-8")
         digest = hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
-        if digest != reviewed:
+        if ((name == "publisher" and check_publisher_blob) or
+                (name == "independent" and check_independent_blob)) and digest != reviewed:
             raise SystemExit("environment generation " + name + " complete source drift")
 
 
@@ -343,18 +348,37 @@ def negatives(publisher: str, independent: str) -> None:
         ("unreviewed Action", "      - name: Prove environment generation publisher source\n", "      - uses: unreviewed/action@v1\n      - name: Prove environment generation publisher source\n"),
         ("unreviewed shell", "      - name: Prove environment generation publisher source\n", "      - run: echo unreviewed\n      - name: Prove environment generation publisher source\n"),
     )
-    for name, original, cases in (("publisher", publisher, publisher_cases), ("independent", independent, independent_cases)):
+    publisher_blob_only = {"unreviewed Action", "unreviewed shell"}
+    independent_blob_only = {"unreviewed Action", "unreviewed shell"}
+    for name, original, cases, required, blob_only in (
+        ("publisher", publisher, publisher_cases, PUBLISHER_REQUIRED, publisher_blob_only),
+        ("independent", independent, independent_cases, INDEPENDENT_REQUIRED, independent_blob_only),
+    ):
+        semantic_count = 0
+        digest_only_count = 0
         for label, before, after in cases:
             if before not in original:
                 raise SystemExit("environment generation negative fixture missing: " + name + " " + label)
             mutated = original.replace(before, after, 1)
             if mutated == original:
                 raise SystemExit("environment generation negative fixture unchanged: " + name + " " + label)
+            semantic = any(mutated.count(token) != original.count(token)
+                           for _, token, _ in required)
+            if semantic != (label not in blob_only):
+                raise SystemExit("environment generation " + name + " semantic/digest negative classification drift: " + label)
+            semantic_count += int(semantic)
+            digest_only_count += int(not semantic)
             try:
-                validate(mutated, independent) if name == "publisher" else validate(publisher, mutated)
+                if name == "publisher":
+                    validate(mutated, independent, check_publisher_blob=not semantic)
+                else:
+                    validate(publisher, mutated, check_independent_blob=not semantic)
             except SystemExit:
                 continue
             raise SystemExit("environment generation accepted source mutation: " + name + " " + label)
+        if (semantic_count, digest_only_count) != (len(cases) - 2, 2):
+            raise SystemExit("environment generation " + name + " semantic/digest negative coverage drift")
+        print(f"PASS: environment generation {name} source negatives ({semantic_count} semantic; {digest_only_count} blob-only)")
     print(f"PASS: environment generation source negatives ({len(publisher_cases)} publisher, {len(independent_cases)} independent)")
 
 
