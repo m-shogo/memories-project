@@ -69,11 +69,12 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
             raise SystemExit("generation independent review trigger marker drift")
     pr_block = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push_block = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    expected = ['      - "' + path + '"' for path in trigger_paths]
     for event, block in (("pull_request", pr_block), ("push", push_block)):
-        for path in trigger_paths:
-            token = '      - "' + path + '"\n'
-            if block.count(token) != 1:
-                raise SystemExit("generation independent review " + event + " trigger drift: " + path)
+        actual = [line for line in block.splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")]
+        if actual != expected:
+            raise SystemExit("generation independent review " + event + " exact trigger inventory drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -94,6 +95,23 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("generation independent review trigger negative accepted: " + event + " " + path)
+    # Bind event inventories semantically against extra and duplicate paths.
+    for event, marker in (
+        ("pull_request", "  pull_request:\n    branches:\n      - so\n    paths:\n"),
+        ("push", push_marker),
+    ):
+        for label, injected in (
+            ("unreviewed path", '      - "unreviewed/**"\n'),
+            ("duplicate path", '      - "' + TRIGGER_PATHS[0] + '"\n'),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("generation independent review addition fixture marker drift")
+            mutated = source.replace(marker, marker + injected, 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("generation independent review extra trigger accepted: " + event + " " + label)
     try:
         validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
     except SystemExit:
