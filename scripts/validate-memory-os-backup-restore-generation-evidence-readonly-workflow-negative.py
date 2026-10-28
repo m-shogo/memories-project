@@ -105,6 +105,21 @@ def validate_yaml_authority(source: str) -> None:
             leaves.append(row)
     if leaves != ["  contents: read"]:
         raise SystemExit("generation evidence readonly permission leaf shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    job_headers = [
+        row for row in body.splitlines()
+        if row.startswith("  ") and not row.startswith("   ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_headers != ["  prove-readonly:"]:
+        raise SystemExit("generation evidence readonly job mapping shadow drift")
+    job_keys = [
+        row for row in body.splitlines()
+        if row.startswith("    ") and not row.startswith("     ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_keys != ["    runs-on: ubuntu-latest", "    steps:"]:
+        raise SystemExit("generation evidence readonly job key/permission shadow drift")
 
 
 def prove_yaml_authority_negatives(source: str) -> None:
@@ -131,7 +146,24 @@ def prove_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(anchor, anchor + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for label, suffix in (
+        ("duplicate job", "  prove-readonly: {}\n"),
+        ("spaced job", "  prove-readonly : {}\n"),
+        ("quoted job", "  'prove-readonly': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    job_marker = "    runs-on: ubuntu-latest\n"
+    if source.count(job_marker) != 1:
+        raise SystemExit("generation evidence readonly job permission fixture anchor drift")
+    for label, leaf in (
+        ("job permission", "    permissions:\n      contents: write\n"),
+        ("spaced job permission", "    permissions :\n      contents: write\n"),
+        ("quoted job permission", "    'permissions':\n      contents: write\n"),
+    ):
+        cases.append((label, source.replace(job_marker, job_marker + leaf, 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 15:
         raise SystemExit("generation evidence readonly YAML negative inventory drift")
     for label, mutated, expected in cases:
         if mutated == source:
@@ -145,7 +177,7 @@ def prove_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("generation evidence readonly accepted YAML mutation: " + label)
-    print("PASS: generation evidence readonly YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: generation evidence readonly YAML event/root/job/permission authority (15 exact-diagnostic negatives)")
 
 
 
