@@ -1809,10 +1809,10 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     head_cardinality_cases = {
         "comment-only source HEAD comparison",
         "echo-only source HEAD comparison",
+        "inverted source HEAD comparison",
         "source verification duplicate HEAD comparison",
     }
     source_guard_cases = {
-        "inverted source HEAD comparison",
         "source HEAD comparison short-circuited",
         "source HEAD comparison under false branch",
         "source verification early exit",
