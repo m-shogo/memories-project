@@ -2488,9 +2488,15 @@ def readonly_trigger_paths() -> tuple[str, ...]:
     )
 
 
-def require_readonly_trigger_authority(readonly: str) -> None:
-    """Both PR and so push must reach the independent readonly gate."""
-    paths = [f'      - "{path}"' for path in readonly_trigger_paths()]
+def require_readonly_trigger_authority(
+    readonly: str, *, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Both PR and so push must reach the fixed independent readonly inventory."""
+    if trigger_paths is None:
+        trigger_paths = readonly_trigger_paths()
+    require(len(trigger_paths) == 16 and len(set(trigger_paths)) == 16,
+            "strict snapshot readonly trigger/path authority drift")
+    paths = [f'      - "{path}"' for path in trigger_paths]
     expected = [
         "name: OPS P0 007 Admission Snapshot Readonly",
         "",
@@ -2515,6 +2521,13 @@ def require_readonly_trigger_authority(readonly: str) -> None:
 
 def prove_readonly_trigger_negative(readonly: str) -> None:
     require_readonly_trigger_authority(readonly)
+    try:
+        require_readonly_trigger_authority(readonly, trigger_paths=readonly_trigger_paths()[:-1])
+    except Fail as exc:
+        require(str(exc) == "strict snapshot readonly trigger/path authority drift",
+                "strict snapshot shortened trigger inventory rejected outside intended guard")
+    else:
+        raise Fail("strict snapshot readonly shortened trigger inventory accepted")
     marker = "permissions:\n"
     require(readonly.count(marker) == 1,
             "strict snapshot readonly trigger fixture boundary drift")
