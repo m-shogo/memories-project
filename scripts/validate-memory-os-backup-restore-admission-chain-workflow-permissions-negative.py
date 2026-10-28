@@ -115,9 +115,9 @@ def validate_admission_readonly_triggers(source: str, *, trigger_paths: tuple[st
     """Require all reviewed PR and push paths, independently of a Git blob hash."""
     require(len(trigger_paths) == 13 and len(set(trigger_paths)) == 13,
             "admission readonly trigger inventory shortened or duplicated")
-    pr_marker = "  pull_request:\\n    branches: [so]\\n    paths:\\n"
-    push_marker = "  push:\\n    branches: [so]\\n    paths:\\n"
-    dispatch_marker = "  workflow_dispatch:\\n"
+    pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+    push_marker = "  push:\n    branches: [so]\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
     for marker in (pr_marker, push_marker, dispatch_marker):
         require(source.count(marker) == 1, "admission readonly trigger event marker drift")
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
@@ -128,7 +128,7 @@ def validate_admission_readonly_triggers(source: str, *, trigger_paths: tuple[st
         require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
                 "admission readonly " + event + " trigger inventory drift")
         for item in trigger_paths:
-            require(block.count('      - "' + item + '"\\n') == 1,
+            require(block.count('      - "' + item + '"\n') == 1,
                     "admission readonly " + event + " missing or duplicate trigger: " + item)
 
 
@@ -138,10 +138,10 @@ def prove_admission_readonly_trigger_negatives() -> None:
             "admission readonly workflow source missing or substituted")
     source = ADMISSION_READONLY_PATH.read_text(encoding="utf-8")
     validate_admission_readonly_triggers(source)
-    push_marker = "  push:\\n    branches: [so]\\n    paths:\\n"
+    push_marker = "  push:\n    branches: [so]\n    paths:\n"
     for event in ("pull_request", "push"):
         for item in ADMISSION_READONLY_TRIGGERS:
-            token = '      - "' + item + '"\\n'
+            token = '      - "' + item + '"\n'
             require(source.count(token) == 2, "admission readonly mutation anchor drift: " + item)
             if event == "pull_request":
                 mutated = source.replace(token, "", 1)
