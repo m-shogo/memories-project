@@ -71,6 +71,156 @@ REQUIRED = (
     'git fetch origin so',
     'git push origin HEAD:so',
 )
+UPLOAD_COMPLETION_PUBLISHER_PR_PATHS = (
+    ".github/workflows/reconcile-upload-completion-load-authority.yml",
+    "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py",
+    "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-prefence-upload-completion.py",
+    "scripts/reconcile-memory-os-upload-completion-load-authority.py",
+    "scripts/validate-memory-os-upload-completion-load-reconcile-negative.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+    "contracts/operations/deletion-prefence-upload-completion-contract.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json",
+)
+
+UPLOAD_COMPLETION_PUBLISHER_PUSH_PATHS = (
+    ".github/workflows/reconcile-upload-completion-load-authority.yml",
+    "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py",
+    "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-prefence-upload-completion.py",
+    "scripts/reconcile-memory-os-upload-completion-load-authority.py",
+    "scripts/validate-memory-os-upload-completion-load-reconcile-negative.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+    "contracts/operations/deletion-prefence-upload-completion-contract.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json",
+)
+
+UPLOAD_COMPLETION_INDEPENDENT_PR_PATHS = (
+    ".github/workflows/reconcile-upload-completion-load-authority.yml",
+    ".github/workflows/upload-completion-load-source-negative.yml",
+    "scripts/validate-memory-os-upload-completion-load-source-negative.py",
+)
+
+UPLOAD_COMPLETION_INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/reconcile-upload-completion-load-authority.yml",
+    ".github/workflows/upload-completion-load-source-negative.yml",
+    "scripts/validate-memory-os-upload-completion-load-source-negative.py",
+)
+
+def upload_completion_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def upload_completion_trigger_header(content: str) -> str:
+    # Exact, ordered event header: reject unknown, unquoted, duplicate and
+    # unexpected event paths instead of depending only on a Git blob digest.
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise SystemExit("upload-completion-load trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def upload_completion_validate_trigger_matrix(
+    publisher: str, independent: str,
+    publisher_pr: tuple[str, ...] = UPLOAD_COMPLETION_PUBLISHER_PR_PATHS,
+    publisher_push: tuple[str, ...] = UPLOAD_COMPLETION_PUBLISHER_PUSH_PATHS,
+    independent_pr: tuple[str, ...] = UPLOAD_COMPLETION_INDEPENDENT_PR_PATHS,
+    independent_push: tuple[str, ...] = UPLOAD_COMPLETION_INDEPENDENT_PUSH_PATHS,
+) -> None:
+    expected_publisher = (upload_completion_trigger_event("push", publisher_push)
+                          + upload_completion_trigger_event("pull_request", publisher_pr)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (upload_completion_trigger_event("pull_request", independent_pr)
+                            + upload_completion_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if upload_completion_trigger_header(content) != expected:
+            raise SystemExit("upload-completion-load " + label
+                             + " exact event trigger inventory drift")
+
+
+def replace_upload_completion_trigger_header(content: str, original: str, replacement: str) -> str:
+    old = "\non:\n" + original + "\npermissions:\n"
+    if content.count(old) != 1 or original == replacement:
+        raise SystemExit("upload-completion-load trigger negative fixture unreachable")
+    return content.replace(old, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def upload_completion_trigger_matrix_negatives(publisher: str, independent: str) -> None:
+    def must_reject(p: str, i: str) -> None:
+        try:
+            upload_completion_validate_trigger_matrix(p, i)
+        except SystemExit:
+            return
+        raise SystemExit("upload-completion-load accepted event trigger mutation")
+
+    omissions = additions = 0
+    cases = (
+        ("publisher", "pull_request", UPLOAD_COMPLETION_PUBLISHER_PR_PATHS),
+        ("publisher", "push", UPLOAD_COMPLETION_PUBLISHER_PUSH_PATHS),
+        ("independent", "pull_request", UPLOAD_COMPLETION_INDEPENDENT_PR_PATHS),
+        ("independent", "push", UPLOAD_COMPLETION_INDEPENDENT_PUSH_PATHS),
+    )
+    for label, event, paths in cases:
+        original = publisher if label == "publisher" else independent
+        header = upload_completion_trigger_header(original)
+        block = upload_completion_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise SystemExit("upload-completion-load trigger event fixture ambiguous")
+        for index in range(len(paths)):
+            shorter = paths[:index] + paths[index + 1:]
+            mutated = replace_upload_completion_trigger_header(
+                original, header, header.replace(block, upload_completion_trigger_event(event, shorter), 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for addition in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            mutated_block = block.replace(first, first + addition, 1)
+            mutated = replace_upload_completion_trigger_header(
+                original, header, header.replace(block, mutated_block, 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_pr", UPLOAD_COMPLETION_PUBLISHER_PR_PATHS),
+        ("publisher_push", UPLOAD_COMPLETION_PUBLISHER_PUSH_PATHS),
+        ("independent_pr", UPLOAD_COMPLETION_INDEPENDENT_PR_PATHS),
+        ("independent_push", UPLOAD_COMPLETION_INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            upload_completion_validate_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except SystemExit:
+            shortened += 1
+        else:
+            raise SystemExit("upload-completion-load accepted shortened trigger inventory")
+
+    p_header, i_header = upload_completion_trigger_header(publisher), upload_completion_trigger_header(independent)
+    topology = (
+        (replace_upload_completion_trigger_header(
+            publisher, p_header, p_header.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (replace_upload_completion_trigger_header(
+            publisher, p_header, p_header.replace(
+                "  workflow_dispatch:\n",
+                "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)), independent),
+        (publisher, replace_upload_completion_trigger_header(
+            independent, i_header, i_header + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        must_reject(p, i)
+    print("PASS: upload-completion-load exact trigger matrix: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -143,6 +293,8 @@ def main() -> None:
             raise AssertionError("upload completion independent CI reachability drift: " + marker)
     reviewed_blob_negatives(publisher, independent)
     policy(publisher)
+    upload_completion_validate_trigger_matrix(publisher, independent)
+    upload_completion_trigger_matrix_negatives(publisher, independent)
     mutations(publisher)
     identity(publisher, "Validate exact PR-head upload completion authority", False)
     identity(publisher, "Capture exact source", True)
