@@ -197,8 +197,8 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
     # The entire event header is unchanged here. A later effective YAML root
     # key must be rejected by the semantic root inventory, not only a blob pin.
     root_shadows = (
-        ("spaced on", "on :\n  workflow_dispatch:\n"),
-        ("quoted on", "'on':\n  workflow_dispatch:\n"),
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
         ("spaced permissions", "permissions :\n  contents: write\n"),
         ("spaced jobs", "jobs : {}\n"),
     )
