@@ -106,6 +106,8 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         ("push", push_marker),
     ):
         for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + TRIGGER_PATHS[0] + '"\n'),
             ("unquoted extra", "      - unreviewed/**\n"),
             ("unquoted duplicate", "      - " + TRIGGER_PATHS[0] + "\n"),
         ):
@@ -123,7 +125,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         pass
     else:
         raise SystemExit("generation evidence reconcile CI shortened trigger inventory accepted")
-    print("PASS: generation evidence reconcile CI event-specific trigger reachability (54 removals; 1 shortened inventory negative)")
+    print("PASS: generation evidence reconcile CI event-specific trigger reachability (54 removals; 8 additions; 1 shortened inventory negative)")
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
