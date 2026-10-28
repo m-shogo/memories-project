@@ -1725,6 +1725,33 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     workflow_contents_cases = {"duplicate workflow contents permission"}
     readonly_permission_cases = {"write permission"}
     job_permission_cases = {"elevated job permissions", "duplicate job permissions"}
+    # A malformed event filter or a skipped source-negative job must fail for
+    # its intended CI-reachability invariant, not an unrelated metadata check.
+    event_filter_cases = {
+        "duplicate top-level on authority",
+        "quoted shadow on authority",
+        "unreviewed PR paths-ignore filter",
+        "unreviewed push branches-ignore filter",
+        "extra PR branch",
+        "duplicate push branch filter",
+        "missing push event",
+        "duplicate trigger path",
+    }
+    source_trigger_cases = {
+        "PR missing validator trigger":
+            "pull_request: invoked validator not in trigger paths: scripts/check.py",
+        "push missing workflow self-trigger":
+            "push: source-negative workflow not self-triggered",
+    }
+    conditional_step_cases = {
+        "disabled validator step",
+        "unreviewed event conditional step",
+    }
+    job_condition_cases = {
+        "duplicate job-level condition":
+            "duplicate or missing job-level event condition",
+        "disabled job": "missing reviewed live PR/push job condition",
+    }
     diagnostic_bound = 0
     for name, mutation in cases.items():
         if name.startswith("setup-go "):
@@ -1780,13 +1807,23 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = "missing read-only workflow permissions"
         elif name in job_permission_cases:
             expected_issue = "duplicate, missing or elevated job permissions"
+        elif name in event_filter_cases:
+            expected_issue = "missing/ambiguous PR and push path-filter authority"
+        elif name in source_trigger_cases:
+            expected_issue = source_trigger_cases[name]
+        elif name in conditional_step_cases:
+            expected_issue = "conditional CI step may skip source-negative validator"
+        elif name in job_condition_cases:
+            expected_issue = job_condition_cases[name]
+        elif name == "missing exact HEAD check":
+            expected_issue = "missing, shadowed or duplicated exact-source HEAD comparison"
         if expected_issue is not None:
             diagnostic_bound += 1
             if not any(expected_issue in issue for issue in issues):
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 82:
+    if diagnostic_bound != 97:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
