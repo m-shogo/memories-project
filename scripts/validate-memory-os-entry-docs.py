@@ -426,10 +426,20 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
         second_run_end = (
             run_positions[2] if len(run_positions) > 2 else len(source_lines)
         )
-        if not python_positions or any(
-            not (run_positions[1] < i < second_run_end) for i in python_positions
-        ):
-            issues.append("direct Python validators must execute in reviewed second run step")
+        # The migration-evidence workflow alone runs an additional negative
+        # validator inside a disposable exact-source clone in its third step.
+        # Still require at least one direct validator in the reviewed second.
+        third_python_allowed = (
+            relative == ".github/workflows/migration-evidence-registry-source-negative.yml"
+            and len(run_positions) == 3
+        )
+        if (not any(run_positions[1] < i < second_run_end
+                    for i in python_positions)
+                or any(not (
+                    run_positions[1] < i < second_run_end
+                    or (third_python_allowed and run_positions[2] < i)
+                ) for i in python_positions)):
+            issues.append("direct Python validators escaped reviewed run-step order")
     if len(head_positions) != 1:
         issues.append("missing, shadowed or duplicated exact-source HEAD comparison")
     else:
