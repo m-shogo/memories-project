@@ -152,6 +152,43 @@ def validate_trigger_reachability(
         )
         if actual != approved:
             raise SystemExit("environment generation " + kind + " " + event + " exact trigger inventory drift")
+    # Distinguish registered generations from preflight eligibility by
+    # protecting the actual CI event and permission authority, not just
+    # individual path lists or the reviewed full-source digest.
+    expected_header = (
+        ("name: Production Equivalent Environment Generation" if kind == "publisher"
+         else "name: Production Equivalent Environment Generation Source Negative")
+        + "\n\non:\n"
+        + pr_marker + "".join('      - "' + path + '"\n' for path in trigger_paths)
+        + push_marker + "".join('      - "' + path + '"\n' for path in trigger_paths)
+        + ("  workflow_dispatch:\n" if kind == "publisher" else "")
+    )
+    if (content.count("\npermissions:\n") != 1
+            or content.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("environment generation " + kind + " exact event header drift")
+    expected_roots = (
+        ["name: Production Equivalent Environment Generation", "on:",
+         "permissions:", "concurrency:", "jobs:"]
+        if kind == "publisher" else
+        ["name: Production Equivalent Environment Generation Source Negative",
+         "on:", "permissions:", "jobs:"]
+    )
+    observed_roots = [
+        row for row in content.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if observed_roots != expected_roots:
+        raise SystemExit("environment generation " + kind + " root YAML key shadow drift")
+    permission_lines = content.split("\npermissions:\n", 1)[1].splitlines()
+    permission_rows = []
+    for row in permission_lines:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            permission_rows.append(row)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("environment generation " + kind + " permission leaf shadow drift")
 
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
@@ -200,6 +237,75 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
             pass
         else:
             raise SystemExit("environment generation " + kind + " shortened trigger inventory accepted")
+    # These mutations leave both reviewed PR/push path lists intact.
+    # Require the intended event, root or permission semantic diagnostic.
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        mutated = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if mutated == content:
+            raise SystemExit("environment generation header negative anchor drift: " + kind)
+        try:
+            validate_trigger_reachability(mutated, kind)
+        except SystemExit as exc:
+            expected = "environment generation " + kind + " exact event header drift"
+            if str(exc) != expected:
+                raise SystemExit(
+                    "environment generation header rejected for wrong reason: "
+                    + kind + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("environment generation accepted extra event: " + kind)
+    root_negative_count = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            try:
+                validate_trigger_reachability(content + suffix, kind)
+            except SystemExit as exc:
+                expected = "environment generation " + kind + " root YAML key shadow drift"
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "environment generation root shadow rejected for wrong reason: "
+                        + kind + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "environment generation accepted root shadow: " + kind + " " + name
+                )
+            root_negative_count += 1
+    if root_negative_count != 8:
+        raise SystemExit("environment generation root shadow fixture count drift")
+    permission_negative_count = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("environment generation permission negative anchor drift: " + kind)
+        for name, extra in (
+            ("spaced", "  contents : write\n"),
+            ("quoted", "  'contents': write\n"),
+        ):
+            mutated = content.replace(anchor, anchor + extra, 1)
+            try:
+                validate_trigger_reachability(mutated, kind)
+            except SystemExit as exc:
+                expected = "environment generation " + kind + " permission leaf shadow drift"
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "environment generation permission shadow rejected for wrong reason: "
+                        + kind + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "environment generation accepted permission shadow: " + kind + " " + name
+                )
+            permission_negative_count += 1
+    if permission_negative_count != 4:
+        raise SystemExit("environment generation permission leaf fixture count drift")
+    print("PASS: environment generation CI semantic YAML negatives "
+          "(2 extra-event, 8 root, 4 permission exact-diagnostic cases)")
     print("PASS: environment generation publisher/independent CI event-specific triggers (48 removals; 16 additions; 2 shortened inventory negatives)")
 
 
