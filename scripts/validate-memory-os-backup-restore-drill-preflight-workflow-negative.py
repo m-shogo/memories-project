@@ -187,11 +187,99 @@ def prove_guard_trigger_negatives(guard: str) -> None:
     print("PASS: preflight independent CI event-specific trigger reachability (6 removals; 8 additions; 1 shortened inventory negative)")
 
 
+
+def validate_yaml_authority(source: str, kind: str) -> None:
+    """Reject event/root/permission YAML shadows without relying on reviewed blob SHA."""
+    if kind == "publisher":
+        name = "name: Backup Restore Drill Preflight"
+        roots = [name, "on:", "permissions:", "concurrency:", "jobs:"]
+        events = ["  pull_request:", "  push:", "  workflow_dispatch:"]
+    elif kind == "independent":
+        name = "name: Backup Restore Drill Preflight Source Negative"
+        roots = [name, "on:", "permissions:", "jobs:"]
+        events = ["  pull_request:", "  push:"]
+    else:
+        raise SystemExit("preflight unknown YAML authority kind")
+    if (source.count("\non:\n") != 1 or source.count("\npermissions:\n") != 1
+            or source.split("\non:\n", 1)[0] != name + "\n"):
+        raise SystemExit("preflight " + kind + " exact event header drift")
+    event_section = source.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    actual_events = [
+        line for line in event_section.splitlines()
+        if line.startswith("  ") and not line.startswith("    ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if actual_events != events:
+        raise SystemExit("preflight " + kind + " exact event header drift")
+    actual_roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if actual_roots != roots:
+        raise SystemExit("preflight " + kind + " root YAML key shadow drift")
+    leaves = []
+    for line in source.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            leaves.append(line)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("preflight " + kind + " permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(main: str, guard: str) -> None:
+    """Require the exact failure diagnostic for 18 digest-independent YAML mutations."""
+    count = 0
+    for kind, source in (("publisher", main), ("independent", guard)):
+        validate_yaml_authority(source, kind)
+        extra_event = source.replace("on:\n", "on:\n  issues:\n", 1)
+        if extra_event == source:
+            raise SystemExit("preflight " + kind + " YAML event fixture anchor drift")
+        cases = [("extra event", extra_event, "exact event header drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, source + "\n" + suffix, "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: read\n"
+        if source.count(marker) != 1:
+            raise SystemExit("preflight " + kind + " YAML permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, source.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for label, mutated, diagnostic in cases:
+            if mutated == source:
+                raise SystemExit("preflight " + kind + " unchanged YAML fixture: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "preflight " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("preflight " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("preflight " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 18:
+        raise SystemExit("preflight YAML negative inventory drift")
+    print("PASS: preflight publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
+
+
 def validate(
     main: str, guard: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
 ) -> None:
     validate_guard_trigger_reachability(guard)
+    validate_yaml_authority(main, "publisher")
+    validate_yaml_authority(guard, "independent")
     for label, token, expected in MAIN_REQUIRED:
         if main.count(token) != expected:
             raise SystemExit("preflight publisher source drift: " + label)
@@ -478,6 +566,7 @@ def main() -> int:
     independent = checked_source(GUARD_PATH)
     validate(publisher, independent)
     prove_guard_trigger_negatives(independent)
+    prove_yaml_authority_negatives(publisher, independent)
     runtime_branch_proof(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_cas_proof(publisher)
