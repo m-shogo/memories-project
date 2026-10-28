@@ -83,6 +83,80 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
             raise SystemExit("generation evidence reconcile CI " + event + " exact trigger inventory drift")
 
 
+def validate_yaml_authority(source: str) -> None:
+    """Reject effective event/root/permission shadows without a whole-blob shortcut."""
+    paths = "".join('      - "' + path + '"\n' for path in TRIGGER_PATHS)
+    expected_header = (
+        "name: Backup Restore Generation Evidence Reconcile Negative\n\non:\n"
+        + "  pull_request:\n    branches:\n      - so\n    paths:\n" + paths
+        + "  push:\n    branches:\n      - so\n    paths:\n" + paths
+        + "  workflow_dispatch:\n"
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("generation evidence reconcile CI exact event header drift")
+    roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Backup Restore Generation Evidence Reconcile Negative",
+        "on:", "permissions:", "jobs:",
+    ]:
+        raise SystemExit("generation evidence reconcile CI root YAML key shadow drift")
+    permission_rows = []
+    for line in source.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("generation evidence reconcile CI permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    validate_yaml_authority(source)
+    extra_event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra_event == source:
+        raise SystemExit("generation evidence reconcile CI event mutation anchor drift")
+    cases = [("extra event", extra_event, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source + "\n" + suffix, "root YAML key shadow drift"))
+    anchor = "\npermissions:\n  contents: read\n"
+    if source.count(anchor) != 1:
+        raise SystemExit("generation evidence reconcile CI permission mutation anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(anchor, anchor + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("generation evidence reconcile CI YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("generation evidence reconcile CI unchanged YAML negative: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "generation evidence reconcile CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("generation evidence reconcile CI wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation evidence reconcile CI accepted YAML mutation: " + label)
+    print("PASS: generation evidence reconcile CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
+
 def prove_trigger_reachability_negatives(source: str) -> None:
     push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
     for event in ("pull_request", "push"):
@@ -130,6 +204,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
+    validate_yaml_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"generation evidence reconcile workflow source boundary drift: {label}")
@@ -242,6 +317,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
     prove_private_child_negative_removal_rejected()
     cases = (
