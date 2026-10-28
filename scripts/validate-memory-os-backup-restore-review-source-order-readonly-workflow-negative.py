@@ -69,11 +69,12 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
             raise SystemExit("review-source-order readonly trigger marker drift")
     push_block = source.split(push_marker, 1)[1].split(pr_marker, 1)[0]
     pr_block = source.split(pr_marker, 1)[1].split(dispatch_marker, 1)[0]
+    expected = ["      - '" + path + "'" for path in trigger_paths]
     for event, block in (("push", push_block), ("pull_request", pr_block)):
-        for path in trigger_paths:
-            token = "      - '" + path + "'\n"
-            if block.count(token) != 1:
-                raise SystemExit("review-source-order readonly " + event + " trigger drift: " + path)
+        actual = [line for line in block.splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")]
+        if actual != expected:
+            raise SystemExit("review-source-order readonly " + event + " exact trigger inventory drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -94,6 +95,23 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("review-source-order readonly trigger negative accepted: " + event + " " + path)
+    # Reject extra or duplicate event paths independently of the workflow blob.
+    for event, marker in (
+        ("push", "  push:\n    branches: [so]\n    paths:\n"),
+        ("pull_request", pr_marker),
+    ):
+        for label, injected in (
+            ("unreviewed path", "      - 'unreviewed/**'\n"),
+            ("duplicate path", "      - '" + TRIGGER_PATHS[0] + "'\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("review-source-order readonly addition fixture marker drift")
+            mutated = source.replace(marker, marker + injected, 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("review-source-order readonly extra trigger accepted: " + event + " " + label)
     try:
         validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
     except SystemExit:
