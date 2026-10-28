@@ -831,8 +831,33 @@ def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None
     return names if len(names) == len(set(names)) else None
 
 
+def exact_source_negative_diagnostic(expected: str, issues: list[str]) -> bool:
+    """Only a complete intended issue is proof; substrings are not evidence."""
+    return expected in issues
+
+
+def prove_source_negative_diagnostic_classifier(failures: list[str]) -> None:
+    expected = "intended source-negative guard"
+    cases = (
+        ("exact", [expected], True),
+        ("exact with unrelated", ["unrelated failure", expected], True),
+        ("empty", [], False),
+        ("unrelated", ["unrelated failure"], False),
+        ("prefix collision", [expected + " injected"], False),
+        ("suffix collision", ["unrelated " + expected], False),
+        ("nested collision", ["unrelated " + expected + " injected"], False),
+        ("multiple misleading", [expected + " injected", "unrelated failure"], False),
+    )
+    for name, issues, accepted in cases:
+        if exact_source_negative_diagnostic(expected, issues) is not accepted:
+            failures.append(f"source-negative exact diagnostic classifier misclassified: {name}")
+
+
 def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     """Positive control plus independent mutations; no digest-only success."""
+    prove_source_negative_diagnostic_classifier(failures)
+    if failures:
+        return
     relative = ".github/workflows/example-source-negative.yml"
     fixture = (
         "name: Example\n"
@@ -2021,7 +2046,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             diagnostic_bound += 1
             # A prefix, suffix or unrelated diagnostic containing the
             # expected words is not proof of the intended rejection.
-            if expected_issue not in issues:
+            if not exact_source_negative_diagnostic(expected_issue, issues):
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
