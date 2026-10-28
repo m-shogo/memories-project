@@ -70,6 +70,17 @@ def validate_trigger_reachability(
         ]
         if observed_roots != expected_roots:
             raise SystemExit("inventory PR " + label + " root YAML key shadow drift")
+        # Both reviewed workflows require read-only root permissions.
+        # YAML quoted/spaced leaf keys may shadow a visible contents: read.
+        permission_lines = value.split("\npermissions:\n", 1)[1].splitlines()
+        permission_rows = []
+        for row in permission_lines:
+            if row.strip() and not row[0].isspace():
+                break
+            if row.strip() and not row.lstrip().startswith("#"):
+                permission_rows.append(row)
+        if permission_rows != ["  contents: read"]:
+            raise SystemExit("inventory PR " + label + " permission leaf shadow drift")
 
 
 def trigger_negatives(pr: str, guard: str) -> None:
@@ -177,6 +188,39 @@ def trigger_negatives(pr: str, guard: str) -> None:
             root_negative_count += 1
     if root_negative_count != 8:
         raise SystemExit("inventory PR root shadow fixture count drift")
+    permission_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", pr, True),
+        ("independent", guard, False),
+    ):
+        anchor = "permissions:\n  contents: read\n"
+        if original.count(anchor) != 1:
+            raise SystemExit("inventory PR permission negative anchor drift: " + label)
+        for name, extra in (
+            ("spaced", "  contents : write\n"),
+            ("quoted", "  'contents': write\n"),
+        ):
+            mutated = original.replace(anchor, anchor + extra, 1)
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, guard)
+                else:
+                    validate_trigger_reachability(pr, mutated)
+            except SystemExit as exc:
+                expected = "inventory PR " + label + " permission leaf shadow drift"
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "inventory PR permission shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "inventory PR accepted permission leaf shadow: " + label + " " + name
+                )
+            permission_negative_count += 1
+    if permission_negative_count != 4:
+        raise SystemExit("inventory PR permission leaf fixture count drift")
+    print("PASS: inventory PR permission leaf shadows (4 exact-diagnostic negatives)")
     if (omitted, added) != (29, 12):
         raise SystemExit("inventory PR event trigger negative population drift")
     print("PASS: inventory PR exact event triggers (29 omissions; 12 additions; "
