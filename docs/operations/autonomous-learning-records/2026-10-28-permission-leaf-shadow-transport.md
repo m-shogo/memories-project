@@ -27,3 +27,19 @@ This is append-only supplemental execution history, not the canonical learning a
 - **Retry condition:** Do not repeat the same large-payload tree operation until transport/payload conditions demonstrably change. A small create-only record is a separate bounded path; no production or CI reachability claim follows from its creation.
 
 **Next safe target:** Audit incident-control authority and operability inventory PR independent validators for read-only permission-leaf shadows. The existing supplemental-history CI trigger limitation remains unresolved.
+
+## Incident-control authority read-only permission-leaf shadow guard
+
+### Material failure: symptom, evidence, verified root cause, failed approach, correction, recurrence guard, retry condition
+
+- **Symptom/evidence:** The publisher and independent incident-control authority source-negative semantic checks accepted a later `contents : write` or quoted `'contents': write` under a visible `permissions: contents: read`. This was a static semantic guard gap, not a production incident; reviewed complete-source Git blob pins still independently rejected unreviewed actual workflow changes.
+- **Verified root cause / failed approach:** Checking the event prefix, root-key inventory or the mere presence of `contents: read` does not prove effective YAML leaf-key uniqueness.
+- **Correction / executable recurrence guard:** [343fe886](https://github.com/m-shogo/memories-project/commit/343fe886e67ea77df1b76135b4ed1e1f8157b644) binds the exact workflow-level `contents: read` leaf in both publisher and independent CI. Four exact-diagnostic negative fixtures reject quoted/spaced permission shadows. Bounded prewrite proof passed two positive and four negative cases.
+- **Retry condition:** Revalidate only after independently reviewed permission topology changes. Do not retry unchanged canonical learning transfer, supplemental-history CI trigger permission, Quay MinIO HTTP 401 or human approval blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **Outcome/evidence:** Exact-source [Incident Control Authority Source Negative #40706133713](https://github.com/m-shogo/memories-project/actions/runs/40706133713) completed **SUCCESS** on `343fe886`. Logs prove four exact-diagnostic permission-leaf negatives, 26 path omissions, 16 additions, two shortened inventories, three topology negatives, eight root shadows, 13 source mutations and 14 event/ref/SHA shell runtime cases.
+- **Why safe / reusable mechanism:** Only the existing CI-reachable read-only validator changed. Both reviewed workflows remain unchanged and read-only at root; no credential, evidence, traffic, readiness or promotion authority was written.
+- **Protected-authority check:** All eleven protected production/OPS-P0-007/registry/learning-contract/canonical-learning Git blob SHAs remained unchanged. `productionDecision=NO_GO`, OPS-P0-007=`PREREQUISITES_BLOCKED`; no registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records or final candidates. Human promotion is separate/non-automatic. This record is not canonical learning, production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+- **Next safe target:** Audit operability inventory PR publisher and independent CI read-only permission-leaf shadows.
