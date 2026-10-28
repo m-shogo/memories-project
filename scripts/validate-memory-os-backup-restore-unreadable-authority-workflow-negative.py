@@ -84,13 +84,15 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
-            raise SystemExit("unreadable-authority CI " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            if block.count('      - "' + item + '"' + chr(10)) != 1:
-                raise SystemExit("unreadable-authority CI " + event + " trigger path drift: " + item)
+        # Check every non-comment YAML line, not only already-quoted paths.
+        # This rejects unquoted additions without falling back to blob SHA.
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        expected = tuple('      - "' + item + '"' for item in trigger_paths)
+        if actual != expected:
+            raise SystemExit("unreadable-authority CI " + event + " exact trigger inventory drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -116,7 +118,27 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         pass
     else:
         raise SystemExit("unreadable-authority CI shortened trigger inventory accepted")
-    print("PASS: unreadable-authority CI event-specific trigger reachability (70 removals; 1 shortened inventory negative)")
+    for event, marker in (
+        ("pull_request", "  pull_request:\n    branches: [so]\n    paths:\n"),
+        ("push", push_marker),
+    ):
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + TRIGGER_PATHS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + TRIGGER_PATHS[0] + "\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("unreadable-authority CI addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            if mutated == source:
+                raise SystemExit("unreadable-authority CI addition fixture unchanged: " + label)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("unreadable-authority CI accepted " + event + " addition: " + label)
+    print("PASS: unreadable-authority CI event-specific trigger reachability (70 removals; 8 additions; 1 shortened inventory negative)")
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
