@@ -1,0 +1,19 @@
+# Supplemental OPS learning — recovery objective admission job authority (2026-10-29)
+
+Append-only supplemental learning only. Not canonical learning, human-approved recovery objective, production evidence, backup/restore, RPO/RTO/skew, executable reviewed drill, typed eight-domain non-resurrection coverage, credentials, traffic, readiness or promotion.
+
+## Material gap / executable recurrence prevention
+
+- **Symptom:** Recovery-objective admission publisher and independent source CI pinned reviewed event/root/root-permission YAML, trigger inventory and Git blobs, but did not independently prove nested job identity, event-scoped conditions or PR/publisher write-permission separation. This was a static guard gap, not an observed objective approval bypass.
+- **Observed evidence:** Reviewed publisher blob `dadbedca0f7464489638781118b993e571b50648` contains `validate-pr` with `contents: read` and `validate-and-publish` with `contents: write`; independent blob `16c74a57a5e8b0f983a95e36aa3055c0ab96adae` contains one `source-admission` read-only job. All have explicit event-scoped `if`, `runs-on`, `timeout-minutes`, `steps`. Previous YAML negatives numbered eighteen across both workflows.
+- **Verified root cause / failed approach:** Root `contents: read`, a visible publisher `contents: write` token and complete source identity do not independently prove that write permission is confined to push/dispatch, PR/independent jobs cannot escalate, or job IDs and conditions are unique.
+- **Correction / executable guard:** [b74b7df2](https://github.com/m-shogo/memories-project/commit/b74b7df27ca6c1cb4b347fb239a66d9bdc1feab6) pins job mappings, event conditions, exact job keys and scoped permission leaves for both workflows. Thirty new exact-diagnostic synthetic negatives cover duplicate/spaced/quoted job IDs, plain/spaced/quoted late permission shadows, direct permission changes, spaced/quoted leaves and `if: true` event bypasses. Total YAML negatives increased from eighteen to forty-eight.
+- **Retry condition:** Reassess only after independently reviewed job/permission/event topology changes or a demonstrated bypass. Do not retry unchanged canonical learning transfer, supplemental workflow-write permission, MinIO 401 or human approval blockers.
+
+## Material success / protected authority
+
+- **Outcome/evidence:** [Recovery Objectives Admission Source Negative #40771893783](https://github.com/m-shogo/memories-project/actions/runs/40771893783) and [Recovery Objectives Admission #40771893637](https://github.com/m-shogo/memories-project/actions/runs/40771893637) both completed SUCCESS on exact source `b74b7df27ca6c1cb4b347fb239a66d9bdc1feab6`. Source CI log confirms forty-eight YAML exact-diagnostic negatives and existing publisher/independent source admission negatives. Compare `0de76c86` → `b74b7df2` changed only the CI-reachable Python validator (+85/-2).
+- **Why safe:** No reviewed workflow, objective approval registry, production status, generation, recovery evidence, drill request, typed non-resurrection record, credential, traffic or human promotion authority changed. All mutation fixtures are synthetic.
+- **Reusable mechanism:** Bind explicit publisher write permission to a guarded push/dispatch job and enforce read-only PR/independent jobs with per-job event, key and permission checks independent of root YAML and whole-source SHA.
+- **Protected-authority check:** Learning contract Git blob remains `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`; production status remains `NO_GO`, generation/evidence registries remain empty, and no approved current recovery objective, executable reviewed drill, complete typed eight-domain record, final candidate or human promotion was created. Learning cannot satisfy any production or recovery gate.
+- **Next safe target:** Audit generation binding publisher/independent job-level permission and event authority while retaining strict OPS-P0-007 eligibility semantics.
