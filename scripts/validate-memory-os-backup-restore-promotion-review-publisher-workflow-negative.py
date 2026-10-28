@@ -213,12 +213,98 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
     print("PASS: human promotion publisher/independent CI event-specific triggers (82 removals; 16 additions; 2 shortened inventory negatives)")
 
 
+
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Pin human promotion publisher/independent YAML event/root/permission authority."""
+    if kind == "publisher":
+        name = "name: Backup Restore Promotion Review"
+        paths = PUBLISHER_TRIGGER_PATHS
+        roots = [name, "on:", "permissions:", "concurrency:", "jobs:"]
+        dispatch = "  workflow_dispatch:\n"
+    elif kind == "independent":
+        name = "name: Backup Restore Promotion Review Source Negative"
+        paths = INDEPENDENT_TRIGGER_PATHS
+        roots = [name, "on:", "permissions:", "jobs:"]
+        dispatch = ""
+    else:
+        raise SystemExit("human promotion unknown YAML authority kind")
+    lines = "".join('      - "' + item + '"\n' for item in paths)
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    header = name + "\n\non:\n" + pr + lines + push + lines + dispatch
+    if (content.count("\npermissions:\n") != 1
+            or content.split("\npermissions:\n", 1)[0] != header):
+        raise SystemExit("human promotion " + kind + " exact event header drift")
+    actual_roots = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if actual_roots != roots:
+        raise SystemExit("human promotion " + kind + " root YAML key shadow drift")
+    leaves = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            leaves.append(line)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("human promotion " + kind + " permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    """Reject 18 YAML shadows with exact diagnostics independent of blob identity."""
+    count = 0
+    for kind, content in (("publisher", publisher), ("independent", independent)):
+        validate_yaml_authority(content, kind)
+        event = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if event == content:
+            raise SystemExit("human promotion " + kind + " YAML event fixture anchor drift")
+        cases = [("extra event", event, "exact event header drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content + "\n" + suffix, "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: read\n"
+        if content.count(marker) != 1:
+            raise SystemExit("human promotion " + kind + " YAML permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((label, content.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("human promotion " + kind + " unchanged YAML fixture: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "human promotion " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("human promotion " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("human promotion " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 18:
+        raise SystemExit("human promotion YAML negative inventory drift")
+    print("PASS: human promotion publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
+
+
 def validate(
     publisher: str, independent: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
 ) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
+    validate_yaml_authority(publisher, "publisher")
+    validate_yaml_authority(independent, "independent")
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -436,6 +522,7 @@ def main() -> int:
     independent = source(INDEPENDENT)
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
