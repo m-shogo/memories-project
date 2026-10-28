@@ -290,10 +290,35 @@ def validate_yaml_authority(source: str, kind: str) -> None:
             leaves.append(line)
     if leaves != ["  contents: read"]:
         raise SystemExit("typed non-resurrection " + kind + " permission leaf shadow drift")
+    jobs = (
+        (("  validate-pr:", "read"), ("  validate:", "write"))
+        if kind == "publisher" else (("  source-admission:", "read"),)
+    )
+    body = source.split("\njobs:\n", 1)[1]
+    headers = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if headers != [job for job, _ in jobs]:
+        raise SystemExit("typed non-resurrection " + kind + " job mapping shadow drift")
+    for index, (job, access) in enumerate(jobs):
+        block = body.split(job + "\n", 1)[1]
+        if index + 1 < len(jobs):
+            block = block.split(jobs[index + 1][0] + "\n", 1)[0]
+        if block.count("    permissions:\n") != 1 or block.count("    runs-on:") != 1:
+            raise SystemExit("typed non-resurrection " + kind + " job permission leaf shadow drift")
+        section = block.split("    permissions:\n", 1)[1].split("    runs-on:", 1)[0]
+        job_leaves = [
+            line for line in section.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        if job_leaves != ["      contents: " + access]:
+            raise SystemExit("typed non-resurrection " + kind + " job permission leaf shadow drift")
 
 
 def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
-    """Prove 18 exact-diagnostic YAML shadow rejections without blob fallback."""
+    """Prove 30 exact-diagnostic YAML shadow rejections without blob fallback."""
     count = 0
     for kind, source in (("publisher", publisher), ("independent", independent)):
         validate_yaml_authority(source, kind)
@@ -319,6 +344,23 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
         ):
             cases.append((label, source.replace(marker, marker + leaf, 1),
                           "permission leaf shadow drift"))
+        jobs = (
+            (("validate-pr", "read"), ("validate", "write"))
+            if kind == "publisher" else (("source-admission", "read"),)
+        )
+        for job, access in jobs:
+            for label, key in (("spaced job", job + " "), ("quoted job", "'" + job + "'")):
+                cases.append((label + " " + job,
+                              source.rstrip("\n") + "\n  " + key + ": {}\n",
+                              "job mapping shadow drift"))
+            marker = "    permissions:\n      contents: " + access + "\n"
+            if source.count(marker) != 1:
+                raise SystemExit("typed non-resurrection " + kind + " job permission fixture anchor drift: " + job)
+            for label, leaf in (("spaced", "      contents : write\n"),
+                                ("quoted", "      'contents': write\n")):
+                cases.append((label + " " + job,
+                              source.replace(marker, marker + leaf, 1),
+                              "job permission leaf shadow drift"))
         for label, mutated, diagnostic in cases:
             if mutated == source:
                 raise SystemExit("typed non-resurrection " + kind + " unchanged YAML fixture: " + label)
@@ -332,9 +374,9 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
             else:
                 raise SystemExit("typed non-resurrection " + kind + " accepted YAML mutation: " + label)
             count += 1
-    if count != 18:
+    if count != 30:
         raise SystemExit("typed non-resurrection YAML negative inventory drift")
-    print("PASS: typed non-resurrection publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
+    print("PASS: typed non-resurrection publisher/independent YAML event/root/job/permission authority (30 exact-diagnostic negatives)")
 
 
 def validate(publisher: str, independent: str, *, check_blob: bool = True) -> None:
