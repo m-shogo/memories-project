@@ -312,6 +312,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             if child.strip() and not child.startswith("          "):
                 break
             block.append(child)
+        last_python = -1
         for offset, command in enumerate(block):
             stripped = command.strip()
             if not stripped.startswith(("python ", "python3 ")):
@@ -332,6 +333,15 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                    for previous in block[:offset]):
                 issues.append("Python validator inside disabled shell branch")
             commands.append(match.group(1))
+            last_python = offset
+        if last_python >= 0:
+            after = block[last_python + 1:]
+            if not any(re.fullmatch(r" {10,}git diff --exit-code\s*", row)
+                       for row in after):
+                issues.append("missing post-validator tracked-source clean check")
+            if not any(re.match(r" {10,}(?:test -z|\[\[).*git status --porcelain", row)
+                       for row in after):
+                issues.append("missing post-validator untracked-source clean check")
     if not commands:
         issues.append("no directly executed Python validator")
     if len(commands) != len(set(commands)):
@@ -379,6 +389,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "        run: |\n"
         "          set -euo pipefail\n"
         "          python scripts/check.py\n"
+        "          git diff --exit-code\n"
+        '          test -z "$(git status --porcelain)"\n'
     )
     exists = lambda script: script == "scripts/check.py"
     if source_negative_reachability_issues(relative, fixture, exists):
@@ -392,6 +404,18 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "missing post-validator tracked check": fixture.replace(
+            "          git diff --exit-code\n", ""),
+        "missing post-validator untracked check": fixture.replace(
+            '          git diff --exit-code\n          test -z "$(git status --porcelain)"\n',
+            "          git diff --exit-code\n"),
+        "commented post-validator tracked check": fixture.replace(
+            "          git diff --exit-code\n", "          # git diff --exit-code\n"),
+        "post-validator checks moved before execution": fixture.replace(
+            '          python scripts/check.py\n          git diff --exit-code\n'
+            '          test -z "$(git status --porcelain)"\n',
+            '          git diff --exit-code\n          test -z "$(git status --porcelain)"\n'
+            '          python scripts/check.py\n'),
         "disabled validator step": fixture.replace(
             "      - name: Execute negative validator\n",
             "      - name: Execute negative validator\n        if: false\n"),
@@ -486,7 +510,7 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 21 negative fixtures")
+              f"{invocation_count} direct Python commands, 25 negative fixtures")
 
 
 def main() -> int:
