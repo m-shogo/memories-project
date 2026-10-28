@@ -498,6 +498,37 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                 [row for row in source_lines[run_positions[2] + 1:] if row.strip()]
                 != expected_local_shell):
             issues.append("unreviewed local migration disposable clone source or shell")
+    # Every reviewed second run step is a closed sequence of direct Python
+    # validators followed by read-only clean-source checks. A new command
+    # before, between or after those checks must not execute unnoticed.
+    # The example fixture also exercises a deliberately nested positive shell;
+    # use a separate real-path positive fixture below for this strict rule.
+    if len(run_positions) >= 2 and relative != ".github/workflows/example-source-negative.yml":
+        step_end = next(
+            (i for i in range(run_positions[1] + 1, len(source_lines))
+             if source_lines[i].startswith("      - ")),
+            len(source_lines),
+        )
+        second_shell = [
+            row for row in source_lines[run_positions[1] + 1:step_end]
+            if row.strip() and not row.lstrip().startswith("#")
+        ]
+        second_python = [
+            row for row in second_shell
+            if re.fullmatch(
+                r" {10,}python(?:3)?(?: -B)? scripts/[A-Za-z0-9_./-]+\.py\s*",
+                row,
+            )
+        ]
+        reviewed_shell = ["          set -euo pipefail", *second_python]
+        if "          git diff --check" in second_shell:
+            reviewed_shell.append("          git diff --check")
+        reviewed_shell.extend([
+            "          git diff --exit-code",
+            '          test -z "$(git status --porcelain)"',
+        ])
+        if second_shell != reviewed_shell:
+            issues.append("unreviewed second-step shell command or execution order")
     if len(head_positions) != 1:
         issues.append("missing, shadowed or duplicated exact-source HEAD comparison")
     else:
@@ -750,7 +781,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 176
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 183
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -917,6 +948,11 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     if source_negative_reachability_issues(local_relative, local_fixture, exists):
         failures.append("source-negative local recovery clone positive control failed")
         return
+    strict_relative = ".github/workflows/backup-restore-drill-preflight-source-negative.yml"
+    strict_fixture = fixture.replace(relative, strict_relative)
+    if source_negative_reachability_issues(strict_relative, strict_fixture, exists):
+        failures.append("source-negative closed second-step shell positive control failed")
+        return
     nested = fixture.replace(
         "          python scripts/check.py",
         "          (\n            python scripts/check.py\n          )",
@@ -1008,6 +1044,31 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             '          test -z "$(git -C "$temp/repo" status --porcelain)"\n'
             '          test -z "$(git status --porcelain)"\n',
             '          test -z "$(git -C "$temp/repo" status --porcelain)"\n'),
+        "strict-shell post-clean arbitrary command": strict_fixture + (
+            "          echo unreviewed-after-clean\n"),
+        "strict-shell pre-validator arbitrary command": strict_fixture.replace(
+            "          python scripts/check.py\n",
+            "          echo unreviewed-before-validator\n"
+            "          python scripts/check.py\n"),
+        "strict-shell post-validator arbitrary command": strict_fixture.replace(
+            "          python scripts/check.py\n"
+            "          git diff --exit-code\n",
+            "          python scripts/check.py\n"
+            "          touch /tmp/unreviewed\n"
+            "          git diff --exit-code\n"),
+        "strict-shell duplicate tracked clean check": strict_fixture.replace(
+            "          git diff --exit-code\n",
+            "          git diff --exit-code\n"
+            "          git diff --exit-code\n"),
+        "strict-shell reversed clean checks": strict_fixture.replace(
+            '          git diff --exit-code\n'
+            '          test -z "$(git status --porcelain)"\n',
+            '          test -z "$(git status --porcelain)"\n'
+            '          git diff --exit-code\n'),
+        "strict-shell function after clean check": strict_fixture + (
+            "          bypass() { echo unreviewed; }\n"),
+        "strict-shell unreviewed check after clean": strict_fixture + (
+            "          git diff --check\n"),
         "validator precedes source verification": reversed_fixture,
         "setup-go validator precedes source verification": reversed_go_fixture,
         "extra shell run step after validator": fixture + (
@@ -1558,6 +1619,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             case_relative, baseline = migration_relative, migration_fixture
         elif name.startswith("local-clone "):
             case_relative, baseline = local_relative, local_fixture
+        elif name.startswith("strict-shell "):
+            case_relative, baseline = strict_relative, strict_fixture
         else:
             case_relative, baseline = relative, fixture
         if mutation == baseline or not source_negative_reachability_issues(
