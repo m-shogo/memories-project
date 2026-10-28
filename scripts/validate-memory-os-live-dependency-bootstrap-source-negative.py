@@ -103,6 +103,28 @@ def bootstrap_validate_independent_trigger(
                 + bootstrap_trigger_event("push", push_paths))
     if bootstrap_trigger_header(content) != expected:
         raise AssertionError("live dependency independent CI exact event inventory drift")
+    # A later valid YAML root mapping can override the reviewed event,
+    # permissions or job authority without changing the event header.
+    observed_roots = [
+        row for row in content.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if observed_roots != [
+        "name: Live Dependency Bootstrap Fail Closed Source Negative",
+        "on:", "permissions:", "jobs:",
+    ]:
+        raise AssertionError("live dependency independent CI root YAML key shadow drift")
+    # Read-only contents must be the sole effective workflow permission leaf.
+    permission_lines = content.split("\npermissions:\n", 1)[1].splitlines()
+    permission_rows = []
+    for row in permission_lines:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            permission_rows.append(row)
+    if permission_rows != ["  contents: read"]:
+        raise AssertionError("live dependency independent CI permission leaf shadow drift")
 
 
 def bootstrap_replace_trigger(content, original, replacement):
@@ -167,6 +189,46 @@ def bootstrap_trigger_negatives(content):
     )
     for changed in topology:
         reject(changed)
+    # Keep the reviewed event header byte-identical; prove each effective
+    # YAML shadow fails for the intended semantic reason.
+    for name, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    ):
+        try:
+            bootstrap_validate_independent_trigger(content + suffix)
+        except AssertionError as exc:
+            expected = "live dependency independent CI root YAML key shadow drift"
+            if str(exc) != expected:
+                raise AssertionError(
+                    "live dependency root shadow rejected for wrong reason: "
+                    + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise AssertionError("live dependency accepted root shadow: " + name)
+    anchor = "permissions:\n  contents: read\n"
+    if content.count(anchor) != 1:
+        raise AssertionError("live dependency permission negative anchor drift")
+    for name, extra in (
+        ("spaced", "  contents : write\n"),
+        ("quoted", "  'contents': write\n"),
+    ):
+        mutated = content.replace(anchor, anchor + extra, 1)
+        try:
+            bootstrap_validate_independent_trigger(mutated)
+        except AssertionError as exc:
+            expected = "live dependency independent CI permission leaf shadow drift"
+            if str(exc) != expected:
+                raise AssertionError(
+                    "live dependency permission shadow rejected for wrong reason: "
+                    + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise AssertionError("live dependency accepted permission leaf shadow: " + name)
+    print("PASS: live dependency independent CI YAML shadows "
+          "(4 root and 2 permission exact-diagnostic negatives)")
     print("PASS: live dependency independent CI exact event triggers: "
           + str(omissions) + " omissions, " + str(additions)
           + " additions/duplicates, " + str(shortened)
