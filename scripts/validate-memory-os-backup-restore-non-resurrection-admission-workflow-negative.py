@@ -18,6 +18,71 @@ INDEPENDENT = ".github/workflows/backup-restore-non-resurrection-admission-sourc
 SELF = "scripts/validate-memory-os-backup-restore-non-resurrection-admission-workflow-negative.py"
 REVIEWED_PUBLISHER = "22d2e65556f21f01f6ce3bffbd5e1f874a0f2c88"
 REVIEWED_INDEPENDENT = "0a4853c3adf951c4873f5f6fc1ec16d9f1854ce4"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-non-resurrection-admission.yml",
+    "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/recovery-objectives-admission-contract.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/local-apple-replay-restore-contract.v1.json",
+    "contracts/operations/local-coherent-recovery-set-contract.v1.json",
+    "contracts/operations/backup-local-foundation-evidence.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json",
+    "docs/evidence/backup-restore/**",
+    "docs/evidence/recovery-objectives/approvals/**",
+    "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**",
+    "docs/fixtures/memory-os-operability/recovery-objectives-approval/**",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/memory_os_environment_generation_eligibility.py",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+    "scripts/register-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives-negative.py",
+    "scripts/request-memory-os-backup-restore-drill.py",
+    "scripts/validate-memory-os-backup-restore-drill-request.py",
+    "scripts/validate-memory-os-backup-restore-drill-request-negative.py",
+    "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py",
+    "scripts/reconcile-memory-os-backup-non-resurrection-authority.py",
+    "scripts/register-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py",
+    "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py",
+    "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-binding.py",
+    "scripts/validate-memory-os-backup-restore-generation-binding-negative.py",
+    "scripts/validate-memory-os-local-apple-replay-restore.py",
+    "scripts/validate-memory-os-local-coherent-recovery-set.py",
+    "scripts/validate-memory-os-operability.py",
+    ".github/workflows/backup-restore-non-resurrection-admission-source-negative.yml",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-admission-workflow-negative.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-non-resurrection-admission.yml",
+    ".github/workflows/backup-restore-non-resurrection-admission-source-negative.yml",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-admission-workflow-negative.py",
+)
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
 PUSH_REF = 'test "' + D + '{GITHUB_REF:-}" = "refs/heads/so"'
@@ -90,7 +155,79 @@ def source(relative: str) -> str:
         raise SystemExit("typed non-resurrection CI source missing or substituted: " + relative) from exc
 
 
+
+def validate_trigger_reachability(
+    source: str, trigger_paths: tuple[str, ...], *, expected: int,
+    end_marker: str, label: str
+) -> None:
+    """Require every reviewed path in each event, independent of Git blob SHA."""
+    if len(trigger_paths) != expected or len(set(trigger_paths)) != expected:
+        raise SystemExit("typed non-resurrection " + label + " CI trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for marker in (pr_marker, push_marker, end_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("typed non-resurrection " + label + " CI trigger marker drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        if len(actual) != expected or set(actual) != set(trigger_paths):
+            raise SystemExit("typed non-resurrection " + label + " " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            if block.count('      - "' + item + '"' + chr(10)) != 1:
+                raise SystemExit("typed non-resurrection " + label + " " + event + " trigger drift: " + item)
+
+
+def validate_all_trigger_reachability(publisher: str, independent: str) -> None:
+    validate_trigger_reachability(
+        publisher, PUBLISHER_TRIGGER_PATHS, expected=57,
+        end_marker="  workflow_dispatch:\n", label="publisher"
+    )
+    validate_trigger_reachability(
+        independent, INDEPENDENT_TRIGGER_PATHS, expected=3,
+        end_marker="\npermissions:\n", label="independent"
+    )
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for label, source, paths, expected, end_marker in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS, 57, "  workflow_dispatch:\n"),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS, 3, "\npermissions:\n"),
+    ):
+        for event in ("pull_request", "push"):
+            for item in paths:
+                token = '      - "' + item + '"' + chr(10)
+                if source.count(token) != 2:
+                    raise SystemExit("typed non-resurrection " + label + " trigger mutation anchor drift: " + item)
+                if event == "pull_request":
+                    mutated = source.replace(token, "", 1)
+                else:
+                    prefix, suffix = source.split(push_marker, 1)
+                    mutated = prefix + push_marker + suffix.replace(token, "", 1)
+                try:
+                    validate_trigger_reachability(
+                        mutated, paths, expected=expected, end_marker=end_marker, label=label
+                    )
+                except SystemExit:
+                    continue
+                raise SystemExit("typed non-resurrection " + label + " accepted missing " + event + " trigger: " + item)
+        try:
+            validate_trigger_reachability(
+                source, paths[:-1], expected=expected, end_marker=end_marker, label=label
+            )
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("typed non-resurrection " + label + " shortened trigger inventory accepted")
+    print("PASS: typed non-resurrection admission CI event-specific triggers (120 removals; 2 shortened inventory negatives)")
+
+
+
 def validate(publisher: str, independent: str, *, check_blob: bool = True) -> None:
+    validate_all_trigger_reachability(publisher, independent)
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -314,6 +451,7 @@ def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
