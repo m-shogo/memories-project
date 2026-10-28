@@ -16,6 +16,31 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/recovery-objectives-admission.yml"
 INDEPENDENT = ".github/workflows/recovery-objectives-admission-source-negative.yml"
 SELF = "scripts/validate-memory-os-recovery-objectives-admission-workflow-negative.py"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/recovery-objectives-admission.yml",
+    "contracts/operations/recovery-objectives-admission-contract.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/evidence/recovery-objectives/approvals/**",
+    "docs/fixtures/memory-os-operability/recovery-objectives-approval/**",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/register-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives-negative.py",
+    "scripts/validate-memory-os-recovery-objectives-digest-negative.py",
+    "scripts/validate-memory-os-recovery-objectives-append-rollback-negative.py",
+    "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py",
+    "scripts/reconcile-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-operability.py",
+    ".github/workflows/recovery-objectives-admission-source-negative.yml",
+    "scripts/validate-memory-os-recovery-objectives-admission-workflow-negative.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/recovery-objectives-admission.yml",
+    ".github/workflows/recovery-objectives-admission-source-negative.yml",
+    "scripts/validate-memory-os-recovery-objectives-admission-workflow-negative.py",
+)
 REVIEWED_PUBLISHER = "dadbedca0f7464489638781118b993e571b50648"
 REVIEWED_INDEPENDENT = "16c74a57a5e8b0f983a95e36aa3055c0ab96adae"
 D = chr(36)
@@ -83,10 +108,95 @@ def source(relative: str) -> str:
         raise SystemExit("recovery objective CI source missing or substituted: " + relative) from exc
 
 
+
+def validate_trigger_reachability(
+    content: str, kind: str, *, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Require exact ordered PR/push trigger paths independently of workflow digest."""
+    if kind == "publisher":
+        canonical = PUBLISHER_TRIGGER_PATHS
+        end_marker = "  workflow_dispatch:\n"
+    elif kind == "independent":
+        canonical = INDEPENDENT_TRIGGER_PATHS
+        end_marker = "\npermissions:\n"
+    else:
+        raise SystemExit("recovery objective unrecognized CI trigger kind")
+    if trigger_paths is None:
+        trigger_paths = canonical
+    if len(trigger_paths) != len(canonical) or len(set(trigger_paths)) != len(canonical):
+        raise SystemExit("recovery objective " + kind + " CI trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for marker in (pr_marker, push_marker, end_marker):
+        if content.count(marker) != 1:
+            raise SystemExit("recovery objective " + kind + " CI event marker drift")
+    pr = content.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = content.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    approved = tuple('      - "' + path + '"' for path in trigger_paths)
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != approved:
+            raise SystemExit("recovery objective " + kind + " " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    for kind, content, paths in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS),
+    ):
+        validate_trigger_reachability(content, kind)
+        for event in ("pull_request", "push"):
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if content.count(token) != 2:
+                    raise SystemExit("recovery objective " + kind + " mutation anchor drift: " + path)
+                if event == "pull_request":
+                    mutated = content.replace(token, "", 1)
+                else:
+                    prefix, suffix = content.split(push_marker, 1)
+                    mutated = prefix + push_marker + suffix.replace(token, "", 1)
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("recovery objective " + kind + " accepted missing " + event + " trigger: " + path)
+            marker = pr_marker if event == "pull_request" else push_marker
+            for label, injected in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                if content.count(marker) != 1:
+                    raise SystemExit("recovery objective " + kind + " addition marker drift: " + event)
+                mutated = content.replace(marker, marker + injected, 1)
+                if mutated == content:
+                    raise SystemExit("recovery objective " + kind + " addition fixture unchanged")
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("recovery objective " + kind + " accepted " + event + " addition: " + label)
+        try:
+            validate_trigger_reachability(content, kind, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("recovery objective " + kind + " shortened trigger inventory accepted")
+    print("PASS: recovery objective publisher/independent CI event-specific triggers (40 removals; 16 additions; 2 shortened inventory negatives)")
+
+
 def validate(
     publisher: str, independent: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
 ) -> None:
+    validate_trigger_reachability(publisher, "publisher")
+    validate_trigger_reachability(independent, "independent")
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -357,6 +467,7 @@ def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
