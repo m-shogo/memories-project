@@ -50,6 +50,191 @@ PR_REQUIRED = (
     'test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"',
 )
 
+METRICS_WRITER_PUSH = (
+    ".github/workflows/reconcile-metrics-scrape-status.yml",
+    ".github/workflows/reconcile-metrics-scrape-status-pr.yml",
+    "contracts/operations/metrics-scrape-contract.v1.json",
+    "contracts/operations/metrics-dashboard-contract.v1.json",
+    "contracts/operations/metrics-retention-error-budget-contract.v1.json",
+    "contracts/operations/metrics-alerting-contract.v1.json",
+    "infra/observability/prometheus/memory-os-alerts.yml",
+    "docs/runbooks/memory-os-metrics-alerts.md",
+    "services/import-api/internal/metrics/prometheus.go",
+    "services/import-api/internal/metrics/scrape.go",
+    "services/import-api/internal/metrics/prometheus_test.go",
+    "services/import-api/internal/httpserver/server.go",
+    "services/import-api/internal/httpserver/observability.go",
+    "services/import-api/internal/httpserver/metrics_scrape_test.go",
+    "scripts/validate-memory-os-metrics.py",
+    "scripts/validate-memory-os-metrics-scrape.py",
+    "scripts/validate-memory-os-metrics-operations.py",
+    "scripts/validate-memory-os-metrics-alerting.py",
+    "scripts/validate-memory-os-metrics-reconcile-rollback-negative.py",
+    "scripts/reconcile-memory-os-metrics-contract.py",
+    "scripts/reconcile-memory-os-metrics-scrape-status.py",
+    "scripts/reconcile-memory-os-metrics-operations.py",
+    "scripts/reconcile-memory-os-metrics-alerting.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/validate-memory-os-entry-docs.py",
+    "contracts/operations/metrics-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+)
+
+METRICS_PR_PATHS = (
+    ".github/workflows/reconcile-metrics-scrape-status.yml",
+    ".github/workflows/reconcile-metrics-scrape-status-pr.yml",
+    "contracts/operations/metrics-scrape-contract.v1.json",
+    "contracts/operations/metrics-dashboard-contract.v1.json",
+    "contracts/operations/metrics-retention-error-budget-contract.v1.json",
+    "contracts/operations/metrics-alerting-contract.v1.json",
+    "infra/observability/prometheus/memory-os-alerts.yml",
+    "docs/runbooks/memory-os-metrics-alerts.md",
+    "services/import-api/internal/metrics/prometheus.go",
+    "services/import-api/internal/metrics/scrape.go",
+    "services/import-api/internal/metrics/prometheus_test.go",
+    "services/import-api/internal/httpserver/server.go",
+    "services/import-api/internal/httpserver/observability.go",
+    "services/import-api/internal/httpserver/metrics_scrape_test.go",
+    "scripts/validate-memory-os-metrics.py",
+    "scripts/validate-memory-os-metrics-scrape.py",
+    "scripts/validate-memory-os-metrics-operations.py",
+    "scripts/validate-memory-os-metrics-alerting.py",
+    "scripts/validate-memory-os-metrics-reconcile-rollback-negative.py",
+    "scripts/reconcile-memory-os-metrics-contract.py",
+    "scripts/reconcile-memory-os-metrics-scrape-status.py",
+    "scripts/reconcile-memory-os-metrics-operations.py",
+    "scripts/reconcile-memory-os-metrics-alerting.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/validate-memory-os-entry-docs.py",
+    "contracts/operations/metrics-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+)
+
+METRICS_INDEPENDENT_PR = (
+    ".github/workflows/reconcile-metrics-scrape-status.yml",
+    ".github/workflows/reconcile-metrics-scrape-status-pr.yml",
+    ".github/workflows/metrics-authority-source-negative.yml",
+    "scripts/validate-memory-os-metrics-authority-source-negative.py",
+)
+
+METRICS_INDEPENDENT_PUSH = (
+    ".github/workflows/reconcile-metrics-scrape-status.yml",
+    ".github/workflows/reconcile-metrics-scrape-status-pr.yml",
+    ".github/workflows/metrics-authority-source-negative.yml",
+    "scripts/validate-memory-os-metrics-authority-source-negative.py",
+)
+
+
+def metrics_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def metrics_trigger_header(content: str) -> str:
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise AssertionError("metrics event trigger header ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def metrics_trigger_matrix(
+    writer: str, pr: str, independent: str,
+    writer_push: tuple[str, ...] = METRICS_WRITER_PUSH,
+    pr_paths: tuple[str, ...] = METRICS_PR_PATHS,
+    independent_pr: tuple[str, ...] = METRICS_INDEPENDENT_PR,
+    independent_push: tuple[str, ...] = METRICS_INDEPENDENT_PUSH,
+) -> None:
+    expected_writer = (metrics_trigger_event("push", writer_push)
+                       + '  schedule:\n    - cron: "23 18 * * *"\n'
+                       + "  workflow_dispatch:\n")
+    expected_pr = metrics_trigger_event("pull_request", pr_paths)
+    expected_independent = (metrics_trigger_event("pull_request", independent_pr)
+                            + metrics_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("writer", writer, expected_writer),
+        ("PR", pr, expected_pr),
+        ("independent", independent, expected_independent),
+    ):
+        if metrics_trigger_header(content) != expected:
+            raise AssertionError("metrics " + label + " exact trigger matrix drift")
+
+
+def metrics_trigger_replace(content: str, old: str, new: str) -> str:
+    anchor = "\non:\n" + old + "\npermissions:\n"
+    if content.count(anchor) != 1 or old == new:
+        raise AssertionError("metrics trigger mutation fixture unreachable")
+    return content.replace(anchor, "\non:\n" + new + "\npermissions:\n", 1)
+
+
+def metrics_trigger_negatives(writer: str, pr: str, independent: str) -> None:
+    def reject(index: int, altered: str) -> None:
+        sources = [writer, pr, independent]
+        sources[index] = altered
+        try:
+            metrics_trigger_matrix(*sources)
+        except AssertionError:
+            return
+        raise AssertionError("metrics accepted event trigger mutation")
+
+    omissions = additions = 0
+    for index, event, paths in (
+        (0, "push", METRICS_WRITER_PUSH),
+        (1, "pull_request", METRICS_PR_PATHS),
+        (2, "pull_request", METRICS_INDEPENDENT_PR),
+        (2, "push", METRICS_INDEPENDENT_PUSH),
+    ):
+        original = (writer, pr, independent)[index]
+        header = metrics_trigger_header(original)
+        block = metrics_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise AssertionError("metrics event trigger fixture ambiguous")
+        for position in range(len(paths)):
+            changed = metrics_trigger_replace(
+                original, header,
+                header.replace(block, metrics_trigger_event(
+                    event, paths[:position] + paths[position + 1:]), 1))
+            reject(index, changed)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for extra in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            changed = metrics_trigger_replace(
+                original, header,
+                header.replace(block, block.replace(first, first + extra, 1), 1))
+            reject(index, changed)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("writer_push", METRICS_WRITER_PUSH),
+        ("pr_paths", METRICS_PR_PATHS),
+        ("independent_pr", METRICS_INDEPENDENT_PR),
+        ("independent_push", METRICS_INDEPENDENT_PUSH),
+    ):
+        try:
+            metrics_trigger_matrix(writer, pr, independent, **{field: paths[:-1]})
+        except AssertionError:
+            shortened += 1
+        else:
+            raise AssertionError("metrics accepted shortened trigger inventory")
+
+    wh, ph, ih = map(metrics_trigger_header, (writer, pr, independent))
+    topology = (
+        (0, metrics_trigger_replace(writer, wh, "  pull_request:\n    branches:\n      - so\n" + wh)),
+        (0, metrics_trigger_replace(writer, wh, wh.replace('  schedule:\n    - cron: "23 18 * * *"\n', "", 1))),
+        (0, metrics_trigger_replace(writer, wh, wh.replace('23 18 * * *', '0 0 * * *', 1))),
+        (1, metrics_trigger_replace(pr, ph, ph + "  push:\n    branches:\n      - so\n")),
+        (2, metrics_trigger_replace(independent, ih, ih + "  workflow_dispatch:\n")),
+    )
+    for index, changed in topology:
+        reject(index, changed)
+    print("PASS: metrics exact event trigger matrix: " + str(omissions)
+          + " omissions, " + str(additions) + " additions/duplicates, "
+          + str(shortened) + " shortened inventories, "
+          + str(len(topology)) + " event topology/schedule negatives")
+
+
 def policy(s: str, required: tuple, label: str) -> None:
     if any(s.count(action) != 1 for action in (CHECKOUT, SETUP_GO, SETUP_PY)):
         raise AssertionError("metrics " + label + " immutable Actions drift")
@@ -180,6 +365,8 @@ def main() -> None:
             raise AssertionError("metrics " + label + " whole-source mutation accepted")
     policy(writer, WRITER_REQUIRED, "writer")
     policy(pr, PR_REQUIRED, "PR")
+    metrics_trigger_matrix(writer, pr, independent)
+    metrics_trigger_negatives(writer, pr, independent)
     negatives(writer, WRITER_REQUIRED, "writer")
     negatives(pr, PR_REQUIRED, "PR")
     head = "a" * 40
