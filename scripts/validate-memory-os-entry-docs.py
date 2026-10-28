@@ -1848,6 +1848,38 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "earlier step writes GITHUB_PATH",
         "earlier step writes GITHUB_ENV",
     }
+    remaining_clean_conditional_cases = {
+        "conditional tracked clean check",
+        "exit before post-validator clean check",
+        "errexit disabled after validator",
+        "conditional post-validator clean checks",
+    }
+    remaining_missing_tracked_cases = {
+        "masked post-validator tracked check",
+        "missing post-validator tracked check",
+        "commented post-validator tracked check",
+        "post-validator checks moved before execution",
+    }
+    remaining_missing_untracked_cases = {
+        "masked post-validator untracked check",
+        "missing post-validator untracked check",
+    }
+    remaining_unreachable_validator_cases = {
+        "unconditional early exit",
+        "errexit disabled before validator",
+    }
+    remaining_inert_validator_cases = {
+        "commented validator",
+        "echo-only validator",
+    }
+    remaining_masked_command_cases = {
+        "nested masked validator failure",
+        "masked validator failure",
+    }
+    remaining_missing_invocation_cases = {
+        "missing validator",
+        "unreviewed extra script",
+    }
     diagnostic_bound = 0
     for name, mutation in cases.items():
         if name.startswith("setup-go "):
@@ -1957,13 +1989,33 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = "missing or duplicate source-negative CI job"
         elif name == "step continue-on-error":
             expected_issue = "CI validator failure may be suppressed by continue-on-error"
+        elif name in remaining_clean_conditional_cases:
+            expected_issue = "post-validator clean checks unreachable or conditional"
+        elif name in remaining_missing_tracked_cases:
+            expected_issue = "missing post-validator tracked-source clean check"
+        elif name in remaining_missing_untracked_cases:
+            expected_issue = "missing post-validator untracked-source clean check"
+        elif name in remaining_unreachable_validator_cases:
+            expected_issue = "Python validator unreachable or shell errexit disabled"
+        elif name in remaining_inert_validator_cases:
+            expected_issue = "no directly executed Python validator"
+        elif name in remaining_masked_command_cases:
+            expected_issue = "unreviewed/bypassed direct Python command"
+        elif name in remaining_missing_invocation_cases:
+            expected_issue = "missing invoked validator:"
+        elif name == "disabled shell branch":
+            expected_issue = "Python validator may be conditionally skipped by shell control flow"
+        elif name == "missing shell fail closed":
+            expected_issue = "Python command lacks preceding fail-closed shell"
+        elif name == "setup-go validator precedes source verification":
+            expected_issue = "exact-source verification must precede validator execution"
         if expected_issue is not None:
             diagnostic_bound += 1
             if not any(expected_issue in issue for issue in issues):
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 167:
+    if diagnostic_bound != 188:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
