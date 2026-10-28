@@ -1,0 +1,18 @@
+# Supplemental OPS learning — release compatibility pair CI YAML shadow guard (2026-10-29)
+
+Append-only supplemental learning only; not the canonical `AUTONOMOUS-OPS-LEARNING.md`, production/backup/restore/RPO/RTO/skew evidence, drill authority, credentials, traffic, readiness or promotion authority.
+
+## Material failure / recurrence prevention
+- **Symptom:** The release compatibility pair publisher/independent CI source-negative validator had exact event-trigger inventories and reviewed Git blob hashes but did not independently diagnose YAML root mapping or permission leaf shadows. This was a static semantic gap, not an observed production bypass.
+- **Observed evidence:** `release_pair_validate_trigger_matrix` compared the ordered event header, while `check_source` pinned token counts and complete blob identity. A trailing `on :` or `jobs :` root mapping and a quoted/spaced `contents` leaf had no specific semantic rejection path.
+- **Verified root cause:** Exact event blocks and Git blob digests are necessary but do not prove that the effective YAML root and permission mapping is exclusively reviewed.
+- **Failed approach:** Treating visible `permissions: contents: read` tokens and full-source hashes as sufficient explanation of effective read-only CI permissions.
+- **Correction / executable recurrence guard:** [3827f49d](https://github.com/m-shogo/memories-project/commit/3827f49d6a5e78cefcd1ba5781978a1d3874b6b4) adds explicit publisher/independent root-key and read-only permission leaf validation inside the existing event-matrix validator. Twelve synthetic YAML shadow mutations assert exact semantic diagnostics (8 root, 4 permission), without relaxing existing 48 omission, 16 addition, 4 shortened-inventory, 3 topology, 14 source and 18 runtime cases.
+- **Retry condition:** Reassess only after reviewed CI root/permission topology changes or a demonstrated additional YAML shadow bypass. Do not retry unchanged external MinIO 401, canonical learning transfer, workflow-write permission or human approval blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Release Compatibility Pair Source Negative #40739071065](https://github.com/m-shogo/memories-project/actions/runs/40739071065) completed **SUCCESS** on exact source `3827f49d6a5e78cefcd1ba5781978a1d3874b6b4`; its job log confirms 12 exact-diagnostic root/permission negatives and all existing trigger/source/runtime negatives passed.
+- **Why safe:** Only the existing read-only CI-reachable Python validator changed (+82 lines, -0). Reviewed workflows, registry/contracts, production evidence, credentials, traffic and human promotion were not modified.
+- **Reusable mechanism:** Compose independent semantic YAML root and permission checks with the existing exact event matrix, test specific shadow mutations and require the expected diagnostic rather than accepting arbitrary validation failures; retain reviewed blob and runtime guard checks.
+- **Protected-authority check:** All eleven protected production/OPS-P0-007/registry/learning-contract/canonical-learning blob SHAs remained unchanged after the code commit. `productionDecision=NO_GO`; registered/eligible generations, approved recovery objectives, executable reviewed drill requests, generation evidence, complete typed eight-domain records, final recovery candidates and human promotion approvals remain zero. Learning is not admissible as any production gate.
+- **Next safe target:** Review other existing source-negative CI validators for independently testable YAML root/permission and shell execution bypasses without modifying protected authorities.
