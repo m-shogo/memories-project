@@ -352,6 +352,16 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                 if len(jobs) == 2 else [])
     if job_keys != ["if", "permissions", "runs-on", "timeout-minutes", "steps"]:
         issues.append("unreviewed job runner, timeout or execution metadata")
+    # A whitespace-before-colon YAML key (e.g. "if : false") can shadow
+    # the reviewed job key without matching the adjacent-colon inventory.
+    job_rows = ([
+        row for row in jobs[1].splitlines()
+        if re.match(r"^ {4}\S", row) and not row.lstrip().startswith("#")
+    ] if len(jobs) == 2 else [])
+    if any(not re.match(
+            r"^ {4}(?:if|permissions|runs-on|timeout-minutes|steps):", row
+    ) for row in job_rows):
+        issues.append("unreviewed job runner, timeout or execution metadata")
     if len(jobs) == 2 and (
             "    runs-on: ubuntu-latest" not in jobs[1].splitlines() or
             "    timeout-minutes: 5" not in jobs[1].splitlines()):
@@ -359,6 +369,15 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     step_keys = (re.findall(r"(?m)^ {8}([A-Za-z][A-Za-z0-9_-]*):", jobs[1])
                  if len(jobs) == 2 else [])
     if any(key not in {"with", "name", "env", "run"} for key in step_keys):
+        issues.append("unreviewed step execution metadata")
+    # GitHub parses "if : false", "continue-on-error : true" and "run :"
+    # as live step metadata, although the exact-colon key regex misses them.
+    step_rows = ([
+        row for row in jobs[1].splitlines()
+        if re.match(r"^ {8}\S", row) and not row.lstrip().startswith("#")
+    ] if len(jobs) == 2 else [])
+    if any(not re.match(r"^ {8}(?:with|name|env|run):", row)
+           for row in step_rows):
         issues.append("unreviewed step execution metadata")
     if f"    {SOURCE_NEGATIVE_JOB_CONDITION}" not in source.splitlines():
         issues.append("missing reviewed live PR/push job condition")
@@ -815,7 +834,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 192
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 197
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -1352,6 +1371,21 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "quoted shadow on authority": fixture + "'on':\n  workflow_dispatch:\n",
         "spaced shadow on authority": fixture + "on :\n  workflow_dispatch:\n",
         "spaced shadow jobs authority": fixture + "jobs : {}\n",
+        "spaced shadow job condition": fixture.replace(
+            "    runs-on: ubuntu-latest\n",
+            "    if : false\n    runs-on: ubuntu-latest\n"),
+        "spaced shadow job permissions": fixture.replace(
+            "    permissions:\n      contents: read\n",
+            "    permissions:\n      contents: read\n"
+            "    permissions : {contents: write}\n"),
+        "spaced shadow validator condition": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n        if : false\n"),
+        "spaced shadow validator continue-on-error": fixture.replace(
+            "      - name: Execute negative validator\n",
+            "      - name: Execute negative validator\n"
+            "        continue-on-error : true\n"),
+        "spaced shadow validator run": fixture + "        run : echo skipped\n",
         "unreviewed PR paths-ignore filter": fixture.replace(
             "    paths:\n", "    paths-ignore:\n      - 'scripts/**'\n    paths:\n", 1),
         "unreviewed push branches-ignore filter": fixture.replace(
@@ -1762,6 +1796,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "job environment override",
         "job strategy override",
         "job default shell override",
+        "spaced shadow job condition",
+        "spaced shadow job permissions",
     }
     job_runner_cases = {"job runner override", "job timeout override"}
     step_metadata_cases = {
@@ -1769,6 +1805,9 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "step id override",
         "step false continue-on-error override",
         "step timeout override",
+        "spaced shadow validator condition",
+        "spaced shadow validator continue-on-error",
+        "spaced shadow validator run",
         "validator step shell override",
         "source verification step shell override",
     }
@@ -2078,7 +2117,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 192:
+    if diagnostic_bound != 197:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
