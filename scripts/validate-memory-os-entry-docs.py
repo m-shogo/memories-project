@@ -280,7 +280,11 @@ def source_negative_event_paths(source: str) -> dict[str, tuple[str, ...]] | Non
             if match is None:
                 return None
             paths.append(next(value for value in match.groups() if value is not None))
-        if not paths or len(paths) != len(set(paths)):
+        # GitHub path filters apply ordered ! exclusions: a later negative
+        # pattern can remove a required validator/self trigger even though
+        # its positive path still appears in the inventory.
+        if (not paths or len(paths) != len(set(paths))
+                or any(path.startswith("!") for path in paths)):
             return None
         result[name] = tuple(paths)
     return result
@@ -799,7 +803,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 188
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 190
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -1671,6 +1675,12 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "duplicate trigger path": fixture.replace(
             '      - "scripts/check.py"\n  push:',
             '      - "scripts/check.py"\n      - "scripts/check.py"\n  push:'),
+        "PR negative path excludes validator": fixture.replace(
+            '      - "scripts/check.py"\n  push:',
+            '      - "scripts/check.py"\n      - "!scripts/check.py"\n  push:'),
+        "push negative path excludes validator": fixture.replace(
+            '      - "scripts/check.py"\npermissions:',
+            '      - "scripts/check.py"\n      - "!scripts/check.py"\npermissions:'),
     }
     own_source = Path(__file__).read_text(encoding="utf-8")
     literal_names = source_negative_fixture_literal_names(own_source)
@@ -1761,6 +1771,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "duplicate push branch filter",
         "missing push event",
         "duplicate trigger path",
+        "PR negative path excludes validator",
+        "push negative path excludes validator",
     }
     source_trigger_cases = {
         "PR missing validator trigger":
@@ -2050,7 +2062,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 188:
+    if diagnostic_bound != 190:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
