@@ -382,6 +382,42 @@ def validate(repo_root: Path) -> None:
            for node in entry_tree.body[:entry_tree.body.index(live_entry_guard)]):
         raise ValidationFailure("learning CI entrypoint module terminates before live main guard")
 
+    # A common source-negative workflow audit must remain a live main() call.
+    # Merely retaining its definition or a quoted/commented invocation is not CI reachability.
+    source_name = "validate_source_negative_ci_reachability"
+    source_definitions = [
+        node for node in entry_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == source_name
+    ]
+    if (len(source_definitions) != 1 or module_scope_rebinds(source_name)
+            or any(isinstance(node, ast.AsyncFunctionDef) and node.name == source_name
+                   for node in entry_tree.body)):
+        raise ValidationFailure("source-negative CI guard binding changed")
+    source_calls = [
+        node for node in main_definitions[0].body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == source_name
+        and len(node.value.args) == 1
+        and isinstance(node.value.args[0], ast.Name)
+        and node.value.args[0].id == "failures"
+        and not node.value.keywords
+    ]
+    if len(source_calls) != 1:
+        raise ValidationFailure("source-negative CI guard must be called directly from main")
+    source_index = main_definitions[0].body.index(source_calls[0])
+    if (source_index <= call_index or any(
+            can_terminate_before_guard(node)
+            for node in main_definitions[0].body[call_index + 1:source_index])):
+        raise ValidationFailure("source-negative CI guard call is unreachable")
+    if not any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "prove_source_negative_reachability_negatives"
+        for node in ast.walk(source_definitions[0])
+    ):
+        raise ValidationFailure("source-negative CI guard lost executable negative proof")
+
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
     except FileNotFoundError as exc:

@@ -127,6 +127,11 @@ def expected_diagnostic(name: str) -> str:
         "drop CI repo-root guard interface": 'learning CI entrypoint lost executable guard invocation: [sys.executable, str(path), "--repo-root", str(REPO_ROOT)]',
         "drop CI guard timeout authority": "learning CI entrypoint lost executable guard invocation: LEARNING_GUARD_TIMEOUT_SECONDS = 120",
         "drop CI guard timeout binding": "learning CI entrypoint lost executable guard invocation: timeout=LEARNING_GUARD_TIMEOUT_SECONDS",
+        "remove source-negative CI guard call": "source-negative CI guard must be called directly from main",
+        "quote source-negative CI guard call": "source-negative CI guard must be called directly from main",
+        "shadow source-negative CI guard": "source-negative CI guard binding changed",
+        "remove source-negative CI negative proof": "source-negative CI guard lost executable negative proof",
+        "unreachable source-negative CI guard call": "source-negative CI guard call is unreachable",
         "drop CI guard timeout handling": "learning CI entrypoint lost executable guard invocation: except subprocess.TimeoutExpired:",
         "drop anti-regression lesson": "learning authority lost invariant: Repeating a known failed approach without changed preconditions is a regression",
         "invalid contract JSON": "invalid JSON:",
@@ -394,6 +399,26 @@ def main() -> int:
         ("disconnect positive guard from CI entrypoint", lambda root: drop_from_entrypoint(root, VALIDATOR.as_posix())),
         ("disconnect negative guard from CI entrypoint", lambda root: drop_from_entrypoint(root, NEGATIVE_VALIDATOR.as_posix())),
         ("remove CI guard execution call", lambda root: replace_in_entrypoint(root, "    validate_learning_guards(failures)\n", "    # learning guard execution removed\n")),
+        ("remove source-negative CI guard call", lambda root: replace_in_entrypoint(
+            root, "    validate_source_negative_ci_reachability(failures)\n",
+            "    # source-negative CI guard removed\n",
+        )),
+        ("quote source-negative CI guard call", lambda root: replace_in_entrypoint(
+            root, "    validate_source_negative_ci_reachability(failures)\n",
+            '    "validate_source_negative_ci_reachability(failures)"\n',
+        )),
+        ("shadow source-negative CI guard", lambda root: replace_in_entrypoint(
+            root, "def main() -> int:\n",
+            "validate_source_negative_ci_reachability = lambda failures: None\n\ndef main() -> int:\n",
+        )),
+        ("remove source-negative CI negative proof", lambda root: replace_in_entrypoint(
+            root, "    prove_source_negative_reachability_negatives(failures)\n",
+            "    pass\n",
+        )),
+        ("unreachable source-negative CI guard call", lambda root: replace_in_entrypoint(
+            root, "    validate_source_negative_ci_reachability(failures)\n",
+            "    return 0\n    validate_source_negative_ci_reachability(failures)\n",
+        )),
         ("drop CI repo-root guard interface", lambda root: replace_in_entrypoint(root, '[sys.executable, str(path), "--repo-root", str(REPO_ROOT)]', '[sys.executable, str(path)]')),
         ("drop CI guard timeout authority", lambda root: replace_in_entrypoint(root, "LEARNING_GUARD_TIMEOUT_SECONDS = 120", "LEARNING_GUARD_TIMEOUT_SECONDS = None")),
         ("drop CI guard timeout binding", lambda root: replace_in_entrypoint(root, "                timeout=LEARNING_GUARD_TIMEOUT_SECONDS,\n", "")),
