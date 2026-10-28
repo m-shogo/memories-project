@@ -336,11 +336,13 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             stripped = command.strip()
             if not stripped.startswith(("python ", "python3 ")):
                 continue
+            # CLI suffixes such as --help/-h can return zero without validation.
+            # Bind the complete command, not merely its executable prefix.
             match = re.fullmatch(
-                r" {10,}python(?:3)?(?: -B)? (scripts/[A-Za-z0-9_./-]+\.py)(.*)",
+                r" {10,}python(?:3)?(?: -B)? (scripts/[A-Za-z0-9_./-]+\.py)\s*",
                 command,
             )
-            if match is None or any(token in match.group(2) for token in ("||", ";", "&", "|")):
+            if match is None:
                 issues.append("unreviewed/bypassed direct Python command")
                 continue
             if "          set -euo pipefail" not in block[:offset]:
@@ -561,6 +563,18 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "unreviewed extra script": fixture.replace(
             "          python scripts/check.py",
             "          python scripts/check.py\n          python scripts/unreviewed.py"),
+        "help-only validator execution": fixture.replace(
+            "          python scripts/check.py\n",
+            "          python scripts/check.py --help\n"),
+        "short-help validator execution": fixture.replace(
+            "          python scripts/check.py\n",
+            "          python scripts/check.py -h\n"),
+        "validator with unreviewed repo root": fixture.replace(
+            "          python scripts/check.py\n",
+            "          python scripts/check.py --repo-root /tmp\n"),
+        "validator output redirected": fixture.replace(
+            "          python scripts/check.py\n",
+            "          python scripts/check.py > /dev/null\n"),
         "masked validator failure": fixture.replace(
             "          python scripts/check.py", "          python scripts/check.py || true"),
         "missing push event": fixture.replace("  push:\n", "  workflow_dispatch:\n"),
@@ -607,7 +621,7 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 47 negative fixtures")
+              f"{invocation_count} direct Python commands, 51 negative fixtures")
 
 
 def main() -> int:
