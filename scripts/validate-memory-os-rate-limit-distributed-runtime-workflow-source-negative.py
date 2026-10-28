@@ -220,6 +220,79 @@ def rate_limit_trigger_matrix_negatives(publisher: str, independent: str) -> Non
           + " shortened inventories, " + str(len(topology)) + " event topology negatives")
 
 
+
+def validate_yaml_root_permission(publisher: str, independent: str) -> None:
+    """Pin reviewed root YAML mapping and read-only permission leaves."""
+    for label, value, roots in (
+        ("publisher", publisher, ["name: Rate Limit Distributed Runtime Admission",
+                                  "on:", "permissions:", "concurrency:", "jobs:"]),
+        ("independent", independent, ["name: Rate Limit Distributed Runtime Source Negative",
+                                      "on:", "permissions:", "jobs:"]),
+    ):
+        actual = [line for line in value.splitlines()
+                  if line.strip() and not line[0].isspace()
+                  and not line.lstrip().startswith("#")]
+        if actual != roots:
+            raise SystemExit("distributed-rate-limit " + label + " root YAML key shadow drift")
+        if value.count("\npermissions:\n") != 1:
+            raise SystemExit("distributed-rate-limit " + label + " permission boundary drift")
+        leaves = []
+        for line in value.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["  contents: read"]:
+            raise SystemExit("distributed-rate-limit " + label + " permission leaf shadow drift")
+
+
+def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
+    """Prove twelve exact-diagnostic YAML root and permission shadow mutations."""
+    validate_yaml_root_permission(publisher, independent)
+    count = 0
+    for label, value, other, is_publisher in (
+        ("publisher", publisher, independent, True),
+        ("independent", independent, publisher, False),
+    ):
+        cases = [
+            (mutation, value + "\n" + suffix, "root YAML key shadow drift")
+            for mutation, suffix in (
+                ("spaced on", "on :\n  issues:\n"),
+                ("quoted on", "'on':\n  issues:\n"),
+                ("spaced jobs", "jobs : {}\n"),
+                ("quoted jobs", "'jobs': {}\n"),
+            )
+        ]
+        marker = "\npermissions:\n  contents: read\n"
+        if value.count(marker) != 1:
+            raise SystemExit("distributed-rate-limit " + label + " permission fixture anchor drift")
+        for mutation, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((mutation, value.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for mutation, changed, diagnostic in cases:
+            if changed == value:
+                raise SystemExit("distributed-rate-limit unchanged YAML fixture: " + mutation)
+            try:
+                if is_publisher:
+                    validate_yaml_root_permission(changed, other)
+                else:
+                    validate_yaml_root_permission(other, changed)
+            except SystemExit as exc:
+                expected = "distributed-rate-limit " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("distributed-rate-limit wrong YAML diagnostic: "
+                                     + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("distributed-rate-limit accepted YAML shadow: " + label + " " + mutation)
+            count += 1
+    if count != 12:
+        raise SystemExit("distributed-rate-limit YAML negative inventory drift")
+    print("PASS: distributed-rate-limit root/permission YAML authority (12 exact-diagnostic negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
     publisher_required = (
         "  push:\n    branches:\n      - so\n",
@@ -417,6 +490,8 @@ def main() -> int:
     validate(publisher, independent)
     rate_limit_validate_trigger_matrix(publisher, independent)
     rate_limit_trigger_matrix_negatives(publisher, independent)
+    validate_yaml_root_permission(publisher, independent)
+    yaml_root_permission_negatives(publisher, independent)
     predicate_runtime(independent)
     source_negatives(publisher, independent)
     runtime(publisher)
