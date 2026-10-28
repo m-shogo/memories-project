@@ -981,6 +981,18 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     if source_negative_reachability_issues(strict_relative, strict_fixture, exists):
         failures.append("source-negative closed second-step shell positive control failed")
         return
+    # An unrelated permission failure must not satisfy a second-step shell
+    # negative merely because the overall fixture was rejected.
+    unrelated_failure = strict_fixture.replace(
+        "permissions:\n  contents: read\n",
+        "permissions:\n  contents: write\n", 1,
+    )
+    unrelated_issues = source_negative_reachability_issues(
+        strict_relative, unrelated_failure, exists)
+    if (not unrelated_issues or
+            "unreviewed second-step shell command or execution order"
+            in unrelated_issues):
+        failures.append("source-negative diagnostic classifier accepted unrelated failure")
     nested = fixture.replace(
         "          python scripts/check.py",
         "          (\n            python scripts/check.py\n          )",
@@ -1650,6 +1662,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative duplicate literal-key negative escaped")
     if len(cases) != EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT:
         failures.append(f"source-negative fixture inventory drift: expected {EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT}, got {len(cases)}")
+    diagnostic_bound = 0
     for name, mutation in cases.items():
         if name.startswith("setup-go "):
             case_relative, baseline = go_relative, go_fixture
@@ -1661,9 +1674,35 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             case_relative, baseline = strict_relative, strict_fixture
         else:
             case_relative, baseline = relative, fixture
-        if mutation == baseline or not source_negative_reachability_issues(
-                case_relative, mutation, exists):
+        issues = source_negative_reachability_issues(case_relative, mutation, exists)
+        if mutation == baseline or not issues:
             failures.append(f"source-negative reachability negative escaped: {name}")
+            continue
+        expected_issue = None
+        if name.startswith("strict-shell "):
+            expected_issue = "unreviewed second-step shell command or execution order"
+        elif name.startswith("migration-clone "):
+            expected_issue = "unreviewed migration disposable clone source or shell"
+        elif name.startswith("local-clone "):
+            expected_issue = (
+                "local recovery third-step validator trigger missing"
+                if "trigger" in name
+                else "unreviewed local migration disposable clone source or shell"
+            )
+        elif name.startswith("setup-go third-step "):
+            expected_issue = "unreviewed Go third-step test or clean-source shell"
+        elif name.startswith("setup-go ") and "test source trigger" in name:
+            expected_issue = "reviewed Go test source trigger missing"
+        if expected_issue is not None:
+            diagnostic_bound += 1
+            if not any(expected_issue in issue for issue in issues):
+                failures.append(
+                    f"source-negative negative rejected for wrong reason: {name}: {issues}"
+                )
+    if diagnostic_bound != 33:
+        failures.append(
+            f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
+        )
 
 
 def validate_source_negative_ci_reachability(failures: list[str]) -> None:
