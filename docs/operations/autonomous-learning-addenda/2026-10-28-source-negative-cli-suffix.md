@@ -318,3 +318,27 @@
 - **Why safe / reusable mechanism:** This is a read-only static guard with synthetic mutations. The 52 reviewed workflow files, protected contracts/registries, production credentials, traffic, readiness and human promotion were not modified.
 - **Protected-authority check:** The nine protected contract/registry blob SHAs remained identical; `productionDecision=NO_GO` and all OPS-P0-007 real-evidence gates remain unsatisfied. Supplemental learning cannot satisfy any production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gate.
 - **Next safe target:** Audit whether post-validator clean-source checks can be bypassed by shell short-circuit lists, heredocs, traps or function wrappers while preserving the exact-source and authority guards. Canonical large-file transport, MinIO Quay HTTP 401 and human approval blockers are unchanged; do not retry them.
+
+## 2026-10-28 — Post-validator clean-source check execution guard
+
+### Material failure: five negative fixtures escaped the first regex patch
+
+- **Symptom / observed evidence:** [Autonomous Learning Guard #40679533083](https://github.com/m-shogo/memories-project/actions/runs/40679533083) on exact `acaf2ed0` FAILED: tracked/untracked clean checks in heredocs, tracked/untracked checks in uninvoked functions, and a post-validator `eval` override escaped. Canonical learning and 128 canonical negatives passed.
+- **Verified root cause:** JavaScript-to-Python patch double-escaped regex metacharacters in raw Python patterns, making the heredoc/function/command-resolution detectors inert.
+- **Failed approach:** Assuming a source-level regex patch worked without running the negative fixtures.
+- **Correction / executable recurrence guard:** [`dd4208ee`](https://github.com/m-shogo/memories-project/commit/dd4208ee856369c5f5d53a286cc8c7c6814aee61) replaced them with correct literal regexes and simplified the shell-list predecessor check. Ten mandatory negative mutations now cover clean-check short-circuit lists, heredocs, uninvoked functions, failure-masking traps and command overrides.
+- **Retry condition:** Only revisit after a reviewed shell-syntax change, preserving all ten negative cases and exact-source CI proof.
+
+### Material success: clean-source checks are executable
+
+- **Outcome / observed evidence:** [Autonomous Learning Guard #40679623157](https://github.com/m-shogo/memories-project/actions/runs/40679623157) completed SUCCESS on exact `dd4208ee856369c5f5d53a286cc8c7c6814aee61`: 52 source-negative workflows, 63 Python commands, 145 reachability negative fixtures, 128 canonical learning negatives, 1,186 helper ancestor negatives and append-only canonical learning PASS.
+- **Why safe / reusable mechanism:** The shared read-only entrypoint guard changed; reviewed workflows and production source/evidence were untouched. Post-validator tracked/untracked clean-source checks now reject inert shell wrappers rather than trusting visible command strings.
+- **Protected-authority check:** All nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`, OPS-P0-007 prerequisite-blocked; zero registered/eligible generations, approved objectives, executable reviewed requests, request-bound recovery evidence, complete typed eight-domain records or final candidates. No human promotion.
+- **Learning boundary:** Supplemental append-only history is not canonical authority and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+- **Next safe target:** Check extra/folded YAML run steps that could execute outside the reviewed verification/validator steps. Do not retry unchanged canonical learning transport, Quay MinIO HTTP 401 or human approval blockers.
+
+### Material concurrency guard success
+
+- **Outcome / evidence:** An initial append attempt was prepared on `dd4208ee`, but a concurrent metrics commit advanced `so` to `0b992c7e` before publication. The expected-HEAD check rejected the stale write; no force update or loss of concurrent work occurred.
+- **Why safe / reusable mechanism:** Re-read branch, target append-only file and canonical contract; rebuild on the new head only when the target blob remains unchanged.
+- **Protected-authority check:** No production authority or registry write was attempted; `NO_GO` remains unchanged.
