@@ -30,6 +30,28 @@ ADMISSION_READONLY_TRIGGERS = (
 )
 
 
+INDEPENDENT_PERMISSION_TRIGGERS = (
+    ".github/workflows/backup-restore-admission-chain.yml",
+    ".github/workflows/backup-restore-admission-chain-negative.yml",
+    ".github/workflows/backup-restore-admission-chain-readonly.yml",
+    ".github/workflows/backup-restore-generation-evidence-readonly.yml",
+    ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml",
+    ".github/workflows/backup-restore-drill-request.yml",
+    ".github/workflows/backup-restore-generation-evidence.yml",
+    ".github/workflows/backup-restore-permission-boundary-negative.yml",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+    "scripts/register-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py",
+    "scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-registry-mode-negative.py",
+    "scripts/validate-memory-os-recovery-objectives-registry-mode-negative.py",
+)
+
+
 class Fail(RuntimeError):
     pass
 
@@ -160,6 +182,54 @@ def prove_admission_readonly_trigger_negatives() -> None:
     else:
         raise Fail("admission readonly accepted shortened trigger inventory")
     print("PASS: admission readonly event-specific trigger reachability (26 removals; 1 shortened inventory negative)")
+
+
+def validate_independent_permission_triggers(source: str, *, trigger_paths: tuple[str, ...] = INDEPENDENT_PERMISSION_TRIGGERS) -> None:
+    """Require each reviewed independent CI trigger on both PR and push without relying on blob SHA."""
+    require(len(trigger_paths) == 18 and len(set(trigger_paths)) == 18,
+            "independent permission trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    end_marker = "\npermissions:\n"
+    for marker in (pr_marker, push_marker, end_marker):
+        require(source.count(marker) == 1, "independent permission trigger event boundary drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
+                "independent permission " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            require(block.count('      - "' + item + '"\n') == 1,
+                    "independent permission " + event + " missing or duplicate trigger: " + item)
+
+
+def prove_independent_permission_trigger_negatives(source: str) -> None:
+    """Exercise 36 event-specific omissions plus inventory truncation, independent of SHA checks."""
+    validate_independent_permission_triggers(source)
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for item in INDEPENDENT_PERMISSION_TRIGGERS:
+            token = '      - "' + item + '"\n'
+            require(source.count(token) == 2, "independent permission mutation anchor drift: " + item)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_independent_permission_triggers(mutated)
+            except Fail:
+                continue
+            raise Fail("independent permission accepted missing " + event + " trigger: " + item)
+    try:
+        validate_independent_permission_triggers(source, trigger_paths=INDEPENDENT_PERMISSION_TRIGGERS[:-1])
+    except Fail:
+        pass
+    else:
+        raise Fail("independent permission accepted shortened trigger inventory")
+    print("PASS: independent permission event-specific trigger reachability (36 removals; 1 shortened inventory negative)")
 
 
 def main() -> int:
@@ -399,6 +469,7 @@ def main() -> int:
     # Independently mutate the permission-check workflow bootstrap and PR identity.
     independent = module.independent_permission_workflow()
     module.validate_independent_permission_workflow(independent)
+    prove_independent_permission_trigger_negatives(independent)
     prove_independent_permission_branch_guards_runtime(independent)
     independent_cases = (
         ("independent PR target branch substituted", replace_once(independent, "  pull_request:\n    branches:\n      - so\n    paths:\n", "  pull_request:\n    branches:\n      - main\n    paths:\n", "independent PR target branch substituted")),
