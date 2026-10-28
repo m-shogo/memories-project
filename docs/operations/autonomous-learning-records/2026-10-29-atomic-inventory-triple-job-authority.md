@@ -1,0 +1,18 @@
+# Supplemental OPS learning — atomic inventory triple CI job authority (2026-10-29)
+
+Append-only supplemental learning only; never canonical learning, production evidence, backup/restore, RPO/RTO/skew, reviewed drill, generation, credential, traffic, readiness or human promotion authority.
+
+## Material guard gap / failure learning
+- **Symptom:** Atomic inventory publisher, independent and replacement CI source validator pinned event/root/root-permission YAML and full workflow blobs, but did not independently reject nested job identity, job-level permission or execution shadows. This was a static CI guard gap, not an observed production bypass.
+- **Observed evidence:** Reviewed publisher `atomic-write-negative`, independent `source-admission` and replacement `atomic-replacement` jobs each have one exact `if`, explicit `contents: read` job permission, `runs-on: ubuntu-latest`, timeout (5/5/10) and `steps`. Prior YAML negative population was 27.
+- **Verified root cause:** Root read-only permission and whole Git blob identity cannot independently prove unique effective nested job mapping, exact job keys or nested permission leaves.
+- **Failed approach:** Relying on generic blob mismatch for job-level YAML shadow mutations without a named semantic diagnostic.
+- **Correction / executable recurrence guard:** [625f5210](https://github.com/m-shogo/memories-project/commit/625f52103be5a1248b4b56bcfa783d3bad022e70) binds three job identities, exact conditions, timeout/key sequences and read-only job scopes. Thirty-six new exact-diagnostic in-memory negatives cover duplicate/spaced/quoted jobs, plain/spaced/quoted permission shadows, direct write escalation, spaced/quoted contents, event bypass, timeout and continuation overrides. YAML total rises 27 to 63.
+- **Retry condition:** Revisit only for independently reviewed workflow job/permission changes or a demonstrated bypass; unchanged canonical learning transfer, workflow write permission, MinIO 401 and human approval blockers are not retried.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Atomic Write Negative #40775309433](https://github.com/m-shogo/memories-project/actions/runs/40775309433) and [Atomic Write Source Negative #40775309398](https://github.com/m-shogo/memories-project/actions/runs/40775309398) completed SUCCESS on exact source `625f52103be5a1248b4b56bcfa783d3bad022e70`. Both job logs confirm 63 exact-diagnostic YAML negatives, 20 existing source negatives and 10 replacement source negatives.
+- **Why safe:** Only existing CI-reachable read-only Python validator changed (+90/-3). All three reviewed workflows, production/evidence/registry, credential, traffic, readiness and promotion authorities were untouched. Waited for both current-source CI runs to become terminal before nonurgent learning append.
+- **Reusable mechanism:** Enumerate reviewed job identity, job-key order and scoped permission leaves per workflow, then require exact diagnostic rejection of synthetic nested YAML mutations before existing source SHA validation.
+- **Protected-authority check:** Git compare shows only validator changed; production status blob `3956bb805ee124ca7baf594ba05bcb0d986783b4` retains `productionDecision=NO_GO`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Generation, objective, drill request, generation evidence, typed eight-domain and promotion registries remain unchanged/empty. Supplemental learning never satisfies production admission or human promotion.
+- **Next safe target:** Operability Admission Inventory publisher/independent nested job semantics, after verifying reviewed permissions and source-trigger reachability.
