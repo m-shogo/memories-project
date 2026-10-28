@@ -23,10 +23,138 @@ REVIEWED = "12129252904c15d5a9c335fd0b529319d1f0b71a"
 REVIEWED_RESULT_VALIDATOR = "a903aae123256e0c4a55f8b7b59a5f968141aa12"
 REVIEWED_RESULT_NEGATIVE = "a4838d5b0c9388c2b1558b2e27e1192b23939ff8"
 REVIEWED_INDEPENDENT = "f76d9a92924355358d005d5b49c73d30c4be4b3b"
+
+PUBLISHER_PUSH_TRIGGER_PATHS = (
+    ".github/workflows/deletion-lease-recovery.yml",
+    "contracts/operations/deletion-lease-recovery-contract.v1.json",
+    "scripts/validate-memory-os-deletion-lease-recovery.py",
+    "scripts/reconcile-memory-os-deletion-lease-recovery.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py",
+    "services/import-api/internal/httpserver/deletion_lease_recovery_test.go",
+    "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go",
+    "services/import-api/internal/httpserver/server_live_test.go",
+    "services/import-api/internal/httpserver/server.go",
+    "services/import-api/internal/accountdelete/**",
+    "services/import-api/internal/pgrepo/**",
+    "services/import-api/internal/objectstore/**",
+    "services/import-api/internal/authstore/**",
+    "services/import-api/internal/dbscope/**",
+    "services/import-api/internal/pgscope/**",
+    "services/import-api/internal/upload/**",
+    "infra/postgresql/security/**",
+    "services/import-api/go.mod",
+    "services/import-api/go.sum",
+)
+INDEPENDENT_PR_TRIGGER_PATHS = (
+    ".github/workflows/deletion-lease-recovery.yml",
+    ".github/workflows/deletion-lease-recovery-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py",
+    "scripts/reconcile-memory-os-deletion-lease-recovery.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-lease-recovery.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-result-negative.py",
+)
+INDEPENDENT_PUSH_TRIGGER_PATHS = (
+    ".github/workflows/deletion-lease-recovery.yml",
+    ".github/workflows/deletion-lease-recovery-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-deletion-lease-recovery-diagnostic-source-negative.py",
+    "scripts/reconcile-memory-os-deletion-lease-recovery.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-lease-recovery.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-result-negative.py",
+)
 TARGET = "docs/fixtures/memory-os-operability/deletion-lease-recovery-diagnostic.last.json"
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 SETUP_GO = "uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5"
+
+
+
+def validate_trigger_reachability(
+    value: str, *, publisher: bool,
+    pr_paths: tuple[str, ...] | None = None,
+    push_paths: tuple[str, ...] | None = None,
+) -> None:
+    """Keep push-only publisher and PR/push independent source CI distinct."""
+    expected_push = PUBLISHER_PUSH_TRIGGER_PATHS if publisher else INDEPENDENT_PUSH_TRIGGER_PATHS
+    expected_pr = () if publisher else INDEPENDENT_PR_TRIGGER_PATHS
+    approved_push = expected_push if push_paths is None else push_paths
+    approved_pr = expected_pr if pr_paths is None else pr_paths
+    for label, actual, expected in (("PR", approved_pr, expected_pr), ("push", approved_push, expected_push)):
+        if len(actual) != len(expected) or len(set(actual)) != len(expected):
+            raise AssertionError("lease diagnostic CI " + label + " trigger inventory shortened or duplicated")
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n" if publisher else "\npermissions:\n"
+    if value.count(push) != 1 or value.count(end) != 1:
+        raise AssertionError("lease diagnostic CI trigger marker drift")
+    if publisher:
+        if "  pull_request:" in value or not (value.index(push) < value.index(end)):
+            raise AssertionError("lease diagnostic publisher must remain push-only")
+        events = (("push", push, end, approved_push),)
+    else:
+        if value.count(pr) != 1 or not (value.index(pr) < value.index(push) < value.index(end)):
+            raise AssertionError("lease diagnostic independent CI event marker/order drift")
+        events = (("PR", pr, push, approved_pr), ("push", push, end, approved_push))
+    for label, start, stop, approved_paths in events:
+        block = value.split(start, 1)[1].split(stop, 1)[0]
+        actual = tuple(line for line in block.splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+        approved = tuple('      - "' + path + '"' for path in approved_paths)
+        if actual != approved:
+            raise AssertionError("lease diagnostic CI " + label + " exact trigger path drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Prove all single-event omissions, additions and shortened inventories."""
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    for label, value, is_publisher, events in (
+        ("publisher", publisher, True, (("push", push, "  workflow_dispatch:\n", PUBLISHER_PUSH_TRIGGER_PATHS),)),
+        ("independent", independent, False, (
+            ("PR", pr, push, INDEPENDENT_PR_TRIGGER_PATHS),
+            ("push", push, "\npermissions:\n", INDEPENDENT_PUSH_TRIGGER_PATHS),
+        )),
+    ):
+        for event, start, stop, paths in events:
+            start_index = value.index(start) + len(start)
+            end_index = value.index(stop, start_index)
+            block = value[start_index:end_index]
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if block.count(token) != 1:
+                    raise AssertionError("lease diagnostic CI mutation anchor drift: " + path)
+                mutated = value[:start_index] + block.replace(token, "", 1) + value[end_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except AssertionError:
+                    pass
+                else:
+                    raise AssertionError("lease diagnostic CI accepted missing " + label + " " + event + " trigger: " + path)
+            for name, injection in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                mutated = value[:start_index] + injection + value[start_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except AssertionError:
+                    pass
+                else:
+                    raise AssertionError("lease diagnostic CI accepted " + label + " " + event + " " + name)
+            try:
+                validate_trigger_reachability(
+                    value, publisher=is_publisher,
+                    pr_paths=paths[:-1] if event == "PR" else None,
+                    push_paths=paths[:-1] if event == "push" else None,
+                )
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("lease diagnostic CI accepted shortened " + label + " " + event + " inventory")
+    print("PASS: lease diagnostic CI event triggers (33 removals; 12 additions; 3 shortened inventory negatives)")
 
 
 def source(name):
@@ -223,6 +351,9 @@ def main():
         raise SystemExit("lease reconciler complete Git blob unreviewed")
     if blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
         raise SystemExit("lease reconcile negative complete Git blob unreviewed")
+    validate_trigger_reachability(publisher, publisher=True)
+    validate_trigger_reachability(independent, publisher=False)
+    prove_trigger_reachability_negatives(publisher, independent)
     identity_runtime(independent, "Require exact clean lease recovery diagnostic source")
     policy(publisher)
     mutations(publisher)
