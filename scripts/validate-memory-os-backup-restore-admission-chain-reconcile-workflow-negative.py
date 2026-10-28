@@ -75,9 +75,12 @@ def validate_trigger_reachability(
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        expected = tuple(f'      - "{item}"' for item in trigger_paths)
+        if actual != expected:
             raise SystemExit("admission-chain reconcile CI " + event + " trigger inventory drift")
         for item in trigger_paths:
             if block.count('      - "' + item + '"' + chr(10)) != 1:
@@ -108,6 +111,28 @@ def prove_trigger_reachability_negatives(source: str) -> None:
     else:
         raise SystemExit("admission-chain reconcile CI shortened trigger inventory accepted")
     print("PASS: admission-chain reconcile CI event-specific triggers (48 removals; 1 shortened inventory negative)")
+    for event in ("pull_request", "push"):
+        for label, inserted in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", f'      - "{TRIGGER_PATHS[0]}"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", f"      - {TRIGGER_PATHS[0]}\n"),
+        ):
+            token = f'      - "{TRIGGER_PATHS[0]}"\n'
+            prefix, suffix = source.split(push_marker, 1)
+            if event == "pull_request":
+                mutated = prefix.replace(token, inserted + token, 1) + push_marker + suffix
+            else:
+                mutated = prefix + push_marker + suffix.replace(token, inserted + token, 1)
+            if mutated == source:
+                raise SystemExit(f"admission-chain reconcile CI addition fixture missing: {event} {label}")
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit(f"admission-chain reconcile CI accepted {event} addition: {label}")
+    print("PASS: admission-chain reconcile CI trigger additions (8 event-specific semantic negatives)")
+
 
 
 
