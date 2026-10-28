@@ -358,6 +358,30 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     all_action_keys = re.findall(r"(?m)^\s*(?:-\s*)?uses:\s*\S+", source)
     if len(actual_actions) != len(all_action_keys) or actual_actions != expected_actions:
         issues.append("unreviewed or shadowed CI action invocation")
+    # A pinned checkout action still needs the exact PR-head/push-source ref
+    # and no credential/token/duplicate-key overrides in its with block.
+    source_lines = source.splitlines()
+    checkout_indices = [
+        index for index, row in enumerate(source_lines)
+        if row.startswith("      - uses: actions/checkout@")
+    ]
+    if len(checkout_indices) != 1:
+        issues.append("missing or duplicate checkout settings authority")
+    else:
+        checkout_settings = []
+        for row in source_lines[checkout_indices[0] + 1:]:
+            if row.startswith("      - "):
+                break
+            if row.strip():
+                checkout_settings.append(row)
+        expected_checkout_settings = [
+            "        with:",
+            "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+            "          fetch-depth: 1",
+            "          persist-credentials: false",
+        ]
+        if checkout_settings != expected_checkout_settings:
+            issues.append("checkout ref, depth or credential authority drift")
 
     commands: list[str] = []
     lines = source.splitlines()
@@ -464,7 +488,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 87
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 94
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -522,6 +546,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "    steps:\n"
         "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n"
         "        with:\n"
+        "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n"
+        "          fetch-depth: 1\n"
         "          persist-credentials: false\n"
         "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
         "        with:\n"
@@ -707,6 +733,29 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "shadowed action uses key": fixture.replace(
             "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
             "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
+        "checkout ref switched to branch": fixture.replace(
+            "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n",
+            "          ref: main\n", 1),
+        "duplicate checkout ref key": fixture.replace(
+            "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n",
+            "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n"
+            "          ref: main\n", 1),
+        "missing checkout ref key": fixture.replace(
+            "          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}\n", "", 1),
+        "checkout fetch-depth widened": fixture.replace(
+            "          fetch-depth: 1\n",
+            "          fetch-depth: 0\n", 1),
+        "checkout credentials retained": fixture.replace(
+            "          persist-credentials: false\n",
+            "          persist-credentials: true\n", 1),
+        "duplicate checkout credential key": fixture.replace(
+            "          persist-credentials: false\n",
+            "          persist-credentials: false\n"
+            "          persist-credentials: true\n", 1),
+        "checkout token override": fixture.replace(
+            "          persist-credentials: false\n",
+            "          persist-credentials: false\n"
+            "          token: unreviewed\n", 1),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
