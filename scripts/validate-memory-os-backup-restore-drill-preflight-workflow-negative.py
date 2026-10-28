@@ -18,6 +18,11 @@ GUARD_PATH = ".github/workflows/backup-restore-drill-preflight-source-negative.y
 SELF_PATH = "scripts/validate-memory-os-backup-restore-drill-preflight-workflow-negative.py"
 MAIN_BLOB = "355bfae32bbe476d604707212b5d48c557c4e81c"
 GUARD_BLOB = "cdcfc001168b18173441671f1fe30417984f3bba"
+GUARD_TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-drill-preflight.yml",
+    ".github/workflows/backup-restore-drill-preflight-source-negative.yml",
+    "scripts/validate-memory-os-backup-restore-drill-preflight-workflow-negative.py",
+)
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
 PUSH_REF = 'test "' + D + '{GITHUB_REF:-}" = "refs/heads/so"'
@@ -110,10 +115,61 @@ def checked_source(relative: str) -> str:
         raise SystemExit("preflight CI source unavailable or substituted: " + relative) from exc
 
 
+def validate_guard_trigger_reachability(
+    guard: str, *, trigger_paths: tuple[str, ...] = GUARD_TRIGGER_PATHS
+) -> None:
+    """Pin both independent preflight source CI event path inventories."""
+    if len(trigger_paths) != 3 or len(set(trigger_paths)) != 3:
+        raise SystemExit("preflight independent CI trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    end_marker = "\npermissions:\n"
+    for marker in (pr_marker, push_marker, end_marker):
+        if guard.count(marker) != 1:
+            raise SystemExit("preflight independent CI event trigger marker drift")
+    pr = guard.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = guard.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
+            raise SystemExit("preflight independent CI " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            if block.count('      - "' + item + '"' + chr(10)) != 1:
+                raise SystemExit("preflight independent CI " + event + " trigger path drift: " + item)
+
+
+def prove_guard_trigger_negatives(guard: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for item in GUARD_TRIGGER_PATHS:
+            token = '      - "' + item + '"' + chr(10)
+            if guard.count(token) != 2:
+                raise SystemExit("preflight independent CI trigger mutation anchor drift: " + item)
+            if event == "pull_request":
+                mutated = guard.replace(token, "", 1)
+            else:
+                prefix, suffix = guard.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_guard_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("preflight independent CI accepted missing " + event + " trigger: " + item)
+    try:
+        validate_guard_trigger_reachability(guard, trigger_paths=GUARD_TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("preflight independent CI shortened trigger inventory accepted")
+    print("PASS: preflight independent CI event-specific trigger reachability (6 removals; 1 shortened inventory negative)")
+
+
 def validate(
     main: str, guard: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
 ) -> None:
+    validate_guard_trigger_reachability(guard)
     for label, token, expected in MAIN_REQUIRED:
         if main.count(token) != expected:
             raise SystemExit("preflight publisher source drift: " + label)
@@ -399,6 +455,7 @@ def main() -> int:
     publisher = checked_source(MAIN_PATH)
     independent = checked_source(GUARD_PATH)
     validate(publisher, independent)
+    prove_guard_trigger_negatives(independent)
     runtime_branch_proof(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_cas_proof(publisher)
