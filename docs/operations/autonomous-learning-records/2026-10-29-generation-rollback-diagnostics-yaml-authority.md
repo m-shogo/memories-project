@@ -1,0 +1,15 @@
+# Supplemental OPS learning — generation rollback diagnostics CI YAML authority (2026-10-29)
+
+Append-only supplemental learning; not canonical learning authority or production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+
+## Material failure and prevention
+- **Symptom/evidence:** The generation rollback diagnostics workflow source-negative validator checked exact PR/push trigger path inventories and the reviewed Git blob, but did not independently reject extra YAML events, root mapping shadows (`on :`, `'on':`, `permissions :`, `'permissions':`, `jobs :`, `'jobs':`) or overriding permission leaves (`contents : write`, `'contents': write`). This was a static semantic gap, not an observed rollback/production failure.
+- **Verified root cause / failed approach:** A complete Git blob SHA and a visible `permissions: contents: read` anchor do not exercise effective YAML root/leaf uniqueness independently of the full-source digest.
+- **Correction / executable recurrence guard:** [a001e3a6](https://github.com/m-shogo/memories-project/commit/a001e3a62733339fa79e58d7aa71229916f2218e) adds exact reviewed event header, root-key and permission-leaf checks, plus nine negative mutations bound to exact failure diagnostics (one extra event, six root shadows, two permission shadows). Existing branch and complete-source checks are preserved.
+- **Retry condition:** Reassess after reviewed event/permission topology changes or a demonstrated new bypass. Do not retry unchanged canonical learning transport, supplemental learning CI-trigger permission, MinIO 401 or human promotion blockers.
+
+## Material success and protected authority
+- **Outcome/evidence:** [Generation Evidence Rollback Diagnostics Negative #40715610028](https://github.com/m-shogo/memories-project/actions/runs/40715610028) completed SUCCESS on `a001e3a6`. Logs prove nine exact-diagnostic YAML negatives, 32 path removals, eight additions, one shortened inventory, six runtime branch checks, 19 semantic anchor and two blob-only source negatives, plus rollback failure preservation tests.
+- **Why safe / reusable mechanism:** Only the pre-existing CI-reachable read-only Python validator changed (+76/-0). Mutations are synthetic in-memory workflow source, not production rollback execution. No reviewed workflow, generation, objective, request, typed non-resurrection record, production evidence, credential, traffic, readiness or human promotion was modified.
+- **Protected-authority check:** Ten protected production/OPS-P0-007/registry/learning-contract/canonical-learning blob SHAs remained unchanged after the code commit. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`. No registered or semantically eligible generation, approved objective, executable reviewed request, generation recovery evidence, complete typed eight-domain record or final candidate; human promotion is separate.
+- **Next safe target:** Confirm the generation evidence reconcile exact-source CI and continue auditing distinct read-only source validators, without changing production authority.
