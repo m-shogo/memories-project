@@ -101,8 +101,10 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         ("pull_request", pr_marker),
     ):
         for label, injected in (
-            ("unreviewed path", "      - 'unreviewed/**'\n"),
-            ("duplicate path", "      - '" + TRIGGER_PATHS[0] + "'\n"),
+            ("quoted unreviewed path", "      - 'unreviewed/**'\n"),
+            ("quoted duplicate path", "      - '" + TRIGGER_PATHS[0] + "'\n"),
+            ("unquoted unreviewed path", "      - unreviewed/**\n"),
+            ("unquoted duplicate path", "      - " + TRIGGER_PATHS[0] + "\n"),
         ):
             if source.count(marker) != 1:
                 raise SystemExit("review-source-order readonly addition fixture marker drift")
@@ -118,7 +120,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         pass
     else:
         raise SystemExit("review-source-order readonly shortened trigger inventory accepted")
-    print(f"PASS: review-source-order readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 1 shortened inventory negative)")
+    print(f"PASS: review-source-order readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 8 event-specific addition negatives; 1 shortened inventory negative)")
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
