@@ -226,10 +226,29 @@ def validate_yaml_authority(source: str, kind: str) -> None:
             leaves.append(line)
     if leaves != ["  contents: read"]:
         raise SystemExit("preflight " + kind + " permission leaf shadow drift")
+    # Exact job mapping and job-scoped authority, independently of the reviewed blob.
+    jobs = (("  validate-pr:", "read"), ("  validate-and-publish:", "write")) if kind == "publisher" else (("  source-admission:", "read"),)
+    jobs_body = source.split("\njobs:\n", 1)[1]
+    observed_jobs = [line for line in jobs_body.splitlines()
+                     if line.startswith("  ") and not line.startswith("   ")
+                     and line.strip() and not line.lstrip().startswith("#")]
+    if observed_jobs != [job for job, _ in jobs]:
+        raise SystemExit("preflight " + kind + " job mapping shadow drift")
+    for index, (job, access) in enumerate(jobs):
+        block = jobs_body.split(job + "\n", 1)[1]
+        if index + 1 < len(jobs):
+            block = block.split(jobs[index + 1][0] + "\n", 1)[0]
+        if block.count("    permissions:\n") != 1 or block.count("    runs-on:") != 1:
+            raise SystemExit("preflight " + kind + " job permission leaf shadow drift")
+        section = block.split("    permissions:\n", 1)[1].split("    runs-on:", 1)[0]
+        job_leaves = [line for line in section.splitlines()
+                      if line.strip() and not line.lstrip().startswith("#")]
+        if job_leaves != ["      contents: " + access]:
+            raise SystemExit("preflight " + kind + " job permission leaf shadow drift")
 
 
 def prove_yaml_authority_negatives(main: str, guard: str) -> None:
-    """Require the exact failure diagnostic for 18 digest-independent YAML mutations."""
+    """Require the exact failure diagnostic for 30 digest-independent YAML mutations."""
     count = 0
     for kind, source in (("publisher", main), ("independent", guard)):
         validate_yaml_authority(source, kind)
@@ -255,6 +274,20 @@ def prove_yaml_authority_negatives(main: str, guard: str) -> None:
         ):
             cases.append((label, source.replace(marker, marker + leaf, 1),
                           "permission leaf shadow drift"))
+        jobs = (("validate-pr", "read"), ("validate-and-publish", "write")) if kind == "publisher" else (("source-admission", "read"),)
+        for job, access in jobs:
+            for label, key in (("spaced job", job + " "), ("quoted job", "'" + job + "'")):
+                cases.append((label + " " + job,
+                              source.rstrip("\n") + "\n  " + key + ": {}\n",
+                              "job mapping shadow drift"))
+            marker = "    permissions:\n      contents: " + access + "\n"
+            if source.count(marker) != 1:
+                raise SystemExit("preflight " + kind + " job permission fixture anchor drift: " + job)
+            for label, leaf in (("spaced", "      contents : write\n"),
+                                ("quoted", "      'contents': write\n")):
+                cases.append((label + " " + job,
+                              source.replace(marker, marker + leaf, 1),
+                              "job permission leaf shadow drift"))
         for label, mutated, diagnostic in cases:
             if mutated == source:
                 raise SystemExit("preflight " + kind + " unchanged YAML fixture: " + label)
@@ -268,9 +301,9 @@ def prove_yaml_authority_negatives(main: str, guard: str) -> None:
             else:
                 raise SystemExit("preflight " + kind + " accepted YAML mutation: " + label)
             count += 1
-    if count != 18:
+    if count != 30:
         raise SystemExit("preflight YAML negative inventory drift")
-    print("PASS: preflight publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
+    print("PASS: preflight publisher/independent YAML event/root/permission authority (30 exact-diagnostic negatives)")
 
 
 def validate(
