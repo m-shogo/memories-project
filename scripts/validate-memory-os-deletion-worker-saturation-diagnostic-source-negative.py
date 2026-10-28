@@ -67,6 +67,148 @@ REQUIRED = (
 )
 
 
+SATURATION_PUBLISHER_PUSH = (
+    ".github/workflows/deletion-worker-saturation.yml",
+    "contracts/operations/deletion-worker-saturation-contract.v1.json",
+    "scripts/validate-memory-os-deletion-worker-saturation.py",
+    "scripts/reconcile-memory-os-deletion-worker-saturation.py",
+    "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py",
+    "services/import-api/internal/httpserver/**",
+    "services/import-api/internal/accountdelete/**",
+    "services/import-api/internal/pgrepo/**",
+    "services/import-api/internal/dbscope/**",
+    "services/import-api/internal/pgscope/**",
+    "services/import-api/internal/objectstore/**",
+    "infra/postgresql/security/**",
+    "services/import-api/go.mod",
+    "services/import-api/go.sum",
+)
+
+SATURATION_INDEPENDENT_PR = (
+    ".github/workflows/deletion-worker-saturation.yml",
+    ".github/workflows/deletion-worker-saturation-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-deletion-worker-saturation-diagnostic-source-negative.py",
+    "scripts/reconcile-memory-os-deletion-worker-saturation.py",
+    "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-worker-saturation.py",
+    "contracts/operations/deletion-worker-saturation-contract.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json",
+)
+
+SATURATION_INDEPENDENT_PUSH = (
+    ".github/workflows/deletion-worker-saturation.yml",
+    ".github/workflows/deletion-worker-saturation-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-deletion-worker-saturation-diagnostic-source-negative.py",
+    "scripts/reconcile-memory-os-deletion-worker-saturation.py",
+    "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-worker-saturation.py",
+    "contracts/operations/deletion-worker-saturation-contract.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json",
+)
+
+def saturation_trigger_event(event, paths):
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def saturation_trigger_header(content):
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise AssertionError("worker-saturation workflow event header ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def saturation_trigger_matrix(
+    publisher, independent,
+    publisher_push=SATURATION_PUBLISHER_PUSH,
+    independent_pr=SATURATION_INDEPENDENT_PR,
+    independent_push=SATURATION_INDEPENDENT_PUSH,
+):
+    expected_publisher = (saturation_trigger_event("push", publisher_push)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (saturation_trigger_event("pull_request", independent_pr)
+                            + saturation_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if saturation_trigger_header(content) != expected:
+            raise AssertionError("worker-saturation " + label + " exact trigger matrix drift")
+
+
+def saturation_trigger_replace(content, old, new):
+    anchor = "\non:\n" + old + "\npermissions:\n"
+    if content.count(anchor) != 1 or old == new:
+        raise AssertionError("worker-saturation trigger mutation fixture unreachable")
+    return content.replace(anchor, "\non:\n" + new + "\npermissions:\n", 1)
+
+
+def saturation_trigger_negatives(publisher, independent):
+    def reject(p, i):
+        try:
+            saturation_trigger_matrix(p, i)
+        except AssertionError:
+            return
+        raise AssertionError("worker-saturation accepted event trigger mutation")
+
+    omissions = additions = 0
+    for label, event, paths in (
+        ("publisher", "push", SATURATION_PUBLISHER_PUSH),
+        ("independent", "pull_request", SATURATION_INDEPENDENT_PR),
+        ("independent", "push", SATURATION_INDEPENDENT_PUSH),
+    ):
+        original = publisher if label == "publisher" else independent
+        header = saturation_trigger_header(original)
+        block = saturation_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise AssertionError("worker-saturation event fixture ambiguous")
+        for index in range(len(paths)):
+            changed = saturation_trigger_replace(
+                original, header,
+                header.replace(block, saturation_trigger_event(
+                    event, paths[:index] + paths[index + 1:]), 1))
+            reject(changed, independent) if label == "publisher" else reject(publisher, changed)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for extra in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            changed = saturation_trigger_replace(
+                original, header,
+                header.replace(block, block.replace(first, first + extra, 1), 1))
+            reject(changed, independent) if label == "publisher" else reject(publisher, changed)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_push", SATURATION_PUBLISHER_PUSH),
+        ("independent_pr", SATURATION_INDEPENDENT_PR),
+        ("independent_push", SATURATION_INDEPENDENT_PUSH),
+    ):
+        try:
+            saturation_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except AssertionError:
+            shortened += 1
+        else:
+            raise AssertionError("worker-saturation accepted shortened trigger inventory")
+
+    ph, ih = saturation_trigger_header(publisher), saturation_trigger_header(independent)
+    topology = (
+        (saturation_trigger_replace(
+            publisher, ph, "  pull_request:\n    branches:\n      - so\n" + ph), independent),
+        (saturation_trigger_replace(
+            publisher, ph, ph.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (publisher, saturation_trigger_replace(
+            independent, ih, ih + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        reject(p, i)
+    print("PASS: worker-saturation exact trigger matrix: " + str(omissions)
+          + " omissions, " + str(additions) + " additions/duplicates, "
+          + str(shortened) + " shortened inventories, "
+          + str(len(topology)) + " event topology negatives")
+
+
 def policy(value):
     for marker in REQUIRED:
         if marker not in value:
@@ -242,6 +384,8 @@ def main():
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
     identity_runtime(independent, "Require exact clean worker saturation diagnostic source")
     policy(publisher)
+    saturation_trigger_matrix(publisher, independent)
+    saturation_trigger_negatives(publisher, independent)
     mutations(publisher)
     writer_runtime(publisher)
     reconcile_runtime()
