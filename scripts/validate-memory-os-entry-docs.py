@@ -234,11 +234,14 @@ SOURCE_NEGATIVE_JOB_CONDITION = (
 
 
 def source_negative_event_paths(source: str) -> dict[str, tuple[str, ...]] | None:
-    """Parse the reviewed, simple GitHub Actions PR/push path-filter shape.
+    """Fail closed on duplicate YAML event authority and unreviewed event filters.
 
-    Unknown event syntax is rejected rather than silently skipped. Individual
-    workflow validators remain authoritative for full YAML semantics.
+    The reviewed source-negative workflows use only an exact so branch filter
+    followed by paths on both PR and push. Additional valid YAML keys must
+    not silently shadow or narrow the required CI execution path.
     """
+    if len(re.findall(r"""(?m)^(?:on:|["']on["']:)""", source)) != 1:
+        return None
     lines = source.splitlines()
     try:
         start = lines.index("on:")
@@ -256,18 +259,20 @@ def source_negative_event_paths(source: str) -> dict[str, tuple[str, ...]] | Non
     result: dict[str, tuple[str, ...]] = {}
     for position, (index, name) in enumerate(markers):
         end = markers[position + 1][0] if position + 1 < len(markers) else len(event_lines)
-        block = event_lines[index + 1:end]
-        branches = ("    branches: [so]" in block or
-                    ("    branches:" in block and "      - so" in block))
-        if not branches or block.count("    paths:") != 1:
+        block = [
+            line for line in event_lines[index + 1:end]
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        if block[:1] == ["    branches: [so]"]:
+            path_index = 1
+        elif block[:2] == ["    branches:", "      - so"]:
+            path_index = 2
+        else:
             return None
-        path_start = block.index("    paths:") + 1
+        if block[path_index:path_index + 1] != ["    paths:"]:
+            return None
         paths: list[str] = []
-        for line in block[path_start:]:
-            if not line.startswith("      "):
-                break
-            if not line.strip() or line.lstrip().startswith("#"):
-                continue
+        for line in block[path_index + 1:]:
             match = re.fullmatch(
                 r"""      - (?:"([^"]+)"|'([^']+)'|([^\s#]+))""", line
             )
@@ -433,6 +438,19 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "duplicate top-level on authority": fixture + "on:\n  workflow_dispatch:\n",
+        "quoted shadow on authority": fixture + "'on':\n  workflow_dispatch:\n",
+        "unreviewed PR paths-ignore filter": fixture.replace(
+            "    paths:\n", "    paths-ignore:\n      - 'scripts/**'\n    paths:\n", 1),
+        "unreviewed push branches-ignore filter": fixture.replace(
+            "  push:\n    branches: [so]\n",
+            "  push:\n    branches: [so]\n    branches-ignore:\n      - so\n"),
+        "extra PR branch": fixture.replace(
+            "  pull_request:\n    branches: [so]\n",
+            "  pull_request:\n    branches: [so, main]\n"),
+        "duplicate push branch filter": fixture.replace(
+            "  push:\n    branches: [so]\n",
+            "  push:\n    branches: [so]\n    branches: [main]\n"),
         "masked post-validator untracked check": fixture.replace(
             '          git diff --exit-code\n          test -z "$(git status --porcelain)"\n',
             '          git diff --exit-code\n          test -z "$(git status --porcelain)" || true\n'),
@@ -570,7 +588,7 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 36 negative fixtures")
+              f"{invocation_count} direct Python commands, 42 negative fixtures")
 
 
 def main() -> int:
