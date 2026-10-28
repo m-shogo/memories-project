@@ -318,6 +318,10 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                 if len(jobs) == 2 else [])
     if job_keys != ["if", "permissions", "runs-on", "timeout-minutes", "steps"]:
         issues.append("unreviewed job runner, timeout or execution metadata")
+    if len(jobs) == 2 and (
+            "    runs-on: ubuntu-latest" not in jobs[1].splitlines() or
+            "    timeout-minutes: 5" not in jobs[1].splitlines()):
+        issues.append("unreviewed job runner or timeout value")
     step_keys = (re.findall(r"(?m)^ {8}([A-Za-z][A-Za-z0-9_-]*):", jobs[1])
                  if len(jobs) == 2 else [])
     if any(key not in {"with", "name", "env", "run"} for key in step_keys):
