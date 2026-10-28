@@ -1,0 +1,15 @@
+# Supplemental OPS learning — recovery objective reconcile CI YAML authority (2026-10-29)
+
+Append-only supplemental learning, not canonical learning authority, recovery-objective approval, production evidence, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion authority.
+
+## Material failure / executable recurrence guard
+- **Symptom/evidence:** The recovery-objective reconcile workflow source validator checked PR/push path inventories and reviewed full Git blob SHA, but did not independently prove the exact event header, unique effective root keys or unique root read-only permission leaf. Extra event, quoted/spaced root shadows and quoted/spaced overriding `contents: write` could evade the path-only semantic check. This was a static gap, not an observed objective approval or production incident.
+- **Verified root cause / failed approach:** Path inventory equality and complete-source identity do not separately exercise effective YAML mapping semantics; visible `permissions: contents: read` is insufficient when duplicate/shadow leaves are accepted by a parser.
+- **Correction / recurrence guard:** [d22bf31e](https://github.com/m-shogo/memories-project/commit/d22bf31edc457fa2509ca8506ee012ffa2f38959) adds exact event-header, root-key and read-only permission-leaf checks with nine exact-diagnostic in-memory negatives (one extra event, six root shadows, two permission shadows). Existing Git blob pin, branch checks and reconcile rollback authority are unchanged.
+- **Retry condition:** Re-evaluate on independently reviewed event/permission topology change or a newly demonstrated bypass; do not retry unchanged canonical learning transport, supplemental-history CI-trigger permission, MinIO 401 or human approval blockers.
+
+## Material success / protected authority
+- **Outcome/evidence:** [Recovery Objectives Reconcile Negative #40716582684](https://github.com/m-shogo/memories-project/actions/runs/40716582684) completed SUCCESS on exact source `d22bf31e`. Job log confirms nine YAML negatives, 22 trigger removals, eight additions, one shortened inventory, six branch runtime cases and crash-safe/mode-preserving diagnostic and rollback tests.
+- **Why safe / reusable mechanism:** Only the existing CI-reachable read-only Python validator changed (+74/-0). No reviewed workflow, approved objective, generation, request, evidence, typed eight-domain record, credential, traffic, readiness or human promotion was created. In-memory YAML negatives are not recovery approval.
+- **Protected-authority check:** Ten protected production/OPS-P0-007/registry/learning-contract/canonical-learning Git blob SHAs unchanged after code commit. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; zero registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records or final candidates. Human promotion remains separate/non-automatic.
+- **Next safe target:** Audit other independent CI source validators for semantic YAML shadows, keeping the full admission chain and human promotion separate from targeted CI.
