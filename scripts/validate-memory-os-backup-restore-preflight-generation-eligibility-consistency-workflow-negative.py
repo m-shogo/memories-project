@@ -112,6 +112,27 @@ def validate_trigger_reachability(
             permission_rows.append(row)
     if permission_rows != ["  contents: read"]:
         raise SystemExit("preflight eligibility consistency CI permission leaf shadow drift")
+    # Strict eligibility CI must not permit a shadow job or an extra writer.
+    if source.count("\njobs:\n") != 1:
+        raise SystemExit("preflight eligibility consistency CI job mapping shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    jobs = (("  validate-pr:", "read"), ("  validate-and-publish:", "write"))
+    headers = [line for line in body.splitlines()
+               if line.startswith("  ") and not line.startswith("   ")
+               and line.strip() and not line.lstrip().startswith("#")]
+    if headers != [job for job, _ in jobs]:
+        raise SystemExit("preflight eligibility consistency CI job mapping shadow drift")
+    for index, (job, access) in enumerate(jobs):
+        block = body.split(job + "\n", 1)[1]
+        if index + 1 < len(jobs):
+            block = block.split(jobs[index + 1][0] + "\n", 1)[0]
+        if block.count("    permissions:\n") != 1 or block.count("    runs-on:") != 1:
+            raise SystemExit("preflight eligibility consistency CI job permission leaf shadow drift")
+        section = block.split("    permissions:\n", 1)[1].split("    runs-on:", 1)[0]
+        leaves = [line for line in section.splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")]
+        if leaves != ["      contents: " + access]:
+            raise SystemExit("preflight eligibility consistency CI job permission leaf shadow drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -203,8 +224,34 @@ def prove_trigger_reachability_negatives(source: str) -> None:
                 ) from exc
         else:
             raise SystemExit("preflight eligibility accepted permission shadow: " + name)
+    job_count = 0
+    for job, access in (("validate-pr", "read"), ("validate-and-publish", "write")):
+        cases = []
+        for label, key in (("spaced job", job + " "), ("quoted job", "'" + job + "'")):
+            cases.append((label, source + "\n  " + key + ": {}\n",
+                          "job mapping shadow drift"))
+        marker = "    permissions:\n      contents: " + access + "\n"
+        if source.count(marker) != 1:
+            raise SystemExit("preflight eligibility consistency CI job fixture anchor drift: " + job)
+        for label, leaf in (("spaced", "      contents : write\n"),
+                            ("quoted", "      'contents': write\n")):
+            cases.append((label, source.replace(marker, marker + leaf, 1),
+                          "job permission leaf shadow drift"))
+        for label, mutated, diagnostic in cases:
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit as exc:
+                expected = "preflight eligibility consistency CI " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("preflight eligibility job rejected for wrong reason: "
+                                     + job + " " + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("preflight eligibility accepted job shadow: " + job + " " + label)
+            job_count += 1
+    if job_count != 8:
+        raise SystemExit("preflight eligibility consistency CI job negative population drift")
     print("PASS: preflight eligibility consistency CI semantic YAML negatives "
-          "(1 extra-event, 4 root, 2 permission exact-diagnostic cases)")
+          "(1 extra-event, 4 root, 2 permission, 8 job exact-diagnostic cases)")
     print("PASS: preflight eligibility consistency CI event-specific triggers (46 removals; 8 additions; 1 shortened inventory negative)")
 
 
