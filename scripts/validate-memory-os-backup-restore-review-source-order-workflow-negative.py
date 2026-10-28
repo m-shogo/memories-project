@@ -11,6 +11,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-review-source-order.yml"
 REVIEWED_WORKFLOW_BLOB_SHA = "ac458bffc479d890505dfa6a82bd0c799f50e4bc"
+TRIGGER_PATHS = (
+    "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-binding.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py",
+    "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "docs/evidence/backup-restore/**",
+    ".github/workflows/backup-restore-review-source-order.yml",
+    "scripts/validate-memory-os-backup-restore-review-source-order-workflow-negative.py",
+)
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -33,7 +47,78 @@ REQUIRED = (
 )
 
 
+def validate_trigger_reachability(
+    source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS
+) -> None:
+    """Reject unknown, missing, reordered or duplicated PR/push CI paths without blob SHA."""
+    if len(trigger_paths) != 12 or len(set(trigger_paths)) != 12:
+        raise SystemExit("review source-order CI trigger inventory shortened or duplicated")
+    push_marker = "  push:\n    branches: [so]\n    paths:\n"
+    pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (push_marker, pr_marker, dispatch_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("review source-order CI trigger marker drift")
+    push = source.split(push_marker, 1)[1].split(pr_marker, 1)[0]
+    pr = source.split(pr_marker, 1)[1].split(dispatch_marker, 1)[0]
+    approved = tuple("      - '" + path + "'" for path in trigger_paths)
+    for event, block in (("push", push), ("pull_request", pr)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != approved:
+            raise SystemExit("review source-order CI " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+    push_marker = "  push:\n    branches: [so]\n    paths:\n"
+    for event in ("push", "pull_request"):
+        for path in TRIGGER_PATHS:
+            token = "      - '" + path + "'\n"
+            if source.count(token) != 2:
+                raise SystemExit("review source-order CI trigger fixture drift: " + path)
+            if event == "push":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(pr_marker, 1)
+                mutated = prefix + pr_marker + suffix.replace(token, "", 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("review source-order CI accepted missing " + event + " trigger: " + path)
+        marker = push_marker if event == "push" else pr_marker
+        for label, injected in (
+            ("quoted extra", "      - 'unreviewed/**'\n"),
+            ("quoted duplicate", "      - '" + TRIGGER_PATHS[0] + "'\n"),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + TRIGGER_PATHS[0] + "\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("review source-order CI addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            if mutated == source:
+                raise SystemExit("review source-order CI addition fixture unchanged")
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("review source-order CI accepted " + event + " addition: " + label)
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("review source-order CI shortened inventory accepted")
+    print("PASS: review source-order CI event-specific triggers (24 removals; 8 additions; 1 shortened inventory negative)")
+
+
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_trigger_reachability(source)
     for label, token, count in REQUIRED:
         if source.count(token) != count:
             raise SystemExit("review source-order CI source drift: " + label)
@@ -64,6 +149,7 @@ def prove_branch_guards_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_trigger_reachability_negatives(source)
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
