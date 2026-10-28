@@ -171,13 +171,13 @@ def validate_trigger_reachability(
     pr = content.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = content.split(push_marker, 1)[1].split(end_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
-            raise SystemExit("generation binding " + kind + " " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            if block.count('      - "' + item + '"' + chr(10)) != 1:
-                raise SystemExit("generation binding " + kind + " " + event + " trigger path drift: " + item)
+        approved = tuple('      - "' + item + '"' for item in trigger_paths)
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != approved:
+            raise SystemExit("generation binding " + kind + " " + event + " exact trigger inventory drift")
 
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
@@ -201,13 +201,31 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
                 except SystemExit:
                     continue
                 raise SystemExit("generation binding " + kind + " accepted missing " + event + " trigger: " + item)
+        for event in ("pull_request", "push"):
+            marker = "  pull_request:\n    branches:\n      - so\n    paths:\n" if event == "pull_request" else push_marker
+            for label, injected in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                if content.count(marker) != 1:
+                    raise SystemExit("generation binding " + kind + " addition marker drift: " + event)
+                mutated = content.replace(marker, marker + injected, 1)
+                if mutated == content:
+                    raise SystemExit("generation binding " + kind + " addition fixture unchanged")
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("generation binding " + kind + " accepted " + event + " addition: " + label)
         try:
             validate_trigger_reachability(content, kind, trigger_paths=paths[:-1])
         except SystemExit:
             pass
         else:
             raise SystemExit("generation binding " + kind + " shortened trigger inventory accepted")
-    print("PASS: generation binding CI event-specific trigger reachability (112 removals; 2 shortened inventory negatives)")
+    print("PASS: generation binding CI event-specific trigger reachability (112 removals; 16 additions; 2 shortened inventory negatives)")
 
 
 def validate(
