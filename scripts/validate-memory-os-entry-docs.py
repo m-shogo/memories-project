@@ -440,6 +440,34 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                     or (third_python_allowed and run_positions[2] < i)
                 ) for i in python_positions)):
             issues.append("direct Python validators escaped reviewed run-step order")
+    # The sole reviewed third-step Python exception executes inside a
+    # disposable clone checked out at the already verified source HEAD.
+    # Bind the complete clone shell, not just the presence of a Python line.
+    migration_relative = ".github/workflows/migration-evidence-registry-source-negative.yml"
+    if relative == migration_relative:
+        if len(run_positions) != 3:
+            issues.append("missing reviewed migration clone run step")
+        else:
+            clone_lines = [
+                row for row in source_lines[run_positions[2] + 1:] if row.strip()
+            ]
+            expected_clone_lines = [
+                "          set -euo pipefail",
+                '          sandbox="$(mktemp -d)"',
+                '          trap \'rm -rf "$sandbox"\' EXIT',
+                '          git clone --quiet --no-hardlinks --no-checkout . "$sandbox/repo"',
+                '          git -C "$sandbox/repo" checkout --quiet --detach "$(git rev-parse HEAD)"',
+                "          (",
+                '            cd "$sandbox/repo"',
+                "            python scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py",
+                "            git diff --check",
+                "            git diff --exit-code",
+                '            test -z "$(git status --porcelain)"',
+                "          )",
+                '          test -z "$(git status --porcelain)"',
+            ]
+            if clone_lines != expected_clone_lines:
+                issues.append("unreviewed migration disposable clone source or shell")
     if len(head_positions) != 1:
         issues.append("missing, shadowed or duplicated exact-source HEAD comparison")
     else:
@@ -692,7 +720,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 155
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 163
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -783,7 +811,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "          git diff --exit-code\n"
         '          test -z "$(git status --porcelain)"\n'
     )
-    exists = lambda script: script == "scripts/check.py"
+    migration_script = "scripts/validate-memory-os-migration-evidence-registry-reconcile-authority-negative.py"
+    exists = lambda script: script in {"scripts/check.py", migration_script}
     if source_negative_reachability_issues(relative, fixture, exists):
         failures.append("source-negative reachability positive control failed")
         return
@@ -806,6 +835,33 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     )
     if source_negative_reachability_issues(go_relative, go_fixture, exists):
         failures.append("source-negative setup-go positive control failed")
+        return
+    migration_relative = ".github/workflows/migration-evidence-registry-source-negative.yml"
+    migration_fixture = fixture.replace(relative, migration_relative).replace(
+        '      - "scripts/check.py"\n',
+        '      - "scripts/check.py"\n'
+        f'      - "{migration_script}"\n',
+    )
+    migration_fixture += (
+        "      - name: Prove lifecycle authority in disposable exact-source clone\n"
+        "        run: |\n"
+        "          set -euo pipefail\n"
+        '          sandbox="$(mktemp -d)"\n'
+        '          trap \'rm -rf "$sandbox"\' EXIT\n'
+        '          git clone --quiet --no-hardlinks --no-checkout . "$sandbox/repo"\n'
+        '          git -C "$sandbox/repo" checkout --quiet --detach "$(git rev-parse HEAD)"\n'
+        "          (\n"
+        '            cd "$sandbox/repo"\n'
+        f"            python {migration_script}\n"
+        "            git diff --check\n"
+        "            git diff --exit-code\n"
+        '            test -z "$(git status --porcelain)"\n'
+        "          )\n"
+        '          test -z "$(git status --porcelain)"\n'
+    )
+    if source_negative_reachability_issues(
+            migration_relative, migration_fixture, exists):
+        failures.append("source-negative migration clone positive control failed")
         return
     nested = fixture.replace(
         "          python scripts/check.py",
@@ -832,6 +888,32 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     reversed_fixture = reversed_shell_steps(fixture)
     reversed_go_fixture = reversed_shell_steps(go_fixture)
     cases = {
+        "migration-clone unreviewed remote source": migration_fixture.replace(
+            'git clone --quiet --no-hardlinks --no-checkout . "$sandbox/repo"',
+            'git clone --quiet --no-hardlinks --no-checkout https://example.invalid/repo "$sandbox/repo"'),
+        "migration-clone wrong checkout ref": migration_fixture.replace(
+            'checkout --quiet --detach "$(git rev-parse HEAD)"',
+            'checkout --quiet --detach main'),
+        "migration-clone missing no-hardlinks": migration_fixture.replace(
+            "git clone --quiet --no-hardlinks --no-checkout",
+            "git clone --quiet --no-checkout"),
+        "migration-clone missing source checkout": migration_fixture.replace(
+            '          git -C "$sandbox/repo" checkout --quiet --detach "$(git rev-parse HEAD)"\n',
+            ""),
+        "migration-clone missing sandbox cd": migration_fixture.replace(
+            '            cd "$sandbox/repo"\n',
+            ""),
+        "migration-clone masked clone failure": migration_fixture.replace(
+            '          git clone --quiet --no-hardlinks --no-checkout . "$sandbox/repo"\n',
+            '          true ||\n'
+            '          git clone --quiet --no-hardlinks --no-checkout . "$sandbox/repo"\n'),
+        "migration-clone malicious cleanup trap": migration_fixture.replace(
+            '          trap \'rm -rf "$sandbox"\' EXIT\n',
+            "          trap 'exit 0' ERR\n"),
+        "migration-clone missing nested clean check": migration_fixture.replace(
+            '            git diff --exit-code\n'
+            '            test -z "$(git status --porcelain)"\n',
+            '            git diff --exit-code\n'),
         "validator precedes source verification": reversed_fixture,
         "setup-go validator precedes source verification": reversed_go_fixture,
         "extra shell run step after validator": fixture + (
@@ -1376,8 +1458,12 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     if len(cases) != EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT:
         failures.append(f"source-negative fixture inventory drift: expected {EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT}, got {len(cases)}")
     for name, mutation in cases.items():
-        case_relative = go_relative if name.startswith("setup-go ") else relative
-        baseline = go_fixture if case_relative == go_relative else fixture
+        if name.startswith("setup-go "):
+            case_relative, baseline = go_relative, go_fixture
+        elif name.startswith("migration-clone "):
+            case_relative, baseline = migration_relative, migration_fixture
+        else:
+            case_relative, baseline = relative, fixture
         if mutation == baseline or not source_negative_reachability_issues(
                 case_relative, mutation, exists):
             failures.append(f"source-negative reachability negative escaped: {name}")
