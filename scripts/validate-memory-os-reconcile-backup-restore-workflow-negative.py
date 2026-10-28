@@ -179,6 +179,79 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
     print("PASS: restore policy publisher/independent CI event-specific triggers (38 removals; 16 additions; 2 shortened inventory negatives)")
 
 
+
+def validate_yaml_root_permission(publisher: str, independent: str) -> None:
+    """Pin reviewed restore-policy YAML root mapping and read-only permission leaves."""
+    for label, value, roots in (
+        ("publisher", publisher, ["name: Reconcile Backup Restore Policy",
+                                  "on:", "permissions:", "concurrency:", "jobs:"]),
+        ("independent", independent, ["name: Reconcile Backup Restore Source Negative",
+                                      "on:", "permissions:", "jobs:"]),
+    ):
+        actual = [line for line in value.splitlines()
+                  if line.strip() and not line[0].isspace()
+                  and not line.lstrip().startswith("#")]
+        if actual != roots:
+            raise SystemExit("restore-policy " + label + " root YAML key shadow drift")
+        if value.count("\npermissions:\n") != 1:
+            raise SystemExit("restore-policy " + label + " permission boundary drift")
+        leaves = []
+        for line in value.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["  contents: read"]:
+            raise SystemExit("restore-policy " + label + " permission leaf shadow drift")
+
+
+def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
+    """Prove twelve exact-diagnostic YAML root and permission shadow mutations."""
+    validate_yaml_root_permission(publisher, independent)
+    count = 0
+    for label, value, other, is_publisher in (
+        ("publisher", publisher, independent, True),
+        ("independent", independent, publisher, False),
+    ):
+        cases = [
+            (mutation, value + "\n" + suffix, "root YAML key shadow drift")
+            for mutation, suffix in (
+                ("spaced on", "on :\n  issues:\n"),
+                ("quoted on", "'on':\n  issues:\n"),
+                ("spaced jobs", "jobs : {}\n"),
+                ("quoted jobs", "'jobs': {}\n"),
+            )
+        ]
+        marker = "\npermissions:\n  contents: read\n"
+        if value.count(marker) != 1:
+            raise SystemExit("restore-policy " + label + " permission fixture anchor drift")
+        for mutation, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((mutation, value.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for mutation, changed, diagnostic in cases:
+            if changed == value:
+                raise SystemExit("restore-policy unchanged YAML fixture: " + mutation)
+            try:
+                if is_publisher:
+                    validate_yaml_root_permission(changed, other)
+                else:
+                    validate_yaml_root_permission(other, changed)
+            except SystemExit as exc:
+                expected = "restore-policy " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("restore-policy wrong YAML diagnostic: "
+                                     + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("restore-policy accepted YAML shadow: " + label + " " + mutation)
+            count += 1
+    if count != 12:
+        raise SystemExit("restore-policy YAML negative inventory drift")
+    print("PASS: restore-policy root/permission YAML authority (12 exact-diagnostic negatives)")
+
+
 def validate(
     publisher: str, independent: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
@@ -293,6 +366,8 @@ def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
     validate(publisher, independent)
+    validate_yaml_root_permission(publisher, independent)
+    yaml_root_permission_negatives(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     negatives(publisher, independent)
