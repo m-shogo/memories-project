@@ -17,12 +17,32 @@ PROTECTED = (
     "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py",
     SELF,
 )
+TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-unreadable-authority-readonly.yml",
+    ".github/workflows/backup-restore-unreadable-authority-negative.yml",
+    "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/validate-memory-os-*-load-negative.py",
+    "scripts/validate-memory-os-*-writer-authority-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-transport-negative.py",
+    "scripts/validate-memory-os-backup-restore-unreadable-authority-trigger-negative.py",
+)
 PR_MARKER = "  pull_request:\n    paths:\n"
 PUSH_MARKER = "  push:\n    branches: [so]\n    paths:\n"
 PERMISSIONS_MARKER = "\npermissions:\n"
 
 
-def validate(source: str) -> None:
+def validate(source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS) -> None:
+    if len(trigger_paths) != 16 or len(set(trigger_paths)) != 16:
+        raise SystemExit("unreadable readonly trigger inventory shortened or duplicated")
     for marker in (PR_MARKER, PUSH_MARKER, PERMISSIONS_MARKER):
         if source.count(marker) != 1:
             raise SystemExit(f"unreadable readonly trigger marker drift: {marker.strip()}")
@@ -33,7 +53,9 @@ def validate(source: str) -> None:
         raise SystemExit("unreadable readonly executable inventory drift")
     for event, block in (("pull_request", pr), ("push", push)):
         paths = re.findall(r'^      - "([^"]+)"$', block, re.MULTILINE)
-        for path in PROTECTED:
+        if len(paths) != len(trigger_paths) or set(paths) != set(trigger_paths):
+            raise SystemExit(f"unreadable readonly {event} trigger inventory drift")
+        for path in trigger_paths:
             token = f'      - "{path}"\n'
             if block.count(token) != 1:
                 raise SystemExit(f"unreadable readonly {event} missing or duplicate trigger: {path}")
@@ -99,7 +121,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     for event in ("pull_request", "push"):
-        for path in PROTECTED:
+        for path in TRIGGER_PATHS:
             token = f'      - "{path}"\n'
             if event == "pull_request":
                 mutated = source.replace(token, "", 1)
@@ -111,7 +133,13 @@ def main() -> int:
             except SystemExit:
                 continue
             raise SystemExit(f"unreadable readonly accepted missing {event} trigger: {path}")
-    print("PASS: unreadable readonly trigger reachability (10 removal negatives; 11 executable scripts)")
+    try:
+        validate(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("unreadable readonly shortened trigger inventory accepted")
+    print(f"PASS: unreadable readonly trigger reachability ({len(TRIGGER_PATHS) * 2} event-specific removal negatives; 1 shortened inventory negative; 11 executable scripts)")
     validate_source_admission(source)
     prove_source_admission_negatives(source)
     return 0
