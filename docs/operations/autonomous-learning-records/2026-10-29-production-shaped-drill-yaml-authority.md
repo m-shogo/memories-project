@@ -1,0 +1,18 @@
+# Supplemental OPS learning — production-shaped drill CI YAML authority (2026-10-29)
+
+Append-only supplemental learning only; not canonical `AUTONOMOUS-OPS-LEARNING.md`, production/backup/restore/RPO/RTO/skew evidence, drill approval, credentials, traffic, readiness or human promotion authority.
+
+## Material failure / recurrence prevention
+- **Symptom:** The production-shaped failure-drill publisher and independent source-negative validator checked exact PR/push trigger inventories and reviewed Git blob hashes but lacked an independent effective YAML event-header/root/permission shadow diagnostic. Static semantic coverage gap only; not an observed production bypass.
+- **Observed evidence:** `validate_trigger_reachability` checked event-specific path membership; `validate` checked reviewed source token inventories and blob digests. No exact diagnostic for extra event `issues`, `on :` / `jobs :` root mapping, or quoted/spaced `contents` permission leaf.
+- **Verified root cause:** Trigger inventory and whole-source digest do not independently prove exclusive effective event topology, root mapping or root read-only permission.
+- **Failed approach:** Relying solely on reviewed Git blob identity and visible read-only tokens for YAML semantic authority.
+- **Correction / executable recurrence guard:** [91fe1526](https://github.com/m-shogo/memories-project/commit/91fe15262586304b5cd401741df3218f555ea115) adds exact publisher/independent event header, root and permission validation plus 14 synthetic mutations with exact expected diagnostics (2 extra event, 8 root, 4 permission). Existing trigger, runtime, redaction, atomic and source guards remain.
+- **Retry condition:** Revisit only on reviewed YAML topology changes or demonstrated new shadow bypass. Do not retry unchanged MinIO HTTP 401, canonical learning transfer, workflow-write permission or human approval blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Production Shaped Failure Drills Source Negative #40740369525](https://github.com/m-shogo/memories-project/actions/runs/40740369525) completed **SUCCESS** on exact code `91fe15262586304b5cd401741df3218f555ea115`, with 14 new exact-diagnostic YAML negatives, 48 trigger omissions, 16 additions, 2 shortened inventories, 30 branch/event/SHA, 5 diagnostic atomic/redaction, 31 semantic and 4 blob-only source mutations passing. [Production Shaped Failure Drill Admission #40740369523](https://github.com/m-shogo/memories-project/actions/runs/40740369523) also completed **SUCCESS** on that code, which is validation success only, not production recovery evidence.
+- **Why safe:** Only the existing CI-reachable read-only Python source-negative validator changed (+92 lines, -0). No reviewed workflow, protected registry, production evidence, drill request, generation, objective, credentials, traffic or promotion authority changed.
+- **Reusable mechanism:** Pin effective YAML event/root/permission semantics with exact-diagnostic negative fixtures while retaining independent full-source SHA and executable runtime/atomic proofs.
+- **Protected-authority check:** Eleven protected production/OPS-P0-007/registry/learning-contract/canonical-learning blob SHAs unchanged. `productionDecision=NO_GO`; registered/semantically eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records, final candidates and human promotion approvals remain zero. Learning cannot satisfy any production/recovery gate.
+- **Next safe target:** Audit remaining source-negative CI validators and exact diagnostic classifications, especially digest-only fixture semantics and event/root shadows.
