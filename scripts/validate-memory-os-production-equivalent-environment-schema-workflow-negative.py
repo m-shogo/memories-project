@@ -11,6 +11,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/production-equivalent-environment-schema.yml"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "ce0ee25b25a6811a01615e4f782bb184048f1428"
+
+TRIGGER_PATHS = (
+    ".github/workflows/production-equivalent-environment-schema.yml",
+    "scripts/validate-memory-os-production-equivalent-environment-schema-workflow-negative.py",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "scripts/validate-memory-os-production-equivalent-environment-schema.py",
+    "scripts/validate-memory-os-production-equivalent-environment-fixtures.py",
+    "docs/fixtures/memory-os-operability/production-equivalent-environment-record.*.v1.json",
+)
 REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
     ("self trigger", '      - "scripts/validate-memory-os-production-equivalent-environment-schema-workflow-negative.py"\n', 2),
@@ -32,7 +41,77 @@ REQUIRED = (
 )
 
 
+
+def validate_trigger_reachability(
+    source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS
+) -> None:
+    """Pin the exact reviewed schema CI PR/push trigger inventory without digest."""
+    if len(trigger_paths) != 6 or len(set(trigger_paths)) != 6:
+        raise SystemExit("environment schema CI trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("environment schema CI event marker drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    approved = tuple('      - "' + path + '"' for path in trigger_paths)
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != approved:
+            raise SystemExit("environment schema CI " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for path in TRIGGER_PATHS:
+            token = '      - "' + path + '"\n'
+            if source.count(token) != 2:
+                raise SystemExit("environment schema CI mutation anchor drift: " + path)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("environment schema CI accepted missing " + event + " trigger: " + path)
+        marker = pr_marker if event == "pull_request" else push_marker
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + TRIGGER_PATHS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + TRIGGER_PATHS[0] + "\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("environment schema CI addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            if mutated == source:
+                raise SystemExit("environment schema CI addition fixture unchanged")
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("environment schema CI accepted " + event + " addition: " + label)
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("environment schema CI shortened trigger inventory accepted")
+    print("PASS: environment schema CI event-specific triggers (12 removals; 8 additions; 1 shortened inventory negative)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_trigger_reachability(source)
     for label, token, count in REQUIRED:
         if source.count(token) != count:
             raise SystemExit("environment schema workflow source drift: " + label)
@@ -65,6 +144,7 @@ def prove_runtime_branch_guards() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_trigger_reachability_negatives(source)
     prove_runtime_branch_guards()
     cases = (
         ("PR target", REQUIRED[0][1], "  pull_request:\n    paths:\n"),
