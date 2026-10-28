@@ -60,6 +60,36 @@ def validate_trigger_reachability(
         )
         if actual != expected:
             raise SystemExit(f"environment eligibility negative CI {event} trigger inventory drift")
+    # Exact PR/push path blocks alone do not exclude an extra event or
+    # later effective YAML root/permission shadow after the reviewed header.
+    expected_header = (
+        "name: Production Equivalent Environment Eligibility Negative\n\non:\n"
+        + PR_MARKER + "".join(f'      - "{path}"\n' for path in trigger_paths)
+        + PUSH_MARKER + "".join(f'      - "{path}"\n' for path in trigger_paths)
+        + DISPATCH_MARKER
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("environment eligibility negative CI exact event header drift")
+    observed_roots = [
+        row for row in source.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if observed_roots != [
+        "name: Production Equivalent Environment Eligibility Negative",
+        "on:", "permissions:", "concurrency:", "jobs:",
+    ]:
+        raise SystemExit("environment eligibility negative CI root YAML key shadow drift")
+    permission_lines = source.split("\npermissions:\n", 1)[1].splitlines()
+    permission_rows = []
+    for row in permission_lines:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            permission_rows.append(row)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("environment eligibility negative CI permission leaf shadow drift")
 
 
 def validate(
@@ -122,6 +152,55 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         pass
     else:
         raise SystemExit("environment eligibility negative CI shortened trigger inventory accepted")
+    # All path inventories remain unchanged in these mutations.
+    extra_event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra_event == source:
+        raise SystemExit("environment eligibility extra-event negative anchor drift")
+    try:
+        validate_trigger_reachability(extra_event)
+    except SystemExit as exc:
+        if str(exc) != "environment eligibility negative CI exact event header drift":
+            raise SystemExit(
+                "environment eligibility event rejected for wrong reason: " + str(exc)
+            ) from exc
+    else:
+        raise SystemExit("environment eligibility accepted extra event")
+    for name, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    ):
+        try:
+            validate_trigger_reachability(source + suffix)
+        except SystemExit as exc:
+            if str(exc) != "environment eligibility negative CI root YAML key shadow drift":
+                raise SystemExit(
+                    "environment eligibility root shadow rejected for wrong reason: "
+                    + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("environment eligibility accepted root shadow: " + name)
+    anchor = "permissions:\n  contents: read\n"
+    if source.count(anchor) != 1:
+        raise SystemExit("environment eligibility permission negative anchor drift")
+    for name, extra in (
+        ("spaced", "  contents : write\n"),
+        ("quoted", "  'contents': write\n"),
+    ):
+        mutated = source.replace(anchor, anchor + extra, 1)
+        try:
+            validate_trigger_reachability(mutated)
+        except SystemExit as exc:
+            if str(exc) != "environment eligibility negative CI permission leaf shadow drift":
+                raise SystemExit(
+                    "environment eligibility permission shadow rejected for wrong reason: "
+                    + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("environment eligibility accepted permission leaf shadow: " + name)
+    print("PASS: environment eligibility negative CI semantic YAML negatives "
+          "(1 extra-event, 4 root, 2 permission exact-diagnostic cases)")
     print("PASS: environment eligibility negative CI event triggers (8 removals; 8 additions; 1 shortened inventory)")
 
 
