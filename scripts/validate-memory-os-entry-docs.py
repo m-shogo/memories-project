@@ -327,7 +327,26 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             or len(re.findall(r"(?m)^      contents:", source)) != 1
             or not re.search(r"(?m)^    permissions:\n      contents: read$", source)):
         issues.append("duplicate, missing or elevated job permissions")
+    # A visible contents: read does not prove the effective YAML permission:
+    # quoted and whitespace-before-colon keys can shadow the same leaf.
+    workflow_permission_sections = source.split("\npermissions:\n")
+    if len(workflow_permission_sections) == 2:
+        workflow_permission_rows = [
+            row for row in workflow_permission_sections[1].split("\njobs:\n", 1)[0].splitlines()
+            if re.match(r"^ {2}\S", row) and not row.lstrip().startswith("#")
+        ]
+        if workflow_permission_rows != ["  contents: read"]:
+            issues.append("duplicate or missing workflow contents permission")
     jobs = source.split("\njobs:\n")
+    if len(jobs) == 2:
+        job_permission_sections = jobs[1].split("    permissions:\n")
+        if len(job_permission_sections) == 2:
+            job_permission_rows = [
+                row for row in job_permission_sections[1].split("    runs-on:", 1)[0].splitlines()
+                if re.match(r"^ {6}\S", row) and not row.lstrip().startswith("#")
+            ]
+            if job_permission_rows != ["      contents: read"]:
+                issues.append("duplicate, missing or elevated job permissions")
     if (len(jobs) != 2 or
             len(re.findall(r"(?m)^  [A-Za-z0-9_-]+:\s*$", jobs[1])) != 1):
         issues.append("missing or duplicate source-negative CI job")
@@ -844,7 +863,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 200
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 204
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -1399,6 +1418,18 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "spaced shadow source-negative job": fixture + "  source-admission : {}\n",
         "quoted shadow source-negative job": fixture + "  'source-admission': {}\n",
         "spaced unreviewed extra job": fixture + "  unreviewed : {}\n",
+        "spaced shadow workflow contents permission": fixture.replace(
+            "permissions:\n  contents: read\n",
+            "permissions:\n  contents: read\n  contents : write\n", 1),
+        "quoted shadow workflow contents permission": fixture.replace(
+            "permissions:\n  contents: read\n",
+            "permissions:\n  contents: read\n  'contents': write\n", 1),
+        "spaced shadow job contents permission": fixture.replace(
+            "    permissions:\n      contents: read\n",
+            "    permissions:\n      contents: read\n      contents : write\n", 1),
+        "quoted shadow job contents permission": fixture.replace(
+            "    permissions:\n      contents: read\n",
+            "    permissions:\n      contents: read\n      'contents': write\n", 1),
         "unreviewed PR paths-ignore filter": fixture.replace(
             "    paths:\n", "    paths-ignore:\n      - 'scripts/**'\n    paths:\n", 1),
         "unreviewed push branches-ignore filter": fixture.replace(
@@ -1830,9 +1861,18 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "source verification step shell override",
     }
     workflow_permission_cases = {"duplicate workflow permissions"}
-    workflow_contents_cases = {"duplicate workflow contents permission"}
+    workflow_contents_cases = {
+        "duplicate workflow contents permission",
+        "spaced shadow workflow contents permission",
+        "quoted shadow workflow contents permission",
+    }
     readonly_permission_cases = {"write permission"}
-    job_permission_cases = {"elevated job permissions", "duplicate job permissions"}
+    job_permission_cases = {
+        "elevated job permissions",
+        "duplicate job permissions",
+        "spaced shadow job contents permission",
+        "quoted shadow job contents permission",
+    }
     # A malformed event filter or a skipped source-negative job must fail for
     # its intended CI-reachability invariant, not an unrelated metadata check.
     event_filter_cases = {
@@ -2137,7 +2177,7 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 200:
+    if diagnostic_bound != 204:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
