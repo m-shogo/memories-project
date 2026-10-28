@@ -36,9 +36,23 @@ SUITE = (
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-binding-readonly.yml"
 REVIEWED_WORKFLOW_BLOB_SHA = "ee7b89b2efd9f5fc8b223c185e0e156b07a699f9"
 TRIGGER_SCRIPTS = (Path(__file__).resolve(), *SUITE)
+TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-generation-binding-readonly.yml",
+    "scripts/validate-memory-os-backup-restore-generation-binding-workflow-readonly.py",
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py",
+    "scripts/validate-memory-os-backup-restore.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/validate-memory-os-backup-restore-generation-binding.py",
+    "scripts/validate-memory-os-backup-restore-generation-binding-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py",
+    "scripts/reconcile-memory-os-backup-restore-generation-status.py",
+    "contracts/operations/**",
+)
 
 
-def validate_trigger_reachability(source: str) -> None:
+def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS) -> None:
     """Require both independent CI events to include every executed script."""
     pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
     push_marker = "  push:\n    branches: [so]\n    paths:\n"
@@ -48,7 +62,16 @@ def validate_trigger_reachability(source: str) -> None:
             raise SystemExit(f"generation-binding readonly trigger marker drift: {marker.strip()}")
     pr_block = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push_block = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    if len(trigger_paths) != 12 or len(set(trigger_paths)) != 12:
+        raise SystemExit("generation-binding readonly trigger inventory shortened or duplicated")
     for event, block in (("pull_request", pr_block), ("push", push_block)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        expected = tuple(f'      - "{path}"' for path in trigger_paths)
+        if actual != expected:
+            raise SystemExit(f"generation-binding readonly {event} trigger inventory drift")
         for path in TRIGGER_SCRIPTS:
             token = f'      - "{path.relative_to(ROOT).as_posix()}"\n'
             if block.count(token) != 1:
@@ -76,6 +99,34 @@ def prove_trigger_reachability_negatives(source: str) -> None:
                 continue
             raise SystemExit(f"generation-binding trigger negative accepted: {event} {path}")
     print(f"PASS: generation-binding readonly trigger reachability ({len(TRIGGER_SCRIPTS) * 2} removal negatives)")
+    for event in ("pull_request", "push"):
+        for label, inserted in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", f'      - "{TRIGGER_PATHS[0]}"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", f"      - {TRIGGER_PATHS[0]}\n"),
+        ):
+            token = f'      - "{TRIGGER_PATHS[0]}"\n'
+            prefix, suffix = source.split(push_marker, 1)
+            if event == "pull_request":
+                mutated = prefix.replace(token, inserted + token, 1) + push_marker + suffix
+            else:
+                mutated = prefix + push_marker + suffix.replace(token, inserted + token, 1)
+            if mutated == source:
+                raise SystemExit(f"generation-binding readonly missing addition fixture: {event} {label}")
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit(f"generation-binding readonly accepted {event} trigger addition: {label}")
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("generation-binding readonly shortened trigger inventory accepted")
+    print("PASS: generation-binding readonly trigger additions (8 event-specific semantic negatives; 1 shortened inventory negative)")
+
 
 
 
