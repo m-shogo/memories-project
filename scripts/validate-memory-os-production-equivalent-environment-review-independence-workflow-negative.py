@@ -14,6 +14,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/production-equivalent-environment-review-independence.yml"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "56d15ffd78c816ccecd0ff27c9e159f78c913bf4"
+
+TRIGGER_PATHS = (
+    ".github/workflows/production-equivalent-environment-review-independence.yml",
+    "scripts/validate-memory-os-production-equivalent-environment-review-independence-workflow-negative.py",
+    "contracts/operations/production-equivalent-environment-review-independence-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/memory_os_environment_generation_eligibility.py",
+    "scripts/validate-memory-os-production-equivalent-environment-review-independence.py",
+    "scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py",
+    "scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py",
+    "scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py",
+    "scripts/validate-memory-os-operability.py",
+)
 REQUIRED = (
     ("PR target", "  pull_request:\n    branches:\n      - so\n    paths:\n", 1),
     ("self trigger", '      - "scripts/validate-memory-os-production-equivalent-environment-review-independence-workflow-negative.py"\n', 2),
@@ -40,7 +59,77 @@ REQUIRED = (
 )
 
 
+
+def validate_trigger_reachability(
+    source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS
+) -> None:
+    """Pin the complete reviewed PR/push independent-review trigger inventory."""
+    if len(trigger_paths) != 16 or len(set(trigger_paths)) != 16:
+        raise SystemExit("review independence CI trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("review independence CI event marker drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    approved = tuple('      - "' + path + '"' for path in trigger_paths)
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != approved:
+            raise SystemExit("review independence CI " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for path in TRIGGER_PATHS:
+            token = '      - "' + path + '"\n'
+            if source.count(token) != 2:
+                raise SystemExit("review independence CI mutation anchor drift: " + path)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("review independence CI accepted missing " + event + " trigger: " + path)
+        marker = pr_marker if event == "pull_request" else push_marker
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + TRIGGER_PATHS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + TRIGGER_PATHS[0] + "\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("review independence CI addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            if mutated == source:
+                raise SystemExit("review independence CI addition fixture unchanged")
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("review independence CI accepted " + event + " addition: " + label)
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("review independence CI shortened trigger inventory accepted")
+    print("PASS: review independence CI event-specific triggers (32 removals; 8 additions; 1 shortened inventory negative)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_trigger_reachability(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit("review independence CI workflow source drift: " + label)
@@ -104,6 +193,7 @@ def prove_diagnostic_redaction_runtime(source: str) -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_trigger_reachability_negatives(source)
     prove_branch_guards_runtime()
     prove_diagnostic_redaction_runtime(source)
     cases = (
