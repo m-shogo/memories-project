@@ -76,6 +76,7 @@ def validate(
     trigger_paths: tuple[str, ...] = TRIGGER_PATHS,
 ) -> None:
     validate_trigger_reachability(source, trigger_paths=trigger_paths)
+    validate_yaml_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"reconcile workflow source boundary drift: {label}")
@@ -84,6 +85,78 @@ def validate(
         blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
         if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
             raise SystemExit("environment generation reconcile complete workflow source drift")
+
+
+def validate_yaml_authority(source: str) -> None:
+    """Require exact generation-reconcile event/root/read-only permission YAML authority."""
+    paths = "".join('      - "' + path + '"\n' for path in TRIGGER_PATHS)
+    expected_header = (
+        "name: Production Equivalent Environment Generation Reconcile Negative\n\non:\n"
+        + PR_MARKER + paths + PUSH_MARKER + paths + DISPATCH_MARKER
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("environment generation reconcile CI exact event header drift")
+    roots = [
+        row for row in source.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Production Equivalent Environment Generation Reconcile Negative",
+        "on:", "permissions:", "jobs:",
+    ]:
+        raise SystemExit("environment generation reconcile CI root YAML key shadow drift")
+    leaves = []
+    for row in source.split("\npermissions:\n", 1)[1].splitlines():
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            leaves.append(row)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("environment generation reconcile CI permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    validate_yaml_authority(source)
+    extra = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra == source:
+        raise SystemExit("environment generation reconcile CI event fixture anchor drift")
+    cases = [("extra event", extra, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source + "\n" + suffix, "root YAML key shadow drift"))
+    anchor = "\npermissions:\n  contents: read\n"
+    if source.count(anchor) != 1:
+        raise SystemExit("environment generation reconcile CI permission fixture anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(anchor, anchor + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("environment generation reconcile CI YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("environment generation reconcile CI unchanged YAML negative: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "environment generation reconcile CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("environment generation reconcile CI wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("environment generation reconcile CI accepted YAML mutation: " + label)
+    print("PASS: environment generation reconcile CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -214,6 +287,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
     prove_reconcile_negative_reachability()
     cases = (
