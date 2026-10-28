@@ -252,12 +252,136 @@ def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
     print("PASS: restore-policy root/permission YAML authority (12 exact-diagnostic negatives)")
 
 
+
+def validate_job_authority(publisher: str, independent: str) -> None:
+    """Pin the reviewed job identities, execution keys and scoped permission leaves."""
+    reviewed = (
+        ("publisher", publisher, (
+            ("validate-pr", "github.event_name == 'pull_request'", "read"),
+            ("reconcile", "(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "write"),
+        )),
+        ("independent", independent, (
+            ("source-admission", "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "read"),
+        )),
+    )
+    for label, value, jobs in reviewed:
+        if value.count("\njobs:\n") != 1:
+            raise SystemExit("restore-policy " + label + " job mapping shadow drift")
+        body = value.split("\njobs:\n", 1)[1]
+        sections: dict[str, list[str]] = {}
+        current: str | None = None
+        for line in body.splitlines():
+            if (line.startswith("  ") and len(line) > 2 and line[2] != " "
+                    and not line.lstrip().startswith("#")):
+                current = line
+                sections[current] = []
+            elif current is not None:
+                sections[current].append(line)
+        expected_names = ["  " + name + ":" for name, _, _ in jobs]
+        actual_names = [
+            line for line in body.splitlines()
+            if line.startswith("  ") and len(line) > 2 and line[2] != " "
+            and not line.lstrip().startswith("#")
+        ]
+        if actual_names != expected_names or list(sections) != expected_names:
+            raise SystemExit("restore-policy " + label + " job mapping shadow drift")
+        for name, condition, scope in jobs:
+            lines = sections["  " + name + ":"]
+            keys = [
+                line for line in lines
+                if line.startswith("    ") and len(line) > 4 and line[4] != " "
+                and not line.lstrip().startswith("#")
+            ]
+            expected_keys = [
+                "    if: " + condition,
+                "    permissions:",
+                "    runs-on: ubuntu-latest",
+                "    timeout-minutes: 5",
+                "    steps:",
+            ]
+            if keys != expected_keys:
+                raise SystemExit("restore-policy " + label + " " + name + " job key shadow drift")
+            permission_index = lines.index("    permissions:")
+            leaves: list[str] = []
+            for line in lines[permission_index + 1:]:
+                if line.startswith("    ") and len(line) > 4 and line[4] != " ":
+                    break
+                if line.strip() and not line.lstrip().startswith("#"):
+                    leaves.append(line)
+            if leaves != ["      contents: " + scope]:
+                raise SystemExit("restore-policy " + label + " " + name + " job permission leaf shadow drift")
+
+
+def prove_job_authority_negatives(publisher: str, independent: str) -> None:
+    """Prove 36 exact-diagnostic nested job/permission shadow mutations."""
+    validate_job_authority(publisher, independent)
+    count = 0
+    for label, value, other, jobs, is_publisher in (
+        ("publisher", publisher, independent, (
+            ("validate-pr", "github.event_name == 'pull_request'", "read"),
+            ("reconcile", "(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "write"),
+        ), True),
+        ("independent", independent, publisher, (
+            ("source-admission", "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "read"),
+        ), False),
+    ):
+        for name, condition, scope in jobs:
+            header = "  " + name + ":\n"
+            if value.count(header) != 1:
+                raise SystemExit("restore-policy job fixture header drift: " + label + " " + name)
+
+            def in_job(old: str, new: str) -> str:
+                prefix, suffix = value.split(header, 1)
+                if old not in suffix:
+                    raise SystemExit("restore-policy job fixture anchor missing: " + name)
+                return prefix + header + suffix.replace(old, new, 1)
+
+            if_anchor = "    if: " + condition + "\n"
+            permission_anchor = "    permissions:\n      contents: " + scope + "\n"
+            run_anchor = "    runs-on: ubuntu-latest\n"
+            timeout_anchor = "    timeout-minutes: 5\n"
+            steps_anchor = "    steps:\n"
+            cases = [
+                ("duplicate mapping", value + "\n" + header + "    runs-on: ubuntu-latest\n", "job mapping shadow drift"),
+                ("quoted mapping", value.replace(header, "  '" + name + "':\n", 1), "job mapping shadow drift"),
+                ("spaced mapping", value.replace(header, "  " + name + " :\n", 1), "job mapping shadow drift"),
+                ("if shadow", in_job(if_anchor, if_anchor + "    if : true\n"), name + " job key shadow drift"),
+                ("permission shadow", in_job(permission_anchor, permission_anchor + "    permissions :\n      contents: write\n"), name + " job key shadow drift"),
+                ("runs-on shadow", in_job(run_anchor, run_anchor + "    runs-on : ubuntu-latest\n"), name + " job key shadow drift"),
+                ("timeout shadow", in_job(timeout_anchor, timeout_anchor + "    timeout-minutes : 1\n"), name + " job key shadow drift"),
+                ("steps shadow", in_job(steps_anchor, "    steps : []\n" + steps_anchor), name + " job key shadow drift"),
+                ("continuation override", in_job(steps_anchor, "    continue-on-error: true\n" + steps_anchor), name + " job key shadow drift"),
+                ("direct permission change", in_job(permission_anchor, permission_anchor.replace("contents: " + scope, "contents: " + ("read" if scope == "write" else "write"))), name + " job permission leaf shadow drift"),
+                ("spaced permission leaf", in_job(permission_anchor, permission_anchor + "      contents : write\n"), name + " job permission leaf shadow drift"),
+                ("quoted permission leaf", in_job(permission_anchor, permission_anchor + "      'contents': write\n"), name + " job permission leaf shadow drift"),
+            ]
+            for mutation, changed, diagnostic in cases:
+                if changed == value:
+                    raise SystemExit("restore-policy unchanged job fixture: " + label + " " + mutation)
+                try:
+                    if is_publisher:
+                        validate_job_authority(changed, other)
+                    else:
+                        validate_job_authority(other, changed)
+                except SystemExit as exc:
+                    expected = "restore-policy " + label + " " + diagnostic
+                    if str(exc) != expected:
+                        raise SystemExit("restore-policy wrong job diagnostic: " + label + " " + name + " " + mutation + ": " + str(exc)) from exc
+                else:
+                    raise SystemExit("restore-policy accepted job shadow: " + label + " " + name + " " + mutation)
+                count += 1
+    if count != 36:
+        raise SystemExit("restore-policy job negative inventory drift")
+    print("PASS: restore-policy publisher/independent job authority (36 exact-diagnostic negatives)")
+
+
 def validate(
     publisher: str, independent: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
 ) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
+    validate_job_authority(publisher, independent)
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -368,6 +492,7 @@ def main() -> int:
     validate(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    prove_job_authority_negatives(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     negatives(publisher, independent)
