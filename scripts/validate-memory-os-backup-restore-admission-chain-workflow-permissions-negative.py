@@ -226,13 +226,12 @@ def validate_admission_readonly_triggers(source: str, *, trigger_paths: tuple[st
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
-                "admission readonly " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            require(block.count('      - "' + item + '"\n') == 1,
-                    "admission readonly " + event + " missing or duplicate trigger: " + item)
+        approved = tuple('      - "' + item + '"' for item in trigger_paths)
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        require(actual == approved, "admission readonly " + event + " exact trigger inventory drift")
 
 
 def prove_admission_readonly_trigger_negatives() -> None:
@@ -256,13 +255,29 @@ def prove_admission_readonly_trigger_negatives() -> None:
             except Fail:
                 continue
             raise Fail("admission readonly accepted missing " + event + " trigger: " + item)
+    for event in ("pull_request", "push"):
+        marker = "  pull_request:\n    branches: [so]\n    paths:\n" if event == "pull_request" else "  push:\n    branches: [so]\n    paths:\n"
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + ADMISSION_READONLY_TRIGGERS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + ADMISSION_READONLY_TRIGGERS[0] + "\n"),
+        ):
+            require(source.count(marker) == 1, "admission readonly addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            require(mutated != source, "admission readonly addition fixture unchanged")
+            try:
+                validate_admission_readonly_triggers(mutated)
+            except Fail:
+                continue
+            raise Fail("admission readonly accepted " + event + " addition: " + label)
     try:
         validate_admission_readonly_triggers(source, trigger_paths=ADMISSION_READONLY_TRIGGERS[:-1])
     except Fail:
         pass
     else:
         raise Fail("admission readonly accepted shortened trigger inventory")
-    print("PASS: admission readonly event-specific trigger reachability (26 removals; 1 shortened inventory negative)")
+    print("PASS: admission readonly event-specific trigger reachability (26 removals; 8 additions; 1 shortened inventory negative)")
 
 
 def validate_independent_permission_triggers(source: str, *, trigger_paths: tuple[str, ...] = INDEPENDENT_PERMISSION_TRIGGERS) -> None:
@@ -277,13 +292,12 @@ def validate_independent_permission_triggers(source: str, *, trigger_paths: tupl
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(end_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
-                "independent permission " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            require(block.count('      - "' + item + '"\n') == 1,
-                    "independent permission " + event + " missing or duplicate trigger: " + item)
+        approved = tuple('      - "' + item + '"' for item in trigger_paths)
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        require(actual == approved, "independent permission " + event + " exact trigger inventory drift")
 
 
 def prove_independent_permission_trigger_negatives(source: str) -> None:
@@ -304,13 +318,29 @@ def prove_independent_permission_trigger_negatives(source: str) -> None:
             except Fail:
                 continue
             raise Fail("independent permission accepted missing " + event + " trigger: " + item)
+    for event in ("pull_request", "push"):
+        marker = "  pull_request:\n    branches:\n      - so\n    paths:\n" if event == "pull_request" else "  push:\n    branches:\n      - so\n    paths:\n"
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + INDEPENDENT_PERMISSION_TRIGGERS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + INDEPENDENT_PERMISSION_TRIGGERS[0] + "\n"),
+        ):
+            require(source.count(marker) == 1, "independent permission addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            require(mutated != source, "independent permission addition fixture unchanged")
+            try:
+                validate_independent_permission_triggers(mutated)
+            except Fail:
+                continue
+            raise Fail("independent permission accepted " + event + " addition: " + label)
     try:
         validate_independent_permission_triggers(source, trigger_paths=INDEPENDENT_PERMISSION_TRIGGERS[:-1])
     except Fail:
         pass
     else:
         raise Fail("independent permission accepted shortened trigger inventory")
-    print("PASS: independent permission event-specific trigger reachability (36 removals; 1 shortened inventory negative)")
+    print("PASS: independent permission event-specific trigger reachability (36 removals; 8 additions; 1 shortened inventory negative)")
 
 
 def validate_admission_chain_negative_triggers(source: str, *, trigger_paths: tuple[str, ...] = ADMISSION_CHAIN_NEGATIVE_TRIGGERS) -> None:
@@ -325,13 +355,12 @@ def validate_admission_chain_negative_triggers(source: str, *, trigger_paths: tu
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
-                "admission chain negative " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            require(block.count('      - "' + item + '"\n') == 1,
-                    "admission chain negative " + event + " missing or duplicate trigger: " + item)
+        approved = tuple('      - "' + item + '"' for item in trigger_paths)
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        require(actual == approved, "admission chain negative " + event + " exact trigger inventory drift")
 
 
 def prove_admission_chain_negative_trigger_negatives() -> None:
@@ -355,13 +384,29 @@ def prove_admission_chain_negative_trigger_negatives() -> None:
             except Fail:
                 continue
             raise Fail("admission chain negative accepted missing " + event + " trigger: " + item)
+    for event in ("pull_request", "push"):
+        marker = "  pull_request:\n    branches:\n      - so\n    paths:\n" if event == "pull_request" else "  push:\n    branches:\n      - so\n    paths:\n"
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + ADMISSION_CHAIN_NEGATIVE_TRIGGERS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + ADMISSION_CHAIN_NEGATIVE_TRIGGERS[0] + "\n"),
+        ):
+            require(source.count(marker) == 1, "admission chain negative addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            require(mutated != source, "admission chain negative addition fixture unchanged")
+            try:
+                validate_admission_chain_negative_triggers(mutated)
+            except Fail:
+                continue
+            raise Fail("admission chain negative accepted " + event + " addition: " + label)
     try:
         validate_admission_chain_negative_triggers(source, trigger_paths=ADMISSION_CHAIN_NEGATIVE_TRIGGERS[:-1])
     except Fail:
         pass
     else:
         raise Fail("admission chain negative accepted shortened trigger inventory")
-    print("PASS: admission chain negative event-specific trigger reachability (152 removals; 1 shortened inventory negative)")
+    print("PASS: admission chain negative event-specific trigger reachability (152 removals; 8 additions; 1 shortened inventory negative)")
 
 
 def main() -> int:
