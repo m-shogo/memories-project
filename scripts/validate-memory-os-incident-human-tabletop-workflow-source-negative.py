@@ -285,6 +285,7 @@ def blob(content: str) -> str:
 
 
 def validate(publisher: str, independent: str) -> None:
+    validate_job_authority(publisher, independent)
     publisher_required = (
         "  push:\n    branches:\n      - so\n",
         "  workflow_dispatch:\n",
@@ -476,12 +477,155 @@ def predicate_runtime(independent: str) -> None:
     print("PASS: human-tabletop branch/base (6) and SHA (6) runtime cases")
 
 
+def validate_job_authority(publisher: str, independent: str) -> None:
+    """Pin effective job mappings, scope and job keys before blob-only checks."""
+    reviewed = (
+        ("publisher", publisher, (
+            ("validate-pr", "github.event_name == 'pull_request'", "read", 8),
+            ("validate-and-publish",
+             "github.event_name != 'pull_request'",
+             "write", 8),
+        )),
+        ("independent", independent, (
+            ("source-admission",
+             "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+             "read", 5),
+        )),
+    )
+    for label, content, jobs in reviewed:
+        prefix = "human-tabletop CI " + label + " "
+        if content.count("\njobs:\n") != 1:
+            raise SystemExit(prefix + "job mapping shadow drift")
+        body = content.split("\njobs:\n", 1)[1]
+        sections: dict[str, list[str]] = {}
+        current: str | None = None
+        actual: list[str] = []
+        for line in body.splitlines():
+            if (line.startswith("  ") and len(line) > 2 and line[2] != " "
+                    and not line.lstrip().startswith("#")):
+                current = line
+                actual.append(line)
+                sections[current] = []
+            elif current is not None:
+                sections[current].append(line)
+        expected = ["  " + name + ":" for name, _, _, _ in jobs]
+        if actual != expected:
+            raise SystemExit(prefix + "job mapping shadow drift")
+        for name, condition, scope, timeout in jobs:
+            lines = sections["  " + name + ":"]
+            keys = [
+                line for line in lines
+                if line.startswith("    ") and len(line) > 4 and line[4] != " "
+                and not line.lstrip().startswith("#")
+            ]
+            if keys != [
+                "    if: " + condition,
+                "    permissions:",
+                "    runs-on: ubuntu-latest",
+                "    timeout-minutes: " + str(timeout),
+                "    steps:",
+            ]:
+                raise SystemExit(prefix + name + " job key shadow drift")
+            leaves: list[str] = []
+            for line in lines[lines.index("    permissions:") + 1:]:
+                if line.startswith("    ") and len(line) > 4 and line[4] != " ":
+                    break
+                if line.strip() and not line.lstrip().startswith("#"):
+                    leaves.append(line)
+            if leaves != ["      contents: " + scope]:
+                raise SystemExit(prefix + name + " job permission leaf shadow drift")
+
+
+def prove_job_authority_negatives(publisher: str, independent: str) -> None:
+    """Exercise 36 exact-diagnostic nested YAML mutations, not just blob mismatch."""
+    validate_job_authority(publisher, independent)
+    count = 0
+    reviewed = (
+        ("publisher", publisher, independent, (
+            ("validate-pr", "github.event_name == 'pull_request'", "read", 8),
+            ("validate-and-publish",
+             "github.event_name != 'pull_request'",
+             "write", 8),
+        ), True),
+        ("independent", independent, publisher, (
+            ("source-admission",
+             "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+             "read", 5),
+        ), False),
+    )
+    for label, content, other, jobs, is_publisher in reviewed:
+        for name, condition, scope, timeout in jobs:
+            header = "  " + name + ":\n"
+            if content.count(header) != 1:
+                raise SystemExit("human-tabletop CI job fixture header drift: " + label + " " + name)
+
+            def in_job(before: str, after: str) -> str:
+                prefix, suffix = content.split(header, 1)
+                if before not in suffix:
+                    raise SystemExit("human-tabletop CI job fixture anchor drift: " + name)
+                return prefix + header + suffix.replace(before, after, 1)
+
+            condition_anchor = "    if: " + condition + "\n"
+            permission = "    permissions:\n      contents: " + scope + "\n"
+            runner = "    runs-on: ubuntu-latest\n"
+            timeout_anchor = "    timeout-minutes: " + str(timeout) + "\n"
+            steps = "    steps:\n"
+            cases = [
+                ("duplicate mapping", content + "\n" + header + "    runs-on: ubuntu-latest\n",
+                 "job mapping shadow drift"),
+                ("quoted mapping", content.replace(header, "  '" + name + "':\n", 1),
+                 "job mapping shadow drift"),
+                ("spaced mapping", content.replace(header, "  " + name + " :\n", 1),
+                 "job mapping shadow drift"),
+                ("condition shadow", in_job(condition_anchor, condition_anchor + "    if : true\n"),
+                 name + " job key shadow drift"),
+                ("permission shadow", in_job(permission, permission + "    permissions :\n      contents: write\n"),
+                 name + " job key shadow drift"),
+                ("runner shadow", in_job(runner, runner + "    runs-on : ubuntu-latest\n"),
+                 name + " job key shadow drift"),
+                ("timeout shadow", in_job(timeout_anchor, timeout_anchor + "    timeout-minutes : 1\n"),
+                 name + " job key shadow drift"),
+                ("steps shadow", in_job(steps, "    steps : []\n" + steps),
+                 name + " job key shadow drift"),
+                ("continuation override", in_job(steps, "    continue-on-error: true\n" + steps),
+                 name + " job key shadow drift"),
+                ("direct permission change", in_job(permission, permission.replace(
+                    "contents: " + scope, "contents: " + ("read" if scope == "write" else "write"))),
+                 name + " job permission leaf shadow drift"),
+                ("spaced permission leaf", in_job(permission, permission + "      contents : write\n"),
+                 name + " job permission leaf shadow drift"),
+                ("quoted permission leaf", in_job(permission, permission + "      'contents': write\n"),
+                 name + " job permission leaf shadow drift"),
+            ]
+            for mutation, changed, diagnostic in cases:
+                if changed == content:
+                    raise SystemExit("human-tabletop CI unchanged job fixture: " + mutation)
+                try:
+                    if is_publisher:
+                        validate_job_authority(changed, other)
+                    else:
+                        validate_job_authority(other, changed)
+                except SystemExit as exc:
+                    expected = "human-tabletop CI " + label + " " + diagnostic
+                    if str(exc) != expected:
+                        raise SystemExit("human-tabletop CI wrong job diagnostic: "
+                                         + label + " " + name + " " + mutation + ": " + str(exc)) from exc
+                else:
+                    raise SystemExit("human-tabletop CI accepted job shadow: "
+                                     + label + " " + name + " " + mutation)
+                count += 1
+    if count != 36:
+        raise SystemExit("human-tabletop CI job negative inventory drift")
+    print("PASS: human-tabletop CI publisher/independent job authority (36 exact-diagnostic negatives)")
+
+
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     validate(publisher, independent)
     validate_trigger_reachability(publisher, publisher=True)
     validate_trigger_reachability(independent, publisher=False)
     prove_trigger_reachability_negatives(publisher, independent)
+    prove_job_authority_negatives(publisher, independent)
     predicate_runtime(independent)
     source_negatives(publisher, independent)
     runtime(publisher)
