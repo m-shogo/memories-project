@@ -130,13 +130,15 @@ def validate_guard_trigger_reachability(
     pr = guard.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = guard.split(push_marker, 1)[1].split(end_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
-            raise SystemExit("preflight independent CI " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            if block.count('      - "' + item + '"' + chr(10)) != 1:
-                raise SystemExit("preflight independent CI " + event + " trigger path drift: " + item)
+        # Check every non-comment YAML line, including unquoted paths.
+        # Synthetic mutations must fail without the reviewed source digest.
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        approved = tuple('      - "' + item + '"' for item in trigger_paths)
+        if actual != approved:
+            raise SystemExit("preflight independent CI " + event + " exact trigger inventory drift")
 
 
 def prove_guard_trigger_negatives(guard: str) -> None:
@@ -162,7 +164,27 @@ def prove_guard_trigger_negatives(guard: str) -> None:
         pass
     else:
         raise SystemExit("preflight independent CI shortened trigger inventory accepted")
-    print("PASS: preflight independent CI event-specific trigger reachability (6 removals; 1 shortened inventory negative)")
+    for event, marker in (
+        ("pull_request", "  pull_request:\n    branches:\n      - so\n    paths:\n"),
+        ("push", push_marker),
+    ):
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + GUARD_TRIGGER_PATHS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + GUARD_TRIGGER_PATHS[0] + "\n"),
+        ):
+            if guard.count(marker) != 1:
+                raise SystemExit("preflight independent CI addition marker drift: " + event)
+            mutated = guard.replace(marker, marker + injected, 1)
+            if mutated == guard:
+                raise SystemExit("preflight independent CI addition fixture unchanged")
+            try:
+                validate_guard_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("preflight independent CI accepted " + event + " addition: " + label)
+    print("PASS: preflight independent CI event-specific trigger reachability (6 removals; 8 additions; 1 shortened inventory negative)")
 
 
 def validate(
