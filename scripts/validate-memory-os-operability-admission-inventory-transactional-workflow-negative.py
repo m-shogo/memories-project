@@ -107,6 +107,41 @@ def validate_yaml_authority(content: str, kind: str) -> None:
             permission_rows.append(line)
     if permission_rows != ["  contents: read"]:
         raise SystemExit(prefix + "permission leaf shadow drift")
+    body = content.split("\njobs:\n", 1)[1]
+    if kind == "publisher":
+        job = "transactional-generation"
+        keys = [
+            "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'",
+            "    runs-on: ubuntu-latest", "    timeout-minutes: 10", "    steps:",
+        ]
+    else:
+        job = "source-admission"
+        keys = [
+            "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+            "    permissions:", "    runs-on: ubuntu-latest",
+            "    timeout-minutes: 5", "    steps:",
+        ]
+    job_rows = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_rows != ["  " + job + ":"]:
+        raise SystemExit(prefix + "job mapping shadow drift")
+    job_keys = [
+        line for line in body.splitlines()
+        if line.startswith("    ") and not line.startswith("     ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_keys != keys:
+        raise SystemExit(prefix + "job key/permission shadow drift")
+    if kind == "independent":
+        block = body.split("  source-admission:\n", 1)[1]
+        marker = "    permissions:\n"
+        if (block.count(marker) != 1
+                or block.split(marker, 1)[1].split("    runs-on: ubuntu-latest\n", 1)[0]
+                != "      contents: read\n"):
+            raise SystemExit(prefix + "job permission scope drift")
 
 
 def prove_yaml_authority_negatives(main: str, guard: str) -> None:
@@ -137,7 +172,45 @@ def prove_yaml_authority_negatives(main: str, guard: str) -> None:
         ):
             cases.append((label, content.replace(marker, marker + leaf, 1),
                           "permission leaf shadow drift"))
-        if len(cases) != 9:
+        job = "transactional-generation" if kind == "publisher" else "source-admission"
+        condition = (
+            "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
+            if kind == "publisher" else
+            "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')"
+        )
+        for label, suffix in (
+            ("duplicate job", "  " + job + ": {}\n"),
+            ("spaced job", "  " + job + " : {}\n"),
+            ("quoted job", "  '" + job + "': {}\n"),
+        ):
+            cases.append((label, content.rstrip("\n") + "\n" + suffix,
+                          "job mapping shadow drift"))
+        runs_on = "    runs-on: ubuntu-latest\n"
+        if content.count(runs_on) != 1 or content.count(condition + "\n") != 1:
+            raise SystemExit("transactional " + kind + " job fixture anchor drift")
+        for label, leaf in (
+            ("job permission", "    permissions:\n      contents: write\n"),
+            ("spaced job permission", "    permissions :\n      contents: write\n"),
+            ("quoted job permission", "    'permissions':\n      contents: write\n"),
+            ("job timeout shadow", "    timeout-minutes : 0\n"),
+            ("job continuation shadow", "    continue-on-error: true\n"),
+        ):
+            cases.append((label, content.replace(runs_on, runs_on + leaf, 1),
+                          "job key/permission shadow drift"))
+        cases.append(("job event bypass", content.replace(condition + "\n", "    if: true\n", 1),
+                      "job key/permission shadow drift"))
+        if kind == "independent":
+            permission = "    permissions:\n      contents: read\n"
+            if content.count(permission) != 1:
+                raise SystemExit("transactional independent job permission fixture anchor drift")
+            for label, replacement in (
+                ("direct write scope", "    permissions:\n      contents: write\n"),
+                ("spaced contents", permission + "      contents : write\n"),
+                ("quoted contents", permission + "      'contents': write\n"),
+            ):
+                cases.append((label, content.replace(permission, replacement, 1),
+                              "job permission scope drift"))
+        if len(cases) != (18 if kind == "publisher" else 21):
             raise SystemExit("transactional " + kind + " YAML fixture count drift")
         for label, mutated, diagnostic in cases:
             if mutated == content:
@@ -152,9 +225,9 @@ def prove_yaml_authority_negatives(main: str, guard: str) -> None:
             else:
                 raise SystemExit("transactional " + kind + " accepted YAML mutation: " + label)
             count += 1
-    if count != 18:
+    if count != 39:
         raise SystemExit("transactional YAML negative population drift")
-    print("PASS: transactional publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
+    print("PASS: transactional publisher/independent YAML event/root/permission authority (39 exact-diagnostic negatives)")
 
 
 def runtime(main: str, guard: str) -> None:
