@@ -1,0 +1,15 @@
+# Supplemental OPS learning — generation independent-review CI YAML authority (2026-10-29)
+
+Append-only supplemental learning only. This is not canonical learning authority, production evidence, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion authority.
+
+## Material failure / executable recurrence prevention
+- **Symptom/evidence:** The independent generation-review workflow source validator verified exact PR/push trigger paths, branch/SHA guards and reviewed complete Git blob but did not independently prove unique effective YAML event/root/permission authority. An additional event, quoted/spaced root shadow or quoted/spaced overriding `contents: write` could evade the path-only semantic check. This is a static guard gap, not evidence of actual unauthorized review.
+- **Verified root cause / failed approach:** Path-block equality, a visible `permissions: contents: read` anchor and full-source SHA are not an independent semantic proof of unique effective YAML mapping keys.
+- **Correction / executable recurrence guard:** [b49b8941](https://github.com/m-shogo/memories-project/commit/b49b894184db12ca0820cb78abab7b7e21b7e8c3) adds exact event-header, root-key and read-only permission-leaf checks with nine exact-diagnostic in-memory negatives: one extra event, six quoted/spaced root shadows, two permission shadows. Existing Git blob pin and review/runtime guards remain unchanged.
+- **Retry condition:** Reassess after independently reviewed workflow topology changes or demonstrated new bypass. Do not retry unchanged canonical learning transport, supplemental learning CI-trigger permission, MinIO 401 or human promotion blockers.
+
+## Material success / protected authority
+- **Outcome/evidence:** [Generation Independent Review Negative #40715965188](https://github.com/m-shogo/memories-project/actions/runs/40715965188) completed SUCCESS on `b49b8941`. Job log confirms nine YAML negatives, 28 event-specific path removal negatives, eight additions, one shortened inventory, six branch runtime cases, 18 semantic and one whole-source binding negative. Existing independent-review JSON and material-delta checks also passed.
+- **Why safe / reusable mechanism:** Only the existing CI-reachable read-only Python validator changed (+76/-0). No reviewed workflow, generation, objective, executable request, generation evidence, typed non-resurrection record, credential, traffic, readiness or human promotion was written. Negative mutations remain synthetic.
+- **Protected-authority check:** Ten protected production/OPS-P0-007/registry/learning-contract/canonical-learning Git blob SHAs remained unchanged after the code commit. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/eligible generations, approved objectives, executable reviewed requests, generation-bound evidence, complete typed eight-domain records and final candidates absent. Human promotion remains separate/non-automatic.
+- **Next safe target:** Review remaining independent CI source validators for event/root/permission YAML shadows and track full admission chain independently of targeted CI.
