@@ -198,6 +198,42 @@ def validate_yaml_authority(content: str, kind: str) -> None:
             permission_rows.append(line)
     if permission_rows != ["  contents: read"]:
         raise SystemExit("backup authority " + kind + " permission leaf shadow drift")
+    body = content.split("\n" + "jobs:\n", 1)[1]
+    if kind == "publisher":
+        jobs = (
+            ("validate-pr", "    if: github.event_name == 'pull_request' && github.base_ref == 'so'", "read", 10),
+            ("reconcile", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/so'", "write", 10),
+        )
+    else:
+        jobs = (
+            ("source-admission", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "read", 5),
+        )
+    headers = [
+        row for row in body.splitlines()
+        if row.startswith("  ") and not row.startswith("   ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if headers != ["  " + job[0] + ":" for job in jobs]:
+        raise SystemExit("backup authority " + kind + " job mapping shadow drift")
+    for index, (job, condition, scope, timeout) in enumerate(jobs):
+        section = body.split("  " + job + ":\n", 1)[1]
+        if index + 1 < len(jobs):
+            section = section.split("  " + jobs[index + 1][0] + ":\n", 1)[0]
+        keys = [
+            row for row in section.splitlines()
+            if row.startswith("    ") and not row.startswith("     ")
+            and row.strip() and not row.lstrip().startswith("#")
+        ]
+        if keys != [
+            condition, "    permissions:", "    runs-on: ubuntu-latest",
+            "    timeout-minutes: " + str(timeout), "    steps:",
+        ]:
+            raise SystemExit("backup authority " + kind + " job key/permission shadow drift")
+        marker = "    permissions:\n"
+        if (section.count(marker) != 1
+                or section.split(marker, 1)[1].split("    runs-on: ubuntu-latest\n", 1)[0]
+                != "      contents: " + scope + "\n"):
+            raise SystemExit("backup authority " + kind + " job permission scope drift")
 
 
 def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
@@ -224,6 +260,53 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
         ):
             cases.append((label, content.replace(anchor, anchor + extra, 1),
                           "permission leaf shadow drift"))
+        jobs = (
+            (("validate-pr", "    if: github.event_name == 'pull_request' && github.base_ref == 'so'", "read"),
+             ("reconcile", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/so'", "write"))
+            if kind == "publisher" else
+            (("source-admission", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "read"),)
+        )
+        for job, condition, scope in jobs:
+            job_anchor = "  " + job + ":\n"
+            if content.count(job_anchor) != 1:
+                raise SystemExit("backup authority " + kind + " job fixture anchor drift: " + job)
+            for label, suffix in (
+                ("duplicate job", "  " + job + ": {}\n"),
+                ("spaced job", "  " + job + " : {}\n"),
+                ("quoted job", "  '" + job + "': {}\n"),
+            ):
+                cases.append((job + " " + label, content.rstrip("\n") + "\n" + suffix,
+                              "job mapping shadow drift"))
+            prefix, section = content.split(job_anchor, 1)
+            runs_on = "    runs-on: ubuntu-latest\n"
+            if runs_on not in section:
+                raise SystemExit("backup authority " + kind + " runs-on fixture anchor drift: " + job)
+            for label, leaf in (
+                ("job permission", "    permissions:\n      contents: write\n"),
+                ("spaced job permission", "    permissions :\n      contents: write\n"),
+                ("quoted job permission", "    'permissions':\n      contents: write\n"),
+            ):
+                cases.append((job + " " + label,
+                              prefix + job_anchor + section.replace(runs_on, runs_on + leaf, 1),
+                              "job key/permission shadow drift"))
+            permission = "    permissions:\n      contents: " + scope + "\n"
+            if permission not in section:
+                raise SystemExit("backup authority " + kind + " scope fixture anchor drift: " + job)
+            alternate = "write" if scope == "read" else "read"
+            cases.append((job + " direct scope", prefix + job_anchor + section.replace(
+                permission, "    permissions:\n      contents: " + alternate + "\n", 1),
+                "job permission scope drift"))
+            for label, leaf in (
+                ("spaced contents", "      contents : write\n"),
+                ("quoted contents", "      'contents': write\n"),
+            ):
+                cases.append((job + " " + label, prefix + job_anchor + section.replace(
+                    permission, permission + leaf, 1), "job permission scope drift"))
+            if condition + "\n" not in section:
+                raise SystemExit("backup authority " + kind + " event fixture anchor drift: " + job)
+            cases.append((job + " event bypass", prefix + job_anchor + section.replace(
+                condition + "\n", "    if: true\n", 1),
+                "job key/permission shadow drift"))
         for label, altered, diagnostic in cases:
             if altered == content:
                 raise SystemExit("backup authority " + kind + " YAML negative unchanged: " + label)
@@ -239,9 +322,9 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
             else:
                 raise SystemExit("backup authority " + kind + " accepted YAML mutation: " + label)
             total += 1
-    if total != 14:
+    if total != 44:
         raise SystemExit("backup authority YAML semantic negative count drift")
-    print("PASS: backup authority publisher/independent YAML event/root/permission (14 exact-diagnostic negatives)")
+    print("PASS: backup authority publisher/independent YAML event/root/job/permission (44 exact-diagnostic negatives)")
 
 
 def validate(publisher: str, independent: str) -> None:
