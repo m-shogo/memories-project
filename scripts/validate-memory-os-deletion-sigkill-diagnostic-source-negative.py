@@ -208,6 +208,79 @@ def sigkill_trigger_matrix_negatives(publisher: str, independent: str) -> None:
           + " shortened inventories, " + str(len(topology)) + " event topology negatives")
 
 
+
+def validate_yaml_root_permission(publisher: str, independent: str) -> None:
+    """Pin effective root YAML mapping and root read-only permission leaves."""
+    for label, value, roots in (
+        ("publisher", publisher, ["name: Reconcile Deletion SIGKILL Authority",
+                                  "on:", "permissions:", "concurrency:", "jobs:"]),
+        ("independent", independent, ["name: Deletion SIGKILL Diagnostic Source Negative",
+                                      "on:", "permissions:", "jobs:"]),
+    ):
+        actual = [line for line in value.splitlines()
+                  if line.strip() and not line[0].isspace()
+                  and not line.lstrip().startswith("#")]
+        if actual != roots:
+            raise AssertionError("sigkill-diagnostic " + label + " root YAML key shadow drift")
+        if value.count("\npermissions:\n") != 1:
+            raise AssertionError("sigkill-diagnostic " + label + " permission boundary drift")
+        leaves = []
+        for line in value.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["  contents: read"]:
+            raise AssertionError("sigkill-diagnostic " + label + " permission leaf shadow drift")
+
+
+def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
+    """Prove twelve exact-diagnostic YAML root and permission shadow rejections."""
+    validate_yaml_root_permission(publisher, independent)
+    count = 0
+    for label, value, other, is_publisher in (
+        ("publisher", publisher, independent, True),
+        ("independent", independent, publisher, False),
+    ):
+        cases = [
+            (mutation, value + "\n" + suffix, "root YAML key shadow drift")
+            for mutation, suffix in (
+                ("spaced on", "on :\n  issues:\n"),
+                ("quoted on", "'on':\n  issues:\n"),
+                ("spaced jobs", "jobs : {}\n"),
+                ("quoted jobs", "'jobs': {}\n"),
+            )
+        ]
+        marker = "\npermissions:\n  contents: read\n"
+        if value.count(marker) != 1:
+            raise AssertionError("sigkill-diagnostic " + label + " permission fixture anchor drift")
+        for mutation, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((mutation, value.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for mutation, changed, diagnostic in cases:
+            if changed == value:
+                raise AssertionError("sigkill-diagnostic unchanged YAML fixture: " + mutation)
+            try:
+                if is_publisher:
+                    validate_yaml_root_permission(changed, other)
+                else:
+                    validate_yaml_root_permission(other, changed)
+            except AssertionError as exc:
+                expected = "sigkill-diagnostic " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise AssertionError("sigkill-diagnostic wrong YAML diagnostic: "
+                                         + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("sigkill-diagnostic accepted YAML shadow: " + label + " " + mutation)
+            count += 1
+    if count != 12:
+        raise AssertionError("sigkill-diagnostic YAML negative inventory drift")
+    print("PASS: sigkill-diagnostic root/permission YAML authority (12 exact-diagnostic negatives)")
+
+
 def policy(text):
     for item in REQUIRED:
         if item not in text:
@@ -374,6 +447,8 @@ def main():
     policy(publisher)
     sigkill_validate_trigger_matrix(publisher, independent)
     sigkill_trigger_matrix_negatives(publisher, independent)
+    validate_yaml_root_permission(publisher, independent)
+    yaml_root_permission_negatives(publisher, independent)
     mutations(publisher)
     writer_runtime(publisher)
     log_runtime(publisher)
