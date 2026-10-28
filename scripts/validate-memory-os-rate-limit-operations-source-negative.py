@@ -75,6 +75,164 @@ REQUIRED = (
     'git push origin HEAD:so',
 )
 
+RATE_OPS_PUBLISHER_PR_PATHS = (
+    ".github/workflows/reconcile-rate-limit-operations.yml",
+    "contracts/operations/rate-limit-operations-contract.v1.json",
+    "contracts/operations/rate-limit-policy-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/runbooks/memory-os-rate-limit-operations.md",
+    "scripts/validate-memory-os-rate-limit-operations.py",
+    "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-authority-negative.py",
+    "scripts/reconcile-memory-os-rate-limit-operations.py",
+    "scripts/reconcile-memory-os-rate-limit-operation-evidence.py",
+    "scripts/validate-memory-os-rate-limit.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/validate-memory-os-entry-docs.py",
+)
+
+RATE_OPS_PUBLISHER_PUSH_PATHS = (
+    ".github/workflows/reconcile-rate-limit-operations.yml",
+    "contracts/operations/rate-limit-operations-contract.v1.json",
+    "contracts/operations/rate-limit-policy-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/runbooks/memory-os-rate-limit-operations.md",
+    "scripts/validate-memory-os-rate-limit-operations.py",
+    "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-authority-negative.py",
+    "scripts/reconcile-memory-os-rate-limit-operations.py",
+    "scripts/reconcile-memory-os-rate-limit-operation-evidence.py",
+    "scripts/validate-memory-os-rate-limit.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/validate-memory-os-entry-docs.py",
+)
+
+RATE_OPS_INDEPENDENT_PR_PATHS = (
+    ".github/workflows/reconcile-rate-limit-operations.yml",
+    ".github/workflows/rate-limit-operations-source-negative.yml",
+    "scripts/validate-memory-os-rate-limit-operations-source-negative.py",
+)
+
+RATE_OPS_INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/reconcile-rate-limit-operations.yml",
+    ".github/workflows/rate-limit-operations-source-negative.yml",
+    "scripts/validate-memory-os-rate-limit-operations-source-negative.py",
+)
+
+def rate_ops_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def rate_ops_trigger_header(content: str) -> str:
+    # Exact, ordered event header: reject unknown, unquoted, duplicate and
+    # unexpected event paths instead of depending only on a Git blob digest.
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise SystemExit("rate-limit-operations trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def rate_ops_validate_trigger_matrix(
+    publisher: str, independent: str,
+    publisher_pr: tuple[str, ...] = RATE_OPS_PUBLISHER_PR_PATHS,
+    publisher_push: tuple[str, ...] = RATE_OPS_PUBLISHER_PUSH_PATHS,
+    independent_pr: tuple[str, ...] = RATE_OPS_INDEPENDENT_PR_PATHS,
+    independent_push: tuple[str, ...] = RATE_OPS_INDEPENDENT_PUSH_PATHS,
+) -> None:
+    expected_publisher = (rate_ops_trigger_event("pull_request", publisher_pr)
+                          + rate_ops_trigger_event("push", publisher_push)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (rate_ops_trigger_event("pull_request", independent_pr)
+                            + rate_ops_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if rate_ops_trigger_header(content) != expected:
+            raise SystemExit("rate-limit-operations " + label
+                             + " exact event trigger inventory drift")
+
+
+def replace_rate_ops_trigger_header(content: str, original: str, replacement: str) -> str:
+    old = "\non:\n" + original + "\npermissions:\n"
+    if content.count(old) != 1 or original == replacement:
+        raise SystemExit("rate-limit-operations trigger negative fixture unreachable")
+    return content.replace(old, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def rate_ops_trigger_matrix_negatives(publisher: str, independent: str) -> None:
+    def must_reject(p: str, i: str) -> None:
+        try:
+            rate_ops_validate_trigger_matrix(p, i)
+        except SystemExit:
+            return
+        raise SystemExit("rate-limit-operations accepted event trigger mutation")
+
+    omissions = additions = 0
+    cases = (
+        ("publisher", "pull_request", RATE_OPS_PUBLISHER_PR_PATHS),
+        ("publisher", "push", RATE_OPS_PUBLISHER_PUSH_PATHS),
+        ("independent", "pull_request", RATE_OPS_INDEPENDENT_PR_PATHS),
+        ("independent", "push", RATE_OPS_INDEPENDENT_PUSH_PATHS),
+    )
+    for label, event, paths in cases:
+        original = publisher if label == "publisher" else independent
+        header = rate_ops_trigger_header(original)
+        block = rate_ops_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise SystemExit("rate-limit-operations trigger event fixture ambiguous")
+        for index in range(len(paths)):
+            shorter = paths[:index] + paths[index + 1:]
+            mutated = replace_rate_ops_trigger_header(
+                original, header, header.replace(block, rate_ops_trigger_event(event, shorter), 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for addition in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            mutated_block = block.replace(first, first + addition, 1)
+            mutated = replace_rate_ops_trigger_header(
+                original, header, header.replace(block, mutated_block, 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_pr", RATE_OPS_PUBLISHER_PR_PATHS),
+        ("publisher_push", RATE_OPS_PUBLISHER_PUSH_PATHS),
+        ("independent_pr", RATE_OPS_INDEPENDENT_PR_PATHS),
+        ("independent_push", RATE_OPS_INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            rate_ops_validate_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except SystemExit:
+            shortened += 1
+        else:
+            raise SystemExit("rate-limit-operations accepted shortened trigger inventory")
+
+    p_header, i_header = rate_ops_trigger_header(publisher), rate_ops_trigger_header(independent)
+    topology = (
+        (replace_rate_ops_trigger_header(
+            publisher, p_header, p_header.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (replace_rate_ops_trigger_header(
+            publisher, p_header, p_header.replace(
+                "  workflow_dispatch:\n",
+                "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)), independent),
+        (publisher, replace_rate_ops_trigger_header(
+            independent, i_header, i_header + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        must_reject(p, i)
+    print("PASS: rate-limit-operations exact trigger matrix: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -211,6 +369,8 @@ def main() -> None:
         if marker not in independent:
             raise AssertionError("rate-limit independent CI reachability drift: " + marker)
     reviewed_negatives(publisher, independent)
+    rate_ops_validate_trigger_matrix(publisher, independent)
+    rate_ops_trigger_matrix_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)
     identity(publisher, "Confirm exact clean PR authority source", False)
