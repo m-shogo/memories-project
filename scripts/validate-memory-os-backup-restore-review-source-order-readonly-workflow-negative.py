@@ -149,6 +149,21 @@ def validate_yaml_authority(source: str) -> None:
             leaves.append(line)
     if leaves != ["  contents: read"]:
         raise SystemExit("review-source-order readonly permission leaf shadow drift")
+    body = source.split("\n" + "jobs:\n", 1)[1]
+    job_rows = [
+        row for row in body.splitlines()
+        if row.startswith("  ") and not row.startswith("   ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_rows != ["  validate:"]:
+        raise SystemExit("review-source-order readonly job mapping shadow drift")
+    job_keys = [
+        row for row in body.splitlines()
+        if row.startswith("    ") and not row.startswith("     ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_keys != ["    runs-on: ubuntu-latest", "    timeout-minutes: 10", "    steps:"]:
+        raise SystemExit("review-source-order readonly job key/permission shadow drift")
 
 
 def prove_yaml_authority_negatives(source: str) -> None:
@@ -176,7 +191,24 @@ def prove_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(marker, marker + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for label, suffix in (
+        ("duplicate job", "  validate: {}\n"),
+        ("spaced job", "  validate : {}\n"),
+        ("quoted job", "  'validate': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    runs_on = "    runs-on: ubuntu-latest\n"
+    if source.count(runs_on) != 1:
+        raise SystemExit("review-source-order readonly job permission fixture anchor drift")
+    for label, leaf in (
+        ("job permission", "    permissions:\n      contents: write\n"),
+        ("spaced job permission", "    permissions :\n      contents: write\n"),
+        ("quoted job permission", "    'permissions':\n      contents: write\n"),
+    ):
+        cases.append((label, source.replace(runs_on, runs_on + leaf, 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 15:
         raise SystemExit("review-source-order readonly YAML negative inventory drift")
     for label, mutated, diagnostic in cases:
         if mutated == source:
@@ -190,7 +222,7 @@ def prove_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("review-source-order readonly accepted YAML mutation: " + label)
-    print("PASS: review-source-order readonly YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: review-source-order readonly YAML event/root/job/permission authority (15 exact-diagnostic negatives)")
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
