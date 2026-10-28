@@ -170,10 +170,36 @@ def validate_independent_yaml_authority(source: str) -> None:
             leaves.append(line)
     if leaves != ["  contents: read"]:
         raise SystemExit("semantic preflight reconcile independent permission leaf shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    headers = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if headers != ["  source-admission:"]:
+        raise SystemExit("semantic preflight reconcile independent job mapping shadow drift")
+    job_keys = [
+        line for line in body.splitlines()
+        if line.startswith("    ") and not line.startswith("     ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_keys != [
+        "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+        "    permissions:", "    runs-on: ubuntu-latest",
+        "    timeout-minutes: 5", "    steps:",
+    ]:
+        raise SystemExit("semantic preflight reconcile independent job key/permission shadow drift")
+    section = body.split("    permissions:\n", 1)[1].split("    runs-on:", 1)[0]
+    job_leaves = [
+        line for line in section.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_leaves != ["      contents: read"]:
+        raise SystemExit("semantic preflight reconcile independent job permission leaf shadow drift")
 
 
 def prove_independent_yaml_authority_negatives(source: str) -> None:
-    """Prove nine exact diagnostics without relying on the Git blob pin."""
+    """Prove seventeen exact YAML diagnostics, including job/permission shadows."""
     validate_independent_yaml_authority(source)
     extra_event = source.replace("on:\n", "on:\n  issues:\n", 1)
     if extra_event == source:
@@ -197,7 +223,33 @@ def prove_independent_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(marker, marker + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for label, suffix in (
+        ("duplicate job", "  source-admission: {}\n"),
+        ("spaced job", "  source-admission : {}\n"),
+        ("quoted job", "  'source-admission': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    marker = "    permissions:\n      contents: read\n"
+    if source.count(marker) != 1:
+        raise SystemExit("semantic preflight reconcile independent job leaf fixture anchor drift")
+    for label, leaf in (
+        ("spaced job leaf", "      contents : write\n"),
+        ("quoted job leaf", "      'contents': write\n"),
+    ):
+        cases.append((label, source.replace(marker, marker + leaf, 1),
+                      "job permission leaf shadow drift"))
+    runs_on = "    runs-on: ubuntu-latest\n"
+    if source.count(runs_on) != 1:
+        raise SystemExit("semantic preflight reconcile independent late job fixture anchor drift")
+    for label, leaf in (
+        ("late permission", "    permissions:\n      contents: write\n"),
+        ("late spaced permission", "    permissions :\n      contents: write\n"),
+        ("late quoted permission", "    'permissions':\n      contents: write\n"),
+    ):
+        cases.append((label, source.replace(runs_on, runs_on + leaf, 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 17:
         raise SystemExit("semantic preflight reconcile independent YAML negative inventory drift")
     for label, mutated, diagnostic in cases:
         if mutated == source:
@@ -211,7 +263,7 @@ def prove_independent_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("semantic preflight reconcile independent accepted YAML mutation: " + label)
-    print("PASS: semantic preflight reconcile independent YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: semantic preflight reconcile independent YAML event/root/job/permission authority (17 exact-diagnostic negatives)")
 
 
 def validate_independent(source: str, *, check_blob: bool = True) -> None:
