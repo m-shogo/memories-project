@@ -250,7 +250,9 @@ def negative_proofs(publisher: str, independent: str) -> None:
             validate(changed, independent) if publisher_case else validate(publisher, changed)
         except SystemExit as exc:
             # Require the actual source guard to reject for the expected reason.
-            expected = ("complete Git blob drift" if "digest-only" in label
+            expected = ("local recovery CI trigger marker drift"
+                        if label in {"publisher event scope", "independent event scope"}
+                        else "complete Git blob drift" if "digest-only" in label
                         else "required source inventory drift")
             reason = str(exc)
             require(reason.startswith("local migration recovery CI source guard: ")
