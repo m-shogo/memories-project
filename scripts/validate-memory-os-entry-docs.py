@@ -1824,6 +1824,30 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "source verification missing clean check",
         "source verification unreviewed echo substitution",
     }
+    run_step_cases = {
+        "extra shell run step after validator",
+        "folded extra shell run step",
+        "extra shell run step before validator",
+        "duplicate validator run metadata",
+        "folded validator run scalar",
+        "folded source verification run scalar",
+        "setup-go extra shell run step",
+        "setup-go folded third run scalar",
+    }
+    step_environment_cases = {
+        "step environment override",
+        "duplicate PR-head environment binding",
+        "altered PR-head environment binding",
+    }
+    interpreter_environment_cases = {
+        "workflow interpreter env override",
+        "job interpreter env override",
+        "validator step interpreter env override",
+    }
+    cross_step_environment_cases = {
+        "earlier step writes GITHUB_PATH",
+        "earlier step writes GITHUB_ENV",
+    }
     diagnostic_bound = 0
     for name, mutation in cases.items():
         if name.startswith("setup-go "):
@@ -1919,13 +1943,27 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = "unreviewed or bypassed PR-head/push exact-source shell"
         elif name == "validator precedes source verification":
             expected_issue = "exact-source verification must precede validator execution"
+        elif name in run_step_cases:
+            expected_issue = "unreviewed, missing or folded source-negative CI run step"
+        elif name in step_environment_cases:
+            expected_issue = "unreviewed step environment or PR-head SHA binding"
+        elif name in interpreter_environment_cases:
+            expected_issue = "CI interpreter environment may be overridden"
+        elif name in cross_step_environment_cases:
+            expected_issue = "cross-step CI command resolution may be overridden"
+        elif name == "post-run validator shell override":
+            expected_issue = "unreviewed step execution metadata"
+        elif name == "shadow source-negative CI job":
+            expected_issue = "missing or duplicate source-negative CI job"
+        elif name == "step continue-on-error":
+            expected_issue = "CI validator failure may be suppressed by continue-on-error"
         if expected_issue is not None:
             diagnostic_bound += 1
             if not any(expected_issue in issue for issue in issues):
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 148:
+    if diagnostic_bound != 167:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
