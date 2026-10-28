@@ -52,9 +52,15 @@ def validate(source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS) -> 
     if len(executed) != 11 or len(set(executed)) != 11 or SELF not in executed:
         raise SystemExit("unreadable readonly executable inventory drift")
     for event, block in (("pull_request", pr), ("push", push)):
-        paths = re.findall(r'^      - "([^"]+)"$', block, re.MULTILINE)
-        if len(paths) != len(trigger_paths) or set(paths) != set(trigger_paths):
+        # Reject any unrecognized executable YAML line, including unquoted paths.
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        expected = tuple(f'      - "{path}"' for path in trigger_paths)
+        if actual != expected:
             raise SystemExit(f"unreadable readonly {event} trigger inventory drift")
+        paths = trigger_paths
         for path in trigger_paths:
             token = f'      - "{path}"\n'
             if block.count(token) != 1:
@@ -133,6 +139,28 @@ def main() -> int:
             except SystemExit:
                 continue
             raise SystemExit(f"unreadable readonly accepted missing {event} trigger: {path}")
+    # Check both events independently; no whole-file digest is involved.
+    for event in ("pull_request", "push"):
+        for label, inserted in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", f'      - "{TRIGGER_PATHS[0]}"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", f"      - {TRIGGER_PATHS[0]}\n"),
+        ):
+            token = f'      - "{TRIGGER_PATHS[0]}"\n'
+            prefix, suffix = source.split(PUSH_MARKER, 1)
+            if event == "pull_request":
+                mutated = prefix.replace(token, inserted + token, 1) + PUSH_MARKER + suffix
+            else:
+                mutated = prefix + PUSH_MARKER + suffix.replace(token, inserted + token, 1)
+            if mutated == source:
+                raise SystemExit(f"unreadable readonly trigger addition fixture missing: {event} {label}")
+            try:
+                validate(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit(f"unreadable readonly accepted {event} trigger addition: {label}")
+    print("PASS: unreadable readonly trigger additions (8 semantic event-specific negatives)")
     try:
         validate(source, trigger_paths=TRIGGER_PATHS[:-1])
     except SystemExit:
