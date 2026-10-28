@@ -58,6 +58,156 @@ REQUIRED = (
 )
 
 
+SIGKILL_PUBLISHER_PR_PATHS = (
+    ".github/workflows/reconcile-deletion-sigkill-authority.yml",
+    "scripts/reconcile-memory-os-deletion-sigkill-authority.py",
+    "scripts/validate-memory-os-deletion-sigkill-authority-reconcile-negative.py",
+    "scripts/reconcile-memory-os-load-readiness-note.py",
+    "scripts/reconcile-memory-os-load-missing-evidence.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+    "contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json",
+    "contracts/operations/load-test-scenario-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+)
+
+SIGKILL_PUBLISHER_PUSH_PATHS = (
+    ".github/workflows/reconcile-deletion-sigkill-authority.yml",
+    "scripts/reconcile-memory-os-deletion-sigkill-authority.py",
+    "scripts/validate-memory-os-deletion-sigkill-authority-reconcile-negative.py",
+    "scripts/reconcile-memory-os-load-readiness-note.py",
+    "scripts/reconcile-memory-os-load-missing-evidence.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+    "contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json",
+)
+
+SIGKILL_INDEPENDENT_PR_PATHS = (
+    ".github/workflows/reconcile-deletion-sigkill-authority.yml",
+    ".github/workflows/deletion-sigkill-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-deletion-sigkill-diagnostic-source-negative.py",
+)
+
+SIGKILL_INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/reconcile-deletion-sigkill-authority.yml",
+    ".github/workflows/deletion-sigkill-diagnostic-source-negative.yml",
+    "scripts/validate-memory-os-deletion-sigkill-diagnostic-source-negative.py",
+)
+
+def sigkill_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def sigkill_trigger_header(content: str) -> str:
+    # Exact, ordered event header: reject unknown, unquoted, duplicate and
+    # unexpected event paths instead of depending only on a Git blob digest.
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise SystemExit("SIGKILL trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def sigkill_validate_trigger_matrix(
+    publisher: str, independent: str,
+    publisher_pr: tuple[str, ...] = SIGKILL_PUBLISHER_PR_PATHS,
+    publisher_push: tuple[str, ...] = SIGKILL_PUBLISHER_PUSH_PATHS,
+    independent_pr: tuple[str, ...] = SIGKILL_INDEPENDENT_PR_PATHS,
+    independent_push: tuple[str, ...] = SIGKILL_INDEPENDENT_PUSH_PATHS,
+) -> None:
+    expected_publisher = (sigkill_trigger_event("pull_request", publisher_pr)
+                          + sigkill_trigger_event("push", publisher_push)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (sigkill_trigger_event("pull_request", independent_pr)
+                            + sigkill_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if sigkill_trigger_header(content) != expected:
+            raise SystemExit("SIGKILL " + label
+                             + " exact event trigger inventory drift")
+
+
+def replace_sigkill_trigger_header(content: str, original: str, replacement: str) -> str:
+    old = "\non:\n" + original + "\npermissions:\n"
+    if content.count(old) != 1 or original == replacement:
+        raise SystemExit("SIGKILL trigger negative fixture unreachable")
+    return content.replace(old, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def sigkill_trigger_matrix_negatives(publisher: str, independent: str) -> None:
+    def must_reject(p: str, i: str) -> None:
+        try:
+            sigkill_validate_trigger_matrix(p, i)
+        except SystemExit:
+            return
+        raise SystemExit("SIGKILL accepted event trigger mutation")
+
+    omissions = additions = 0
+    cases = (
+        ("publisher", "pull_request", SIGKILL_PUBLISHER_PR_PATHS),
+        ("publisher", "push", SIGKILL_PUBLISHER_PUSH_PATHS),
+        ("independent", "pull_request", SIGKILL_INDEPENDENT_PR_PATHS),
+        ("independent", "push", SIGKILL_INDEPENDENT_PUSH_PATHS),
+    )
+    for label, event, paths in cases:
+        original = publisher if label == "publisher" else independent
+        header = sigkill_trigger_header(original)
+        block = sigkill_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise SystemExit("SIGKILL trigger event fixture ambiguous")
+        for index in range(len(paths)):
+            shorter = paths[:index] + paths[index + 1:]
+            mutated = replace_sigkill_trigger_header(
+                original, header, header.replace(block, sigkill_trigger_event(event, shorter), 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for addition in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            mutated_block = block.replace(first, first + addition, 1)
+            mutated = replace_sigkill_trigger_header(
+                original, header, header.replace(block, mutated_block, 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_pr", SIGKILL_PUBLISHER_PR_PATHS),
+        ("publisher_push", SIGKILL_PUBLISHER_PUSH_PATHS),
+        ("independent_pr", SIGKILL_INDEPENDENT_PR_PATHS),
+        ("independent_push", SIGKILL_INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            sigkill_validate_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except SystemExit:
+            shortened += 1
+        else:
+            raise SystemExit("SIGKILL accepted shortened trigger inventory")
+
+    p_header, i_header = sigkill_trigger_header(publisher), sigkill_trigger_header(independent)
+    topology = (
+        (replace_sigkill_trigger_header(
+            publisher, p_header, p_header.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (replace_sigkill_trigger_header(
+            publisher, p_header, p_header.replace(
+                "  workflow_dispatch:\n",
+                "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)), independent),
+        (publisher, replace_sigkill_trigger_header(
+            independent, i_header, i_header + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        must_reject(p, i)
+    print("PASS: SIGKILL exact trigger matrix: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def policy(text):
     for item in REQUIRED:
         if item not in text:
@@ -222,6 +372,8 @@ def main():
         raise SystemExit("SIGKILL independent workflow complete Git blob drift")
     identity_runtime(independent, "Require exact clean SIGKILL diagnostic source")
     policy(publisher)
+    sigkill_validate_trigger_matrix(publisher, independent)
+    sigkill_trigger_matrix_negatives(publisher, independent)
     mutations(publisher)
     writer_runtime(publisher)
     log_runtime(publisher)
