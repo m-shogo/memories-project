@@ -1,6 +1,6 @@
 {
   "schemaVersion": "memory-os-production-equivalent-environment-schema-validation.v1",
-  "sourceCommitSha": "a2da6b195b840f54a16b58b31984e3059a5b4955",
+  "sourceCommitSha": "5df6f03d99f944932a5db6275486cd6dea237525",
   "schemaDraft": "2020-12",
   "safePlannedFixtureAccepted": true,
   "unsafeEquivalencePromotionRejected": true,
