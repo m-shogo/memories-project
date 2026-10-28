@@ -43,3 +43,19 @@ This is append-only supplemental execution history, not the canonical learning a
 - **Why safe / reusable mechanism:** Only the existing CI-reachable read-only validator changed. Both reviewed workflows remain unchanged and read-only at root; no credential, evidence, traffic, readiness or promotion authority was written.
 - **Protected-authority check:** All eleven protected production/OPS-P0-007/registry/learning-contract/canonical-learning Git blob SHAs remained unchanged. `productionDecision=NO_GO`, OPS-P0-007=`PREREQUISITES_BLOCKED`; no registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records or final candidates. Human promotion is separate/non-automatic. This record is not canonical learning, production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
 - **Next safe target:** Audit operability inventory PR publisher and independent CI read-only permission-leaf shadows.
+
+## Operability inventory PR read-only permission-leaf shadow guard
+
+### Material failure: symptom, evidence, verified root cause, failed approach, correction, recurrence guard, retry condition
+
+- **Symptom/evidence:** The operability inventory PR publisher and independent source-negative CI checked root `permissions:` and a visible `contents: read` but did not independently reject a later effective `contents : write` or `'contents': write`. This was a static YAML permission semantic gap, not a production incident; full reviewed Git blob pins still rejected unreviewed workflow drift.
+- **Verified root cause / failed approach:** Event-header/root-key inventories and presence checks cannot establish unique effective YAML permission leaves.
+- **Correction / executable recurrence guard:** [93ec59d5](https://github.com/m-shogo/memories-project/commit/93ec59d5fd4226c837ace16b314ba0ffd041ffae) requires the exact root `contents: read` leaf for both workflows and adds four exact-diagnostic quoted/spaced shadow negatives. Bounded prewrite checks proved both baseline permissions and all four mutations.
+- **Retry condition:** Revalidate only on independently reviewed workflow permission changes. Do not retry unchanged canonical learning transfer, supplemental-history CI trigger permission, Quay MinIO HTTP 401 or human approval blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **Outcome/evidence:** Exact-source [Operability Admission Inventory PR Source Negative #40706253473](https://github.com/m-shogo/memories-project/actions/runs/40706253473) completed **SUCCESS** on `93ec59d5`. Logs explicitly prove four permission-leaf negatives, 29 trigger omissions, 12 additions, two shortened inventories, three event-topology negatives, eight root shadows, 12 event/base/SHA runtime cases and 20 source mutations.
+- **Why safe / reusable mechanism:** Only the existing CI-reachable read-only validator changed. The reviewed publisher and independent workflows remain unchanged, with no evidence, credential, traffic, readiness or human promotion writes.
+- **Protected-authority check:** Eleven protected production/OPS-P0-007/registry/learning-contract/canonical-learning Git blob SHAs remained unchanged. `productionDecision=NO_GO`, OPS-P0-007=`PREREQUISITES_BLOCKED`; no registered/eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records or final candidates. Human promotion remains separate/non-automatic. This supplemental record is not canonical learning or any production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+- **Next safe target:** Audit human-tabletop source-negative publisher/independent read-only permission leaf shadows and independently review remaining YAML CI authority gaps.
