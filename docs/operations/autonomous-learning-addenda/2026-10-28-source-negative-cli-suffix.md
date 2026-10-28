@@ -566,3 +566,20 @@
 - **Why safe / reusable mechanism:** Existing read-only CI guard now rejects the 15 mutations for their intended CI reachability invariant; reviewed workflows, production evidence, backup/restore, RPO/RTO/skew, credentials, traffic, readiness and promotion were untouched.
 - **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/drill/evidence/non-resurrection/promotion registries, production-shaped drill registry, canonical learning and learning contract blobs were unchanged. `productionDecision=NO_GO`; OPS-P0-007=`PREREQUISITES_BLOCKED`; registered/semantically eligible generations, approved objectives, executable reviewed requests, request-bound evidence, complete typed eight-domain records and final candidates all zero. Human promotion remains separate.
 - **Boundary:** Supplemental append-only history is not canonical learning authority or production/readiness evidence. Supplemental-history CI-trigger gap remains blocked on unchanged workflow-write authority.
+
+## 2026-10-28 — Shell validator bypass negatives require intended diagnostics
+
+### Material failure prevented
+
+- **Symptom / evidence:** 26 already executed source-negative mutations for help-only/redirected Python commands, inert heredocs, uninvoked shell functions, interpreter alias/hash/PATH/source/eval substitution, masking traps, shell AND/OR short-circuit and conditional branch/loop execution could pass on an unrelated nonempty error. This is a static CI-harness masking risk, not an observed production incident.
+- **Verified root cause:** The shared 188-fixture negative harness bound 97 cases to intended diagnostic families, but left these 26 shell bypass cases unbound.
+- **Failed approach:** Accepting any failure as proof of the targeted validator execution invariant.
+- **Correction / executable recurrence guard:** [80ca9c68](https://github.com/m-shogo/memories-project/commit/80ca9c684082c3a172a0a59b09326a55579ae04a) binds 26 existing cases to exact intended command, heredoc, function, interpreter, trap, short-circuit or conditional-control diagnostics. Diagnostic-bound inventory **97 → 123**; total executable fixtures remain **188**.
+- **Retry condition:** Revise a mapping only after independently reviewed shell/CI policy or diagnostic changes and exact-source CI proof. Do not retry unchanged canonical learning HTTP/2, workflow-write permission, MinIO HTTP 401 or human-approval blockers.
+
+### Material success
+
+- **Outcome / evidence:** Exact-source [Autonomous Learning Guard #40686960405](https://github.com/m-shogo/memories-project/actions/runs/40686960405) **SUCCESS** on `80ca9c684082c3a172a0a59b09326a55579ae04a`. Logs prove 52 reviewed workflows, 63 direct Python commands, 188 source-negative fixtures, 128 canonical learning negatives, 1,186 helper-ancestor negatives, canonical append-only PASS and clean read-only execution. GitHub compare shows only `scripts/validate-memory-os-entry-docs.py` changed (55 additions, 1 deletion).
+- **Why safe / reusable mechanism:** Extended existing CI-reachable read-only negative proof without modifying workflows, production evidence, credentials, traffic, backup/restore, RPO/RTO/skew, readiness or promotion.
+- **Protected-authority check:** Production status, OPS-P0-007 snapshot, generation/objective/drill/evidence/non-resurrection/promotion registries, production-shaped drill registry, canonical learning and learning contract blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007=`PREREQUISITES_BLOCKED`; registered/semantically eligible generations, approved objectives, executable reviewed requests, request-bound evidence, complete typed eight-domain records and final candidates remain zero. Human promotion remains separate.
+- **Boundary:** This append-only supplemental record is not canonical learning authority or production/readiness evidence; the supplemental-history CI-trigger gap remains blocked by unchanged workflow-write authority.
