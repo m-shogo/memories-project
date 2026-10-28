@@ -313,7 +313,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             if not stripped.startswith(("python ", "python3 ")):
                 continue
             match = re.fullmatch(
-                r"          python(?:3)?(?: -B)? (scripts/[A-Za-z0-9_./-]+\.py)(.*)",
+                r" {10,}python(?:3)?(?: -B)? (scripts/[A-Za-z0-9_./-]+\.py)(.*)",
                 command,
             )
             if match is None or any(token in match.group(2) for token in ("||", ";", "&", "|")):
@@ -374,7 +374,17 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     if source_negative_reachability_issues(relative, fixture, exists):
         failures.append("source-negative reachability positive control failed")
         return
+    nested = fixture.replace(
+        "          python scripts/check.py",
+        "          (\n            python scripts/check.py\n          )",
+    )
+    if source_negative_reachability_issues(relative, nested, exists):
+        failures.append("source-negative nested subshell validator positive control failed")
+        return
     cases = {
+        "nested masked validator failure": nested.replace(
+            "            python scripts/check.py",
+            "            python scripts/check.py || true"),
         "PR missing validator trigger": fixture.replace(
             '      - "scripts/check.py"', '      - "scripts/other.py"', 1),
         "push missing workflow self-trigger": fixture.replace(
@@ -443,12 +453,12 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         )
         failures.extend(f"{relative}: {issue}" for issue in issues)
         invocation_count += len(re.findall(
-            r"(?m)^          python(?:3)?(?: -B)? scripts/[A-Za-z0-9_./-]+\.py",
+            r"(?m)^ {10,}python(?:3)?(?: -B)? scripts/[A-Za-z0-9_./-]+\.py",
             source,
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 14 negative fixtures")
+              f"{invocation_count} direct Python commands, 15 negative fixtures")
 
 
 def main() -> int:
