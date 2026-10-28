@@ -384,7 +384,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                 "        run: |",
             ]):
         issues.append("unreviewed step environment or PR-head SHA binding")
-    if sum(bool(re.match(r"^\\s*env:", row)) for row in source_lines) != 1:
+    if sum(bool(re.match(r"^\s*env:", row)) for row in source_lines) != 1:
         issues.append("shadowed workflow, job or step environment")
     checkout_indices = [
         index for index, row in enumerate(source_lines)
