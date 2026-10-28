@@ -176,6 +176,87 @@ def release_pair_validate_trigger_matrix(
         if release_pair_trigger_header(content) != expected:
             raise SystemExit("release-compatibility-pair " + label
                              + " exact event trigger inventory drift")
+    release_pair_validate_yaml_root_permissions(publisher, independent)
+
+
+
+def release_pair_validate_yaml_root_permissions(publisher: str, independent: str) -> None:
+    """Reject effective YAML mapping shadows independently of the reviewed blob."""
+    for label, content, expected_roots in (
+        ("publisher", publisher, [
+            "name: Release Compatibility Pair", "on:", "permissions:",
+            "concurrency:", "jobs:",
+        ]),
+        ("independent", independent, [
+            "name: Release Compatibility Pair Source Negative", "on:",
+            "permissions:", "jobs:",
+        ]),
+    ):
+        roots = [
+            line for line in content.splitlines()
+            if line.strip() and not line[0].isspace()
+            and not line.lstrip().startswith("#")
+        ]
+        if roots != expected_roots:
+            raise SystemExit("release-compatibility-pair " + label
+                             + " root YAML key shadow drift")
+        if content.count("\npermissions:\n") != 1:
+            raise SystemExit("release-compatibility-pair " + label
+                             + " permission leaf shadow drift")
+        permission_rows = []
+        for line in content.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                permission_rows.append(line)
+        if permission_rows != ["  contents: read"]:
+            raise SystemExit("release-compatibility-pair " + label
+                             + " permission leaf shadow drift")
+
+
+def release_pair_yaml_shadow_negatives(publisher: str, independent: str) -> None:
+    total = 0
+    for label, content in (("publisher", publisher), ("independent", independent)):
+        cases = []
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            cases.append((name, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("release-compatibility-pair " + label
+                             + " permission mutation anchor drift")
+        for name, extra in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((name, content.replace(anchor, anchor + extra, 1),
+                          "permission leaf shadow drift"))
+        for name, altered, diagnostic in cases:
+            if altered == content:
+                raise SystemExit("release-compatibility-pair YAML fixture unchanged: " + name)
+            try:
+                if label == "publisher":
+                    release_pair_validate_trigger_matrix(altered, independent)
+                else:
+                    release_pair_validate_trigger_matrix(publisher, altered)
+            except SystemExit as exc:
+                expected = "release-compatibility-pair " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "release-compatibility-pair YAML wrong diagnostic: "
+                        + label + "/" + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit("release-compatibility-pair accepted YAML shadow: "
+                                 + label + "/" + name)
+            total += 1
+    if total != 12:
+        raise SystemExit("release-compatibility-pair YAML fixture count drift")
+    print("PASS: release pair publisher/independent YAML root/permission (12 exact-diagnostic negatives)")
 
 
 def replace_release_pair_trigger_header(content: str, original: str, replacement: str) -> str:
@@ -317,6 +398,7 @@ def main() -> int:
     validate(publisher, independent)
     release_pair_validate_trigger_matrix(publisher, independent)
     release_pair_trigger_matrix_negatives(publisher, independent)
+    release_pair_yaml_shadow_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
     return 0
