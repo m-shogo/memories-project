@@ -165,10 +165,27 @@ def validate_yaml_authority(source: str) -> None:
             leaves.append(line)
     if leaves != ["  contents: read"]:
         raise SystemExit("admission-chain reconcile CI permission leaf shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    job_rows = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_rows != ["  negative:"]:
+        raise SystemExit("admission-chain reconcile CI job mapping shadow drift")
+    job_keys = [
+        line for line in body.splitlines()
+        if line.startswith("    ") and not line.startswith("     ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_keys != [
+        "    runs-on: ubuntu-latest", "    timeout-minutes: 5", "    steps:",
+    ]:
+        raise SystemExit("admission-chain reconcile CI job key/permission shadow drift")
 
 
 def prove_yaml_authority_negatives(source: str) -> None:
-    """Require intended diagnostics for nine digest-independent YAML negatives."""
+    """Require intended diagnostics for 18 digest-independent YAML negatives."""
     validate_yaml_authority(source)
     event = source.replace("on:\n", "on:\n  issues:\n", 1)
     if event == source:
@@ -192,7 +209,27 @@ def prove_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(marker, marker + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for label, suffix in (
+        ("duplicate job", "  negative: {}\n"),
+        ("spaced job", "  negative : {}\n"),
+        ("quoted job", "  'negative': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    runs_on = "    runs-on: ubuntu-latest\n"
+    if source.count(runs_on) != 1:
+        raise SystemExit("admission-chain reconcile CI job fixture anchor drift")
+    for label, leaf in (
+        ("job permission", "    permissions:\n      contents: write\n"),
+        ("spaced job permission", "    permissions :\n      contents: write\n"),
+        ("quoted job permission", "    'permissions':\n      contents: write\n"),
+        ("job bypass", "    if: false\n"),
+        ("job timeout shadow", "    timeout-minutes : 0\n"),
+        ("job continuation shadow", "    continue-on-error: true\n"),
+    ):
+        cases.append((label, source.replace(runs_on, runs_on + leaf, 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 18:
         raise SystemExit("admission-chain reconcile CI YAML negative inventory drift")
     for label, mutated, diagnostic in cases:
         if mutated == source:
@@ -206,7 +243,7 @@ def prove_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("admission-chain reconcile CI accepted YAML mutation: " + label)
-    print("PASS: admission-chain reconcile CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: admission-chain reconcile CI YAML event/root/permission authority (18 exact-diagnostic negatives)")
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
