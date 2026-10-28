@@ -117,7 +117,78 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 
 
+
+def validate_yaml_authority(source: str) -> None:
+    """Pin human review source-order CI event/root/permission YAML authority."""
+    name = "name: Backup Restore Review Source Order"
+    push = "  push:\n    branches: [so]\n    paths:\n"
+    pr = "  pull_request:\n    branches: [so]\n    paths:\n"
+    paths = "".join("      - '" + item + "'\n" for item in TRIGGER_PATHS)
+    header = name + "\n\non:\n" + push + paths + pr + paths + "  workflow_dispatch:\n"
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != header):
+        raise SystemExit("review source-order CI exact event header drift")
+    roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [name, "on:", "permissions:", "jobs:"]:
+        raise SystemExit("review source-order CI root YAML key shadow drift")
+    leaves = []
+    for line in source.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            leaves.append(line)
+    if leaves != ["  contents: read"]:
+        raise SystemExit("review source-order CI permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    """Require nine exact YAML shadow diagnostics without source digest fallback."""
+    validate_yaml_authority(source)
+    event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if event == source:
+        raise SystemExit("review source-order CI YAML event fixture anchor drift")
+    cases = [("extra event", event, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source + "\n" + suffix, "root YAML key shadow drift"))
+    marker = "\npermissions:\n  contents: read\n"
+    if source.count(marker) != 1:
+        raise SystemExit("review source-order CI YAML permission fixture anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(marker, marker + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("review source-order CI YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("review source-order CI unchanged YAML fixture: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "review source-order CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("review source-order CI wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("review source-order CI accepted YAML mutation: " + label)
+    print("PASS: review source-order CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_yaml_authority(source)
     validate_trigger_reachability(source)
     for label, token, count in REQUIRED:
         if source.count(token) != count:
@@ -150,6 +221,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
