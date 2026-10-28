@@ -38,3 +38,20 @@
 - **Why safe / reusable mechanism:** Only the shared read-only CI entrypoint was changed; no reviewed workflow, generation/objective/drill/evidence registry, credential, traffic or human promotion authority was modified.
 - **Protected-authority check:** All nine protected authority blob SHAs were re-read after the code change and remained identical to their pre-write values. `productionDecision=NO_GO` and OPS-P0-007 `PREREQUISITES_BLOCKED` remain authoritative. Learning and fixture outcomes cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, independent review or promotion gates.
 - **Next safe target:** Obtain exact-source CI run/job evidence for both guards. Then inspect heredoc or shell function wrappers that could make a visible Python line non-executable, without broadening reviewed workflow permissions or mutating production authority.
+
+## 2026-10-28 — Shadowed source-negative fixture restored and inventory pinned
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach, correction, recurrence guard, retry condition
+
+- **Symptom / evidence:** A read of the CI-reachable shared source-negative negative suite found two literal `"conditional post-validator clean checks"` keys in one Python dictionary. Python silently overwrote the earlier case, so the nominal 53-case suite omitted its distinct conditional tracked-check mutation. This is a verified test-harness gap, not an observed production incident.
+- **Verified root cause:** Duplicate Python dict literal keys overwrite earlier entries; the harness did not pin its expected case count.
+- **Failed approach:** Counting only successful execution of the resulting dictionary concealed a source-defined test that never executed.
+- **Correction / executable recurrence guard:** [1d20d271](https://github.com/m-shogo/memories-project/commit/1d20d2715b73824b59b86c6636b78fdf6191a5b6) gives the tracked-only and combined-clean-check mutations distinct names and rejects any suite with an unexpected 54-case inventory before running mutations.
+- **Retry condition:** Revisit the exact fixture count only when a reviewed new mutation is added or removed, and require the changed inventory to run in exact-source CI. Do not repeat unchanged canonical 4.17 MB learning transport, Quay MinIO HTTP 401 or human-promotion attempts.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **Outcome / evidence:** Commit `1d20d271` modified only `scripts/validate-memory-os-entry-docs.py` (3 additions, 1 deletion). A post-write GitHub source read confirmed the new blob and all nine protected authority SHA values unchanged. Exact-source [Autonomous Learning Guard #40671340150](https://github.com/m-shogo/memories-project/actions/runs/40671340150) was IN_PROGRESS at recording time; no CI PASS is asserted here.
+- **Why safe / reusable mechanism:** The change restores missing fail-closed test coverage and guards fixture inventory drift inside an existing read-only CI entrypoint; it does not modify reviewed workflows, production evidence, recovery registries, credentials, traffic, readiness or promotion authority.
+- **Protected-authority check:** Production Status remains `NO_GO`; OPS-P0-007 remains `PREREQUISITES_BLOCKED`. All nine canonical protected contract/registry blob SHAs were unchanged. No learning or negative test can satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, independent review or human promotion gates.
+- **Next safe target:** Confirm exact-source CI, then reject inert heredoc text and uninvoked shell functions that can contain a syntactically present Python validator without executing it.
