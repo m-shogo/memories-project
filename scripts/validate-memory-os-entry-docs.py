@@ -1792,6 +1792,38 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "validator inside shell loop",
         "validator inside shell case",
     }
+    clean_short_circuit_cases = {
+        "tracked clean check skipped by true-or",
+        "tracked clean check skipped by false-and",
+        "untracked clean check skipped by true-or",
+        "untracked clean check skipped by false-and",
+    }
+    clean_heredoc_cases = {
+        "tracked clean check inert in heredoc",
+        "untracked clean check inert in heredoc",
+    }
+    clean_function_cases = {
+        "tracked clean check trapped in function",
+        "untracked clean check trapped in function",
+    }
+    head_cardinality_cases = {
+        "comment-only source HEAD comparison",
+        "echo-only source HEAD comparison",
+        "source verification duplicate HEAD comparison",
+    }
+    source_guard_cases = {
+        "inverted source HEAD comparison",
+        "source HEAD comparison short-circuited",
+        "source HEAD comparison under false branch",
+        "source verification early exit",
+        "source verification disabled errexit",
+        "source verification wrong PR expected",
+        "source verification wrong push expected",
+        "source verification disabled event rejection",
+        "source verification extra shell command",
+        "source verification missing clean check",
+        "source verification unreviewed echo substitution",
+    }
     diagnostic_bound = 0
     for name, mutation in cases.items():
         if name.startswith("setup-go "):
@@ -1871,13 +1903,29 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = "Python validator short-circuited by preceding shell list"
         elif name in conditional_shell_cases:
             expected_issue = "Python validator may be conditionally skipped by shell control flow"
+        elif name in clean_short_circuit_cases:
+            expected_issue = "post-validator clean check short-circuited"
+        elif name in clean_heredoc_cases:
+            expected_issue = "post-validator clean check may be inert heredoc data"
+        elif name in clean_function_cases:
+            expected_issue = "post-validator clean check may be trapped in shell function"
+        elif name == "post-validator failure masked by ERR trap":
+            expected_issue = "post-validator clean check failure may be trap-masked"
+        elif name == "post-validator shell overridden by eval":
+            expected_issue = "post-validator clean check shell may be overridden"
+        elif name in head_cardinality_cases:
+            expected_issue = "missing, shadowed or duplicated exact-source HEAD comparison"
+        elif name in source_guard_cases:
+            expected_issue = "unreviewed or bypassed PR-head/push exact-source shell"
+        elif name == "validator precedes source verification":
+            expected_issue = "exact-source verification must precede validator execution"
         if expected_issue is not None:
             diagnostic_bound += 1
             if not any(expected_issue in issue for issue in issues):
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 123:
+    if diagnostic_bound != 148:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
