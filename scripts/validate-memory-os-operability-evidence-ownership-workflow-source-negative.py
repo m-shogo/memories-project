@@ -18,11 +18,120 @@ INDEPENDENT = ".github/workflows/operability-evidence-ownership-source-negative.
 SELF = "scripts/validate-memory-os-operability-evidence-ownership-workflow-source-negative.py"
 REVIEWED_PUBLISHER = "3df9af1129f03fbbdce6cc95bdd3adb4dc434802"
 REVIEWED_INDEPENDENT = "a842efd4b4224eb5bdb7a57981294ff501c18c76"
+
+PUBLISHER_PUSH_TRIGGER_PATHS = (
+    ".github/workflows/operability-evidence-ownership.yml",
+    "contracts/operations/requests/operability-evidence-ownership.v1.json",
+    "contracts/operations/operability-evidence-ownership-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/validate-memory-os-operability-evidence-ownership.py",
+    "scripts/reconcile-memory-os-operability-evidence-ownership.py",
+    "scripts/validate-memory-os-operability-evidence-ownership-reconcile-negative.py",
+    "scripts/validate-memory-os-operability.py",
+)
+INDEPENDENT_PR_TRIGGER_PATHS = (
+    ".github/workflows/operability-evidence-ownership.yml",
+    ".github/workflows/operability-evidence-ownership-source-negative.yml",
+    "scripts/validate-memory-os-operability-evidence-ownership-workflow-source-negative.py",
+)
+INDEPENDENT_PUSH_TRIGGER_PATHS = (
+    ".github/workflows/operability-evidence-ownership.yml",
+    ".github/workflows/operability-evidence-ownership-source-negative.yml",
+    "scripts/validate-memory-os-operability-evidence-ownership-workflow-source-negative.py",
+)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
 PUSH_REF = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
 SHA_FORMAT = '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'
+
+
+
+def validate_trigger_reachability(
+    value: str, *, publisher: bool,
+    pr_paths: tuple[str, ...] | None = None,
+    push_paths: tuple[str, ...] | None = None,
+) -> None:
+    """Pin push-only ownership publisher and PR/push independent CI paths."""
+    expected_push = PUBLISHER_PUSH_TRIGGER_PATHS if publisher else INDEPENDENT_PUSH_TRIGGER_PATHS
+    expected_pr = () if publisher else INDEPENDENT_PR_TRIGGER_PATHS
+    approved_push = expected_push if push_paths is None else push_paths
+    approved_pr = expected_pr if pr_paths is None else pr_paths
+    for label, actual, expected in (("PR", approved_pr, expected_pr), ("push", approved_push, expected_push)):
+        if len(actual) != len(expected) or len(set(actual)) != len(expected):
+            raise SystemExit("ownership CI " + label + " trigger inventory shortened or duplicated")
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n" if publisher else "\npermissions:\n"
+    if value.count(push) != 1 or value.count(end) != 1:
+        raise SystemExit("ownership CI trigger marker drift")
+    if publisher:
+        if "  pull_request:" in value or not (value.index(push) < value.index(end)):
+            raise SystemExit("ownership publisher must remain push-only")
+        events = (("push", push, end, approved_push),)
+    else:
+        if value.count(pr) != 1 or not (value.index(pr) < value.index(push) < value.index(end)):
+            raise SystemExit("ownership independent CI event marker/order drift")
+        events = (("PR", pr, push, approved_pr), ("push", push, end, approved_push))
+    for label, start, stop, approved_paths in events:
+        block = value.split(start, 1)[1].split(stop, 1)[0]
+        actual = tuple(line for line in block.splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+        approved = tuple('      - "' + path + '"' for path in approved_paths)
+        if actual != approved:
+            raise SystemExit("ownership CI " + label + " exact trigger path drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Prove all single-event omissions, additions and shortened inventories."""
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    for label, value, is_publisher, events in (
+        ("publisher", publisher, True, (("push", push, "  workflow_dispatch:\n", PUBLISHER_PUSH_TRIGGER_PATHS),)),
+        ("independent", independent, False, (
+            ("PR", pr, push, INDEPENDENT_PR_TRIGGER_PATHS),
+            ("push", push, "\npermissions:\n", INDEPENDENT_PUSH_TRIGGER_PATHS),
+        )),
+    ):
+        for event, start, stop, paths in events:
+            start_index = value.index(start) + len(start)
+            end_index = value.index(stop, start_index)
+            block = value[start_index:end_index]
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if block.count(token) != 1:
+                    raise SystemExit("ownership CI mutation anchor drift: " + path)
+                mutated = value[:start_index] + block.replace(token, "", 1) + value[end_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("ownership CI accepted missing " + label + " " + event + " trigger: " + path)
+            for name, injection in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                mutated = value[:start_index] + injection + value[start_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("ownership CI accepted " + label + " " + event + " " + name)
+            try:
+                validate_trigger_reachability(
+                    value, publisher=is_publisher,
+                    pr_paths=paths[:-1] if event == "PR" else None,
+                    push_paths=paths[:-1] if event == "push" else None,
+                )
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("ownership CI accepted shortened " + label + " " + event + " inventory")
+    print("PASS: ownership CI event triggers (14 removals; 12 additions; 3 shortened inventory negatives)")
 
 
 def source(relative: str) -> str:
@@ -237,6 +346,9 @@ def predicate_runtime(independent: str) -> None:
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     validate(publisher, independent)
+    validate_trigger_reachability(publisher, publisher=True)
+    validate_trigger_reachability(independent, publisher=False)
+    prove_trigger_reachability_negatives(publisher, independent)
     predicate_runtime(independent)
     source_negatives(publisher, independent)
     runtime(publisher)
