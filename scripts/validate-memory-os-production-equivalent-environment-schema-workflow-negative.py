@@ -66,6 +66,82 @@ def validate_trigger_reachability(
             raise SystemExit("environment schema CI " + event + " exact trigger inventory drift")
 
 
+def validate_yaml_authority(source: str) -> None:
+    """Pin effective reviewed event, root and permission YAML mapping independently of digest."""
+    expected_header = (
+        "name: Production Equivalent Environment Schema\n\non:\n"
+        + "  pull_request:\n    branches:\n      - so\n    paths:\n"
+        + "".join('      - "' + path + '"\n' for path in TRIGGER_PATHS)
+        + "  push:\n    branches:\n      - so\n    paths:\n"
+        + "".join('      - "' + path + '"\n' for path in TRIGGER_PATHS)
+        + "  workflow_dispatch:\n"
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("environment schema CI exact event header drift")
+    roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Production Equivalent Environment Schema",
+        "on:", "permissions:", "jobs:",
+    ]:
+        raise SystemExit("environment schema CI root YAML key shadow drift")
+    permission_rows = []
+    for line in source.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("environment schema CI permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(source: str) -> None:
+    """Require exact semantic rejection for extra event, root and permission shadows."""
+    validate_yaml_authority(source)
+    event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if event == source:
+        raise SystemExit("environment schema CI event fixture anchor drift")
+    cases = [("extra event", event, "exact event header drift")]
+    for label, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("quoted permissions", "'permissions':\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+        ("quoted jobs", "'jobs': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "root YAML key shadow drift"))
+    marker = "\npermissions:\n  contents: read\n"
+    if source.count(marker) != 1:
+        raise SystemExit("environment schema CI permission fixture anchor drift")
+    for label, leaf in (
+        ("spaced contents", "  contents : write\n"),
+        ("quoted contents", "  'contents': write\n"),
+    ):
+        cases.append((label, source.replace(marker, marker + leaf, 1),
+                      "permission leaf shadow drift"))
+    if len(cases) != 9:
+        raise SystemExit("environment schema CI YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("environment schema CI unchanged YAML negative: " + label)
+        try:
+            validate_yaml_authority(mutated)
+        except SystemExit as exc:
+            expected = "environment schema CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("environment schema CI wrong YAML diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("environment schema CI accepted YAML mutation: " + label)
+    print("PASS: environment schema CI YAML event/root/permission authority (9 exact-diagnostic negatives)")
+
+
 def prove_trigger_reachability_negatives(source: str) -> None:
     push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
     pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
@@ -112,6 +188,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
+    validate_yaml_authority(source)
     for label, token, count in REQUIRED:
         if source.count(token) != count:
             raise SystemExit("environment schema workflow source drift: " + label)
@@ -145,6 +222,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_yaml_authority_negatives(source)
     prove_runtime_branch_guards()
     cases = (
         ("PR target", REQUIRED[0][1], "  pull_request:\n    paths:\n"),
