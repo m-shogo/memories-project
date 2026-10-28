@@ -11,6 +11,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/recovery-objectives-reconcile-negative.yml"
 REVIEWED_WORKFLOW_BLOB_SHA = "961682b5235ac5a88ae29fb95a0ed3f5abd3d862"
+TRIGGER_PATHS = (
+    ".github/workflows/recovery-objectives-reconcile-negative.yml",
+    "scripts/reconcile-memory-os-recovery-objectives.py",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/register-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives-negative.py",
+    "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py",
+    "scripts/validate-memory-os-recovery-objectives-reconcile-workflow-negative.py",
+    "contracts/operations/recovery-objectives-admission-contract.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+)
+PR_MARKER = "  pull_request:\n    branches: [so]\n    paths:\n"
+PUSH_MARKER = "  push:\n    branches:\n      - so\n    paths:\n"
+DISPATCH_MARKER = "  workflow_dispatch:\n"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -32,7 +48,31 @@ REQUIRED = (
 )
 
 
-def validate(source: str, *, check_blob: bool = True) -> None:
+def validate_trigger_reachability(
+    source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS
+) -> None:
+    """Admit only the exact reviewed, ordered PR and push path inventories."""
+    if any(source.count(marker) != 1 for marker in (PR_MARKER, PUSH_MARKER, DISPATCH_MARKER)):
+        raise SystemExit("recovery objective reconcile CI event marker drift")
+    if not (source.index(PR_MARKER) < source.index(PUSH_MARKER) < source.index(DISPATCH_MARKER)):
+        raise SystemExit("recovery objective reconcile CI event order drift")
+    pr = source.split(PR_MARKER, 1)[1].split(PUSH_MARKER, 1)[0]
+    push = source.split(PUSH_MARKER, 1)[1].split(DISPATCH_MARKER, 1)[0]
+    expected = tuple(f'      - "{path}"' for path in trigger_paths)
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != expected:
+            raise SystemExit(f"recovery objective reconcile CI {event} trigger inventory drift")
+
+
+def validate(
+    source: str, *, check_blob: bool = True,
+    trigger_paths: tuple[str, ...] = TRIGGER_PATHS,
+) -> None:
+    validate_trigger_reachability(source, trigger_paths=trigger_paths)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"recovery objective reconcile workflow source boundary drift: {label}")
@@ -41,6 +81,54 @@ def validate(source: str, *, check_blob: bool = True) -> None:
         blob = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
         if hashlib.sha1(blob).hexdigest() != REVIEWED_WORKFLOW_BLOB_SHA:
             raise SystemExit("recovery objective reconcile complete workflow source drift")
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    """Prove event-specific removals, additions and inventory shortening without a blob check."""
+    anchor = f'      - "{TRIGGER_PATHS[0]}"\n'
+    for event in ("pull_request", "push"):
+        prefix, suffix = source.split(PUSH_MARKER, 1)
+        for path in TRIGGER_PATHS:
+            token = f'      - "{path}"\n'
+            mutated = (
+                prefix.replace(token, "", 1) + PUSH_MARKER + suffix
+                if event == "pull_request"
+                else prefix + PUSH_MARKER + suffix.replace(token, "", 1)
+            )
+            if mutated == source:
+                raise SystemExit(f"recovery objective reconcile CI removal fixture missing: {event} {path}")
+            try:
+                validate(mutated, check_blob=False)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit(f"recovery objective reconcile CI accepted {event} trigger removal: {path}")
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", anchor),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", f"      - {TRIGGER_PATHS[0]}\n"),
+        ):
+            mutated = (
+                prefix.replace(anchor, injected + anchor, 1) + PUSH_MARKER + suffix
+                if event == "pull_request"
+                else prefix + PUSH_MARKER + suffix.replace(anchor, injected + anchor, 1)
+            )
+            if mutated == source:
+                raise SystemExit(f"recovery objective reconcile CI addition fixture missing: {event} {label}")
+            try:
+                validate(mutated, check_blob=False)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit(f"recovery objective reconcile CI accepted {event} trigger addition: {label}")
+    try:
+        validate(source, check_blob=False, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("recovery objective reconcile CI shortened trigger inventory accepted")
+    print("PASS: recovery objective reconcile CI event triggers (22 removals; 8 additions; 1 shortened inventory)")
 
 
 def prove_branch_guards_runtime() -> None:
@@ -64,6 +152,7 @@ def prove_branch_guards_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_trigger_reachability_negatives(source)
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
