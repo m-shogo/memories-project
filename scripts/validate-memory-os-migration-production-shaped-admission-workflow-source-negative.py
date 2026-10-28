@@ -238,7 +238,10 @@ def read(relative: str) -> str:
         raise SystemExit("migration production-shaped admission source missing/substituted: " + relative) from exc
 
 
-def validate(publisher: str, independent: str) -> None:
+def validate(
+    publisher: str, independent: str, *,
+    check_publisher_blob: bool = True, check_independent_blob: bool = True
+) -> None:
     validate_trigger_reachability(publisher, publisher=True)
     validate_trigger_reachability(independent, publisher=False)
     for name, source, required, reviewed in (
@@ -250,7 +253,7 @@ def validate(publisher: str, independent: str) -> None:
                 raise SystemExit("migration production-shaped admission " + name + " source drift: " + label)
         data = source.encode("utf-8")
         digest = hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
-        if digest != reviewed:
+        if (check_publisher_blob if name == "publisher" else check_independent_blob) and digest != reviewed:
             raise SystemExit("migration production-shaped admission " + name + " complete source drift")
 
 
@@ -392,6 +395,12 @@ def negatives(publisher: str, independent: str) -> None:
         ("unreviewed Action", "      - name: Prove migration production-shaped admission publisher source\n", "      - uses: unreviewed/action@v1\n      - name: Prove migration production-shaped admission publisher source\n"),
         ("unreviewed shell", "      - name: Prove migration production-shaped admission publisher source\n", "      - run: echo unreviewed\n      - name: Prove migration production-shaped admission publisher source\n"),
     )
+    blob_only = {
+        "publisher": {"unreviewed Action", "unreviewed shell"},
+        "independent": {"unreviewed Action", "unreviewed shell"},
+    }
+    semantic_counts = {"publisher": 0, "independent": 0}
+    blob_counts = {"publisher": 0, "independent": 0}
     for name, original, cases in (("publisher", publisher, publisher_cases), ("independent", independent, independent_cases)):
         for label, before, after in cases:
             if before not in original:
@@ -399,12 +408,23 @@ def negatives(publisher: str, independent: str) -> None:
             mutated = original.replace(before, after, 1)
             if mutated == original:
                 raise SystemExit("migration production-shaped admission negative fixture unchanged: " + name + " " + label)
+            required = PUBLISHER_REQUIRED if name == "publisher" else INDEPENDENT_REQUIRED
+            semantic = any(mutated.count(token) != original.count(token) for _, token, _ in required)
+            if semantic == (label in blob_only[name]):
+                raise SystemExit("migration production-shaped source mutation classification drift: " + name + " " + label)
+            semantic_counts[name] += int(semantic)
+            blob_counts[name] += int(not semantic)
             try:
-                validate(mutated, independent) if name == "publisher" else validate(publisher, mutated)
+                if name == "publisher":
+                    validate(mutated, independent, check_publisher_blob=not semantic)
+                else:
+                    validate(publisher, mutated, check_independent_blob=not semantic)
             except SystemExit:
                 continue
             raise SystemExit("migration production-shaped admission accepted source mutation: " + name + " " + label)
-    print(f"PASS: migration production-shaped admission source negatives ({len(publisher_cases)} publisher, {len(independent_cases)} independent)")
+    if semantic_counts != {"publisher": 24, "independent": 16} or blob_counts != {"publisher": 2, "independent": 2}:
+        raise SystemExit("migration production-shaped source semantic/blob-only population drift")
+    print("PASS: migration production-shaped source negatives (24 publisher + 16 independent semantic; 2 publisher + 2 independent blob-only)")
 
 
 
