@@ -396,3 +396,22 @@
 - **Protected-authority check:** Nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007 prerequisite-blocked with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, request-bound recovery evidence, complete typed eight-domain records or final candidates. Human promotion remains separate.
 - **Learning boundary:** Supplemental append-only history cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
 - **Next safe target:** Bind the two other reviewed third-step Go/local-migration shells to their exact execution and clone-source authority. Do not retry unchanged canonical learning transport, Quay MinIO HTTP 401 or human approval blockers.
+
+## 2026-10-28 — Unsafe JavaScript replacement interpolation, rollback to known-good guard
+
+### Material failure: generated Python source expanded unexpectedly
+
+- **Symptom / observed evidence:** [`49b40e1c`](https://github.com/m-shogo/memories-project/commit/49b40e1c803a7faf09f4a0a923527268c3c54846) unintentionally expanded `scripts/validate-memory-os-entry-docs.py` from 83,009 to 239,230 characters during a proposed Go third-step guard patch. The generated guard excerpt contained unrelated Python source after a regex ending in `$'`. The intended 166-case validator was **not verified** and must not be reported as a success.
+- **Verified root cause:** JavaScript `String.replace(search, replacementString)` interprets `$'` inside a replacement string as the entire unmatched suffix. The Go test regex contains `$'`, so direct replacement expanded the suffix into the new Python source. The pre-write size check had a lower bound but no upper bound.
+- **Failed approach:** Unbounded direct JavaScript replacement with source text containing dollar-sign sequences, followed by a one-sided size sanity check.
+- **Correction:** [`6870e236`](https://github.com/m-shogo/memories-project/commit/6870e23653a09bc5dcffa448d9ea37b48510afee) restored the exact previously validated Git blob `dd40b79439af3f009dd0c37cd65c917e8018a291` (83,009 characters; 163 reachability fixtures) via an expected-HEAD Git tree/ref lease, preserving intervening concurrent metrics commits.
+- **Recurrence guard:** For any future source patch, use a replacement callback (`() => replacement`) or deterministic slicing, never raw replacement strings containing `$` tokens. Enforce both lower and upper byte/line change budgets, inspect the full inserted region, and require exact-source CI before treating a patch as successful.
+- **Retry condition:** Do not repeat the Go third-step patch until the interpolation method and two-sided size precondition are changed and the restored exact-source CI is confirmed. This is a scoped code-authoring blocker, not a reason to retry unchanged MinIO, canonical learning transport or human promotion blockers.
+
+### Material success: concurrency-safe rollback
+
+- **Outcome / observed evidence:** The first rollback preparation detected concurrent branch advancement `49b40e1c` to `6fb39351` and refused its stale lease. A fresh read confirmed the corrupted file blob unchanged; the rebuilt rollback commit `6870e236` successfully restored the known-good 163-case source without force-pushing or rewriting other commits.
+- **Why safe / reusable mechanism:** Git blob SHA restoration plus current branch/target rereads and an expected-HEAD lease provided bounded, non-destructive reconciliation. No production workflow, generation/objective/drill/recovery evidence, credential, traffic, readiness or promotion source was written.
+- **Protected-authority check:** Nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007 remains prerequisite-blocked with zero real evidence or final candidates. Canonical learning is still separate and unmodified.
+- **CI status:** Exact-source CI for restored `6870e236` was in progress at this append; do not assert success until its completed job log is inspected.
+- **Learning boundary:** This supplemental append-only failure/success record is not canonical learning authority or production evidence and cannot satisfy backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
