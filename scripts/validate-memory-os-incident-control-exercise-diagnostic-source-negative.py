@@ -25,6 +25,122 @@ PUSH_REF = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
 SHA_FORMAT = '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'
 
 
+PUBLISHER_PUSH_TRIGGER_PATHS = tuple([".github/workflows/incident-control-exercise.yml","contracts/operations/incident-control-exercise-contract.v1.json","contracts/operations/backup-restore-contract.v1.json","scripts/run-memory-os-incident-control-exercise.py","scripts/validate-memory-os-incident-control-exercise.py","scripts/validate-memory-os-incident-control-exercise-reconcile-negative.py","scripts/reconcile-memory-os-incident-control-exercise.py","scripts/reconcile-memory-os-backup-restore.py","scripts/validate-memory-os-incident-response.py","scripts/validate-memory-os-incident-tabletop.py","scripts/validate-memory-os-operability.py","scripts/validate-memory-os-authorization.py","scripts/validate-memory-os-postgresql-rls.py","scripts/validate-memory-os-database-commit-outage.py","scripts/validate-memory-os-local-logical-restore.py","scripts/validate-memory-os-chaos-failure-drills-v2.py","scripts/validate-memory-os-local-object-version-restore.py","scripts/validate-memory-os-migration-lifecycle.py","scripts/validate-memory-os-version-compatibility.py","scripts/validate-memory-os-mixed-version-candidate.py","scripts/validate-memory-os-backup-local-foundations.py","scripts/validate-memory-os-backup-restore.py","scripts/validate-memory-os-parser-security.py","scripts/validate-memory-os-parser-restart-matrix.py","scripts/validate-memory-os-parser-inflight-cancellation.py","requirements-security-validation.txt"])
+INDEPENDENT_TRIGGER_PATHS = tuple([".github/workflows/incident-control-exercise.yml",".github/workflows/incident-control-exercise-diagnostic-source-negative.yml","scripts/validate-memory-os-incident-control-exercise-diagnostic-source-negative.py"])
+
+
+
+def validate_trigger_reachability(
+    publisher: str, independent: str, *,
+    publisher_paths: tuple[str, ...] | None = None,
+    independent_paths: tuple[str, ...] | None = None,
+) -> None:
+    """Bind reviewed publisher push/schedule/dispatch and independent PR/push events."""
+    pub = PUBLISHER_PUSH_TRIGGER_PATHS if publisher_paths is None else publisher_paths
+    ind = INDEPENDENT_TRIGGER_PATHS if independent_paths is None else independent_paths
+    if (len(pub) != len(PUBLISHER_PUSH_TRIGGER_PATHS) or
+        len(ind) != len(INDEPENDENT_TRIGGER_PATHS) or
+        len(set(pub)) != len(pub) or len(set(ind)) != len(ind)):
+        raise SystemExit("incident control event-specific trigger inventory shortened/duplicated")
+    pub_paths = "".join('      - "' + path + '"\n' for path in pub)
+    ind_paths = "".join('      - "' + path + '"\n' for path in ind)
+    expected_pub = (
+        "name: Incident Control Exercise\n\non:\n"
+        "  push:\n    branches:\n      - so\n    paths:\n" + pub_paths +
+        '  schedule:\n    - cron: "11 22 * * *"\n  workflow_dispatch:\n'
+    )
+    expected_ind = (
+        "name: Incident Control Exercise Diagnostic Source Negative\n\non:\n"
+        "  pull_request:\n    branches:\n      - so\n    paths:\n" + ind_paths +
+        "  push:\n    branches:\n      - so\n    paths:\n" + ind_paths
+    )
+    for label, value, expected in (
+        ("publisher", publisher, expected_pub), ("independent", independent, expected_ind)
+    ):
+        if value.count("\npermissions:\n") != 1:
+            raise SystemExit("incident control " + label + " permissions boundary drift")
+        header = value.split("\npermissions:\n", 1)[0]
+        if header != expected:
+            raise SystemExit("incident control " + label + " exact event trigger drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Exercise omissions, additions, duplicates, inventory truncation and event topology."""
+    cases = (
+        ("publisher push", publisher, "  push:\n    branches:\n      - so\n    paths:\n",
+         "  schedule:\n", PUBLISHER_PUSH_TRIGGER_PATHS, True),
+        ("independent PR", independent, "  pull_request:\n    branches:\n      - so\n    paths:\n",
+         "  push:\n", INDEPENDENT_TRIGGER_PATHS, False),
+        ("independent push", independent, "  push:\n    branches:\n      - so\n    paths:\n",
+         "\npermissions:\n", INDEPENDENT_TRIGGER_PATHS, False),
+    )
+    omitted = added = 0
+    for label, value, start, end, paths, is_publisher in cases:
+        if value.count(start) != 1 or value.count(end) != 1:
+            raise SystemExit("incident control trigger negative anchor drift: " + label)
+        begin = value.index(start) + len(start)
+        finish = value.index(end, begin)
+        block = value[begin:finish]
+        mutations = []
+        for path in paths:
+            token = '      - "' + path + '"\n'
+            if block.count(token) != 1:
+                raise SystemExit("incident control trigger omission anchor drift: " + path)
+            mutations.append(("omission " + path, block.replace(token, "", 1), True))
+        mutations.extend((
+            ("quoted extra", block + '      - "unreviewed/**"\n', False),
+            ("quoted duplicate", block + '      - "' + paths[0] + '"\n', False),
+            ("unquoted extra", block + "      - unreviewed/**\n", False),
+            ("unquoted duplicate", block + "      - " + paths[0] + "\n", False),
+        ))
+        for name, replacement, is_omission in mutations:
+            mutated = value[:begin] + replacement + value[finish:]
+            if mutated == value:
+                raise SystemExit("incident control unchanged trigger negative: " + name)
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, independent)
+                else:
+                    validate_trigger_reachability(publisher, mutated)
+            except SystemExit:
+                pass
+            else:
+                raise SystemExit("incident control accepted " + label + " " + name)
+            omitted += int(is_omission)
+            added += int(not is_omission)
+    for label, kwargs in (
+        ("publisher", {"publisher_paths": PUBLISHER_PUSH_TRIGGER_PATHS[:-1]}),
+        ("independent", {"independent_paths": INDEPENDENT_TRIGGER_PATHS[:-1]}),
+    ):
+        try:
+            validate_trigger_reachability(publisher, independent, **kwargs)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("incident control accepted shortened " + label + " inventory")
+    for label, mutated in (
+        ("publisher PR introduction", publisher.replace(
+            "  schedule:\n", "  pull_request:\n    branches:\n      - so\n  schedule:\n", 1)),
+        ("publisher schedule deletion", publisher.replace(
+            '  schedule:\n    - cron: "11 22 * * *"\n', "", 1)),
+        ("independent dispatch introduction", independent.replace(
+            "\npermissions:\n", "  workflow_dispatch:\n\npermissions:\n", 1)),
+    ):
+        try:
+            if label.startswith("publisher"):
+                validate_trigger_reachability(mutated, independent)
+            else:
+                validate_trigger_reachability(publisher, mutated)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("incident control accepted unreviewed event topology: " + label)
+    if (omitted, added) != (32, 12):
+        raise SystemExit("incident control trigger negative coverage drift")
+    print("PASS: incident control exact event triggers (32 omissions; 12 additions; "
+          "2 shortened inventories; 3 event topology negatives)")
+
+
 def source(relative: str) -> str:
     path = ROOT / relative
     try:
@@ -43,6 +159,7 @@ def blob(content: str) -> str:
 
 
 def validate(publisher: str, independent: str) -> None:
+    validate_trigger_reachability(publisher, independent)
     publisher_required = (
         ("  schedule:\n", 1),
         ("  workflow_dispatch:\n", 1),
@@ -323,6 +440,7 @@ def writer_identity_runtime(publisher: str) -> None:
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     predicate_runtime(independent)
     writer_identity_runtime(publisher)
     mutation_negatives(publisher, independent)
