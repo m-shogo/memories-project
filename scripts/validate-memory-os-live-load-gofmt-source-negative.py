@@ -41,6 +41,142 @@ REQUIRED = (
     "git push origin HEAD:so",
 )
 
+GOFMT_PUBLISHER_PR_PATHS = (
+    ".github/workflows/reconcile-live-load-gofmt.yml",
+    "services/import-api/internal/httpserver/live_load_test.go",
+    "services/import-api/internal/httpserver/live_object_load_test.go",
+)
+
+GOFMT_PUBLISHER_PUSH_PATHS = (
+    ".github/workflows/reconcile-live-load-gofmt.yml",
+    "services/import-api/internal/httpserver/live_load_test.go",
+    "services/import-api/internal/httpserver/live_object_load_test.go",
+)
+
+GOFMT_INDEPENDENT_PR_PATHS = (
+    ".github/workflows/reconcile-live-load-gofmt.yml",
+    ".github/workflows/live-load-gofmt-source-negative.yml",
+    "scripts/validate-memory-os-live-load-gofmt-source-negative.py",
+)
+
+GOFMT_INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/reconcile-live-load-gofmt.yml",
+    ".github/workflows/live-load-gofmt-source-negative.yml",
+    "scripts/validate-memory-os-live-load-gofmt-source-negative.py",
+)
+
+def gofmt_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def gofmt_trigger_header(content: str) -> str:
+    # Exact, ordered event header: reject unknown, unquoted, duplicate and
+    # unexpected event paths instead of depending only on a Git blob digest.
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise SystemExit("live-load-gofmt trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def gofmt_validate_trigger_matrix(
+    publisher: str, independent: str,
+    publisher_pr: tuple[str, ...] = GOFMT_PUBLISHER_PR_PATHS,
+    publisher_push: tuple[str, ...] = GOFMT_PUBLISHER_PUSH_PATHS,
+    independent_pr: tuple[str, ...] = GOFMT_INDEPENDENT_PR_PATHS,
+    independent_push: tuple[str, ...] = GOFMT_INDEPENDENT_PUSH_PATHS,
+) -> None:
+    expected_publisher = (gofmt_trigger_event("pull_request", publisher_pr)
+                          + gofmt_trigger_event("push", publisher_push)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (gofmt_trigger_event("pull_request", independent_pr)
+                            + gofmt_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if gofmt_trigger_header(content) != expected:
+            raise SystemExit("live-load-gofmt " + label
+                             + " exact event trigger inventory drift")
+
+
+def replace_gofmt_trigger_header(content: str, original: str, replacement: str) -> str:
+    old = "\non:\n" + original + "\npermissions:\n"
+    if content.count(old) != 1 or original == replacement:
+        raise SystemExit("live-load-gofmt trigger negative fixture unreachable")
+    return content.replace(old, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def gofmt_trigger_matrix_negatives(publisher: str, independent: str) -> None:
+    def must_reject(p: str, i: str) -> None:
+        try:
+            gofmt_validate_trigger_matrix(p, i)
+        except SystemExit:
+            return
+        raise SystemExit("live-load-gofmt accepted event trigger mutation")
+
+    omissions = additions = 0
+    cases = (
+        ("publisher", "pull_request", GOFMT_PUBLISHER_PR_PATHS),
+        ("publisher", "push", GOFMT_PUBLISHER_PUSH_PATHS),
+        ("independent", "pull_request", GOFMT_INDEPENDENT_PR_PATHS),
+        ("independent", "push", GOFMT_INDEPENDENT_PUSH_PATHS),
+    )
+    for label, event, paths in cases:
+        original = publisher if label == "publisher" else independent
+        header = gofmt_trigger_header(original)
+        block = gofmt_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise SystemExit("live-load-gofmt trigger event fixture ambiguous")
+        for index in range(len(paths)):
+            shorter = paths[:index] + paths[index + 1:]
+            mutated = replace_gofmt_trigger_header(
+                original, header, header.replace(block, gofmt_trigger_event(event, shorter), 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for addition in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            mutated_block = block.replace(first, first + addition, 1)
+            mutated = replace_gofmt_trigger_header(
+                original, header, header.replace(block, mutated_block, 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_pr", GOFMT_PUBLISHER_PR_PATHS),
+        ("publisher_push", GOFMT_PUBLISHER_PUSH_PATHS),
+        ("independent_pr", GOFMT_INDEPENDENT_PR_PATHS),
+        ("independent_push", GOFMT_INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            gofmt_validate_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except SystemExit:
+            shortened += 1
+        else:
+            raise SystemExit("live-load-gofmt accepted shortened trigger inventory")
+
+    p_header, i_header = gofmt_trigger_header(publisher), gofmt_trigger_header(independent)
+    topology = (
+        (replace_gofmt_trigger_header(
+            publisher, p_header, p_header.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (replace_gofmt_trigger_header(
+            publisher, p_header, p_header.replace(
+                "  workflow_dispatch:\n",
+                "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)), independent),
+        (publisher, replace_gofmt_trigger_header(
+            independent, i_header, i_header + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        must_reject(p, i)
+    print("PASS: live-load-gofmt exact trigger matrix: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def policy(source: str) -> None:
     if source.count(CHECKOUT) != 2 or source.count(SETUP_GO) != 2:
         raise AssertionError("gofmt immutable Actions drift")
@@ -177,6 +313,8 @@ def main() -> None:
     if blob(source + "\n# synthetic whole-source drift\n") == REVIEWED_PUBLISHER:
         raise AssertionError("gofmt whole-source mutation accepted")
     policy(source)
+    gofmt_validate_trigger_matrix(source, independent)
+    gofmt_trigger_matrix_negatives(source, independent)
     for index, marker in enumerate(REQUIRED):
         changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
         if changed == source:
