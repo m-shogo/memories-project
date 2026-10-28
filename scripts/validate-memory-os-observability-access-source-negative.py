@@ -43,6 +43,158 @@ REQUIRED = (
     "git push origin HEAD:so",
 )
 
+OBSERVABILITY_PUBLISHER_PR_PATHS = (
+    ".github/workflows/reconcile-observability-access.yml",
+    "contracts/operations/observability-retention-access-contract.v1.json",
+    "contracts/operations/observability-event-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/runbooks/memory-os-observability-access.md",
+    "scripts/validate-memory-os-observability.py",
+    "scripts/validate-memory-os-observability-access.py",
+    "scripts/validate-memory-os-observability-access-reconcile-negative.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/validate-memory-os-entry-docs.py",
+    "scripts/reconcile-memory-os-observability-access.py",
+)
+
+OBSERVABILITY_PUBLISHER_PUSH_PATHS = (
+    ".github/workflows/reconcile-observability-access.yml",
+    "contracts/operations/observability-retention-access-contract.v1.json",
+    "contracts/operations/observability-event-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/runbooks/memory-os-observability-access.md",
+    "scripts/validate-memory-os-observability.py",
+    "scripts/validate-memory-os-observability-access.py",
+    "scripts/validate-memory-os-observability-access-reconcile-negative.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/validate-memory-os-entry-docs.py",
+    "scripts/reconcile-memory-os-observability-access.py",
+)
+
+OBSERVABILITY_INDEPENDENT_PR_PATHS = (
+    ".github/workflows/reconcile-observability-access.yml",
+    ".github/workflows/observability-access-source-negative.yml",
+    "scripts/validate-memory-os-observability-access-source-negative.py",
+)
+
+OBSERVABILITY_INDEPENDENT_PUSH_PATHS = (
+    ".github/workflows/reconcile-observability-access.yml",
+    ".github/workflows/observability-access-source-negative.yml",
+    "scripts/validate-memory-os-observability-access-source-negative.py",
+)
+
+def observability_trigger_event(event: str, paths: tuple[str, ...]) -> str:
+    return ("  " + event + ":\n    branches:\n      - so\n    paths:\n"
+            + "".join('      - "' + path + '"\n' for path in paths))
+
+
+def observability_trigger_header(content: str) -> str:
+    # Exact, ordered event header: reject unknown, unquoted, duplicate and
+    # unexpected event paths instead of depending only on a Git blob digest.
+    if content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1:
+        raise SystemExit("observability-access trigger section ambiguous")
+    return content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+
+
+def observability_validate_trigger_matrix(
+    publisher: str, independent: str,
+    publisher_pr: tuple[str, ...] = OBSERVABILITY_PUBLISHER_PR_PATHS,
+    publisher_push: tuple[str, ...] = OBSERVABILITY_PUBLISHER_PUSH_PATHS,
+    independent_pr: tuple[str, ...] = OBSERVABILITY_INDEPENDENT_PR_PATHS,
+    independent_push: tuple[str, ...] = OBSERVABILITY_INDEPENDENT_PUSH_PATHS,
+) -> None:
+    expected_publisher = (observability_trigger_event("pull_request", publisher_pr)
+                          + observability_trigger_event("push", publisher_push)
+                          + "  workflow_dispatch:\n")
+    expected_independent = (observability_trigger_event("pull_request", independent_pr)
+                            + observability_trigger_event("push", independent_push))
+    for label, content, expected in (
+        ("publisher", publisher, expected_publisher),
+        ("independent", independent, expected_independent),
+    ):
+        if observability_trigger_header(content) != expected:
+            raise SystemExit("observability-access " + label
+                             + " exact event trigger inventory drift")
+
+
+def replace_observability_trigger_header(content: str, original: str, replacement: str) -> str:
+    old = "\non:\n" + original + "\npermissions:\n"
+    if content.count(old) != 1 or original == replacement:
+        raise SystemExit("observability-access trigger negative fixture unreachable")
+    return content.replace(old, "\non:\n" + replacement + "\npermissions:\n", 1)
+
+
+def observability_trigger_matrix_negatives(publisher: str, independent: str) -> None:
+    def must_reject(p: str, i: str) -> None:
+        try:
+            observability_validate_trigger_matrix(p, i)
+        except SystemExit:
+            return
+        raise SystemExit("observability-access accepted event trigger mutation")
+
+    omissions = additions = 0
+    cases = (
+        ("publisher", "pull_request", OBSERVABILITY_PUBLISHER_PR_PATHS),
+        ("publisher", "push", OBSERVABILITY_PUBLISHER_PUSH_PATHS),
+        ("independent", "pull_request", OBSERVABILITY_INDEPENDENT_PR_PATHS),
+        ("independent", "push", OBSERVABILITY_INDEPENDENT_PUSH_PATHS),
+    )
+    for label, event, paths in cases:
+        original = publisher if label == "publisher" else independent
+        header = observability_trigger_header(original)
+        block = observability_trigger_event(event, paths)
+        if header.count(block) != 1:
+            raise SystemExit("observability-access trigger event fixture ambiguous")
+        for index in range(len(paths)):
+            shorter = paths[:index] + paths[index + 1:]
+            mutated = replace_observability_trigger_header(
+                original, header, header.replace(block, observability_trigger_event(event, shorter), 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            omissions += 1
+        first = '      - "' + paths[0] + '"\n'
+        for addition in (
+            '      - "unreviewed/**"\n', '      - unreviewed/**\n',
+            first, '      - ' + paths[0] + '\n',
+        ):
+            mutated_block = block.replace(first, first + addition, 1)
+            mutated = replace_observability_trigger_header(
+                original, header, header.replace(block, mutated_block, 1))
+            must_reject(mutated, independent) if label == "publisher" else must_reject(publisher, mutated)
+            additions += 1
+
+    shortened = 0
+    for field, paths in (
+        ("publisher_pr", OBSERVABILITY_PUBLISHER_PR_PATHS),
+        ("publisher_push", OBSERVABILITY_PUBLISHER_PUSH_PATHS),
+        ("independent_pr", OBSERVABILITY_INDEPENDENT_PR_PATHS),
+        ("independent_push", OBSERVABILITY_INDEPENDENT_PUSH_PATHS),
+    ):
+        try:
+            observability_validate_trigger_matrix(publisher, independent, **{field: paths[:-1]})
+        except SystemExit:
+            shortened += 1
+        else:
+            raise SystemExit("observability-access accepted shortened trigger inventory")
+
+    p_header, i_header = observability_trigger_header(publisher), observability_trigger_header(independent)
+    topology = (
+        (replace_observability_trigger_header(
+            publisher, p_header, p_header.replace("  workflow_dispatch:\n", "", 1)), independent),
+        (replace_observability_trigger_header(
+            publisher, p_header, p_header.replace(
+                "  workflow_dispatch:\n",
+                "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n", 1)), independent),
+        (publisher, replace_observability_trigger_header(
+            independent, i_header, i_header + "  workflow_dispatch:\n")),
+    )
+    for p, i in topology:
+        must_reject(p, i)
+    print("PASS: observability-access exact trigger matrix: "
+          + str(omissions) + " omissions, " + str(additions)
+          + " additions/duplicates, " + str(shortened)
+          + " shortened inventories, " + str(len(topology)) + " event topology negatives")
+
+
 def policy(s: str) -> None:
     if s.count(CHECKOUT) != 2 or s.count(SETUP) != 2:
         raise AssertionError("observability-access immutable Actions drift")
@@ -165,6 +317,8 @@ def main() -> None:
     if blob(source + "\n# synthetic whole-source drift\n") == REVIEWED_PUBLISHER:
         raise AssertionError("observability-access whole-source mutation accepted")
     policy(source)
+    observability_validate_trigger_matrix(source, independent)
+    observability_trigger_matrix_negatives(source, independent)
     for index, marker in enumerate(REQUIRED):
         changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
         if changed == source:
