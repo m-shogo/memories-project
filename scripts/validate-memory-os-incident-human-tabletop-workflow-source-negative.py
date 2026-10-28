@@ -94,6 +94,33 @@ def validate_trigger_reachability(
         approved = tuple('      - "' + path + '"' for path in approved_paths)
         if actual != approved:
             raise SystemExit("human-tabletop CI " + event + " exact trigger path drift")
+    # An exact PR/push path block does not exclude an additional event before
+    # the first reviewed block or a root YAML key shadow after permissions.
+    expected_header = (
+        ("name: Incident Human Tabletop Evidence" if publisher
+         else "name: Incident Human Tabletop Workflow Source Negative")
+        + "\n\non:\n"
+        + pr + "".join('      - "' + path + '"\n' for path in approved_pr)
+        + push + "".join('      - "' + path + '"\n' for path in approved_push)
+        + ("  workflow_dispatch:\n" if publisher else "")
+    )
+    if (value.count("\npermissions:\n") != 1
+            or value.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("human-tabletop CI exact event header drift")
+    expected_roots = (
+        ["name: Incident Human Tabletop Evidence", "on:", "permissions:",
+         "concurrency:", "jobs:"]
+        if publisher else
+        ["name: Incident Human Tabletop Workflow Source Negative", "on:",
+         "permissions:", "jobs:"]
+    )
+    observed_roots = [
+        row for row in value.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if observed_roots != expected_roots:
+        raise SystemExit("human-tabletop CI root YAML key shadow drift")
 
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
@@ -148,7 +175,56 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
                 pass
             else:
                 raise SystemExit("human-tabletop CI accepted shortened " + label + " " + event + " inventory")
-    print("PASS: human-tabletop CI event triggers (30 removals; 16 additions; 4 shortened inventory negatives)")
+    # Additional events before the reviewed PR block preserve both PR and
+    # push path inventories. Require the exact header rejection.
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        mutated = original.replace("on:\n", "on:\n  issues:\n", 1)
+        if mutated == original:
+            raise SystemExit("human-tabletop CI header negative anchor drift: " + label)
+        try:
+            validate_trigger_reachability(mutated, publisher=is_publisher)
+        except SystemExit as exc:
+            if str(exc) != "human-tabletop CI exact event header drift":
+                raise SystemExit(
+                    "human-tabletop CI header negative rejected for wrong reason: "
+                    + label + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("human-tabletop CI accepted extra event: " + label)
+    # The entire event header is unchanged here. A later effective YAML root
+    # key must be rejected by the semantic root inventory, not only a blob pin.
+    root_shadows = (
+        ("spaced on", "on :\n  workflow_dispatch:\n"),
+        ("quoted on", "'on':\n  workflow_dispatch:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    )
+    root_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        for name, suffix in root_shadows:
+            mutated = original + suffix
+            try:
+                validate_trigger_reachability(mutated, publisher=is_publisher)
+            except SystemExit as exc:
+                if str(exc) != "human-tabletop CI root YAML key shadow drift":
+                    raise SystemExit(
+                        "human-tabletop CI root shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "human-tabletop CI accepted root YAML shadow: " + label + " " + name
+                )
+            root_negative_count += 1
+    if root_negative_count != 8:
+        raise SystemExit("human-tabletop CI root shadow fixture count drift")
+    print("PASS: human-tabletop CI event triggers (30 removals; 16 additions; 4 shortened inventory; 2 event header; 8 root shadow negatives)")
 
 
 def source(relative: str) -> str:
