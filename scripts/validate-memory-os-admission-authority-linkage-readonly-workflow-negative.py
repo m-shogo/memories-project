@@ -66,6 +66,13 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
     pr_block = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push_block = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr_block), ("push", push_block)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        expected = tuple(f'      - "{path}"' for path in trigger_paths)
+        if actual != expected:
+            raise SystemExit("admission linkage readonly " + event + " trigger inventory drift")
         for path in trigger_paths:
             token = '      - "' + path + '"\n'
             if block.count(token) != 1:
@@ -97,6 +104,29 @@ def prove_trigger_reachability_negatives(source: str) -> None:
     else:
         raise SystemExit("admission linkage readonly shortened trigger inventory accepted")
     print(f"PASS: admission linkage readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 1 shortened inventory negative)")
+    # Independently reject additions under both events, without relying on the blob SHA.
+    for event in ("pull_request", "push"):
+        for label, inserted in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", f'      - "{TRIGGER_PATHS[0]}"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", f"      - {TRIGGER_PATHS[0]}\n"),
+        ):
+            token = f'      - "{TRIGGER_PATHS[0]}"\n'
+            prefix, suffix = source.split(push_marker, 1)
+            if event == "pull_request":
+                mutated = prefix.replace(token, inserted + token, 1) + push_marker + suffix
+            else:
+                mutated = prefix + push_marker + suffix.replace(token, inserted + token, 1)
+            if mutated == source:
+                raise SystemExit(f"admission linkage readonly addition fixture missing: {event} {label}")
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit(f"admission linkage readonly accepted {event} trigger addition: {label}")
+    print("PASS: admission linkage readonly trigger additions (8 event-specific semantic negatives)")
+
 
 
 def validate(source: str, *, check_blob: bool = True) -> None:
